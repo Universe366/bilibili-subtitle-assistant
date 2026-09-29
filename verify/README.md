@@ -38,3 +38,15 @@ node checklist.js           # 需求文档功能清单逐项核对       87 项
 > `bundle.js` 依赖 `test-entry.js`（测试专用入口，把面板与自检挂钩打进同一个 IIFE）。
 > 扩展内的 `src/sidepanel/selfcheck.js` 会把内部模块与面板 API 挂到 `window.__BSUB_SELFCHECK__`，供测试断言调用。
 
+
+
+## 开发日志
+
+逐轮缺陷与修复复盘已拆分到独立文件：
+
+**`bilibili-subtitle-assistant/docs/DEVELOPMENT-LOG.md`**
+
+它记录了每一轮改了什么、为什么改，以及**当时为什么会想错**。
+建议按主题搜索（例如「Content-Type」「超时」「CSP」「service worker」），而不是从头读。
+
+环境约束与排查方法论见 **`bilibili-subtitle-assistant/AGENTS.md`**。
