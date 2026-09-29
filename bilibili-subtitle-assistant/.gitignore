@@ -1,0 +1,31 @@
+# 依赖与构建产物
+node_modules/
+build/
+
+# 扩展自带的 FFmpeg 内核（31MB）—— 按约定提交进仓库，克隆即可用。
+# 如需改为「不提交 + 下载」，把下面两行取消注释，并运行 verify/fetch-ffmpeg.mjs。
+# vendor/ffmpeg/ffmpeg-core.wasm
+# vendor/ffmpeg/ffmpeg-core.js
+
+# 测试过程中生成的样本与临时文件（可重新生成，不入库）
+sample-mediarecorder.m4a
+sample-ffmpeg.m4a
+*-probe.html
+codec-*.mjs
+npm-debug.log*
+pnpm-debug.log*
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 密钥：绝不能入库（虽然本仓库不含密钥，这里作为防线）
+.env
+.env.*
+*.key
+secrets.json
+
+# 参考仓库（别人的代码，仅本地只读参考，不入库）
+_src/

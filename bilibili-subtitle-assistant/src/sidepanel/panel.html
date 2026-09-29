@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>B站字幕助手</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body data-layout="auto" data-tab="subtitles">
+    <!--
+      稳定性 #2：从根容器到滚动容器必须是一条完整的、有确定高度的 flex 链，
+      每一层都要有 min-height: 0。滚动容器自身不要用 display:flex。
+      本文件里 html/body/#app/#main/#view 逐层传递高度，滚动发生在 .scroll-host 上。
+    -->
+    <div id="app" data-app="true">
+      <header id="topbar">
+        <div class="topbar-row">
+          <div class="brand">
+            <span class="brand-mark">字幕</span>
+            <span class="brand-title">B站字幕助手</span>
+          </div>
+          <div class="topbar-actions">
+            <button id="btn-layout" class="btn icon-btn" type="button" title="切换布局（双列 / 单列）">▤</button>
+            <button id="btn-font-down" class="btn icon-btn" type="button" title="缩小字号">A−</button>
+            <button id="btn-font-up" class="btn icon-btn" type="button" title="放大字号">A+</button>
+            <button id="btn-theme" class="btn icon-btn" type="button" title="切换主题">◐</button>
+            <button id="btn-help" class="btn icon-btn" type="button" title="快捷键 / 向导">?</button>
+            <button id="btn-settings" class="btn icon-btn" type="button" title="设置">⚙</button>
+          </div>
+        </div>
+        <div class="tabs" id="tabs">
+          <button class="tab" type="button" data-tab-btn="subtitles">字幕</button>
+          <button class="tab" type="button" data-tab-btn="ai">总结 / AI</button>
+          <button class="tab" type="button" data-tab-btn="settings">设置</button>
+        </div>
+        <div id="fingerprint" class="fingerprint" title="构建指纹：版本 + 模块数 + 构建时间">构建信息加载中…</div>
+      </header>
+
+      <!-- 配置状态常驻提示（第七章）：为什么现在不能用 -->
+      <div id="readiness" class="readiness" data-visible="true"></div>
+
+      <!-- 进度与终止（第七章） -->
+      <div id="jobs" class="jobs" data-visible="false" style="display:none"></div>
+      <div id="alerts" class="alerts"></div>
+
+      <main id="main">
+        <div id="view" class="view" data-tab="subtitles">
+          <!-- 顶部操作区（字幕就绪后转录/检索入口仍可见） -->
+          <div id="actionbar" class="actionbar"></div>
+          <!--
+            两列：左「字幕」右「总结 / AI」；窄宽度（<420px）时自动单列 + 顶部标签切换。
+            每个区域独立滚动。
+          -->
+          <div id="columns" class="columns" data-mode="two">
+            <section id="col-subtitles" class="column" data-col="subtitles">
+              <div id="subtitles-pane" class="pane"></div>
+            </section>
+            <section id="col-ai" class="column" data-col="ai">
+              <div id="ai-pane" class="pane"></div>
+            </section>
+          </div>
+          <section id="settings-pane" class="pane settings"></section>
+        </div>
+      </main>
+
+      <div id="overlay-root" class="overlay-root" data-open="false"></div>
+      <div id="drag-hint" class="drag-hint" data-visible="false">松开即可把文件加入对话</div>
+    </div>
+    <script type="module" src="app.js"></script>
+    <script type="module" src="selfcheck.js"></script>
+  </body>
+</html>

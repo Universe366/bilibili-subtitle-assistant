@@ -1,0 +1,38 @@
+/* 内容脚本注入到 B 站页面的样式（播放器内嵌按钮） */
+
+#__bsub_player_btn__ {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  margin-left: 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  vertical-align: middle;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#__bsub_player_btn__:hover,
+#__bsub_player_btn__:focus-visible {
+  opacity: 1;
+  background: rgba(0, 174, 236, 0.85);
+  outline: none;
+}
+
+#__bsub_player_btn__ .bsub-player-btn-label {
+  pointer-events: none;
+}
+
+/* 页面内字幕覆盖层由主环境脚本创建，这里只兜底定位 */
+#__bsub_overlay__ {
+  pointer-events: none !important;
+}

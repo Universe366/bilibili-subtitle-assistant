@@ -1,0 +1,384 @@
+// 侧边栏入口：装配各面板、处理跨上下文事件、主题/布局/快捷键/向导。
+
+import { call, errorPayload } from './modules/bridge.js';
+import { store, loadSettings, loadBuildInfo } from './modules/store.js';
+import { app, usePanel, renderPanels, applyTheme, loadVideo, harvest, transcribe, exportSubtitles, copyAllSubtitles, doProviderSearch, pushPageOptions, saveHistory } from './modules/context.js';
+import * as jobs from './modules/jobs.js';
+import { h, clear, button, toast, setBoolAttr, fmtBytes } from './modules/dom.js';
+import { openOverlay, closeOverlays } from './modules/ui.js';
+import * as subtitlesPanel from './modules/panel-subtitles.js';
+import * as aiPanel from './modules/panel-ai.js';
+import * as settingsPanel from './modules/panel-settings.js';
+import * as actionsPanel from './modules/panel-actions.js';
+import { DEFAULT_SYSTEM_PROMPT } from '../shared/constants.js';
+import { initWizard } from './modules/wizard.js';
+
+boot();
+
+async function boot() {
+  try {
+    await store.loadUiState();
+  } catch (err) {
+    /* ignore */
+  }
+  installShell();
+  jobs.setJobsHost(document.getElementById('jobs'));
+
+  // 面板挂载
+  usePanel('subtitles', subtitlesPanel.init(document.getElementById('subtitles-pane')));
+  usePanel('ai', aiPanel.init(document.getElementById('ai-pane')));
+  usePanel('settings', settingsPanel.init(document.getElementById('settings-pane')));
+  usePanel('actions', actionsPanel.init(document.getElementById('actionbar')));
+  usePanel('wizard', initWizard());
+
+  try {
+    const s = await loadSettings();
+    applyTheme(s);
+  } catch (err) {
+    renderReadiness(errorPayload(err));
+  }
+  await loadBuildInfo();
+  renderFingerprint();
+  renderTabs();
+  renderReadiness();
+  renderPanels();
+
+  try {
+    await pushPageOptions();
+  } catch (err) {
+    /* 没有 B 站页面时忽略 */
+  }
+
+  wireRuntime();
+  wireStore();
+  wireKeys();
+
+  // 首次使用向导（必须能随时跳过，跳过入口常驻可见）
+  const s = store.get().settings;
+  if (s && s.general.firstRun && !s.general.wizardDone) {
+    setTimeout(() => app.panels.wizard && app.panels.wizard.open(), 400);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 外壳
+// ---------------------------------------------------------------------------
+
+function installShell() {
+  const tabButtons = Array.from(document.querySelectorAll('[data-tab-btn]'));
+  for (const b of tabButtons) {
+    b.addEventListener('click', () => switchTab(b.getAttribute('data-tab-btn')));
+  }
+  document.getElementById('btn-settings').addEventListener('click', () => switchTab('settings'));
+  document.getElementById('btn-layout').addEventListener('click', cycleLayout);
+  document.getElementById('btn-theme').addEventListener('click', cycleTheme);
+  document.getElementById('btn-font-up').addEventListener('click', () => bumpFont(0.05));
+  document.getElementById('btn-font-down').addEventListener('click', () => bumpFont(-0.05));
+  document.getElementById('btn-help').addEventListener('click', () => shortcutsDialog());
+  document.getElementById('fingerprint').addEventListener('click', () => settingsPanel.diagnosticsDialog());
+  window.addEventListener('resize', () => applyLayout());
+  applyLayout();
+}
+
+function switchTab(tab) {
+  store.set({ activeTab: tab });
+  renderTabs();
+  store.scheduleUiPersist();
+  if (tab === 'settings') settingsPanel.render();
+  if (tab === 'ai') aiPanel.render();
+  if (tab === 'subtitles') subtitlesPanel.render();
+}
+
+function renderTabs() {
+  const st = store.get();
+  const tab = st.activeTab || 'subtitles';
+  document.body.setAttribute('data-tab', tab);
+  document.getElementById('view').setAttribute('data-tab', tab);
+}
+
+function applyLayout() {
+  const st = store.get();
+  const columns = document.getElementById('columns');
+  const layout = st.settings ? st.settings.general.layout : 'one';
+  const narrow = window.innerWidth < 420;
+  // 默认单列堆叠；auto 只在窄屏时单列
+  const one = layout === 'one' || (layout === 'auto' && narrow) || (layout === 'two' && narrow);
+  columns.setAttribute('data-mode', one ? 'one' : 'two');
+  const tab = st.activeTab || 'subtitles';
+  const isSettings = tab === 'settings';
+  document.getElementById('col-subtitles').setAttribute('data-hidden', String(one && !isSettings && tab === 'ai'));
+  document.getElementById('col-ai').setAttribute('data-hidden', String(one && !isSettings && tab === 'subtitles'));
+}
+
+function cycleLayout() {
+  const s = store.get().settings;
+  if (!s) return;
+  const order = ['one', 'two', 'auto'];
+  const next = order[(order.indexOf(s.general.layout) + 1) % order.length];
+  call('settings.patch', { path: ['general', 'layout'], value: next })
+    .then((res) => {
+      store.set({ settings: res, readiness: res.__readiness || { ok: {}, issues: [] } });
+      applyLayout();
+      toast({ title: `布局：${{ auto: '自动（仅窄屏单列）', two: '双列', one: '单列堆叠' }[next]}` }, 'ok', 1500);
+    })
+    .catch((err) => toast({ title: '切换布局失败', detail: errorPayload(err).detail }, 'warn'));
+}
+
+function cycleTheme() {
+  const s = store.get().settings;
+  if (!s) return;
+  const order = ['system', 'light', 'dark'];
+  const next = order[(order.indexOf(s.general.theme) + 1) % order.length];
+  call('settings.patch', { path: ['general', 'theme'], value: next })
+    .then((res) => {
+      store.set({ settings: res, readiness: res.__readiness || { ok: {}, issues: [] } });
+      applyTheme(res);
+      settingsPanel.render();
+      toast({ title: `主题：${{ system: '跟随系统', light: '浅色', dark: '深色' }[next]}` }, 'ok', 1500);
+    })
+    .catch((err) => toast({ title: '切换主题失败', detail: errorPayload(err).detail }, 'warn'));
+}
+
+function bumpFont(delta) {
+  const s = store.get().settings;
+  if (!s) return;
+  const next = Math.max(0.8, Math.min(1.6, Number((s.general.fontScale + delta).toFixed(2))));
+  call('settings.patch', { path: ['general', 'fontScale'], value: next })
+    .then((res) => {
+      store.set({ settings: res });
+      applyTheme(res);
+      settingsPanel.render();
+    })
+    .catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// 构建指纹
+// ---------------------------------------------------------------------------
+
+function renderFingerprint() {
+  const st = store.get();
+  const el = document.getElementById('fingerprint');
+  const b = st.build;
+  if (!el) return;
+  el.textContent = b
+    ? `构建指纹 ${b.version} · ${b.modules} 模块 · ${b.buildTime}`
+    : '构建指纹：未取到（点这里查看诊断）';
+  el.title = '点击查看诊断信息（版本号 + 模块数 + 构建时间）';
+}
+
+// ---------------------------------------------------------------------------
+// 配置状态常驻提示
+// ---------------------------------------------------------------------------
+
+function renderReadiness(extra) {
+  const el = document.getElementById('readiness');
+  if (!el) return;
+  const st = store.get();
+  clear(el);
+  const issues = (st.readiness && st.readiness.issues) || [];
+  const list = extra ? [{ level: 'error', text: `${extra.title}：${extra.detail || ''}`, area: 'ai' }, ...issues] : issues;
+  if (!list.length) {
+    setBoolAttr(el, 'data-visible', false);
+    el.style.display = 'none';
+    return;
+  }
+  setBoolAttr(el, 'data-visible', true);
+  el.style.display = 'block';
+  for (const issue of list.slice(0, 4)) {
+    const row = h('div', { class: `issue ${issue.level}` });
+    row.appendChild(h('span', { text: `${issue.level === 'error' ? '✕' : issue.level === 'warn' ? '!' : 'i'}` }));
+    row.appendChild(h('span', { class: 'txt', text: issue.text }));
+    row.appendChild(
+      h('span', {
+        class: 'fix',
+        text: '去设置',
+        onclick: () => {
+          switchTab('settings');
+          if (issue.area) store.setGroupOpen(issue.area, true);
+          settingsPanel.render();
+        }
+      })
+    );
+    el.appendChild(row);
+  }
+  if (list.length > 4) el.appendChild(h('div', { class: 'issue info', text: `还有 ${list.length - 4} 条提示，见设置页。` }));
+}
+
+// ---------------------------------------------------------------------------
+// 跨上下文事件
+// ---------------------------------------------------------------------------
+
+function wireRuntime() {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || typeof msg !== 'object') return undefined;
+    if (msg.type === 'bsub:content-event') {
+      handleContentEvent(msg);
+    } else if (msg.type === 'bsub:settings-changed') {
+      refreshSettingsSoft();
+    } else if (msg.type === 'bsub:tab-closed') {
+      /* 忽略 */
+    }
+    sendResponse({ ok: true });
+    return undefined;
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (Object.keys(changes).some((k) => k.startsWith('bsub.settings'))) refreshSettingsSoft();
+  });
+}
+
+async function refreshSettingsSoft() {
+  try {
+    const s = await loadSettings();
+    const st = store.get();
+    // 保留本地草稿/视图状态，仅同步配置本身
+    store.set({ settings: s, readiness: s.__readiness || { ok: {}, issues: [] } });
+    applyTheme(s);
+    renderReadiness();
+    settingsPanel.render();
+    actionsPanel.render();
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+async function handleContentEvent(msg) {
+  const { event, payload } = msg;
+  if (event === 'time') {
+    const st = store.get();
+    store.set({ follow: { currentTime: payload.currentTime, duration: payload.duration, paused: false } });
+    subtitlesPanel.syncActive();
+    return;
+  }
+  if (event === 'navigate') {
+    const st = store.get();
+    const hadLines = (st.subtitles || []).length > 0;
+    const oldSig = st.video && st.video.signature;
+    if (payload.signature === oldSig) return;
+    store.set({ video: payload.info, subtitles: [], summary: '', chat: [], quality: null, subtitleError: null, subtitlesRevision: (st.subtitlesRevision || 0) + 1 });
+    settingsPanel.render();
+    actionsPanel.render();
+    if (hadLines) {
+      // 分 P 切换后字幕会不对，必须重新抓取（稳定性 #10）
+      toast({ title: '检测到分 P / 视频切换', detail: '正在重新读取并抓取字幕…' }, 'warn', 4000);
+      const v = await loadVideo();
+      if (v) await harvest();
+    } else {
+      await loadVideo();
+    }
+    return;
+  }
+  if (event === 'player-button') {
+    const st = store.get();
+    switchTab('subtitles');
+    const q = store.get().settings?.page?.playerButtonPrompt || '';
+    toast({ title: '来自播放器按钮', detail: q ? `将使用提示词：${q}` : '' }, 'ok', 3000);
+    if (q && promptIsQuestion(q)) {
+      switchTab('ai');
+      aiPanel.sendMessage(q);
+    } else {
+      aiPanel.generateSummary();
+    }
+  }
+}
+
+function promptIsQuestion(q) {
+  return /[?？]$/.test(q.trim()) || /^(什么|为什么|怎么|如何|哪些|是否)/.test(q.trim());
+}
+
+// ---------------------------------------------------------------------------
+// 全局状态订阅
+// ---------------------------------------------------------------------------
+
+function wireStore() {
+  let lastTab = store.get().activeTab;
+  let lastLayoutKey = '';
+  store.subscribe((st) => {
+    if (st.activeTab !== lastTab) {
+      lastTab = st.activeTab;
+      renderTabs();
+      applyLayout();
+    }
+    // 配置变化（主题 / 字号 / 布局）立即生效
+    if (st.settings) {
+      const key = `${st.settings.general.theme}|${st.settings.general.fontScale}|${st.settings.general.layout}`;
+      if (key !== lastLayoutKey) {
+        lastLayoutKey = key;
+        applyTheme(st.settings);
+        applyLayout();
+      }
+    }
+    renderReadiness();
+    actionsPanel.render();
+    // 字幕面板自行按签名渲染（含虚拟滚动），避免频繁重建
+    subtitlesPanel.render();
+    if (st.activeTab === 'ai') aiPanel.render();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 快捷键
+// ---------------------------------------------------------------------------
+
+const SHORTCUTS = [
+  ['Alt + 1 / 2 / 3', '切换到 字幕 / 总结·AI / 设置'],
+  ['Alt + T', '开始语音转录'],
+  ['Alt + H', '抓取官方字幕'],
+  ['Alt + S', '对当前视频生成总结'],
+  ['Alt + E', '导出字幕'],
+  ['Alt + C', '复制全部字幕'],
+  ['Alt + F', '搜索框聚焦（字幕内搜索）'],
+  ['Alt + L', '切换布局（双列 / 单列）'],
+  ['Alt + K', '切换主题'],
+  ['Alt + ?', '打开本快捷键面板'],
+  ['Ctrl + Enter', '在聊天框内发送消息'],
+  ['Esc', '关闭浮层']
+];
+
+function wireKeys() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeOverlays();
+      return;
+    }
+    if (!e.altKey) return;
+    const k = e.key.toLowerCase();
+    const map = {
+      '1': () => switchTab('subtitles'),
+      '2': () => switchTab('ai'),
+      '3': () => switchTab('settings'),
+      t: () => transcribe(),
+      h: () => harvest(),
+      s: () => aiPanel.generateSummary(),
+      e: () => exportSubtitles(),
+      c: () => copyAllSubtitles(),
+      f: () => {
+        const input = document.querySelector('#subtitles-pane input[type="search"]');
+        if (input) input.focus();
+      },
+      l: () => cycleLayout(),
+      k: () => cycleTheme(),
+      '/': () => shortcutsDialog(),
+      '?': () => shortcutsDialog()
+    };
+    const fn = map[k];
+    if (fn) {
+      e.preventDefault();
+      fn();
+    }
+  });
+}
+
+function shortcutsDialog() {
+  const body = h('div');
+  for (const [k, desc] of SHORTCUTS) {
+    body.appendChild(h('div', { class: 'shortcut-row' }, [h('span', { class: 'kbd', text: k }), h('span', { text: desc })]));
+  }
+  body.appendChild(h('div', { class: 'note', text: '提示：面板内所有操作也都可以用鼠标完成。' }));
+  openOverlay('快捷键', body, [
+    { label: '重新打开向导', onClick: () => { closeOverlays(); app.panels.wizard.open(); } },
+    { label: '关闭', onClick: () => closeOverlays() }
+  ], { width: '440px' });
+}

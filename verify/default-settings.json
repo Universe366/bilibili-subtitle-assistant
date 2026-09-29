@@ -1,0 +1,276 @@
+{
+  "schema": 1,
+  "general": {
+    "theme": "system",
+    "fontScale": 1,
+    "layout": "auto",
+    "autoFollow": true,
+    "showInlineActions": "hover",
+    "firstRun": true,
+    "wizardDone": false,
+    "lastTab": "subtitles"
+  },
+  "ai": {
+    "activeId": "deepseek",
+    "platforms": [
+      {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "homepage": "https://platform.deepseek.com/",
+        "keyUrl": "https://platform.deepseek.com/api_keys",
+        "baseUrl": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+        "apiKey": "",
+        "models": [
+          "deepseek-chat",
+          "deepseek-reasoner"
+        ]
+      },
+      {
+        "id": "siliconflow-ai",
+        "name": "硅基流动（AI）",
+        "homepage": "https://cloud.siliconflow.cn/",
+        "keyUrl": "https://cloud.siliconflow.cn/account/ak",
+        "baseUrl": "https://api.siliconflow.cn/v1",
+        "model": "Qwen/Qwen3-8B",
+        "apiKey": "",
+        "models": [
+          "Qwen/Qwen3-8B",
+          "deepseek-ai/DeepSeek-V3"
+        ]
+      },
+      {
+        "id": "openai",
+        "name": "OpenAI",
+        "homepage": "https://platform.openai.com/",
+        "keyUrl": "https://platform.openai.com/api-keys",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "apiKey": "",
+        "models": [
+          "gpt-4o-mini",
+          "gpt-4o"
+        ]
+      },
+      {
+        "id": "moonshot",
+        "name": "Moonshot（Kimi）",
+        "homepage": "https://platform.moonshot.cn/",
+        "keyUrl": "https://platform.moonshot.cn/console/api-keys",
+        "baseUrl": "https://api.moonshot.cn/v1",
+        "model": "moonshot-v1-8k",
+        "apiKey": "",
+        "models": [
+          "moonshot-v1-8k",
+          "moonshot-v1-32k"
+        ]
+      },
+      {
+        "id": "zhipu",
+        "name": "智谱 GLM",
+        "homepage": "https://open.bigmodel.cn/",
+        "keyUrl": "https://open.bigmodel.cn/usercenter/apikeys",
+        "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4-flash",
+        "apiKey": "",
+        "models": [
+          "glm-4-flash",
+          "glm-4-plus"
+        ]
+      }
+    ],
+    "temperature": 0.3,
+    "maxTokens": 4096,
+    "stream": true
+  },
+  "asr": {
+    "activeId": "siliconflow",
+    "platforms": [
+      {
+        "id": "siliconflow",
+        "name": "硅基流动（SiliconFlow）",
+        "homepage": "https://cloud.siliconflow.cn/",
+        "keyUrl": "https://cloud.siliconflow.cn/account/ak",
+        "baseUrl": "https://api.siliconflow.cn/v1",
+        "model": "FunAudioLLM/SenseVoiceSmall",
+        "transport": "base64-json",
+        "apiKey": "",
+        "keyField": "audio",
+        "models": [
+          "FunAudioLLM/SenseVoiceSmall",
+          "TeleAI/TeleSpeechASR",
+          "whisper-large-v3"
+        ]
+      },
+      {
+        "id": "groq",
+        "name": "Groq",
+        "homepage": "https://groq.com/",
+        "keyUrl": "https://console.groq.com/keys",
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "model": "whisper-large-v3-turbo",
+        "transport": "multipart",
+        "apiKey": "",
+        "keyField": "file",
+        "models": [
+          "whisper-large-v3-turbo",
+          "whisper-large-v3",
+          "distil-whisper-large-v3-en"
+        ]
+      },
+      {
+        "id": "custom-asr",
+        "name": "自定义（OpenAI 兼容 /audio/transcriptions）",
+        "homepage": "",
+        "keyUrl": "",
+        "baseUrl": "",
+        "model": "",
+        "transport": "multipart",
+        "apiKey": "",
+        "keyField": "file",
+        "models": []
+      }
+    ],
+    "concurrency": 2,
+    "timeoutSeconds": 180,
+    "sizeLimitMB": 24,
+    "sliceSeconds": 300,
+    "overlapSeconds": 4,
+    "autoOptimizeAfter": false,
+    "autoApplyAfter": false
+  },
+  "prompt": {
+    "activeId": "default",
+    "templates": [
+      {
+        "id": "default",
+        "name": "默认（视频整理）",
+        "text": "整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）"
+      },
+      {
+        "id": "meeting",
+        "name": "会议纪要",
+        "text": "把这段视频整理成会议纪要：先写一句话结论，再按「议题 / 讨论要点 / 结论 / 待办（含负责人）」输出，用表格呈现待办。"
+      },
+      {
+        "id": "study",
+        "name": "学习笔记",
+        "text": "把这段视频整理成学习笔记：先给知识框架，再逐条讲解关键概念，补充定义、例子与易错点，最后给出 5 道自测题。"
+      },
+      {
+        "id": "timeline",
+        "name": "时间线与要点",
+        "text": "按时间顺序输出这期视频的要点时间线（表格：时间 / 主题 / 关键内容），并单独列出所有提到的数字、结论与行动建议。"
+      }
+    ],
+    "useSystemForSummary": true,
+    "chatPrefix": "只依据下面的字幕内容回答，不要编造。"
+  },
+  "optimize": {
+    "activeGroupId": "builtin-fix",
+    "groups": [
+      {
+        "id": "builtin-fix",
+        "name": "常见同音字修正",
+        "builtin": true,
+        "rules": [
+          {
+            "from": "因该",
+            "to": "应该"
+          },
+          {
+            "from": "在座的各位",
+            "to": "在座的各位"
+          },
+          {
+            "from": "的的",
+            "to": "的"
+          }
+        ]
+      }
+    ],
+    "glossary": [
+      {
+        "term": "DeepSeek",
+        "note": "AI 公司 / 模型名"
+      },
+      {
+        "term": "Bilibili",
+        "note": "哔哩哔哩"
+      }
+    ],
+    "useSearch": false,
+    "searchMaxResults": 3,
+    "lastAutoApplied": false
+  },
+  "search": {
+    "activeId": "tavily",
+    "platforms": [
+      {
+        "id": "tavily",
+        "name": "Tavily",
+        "homepage": "https://tavily.com/",
+        "keyUrl": "https://app.tavily.com/home",
+        "baseUrl": "https://api.tavily.com/search",
+        "apiKey": "",
+        "kind": "tavily",
+        "models": []
+      },
+      {
+        "id": "bocha",
+        "name": "博查 Bocha",
+        "homepage": "https://open.bochaai.com/",
+        "keyUrl": "https://open.bochaai.com/",
+        "baseUrl": "https://api.bochaai.com/v1/web-search",
+        "apiKey": "",
+        "kind": "bocha",
+        "models": []
+      },
+      {
+        "id": "serper",
+        "name": "Serper（Google）",
+        "homepage": "https://serper.dev/",
+        "keyUrl": "https://serper.dev/api-key",
+        "baseUrl": "https://google.serper.dev/search",
+        "apiKey": "",
+        "kind": "serper",
+        "models": []
+      }
+    ],
+    "engine": "bing",
+    "maxResults": 6,
+    "fetchPageContent": false,
+    "alwaysVisible": true
+  },
+  "exportCfg": {
+    "format": "srt",
+    "template": "timed",
+    "includeTimestamps": true,
+    "estimateTimestamps": true,
+    "assFontSize": 42,
+    "filenamePattern": "{title}-{part}"
+  },
+  "page": {
+    "playerButton": true,
+    "playerButtonPrompt": "总结这个视频的要点",
+    "overlay": false,
+    "overlayFontScale": 1,
+    "overlayBottom": 8,
+    "followPlayback": true
+  },
+  "behavior": {
+    "preferOfficial": true,
+    "useLocalCache": true
+  },
+  "batch": {
+    "autoExport": false,
+    "pauseBetween": 800
+  },
+  "cache": {
+    "subtitleTtlDays": 30,
+    "keepAudio": false
+  },
+  "diagnostics": {
+    "verbose": false
+  }
+}

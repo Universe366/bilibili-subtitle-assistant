@@ -1,0 +1,13 @@
+# 统一按 LF 存储，避免跨平台换行差异
+* text=auto eol=lf
+
+# 二进制文件不要做任何换行/文本转换
+*.wasm binary
+*.m4a  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+
+# 生成的/第三方的代码不参与语言统计
+vendor/ffmpeg/** linguist-vendored
+verify/build/** linguist-generated

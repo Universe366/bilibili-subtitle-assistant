@@ -1,0 +1,787 @@
+// 应用上下文：所有动作（抓取 / 转录 / 优化 / 检索 / 历史 / 批量）在此集中编排，
+// 面板只调用这里的接口，避免互相依赖。
+
+import { store, loadSettings, saveSettings } from './store.js';
+import { call, errorPayload } from './bridge.js';
+import { toast, downloadFile, copyText, h, button, fmtTime, clear } from './dom.js';
+import * as jobs from './jobs.js';
+import { harvestSubtitles, overallStats, lineStats, sortCandidates } from './subtitles.js';
+import { transcribeVideo } from './transcribe.js';
+import * as OPT from './optimize.js';
+import * as SEARCH from './search.js';
+import { buildExport, safeFilename } from './exporter.js';
+import { DEFAULT_SYSTEM_PROMPT, TASK_LABEL } from '../../shared/constants.js';
+
+export const app = {
+  panels: {},
+  overlays: {},
+  lastError: null,
+  batch: {
+    items: [],
+    running: false,
+    paused: false,
+    history: []
+  }
+};
+
+export function usePanel(name, api) {
+  app.panels[name] = api;
+}
+
+export function isTwoColumn() {
+  const s = store.get().settings;
+  if (!s) return true;
+  if (s.general.layout === 'two') return true;
+  if (s.general.layout === 'one') return false;
+  return window.innerWidth >= 420;
+}
+
+// ---------------------------------------------------------------------------
+// 提示与错误
+// ---------------------------------------------------------------------------
+
+export function showError(err, fallbackTitle = '操作失败') {
+  const payload = errorPayload(err);
+  app.lastError = { ...payload, at: Date.now() };
+  toast(payload, 'error', 6000);
+  renderPanels();
+  return payload;
+}
+
+export function alertBox(payload, kind = 'info') {
+  const el = h('div', { class: `alert ${kind}` });
+  const close = h('button', { class: 'alert-close', type: 'button', text: '×', onclick: () => el.remove() });
+  el.appendChild(close);
+  el.appendChild(h('div', { class: 'alert-title', text: payload.title || '提示' }));
+  if (payload.detail) el.appendChild(h('div', { class: 'alert-detail', text: payload.detail }));
+  if (payload.action) {
+    el.appendChild(
+      h('div', {
+        class: 'alert-action',
+        text: payload.action,
+        onclick: () => {
+          store.set({ activeTab: 'settings' });
+          renderPanels();
+        }
+      })
+    );
+  }
+  const host = document.getElementById('alerts');
+  if (host) {
+    host.appendChild(el);
+    setTimeout(() => el.remove(), 20000);
+  }
+  return el;
+}
+
+// ---------------------------------------------------------------------------
+// 设置
+// ---------------------------------------------------------------------------
+
+export async function refreshSettings() {
+  const s = await loadSettings();
+  applyTheme(s);
+  return s;
+}
+
+export function applyTheme(s) {
+  const theme = (s && s.general && s.general.theme) || 'system';
+  const scale = (s && s.general && s.general.fontScale) || 1;
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.style.setProperty('--fs', `${(13 * scale).toFixed(1)}px`);
+}
+
+export async function persistSettings(next, opts = {}) {
+  const saved = await saveSettings(next);
+  applyTheme(saved);
+  await pushPageOptions(saved);
+  if (!opts.silent) toast({ title: '设置已保存' }, 'ok', 1600);
+  renderPanels();
+  return saved;
+}
+
+export async function pushPageOptions(settings) {
+  const s = settings || store.get().settings;
+  if (!s) return;
+  try {
+    await call('page.call', {
+      name: 'applyOptions',
+      params: {
+        playerButton: s.page.playerButton,
+        playerButtonPrompt: s.page.playerButtonPrompt,
+        overlay: s.page.overlay,
+        overlayFontScale: s.page.overlayFontScale,
+        overlayBottom: s.page.overlayBottom,
+        followPlayback: s.page.followPlayback
+      }
+    });
+  } catch (err) {
+    /* 没有打开 B 站页面时忽略 */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 视频信息
+// ---------------------------------------------------------------------------
+
+export async function loadVideo(opts = {}) {
+  const tab = jobs.beginTask('读取视频信息', { detail: '' });
+  try {
+    const info = await call('page.info', {}, { timeoutMs: 20000 });
+    if (!info || !info.signature) throw new Error('页面没有返回视频信息');
+    const attempt = await call('page.call', { name: 'getSubtitles', params: {} }, { timeoutMs: 20000 });
+    const detail = (attempt && attempt.data) || {};
+    const video = {
+      ...info,
+      subtitleTracks: detail.subtitles || [],
+      subSources: detail.sources || [],
+      subtitleDetail: detail
+    };
+    store.set({ video });
+    if (store.get().settings) await pushPageOptions();
+    return video;
+  } catch (err) {
+    showError(err, '读取视频信息失败');
+    return null;
+  } finally {
+    tab.end();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 字幕抓取
+// ---------------------------------------------------------------------------
+
+export async function harvest(opts = {}) {
+  const s = store.get().settings;
+  const video = store.get().video || (await loadVideo());
+  if (!video) return null;
+  const task = jobs.beginTask(TASK_LABEL.harvest, { detail: '选择候选字幕轨' });
+  try {
+    const result = await harvestSubtitles(video, s, {
+      onProgress: (p) => task.set(p.percent, p.detail)
+    });
+    const attempts = result.attempts || [];
+    const diagnostic = result.diagnostic || null;
+    if (!result.ok) {
+      const payload = result.reason || { title: '没有可用字幕' };
+      const detailLines = attempts.length
+        ? attempts.map((a) => {
+            const tag = `· ${a.label}${a.from === 'api' ? '（接口）' : ''}`;
+            if (a.error) return `${tag}：下载失败 —— ${a.error.title}${a.error.detail ? `（${a.error.detail}）` : ''}`;
+            if (a.validation && !a.validation.ok) return `${tag}：${a.validation.title}（${a.validation.detail}）`;
+            if (a.validation && a.validation.ok) return `${tag}：通过`;
+            return `${tag}：未处理（${a.stage}）`;
+          })
+        : ['· （本次没有任何候选字幕轨可尝试）'];
+      payload.detail = `${payload.detail || ''}\n候选轨明细：\n${detailLines.join('\n')}`;
+      if (diagnostic) {
+        payload.detail += `\n诊断：页面侧 ${diagnostic.pageTracks.length} 条 / 接口侧 ${diagnostic.apiTracks.length} 条`;
+        if (diagnostic.apiError) payload.detail += `；接口错误：${diagnostic.apiError.title}`;
+      }
+      store.set({ subtitleAttempts: attempts, subtitleError: payload, subtitleDiagnostic: diagnostic });
+      showError(Object.assign(new Error(payload.title), { payload }), payload.title);
+      return null;
+    }
+    const stats = overallStats(result.lines);
+    const videoWithMeta = {
+      ...video,
+      source: 'official',
+      subtitleMeta: result.meta,
+      stats,
+      chapters: video.chapters || []
+    };
+    store.set({
+      video: videoWithMeta,
+      subtitles: result.lines,
+      subtitleAttempts: attempts,
+      subtitleError: null,
+      subtitleDiagnostic: diagnostic,
+      subtitlesRevision: (store.get().subtitlesRevision || 0) + 1
+    });
+    await saveHistory();
+    await syncOverlayLines();
+    if (s.optimize.autoApplyAfter) await applyActiveRules({ silent: true });
+    return result;
+  } catch (err) {
+    showError(err);
+    return null;
+  } finally {
+    task.end();
+    renderPanels();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 语音转录
+// ---------------------------------------------------------------------------
+
+export async function transcribe() {
+  const s = store.get().settings;
+  const video = store.get().video || (await loadVideo());
+  if (!video) return null;
+  if (!s.__readiness && store.get().readiness && !store.get().readiness.ok.asr) {
+    const issue = (store.get().readiness.issues || []).find((i) => i.area === 'asr');
+    if (issue) {
+      showError(Object.assign(new Error(issue.text), { payload: { kind: 'nokey', title: '语音识别不可用', detail: issue.text, action: '打开 设置 → 语音识别平台 填写 Key。' } }));
+      return null;
+    }
+  }
+  const task = jobs.beginTask(TASK_LABEL.transcribe, { detail: '准备中', cancellable: true });
+  const logLines = [];
+  try {
+    const out = await transcribeVideo({
+      video,
+      settings: s,
+      hooks: {
+        signal: task.signal,
+        onProgress: ({ percent, detail }) => task.set(percent, detail),
+        onLog: (msg) => {
+          logLines.push(msg);
+          task.detail(msg.slice(0, 60));
+        }
+      }
+    });
+    const stats = overallStats(out.lines);
+    const nextVideo = {
+      ...video,
+      source: 'asr',
+      subtitleMeta: out.meta,
+      stats,
+      transcriptLog: logLines
+    };
+    store.set({ video: nextVideo, subtitles: out.lines, subtitleError: null });
+    await saveHistory();
+    await syncOverlayLines();
+
+    // 转录后自动优化 / 自动替换（默认关闭）
+    if (s.asr.autoOptimizeAfter) {
+      await optimizeWithAi({ silent: true });
+    } else if (s.asr.autoApplyAfter) {
+      await applyActiveRules({ silent: true });
+    }
+    toast({ title: `转录完成：${out.lines.length} 行`, detail: logLines.slice(-2).join('；') }, 'ok', 4000);
+    return out;
+  } catch (err) {
+    if (err && (err.name === 'AbortError' || task.signal.aborted)) {
+      toast({ title: '已终止转录', detail: '不再继续消耗额度。' }, 'warn');
+      return null;
+    }
+    // 失败时也要保留转录日志：排查问题最需要的就是「它到底做到哪一步、发了什么」。
+    const payload = (err && err.payload) || { title: (err && err.message) || '转录失败' };
+    try {
+      store.set({
+        video: { ...video, transcriptLog: logLines },
+        subtitleError: {
+          ...payload,
+          detail: `${payload.detail || ''}\n\n转录日志（共 ${logLines.length} 条）：\n${logLines.join('\n')}`.trim()
+        },
+        subtitleAttempts: []
+      });
+    } catch (e) {
+      /* ignore */
+    }
+    showError(err, '语音转录失败');
+    return null;
+  } finally {
+    task.end();
+    renderPanels();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 字幕行编辑
+// ---------------------------------------------------------------------------
+
+export function updateLine(index, text) {
+  const lines = [...store.get().subtitles];
+  const l = lines.find((x) => x.i === index);
+  if (!l) return;
+  lines[lines.indexOf(l)] = { ...l, text, edited: text !== (l.original || l.text) };
+  store.set({ subtitles: lines });
+  refreshStats();
+}
+
+export function setLines(lines) {
+  store.set({ subtitles: lines });
+  refreshStats();
+}
+
+export function refreshStats() {
+  const st = store.get();
+  const lines = st.subtitles || [];
+  if (!lines.length) {
+    if (st.video) store.set({ video: { ...st.video, stats: { lines: 0, chars: 0, sentences: 0, speakSeconds: 0, coverage: 0 } } });
+    return;
+  }
+  const stats = overallStats(lines);
+  if (st.video) store.set({ video: { ...st.video, stats } });
+}
+
+async function syncOverlayLines() {
+  const st = store.get();
+  if (!st.settings?.page?.overlay) return;
+  try {
+    await call('page.call', {
+      name: 'setOverlayLines',
+      params: { lines: (st.subtitles || []).map((l) => ({ from: l.from, to: l.to, text: l.text })) }
+    });
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 替换规则 / 优化
+// ---------------------------------------------------------------------------
+
+export async function applyActiveRules(opts = {}) {
+  const s = store.get().settings;
+  const group = (s.optimize.groups || []).find((g) => g.id === s.optimize.activeGroupId);
+  if (!group) {
+    toast({ title: '没有选中的替换规则组' }, 'warn');
+    return null;
+  }
+  const lines = store.get().subtitles || [];
+  if (!lines.length) {
+    toast({ title: '还没有字幕可以替换' }, 'warn');
+    return null;
+  }
+  const res = OPT.applyRulesToLines(lines, group.rules);
+  setLines(res.lines);
+  if (!opts.silent) {
+    toast({ title: `已应用规则组「${group.name}」`, detail: `修改了 ${res.changed} 行` }, 'ok', 2600);
+  }
+  await saveHistory();
+  renderPanels();
+  return res;
+}
+
+export async function optimizeWithAi(opts = {}) {
+  const s = store.get().settings;
+  const lines = store.get().subtitles || [];
+  if (!lines.length) {
+    toast({ title: '还没有字幕可以优化' }, 'warn');
+    return null;
+  }
+  const video = store.get().video;
+  const task = jobs.beginTask(TASK_LABEL.optimize, { detail: '向 AI 提交字幕全文' });
+  try {
+    let evidence = { results: [] };
+    if (s.optimize.useSearch) {
+      task.detail('联网核对中…');
+      evidence = await OPT.gatherSearchEvidence(s, `${video?.title || ''} 专有名词 术语`);
+      if (evidence.results && evidence.results.length) {
+        store.set({ search: { ...store.get().search, results: evidence.results, query: `${video?.title || ''} 术语` , lastAt: Date.now() } });
+      }
+    }
+    const messages = OPT.buildOptimizeMessages({
+      lines,
+      glossary: s.optimize.glossary,
+      searchResults: evidence.results,
+      useSearch: !!s.optimize.useSearch
+    });
+    task.set(20, '等待 AI 返回修正建议');
+    const res = await call('ai.chat', { messages, temperature: 0.1, maxTokens: 3000 }, { timeoutMs: 300000 });
+    const corrections = OPT.parseOptimizeResult(res.text);
+    store.set({ optimize: { ...(store.get().optimize || {}), corrections, raw: res.text } });
+    if (!corrections.length) {
+      toast({ title: 'AI 没有发现需要修正的地方' }, 'ok');
+      return { corrections: [] };
+    }
+    if (s.optimize.autoApplyAfter || opts.autoApply) {
+      const applied = OPT.applyCorrections(lines, corrections);
+      setLines(applied.lines);
+      await saveHistory();
+      toast({ title: `AI 优化完成，已自动全部替换`, detail: `修正 ${applied.changed} 处` }, 'ok', 3500);
+      renderPanels();
+      return { corrections, applied };
+    }
+    // 否则把建议渲染成可逐条应用/全部应用的界面
+    store.set({ optimize: { ...(store.get().optimize || {}), corrections, pending: true } });
+    if (!opts.silent) {
+      store.set({ activeTab: 'subtitles' });
+      toast({ title: `AI 给出 ${corrections.length} 条修正建议`, detail: '可在字幕区上方逐条应用，或一键全部应用。' }, 'ok', 4000);
+    }
+    renderPanels();
+    return { corrections };
+  } catch (err) {
+    showError(err, 'AI 优化失败');
+    return null;
+  } finally {
+    task.end();
+    renderPanels();
+  }
+}
+
+export async function applyCorrection(index, scope = 'all') {
+  const st = store.get();
+  const corrections = (st.optimize && st.optimize.corrections) || [];
+  const c = corrections[index];
+  if (!c) return;
+  const res = OPT.applyCorrections(st.subtitles, [c], { onlyLine: scope === 'line' ? c.line : undefined });
+  setLines(res.lines);
+  const rest = corrections.filter((_, i) => i !== index);
+  store.set({ optimize: { ...(st.optimize || {}), corrections: rest, pending: rest.length > 0 } });
+  await saveHistory();
+  renderPanels();
+}
+
+export async function applyAllCorrections() {
+  const st = store.get();
+  const corrections = (st.optimize && st.optimize.corrections) || [];
+  if (!corrections.length) return;
+  const res = OPT.applyCorrections(st.subtitles, corrections);
+  setLines(res.lines);
+  store.set({ optimize: { ...(st.optimize || {}), corrections: [], pending: false } });
+  await saveHistory();
+  toast({ title: '已全部应用', detail: `共修改 ${res.changed} 处` }, 'ok');
+  renderPanels();
+}
+
+// ---------------------------------------------------------------------------
+// 章节 / 质量自检
+// ---------------------------------------------------------------------------
+
+export async function generateChapters() {
+  const s = store.get().settings;
+  const lines = store.get().subtitles || [];
+  const video = store.get().video;
+  if (!lines.length) {
+    toast({ title: '还没有字幕，无法分段' }, 'warn');
+    return null;
+  }
+  const task = jobs.beginTask(TASK_LABEL.chapters, { detail: 'AI 正在阅读全文' });
+  try {
+    const transcript = lines.map((l) => `${fmtTime(l.from)} ${l.text}`).join('\n');
+    const messages = [
+      {
+        role: 'system',
+        content:
+          '你是视频内容分段助手。只输出 JSON，不要输出解释、不要用代码块包裹。' +
+          '格式：{"chapters":[{"title":"段落标题","start":起始秒数,"end":结束秒数,"summary":"一句话概括"}]}' +
+          '要求：4~12 段，覆盖全片，start/end 必须是数字（秒）。'
+      },
+      { role: 'user', content: `视频标题：${video?.title || ''}\n时长：${video?.duration || 0} 秒\n字幕：\n${transcript}` }
+    ];
+    const res = await call('ai.chat', { messages, temperature: 0.2, maxTokens: 3000 }, { timeoutMs: 300000 });
+    const chapters = parseChapters(res.text);
+    if (!chapters.length) throw new Error('AI 没有返回可解析的章节');
+    store.set({ video: { ...video, chapters } });
+    await saveHistory();
+    toast({ title: `已生成 ${chapters.length} 个章节`, detail: '点击章节可跳转到对应时间' }, 'ok');
+    renderPanels();
+    return chapters;
+  } catch (err) {
+    showError(err, '章节生成失败');
+    return null;
+  } finally {
+    task.end();
+  }
+}
+
+function parseChapters(text) {
+  const raw = String(text || '');
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  const cand = first >= 0 && last > first ? raw.slice(first, last + 1) : raw;
+  try {
+    const json = JSON.parse(cand);
+    const arr = json.chapters || json.data || (Array.isArray(json) ? json : []);
+    return arr
+      .map((c) => ({
+        title: String(c.title || c.name || '未命名').slice(0, 80),
+        start: Number(c.start) || 0,
+        end: Number(c.end) || 0,
+        summary: String(c.summary || '')
+      }))
+      .filter((c) => Number.isFinite(c.start))
+      .sort((a, b) => a.start - b.start);
+  } catch (err) {
+    return [];
+  }
+}
+
+export function runQualityCheck() {
+  const st = store.get();
+  const result = OPT.qualityCheck(st.subtitles || [], st.video);
+  store.set({ quality: result });
+  renderPanels();
+  if (result.ok && !result.issues.length) toast({ title: '质量自检通过：未发现异常' }, 'ok');
+  else if (result.issues.length) {
+    toast({ title: `质量自检发现 ${result.issues.length} 项`, detail: result.issues.map((i) => i.text).join('；').slice(0, 200) }, result.ok ? 'warn' : 'error', 6000);
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// 检索
+// ---------------------------------------------------------------------------
+
+export async function doProviderSearch(query) {
+  const s = store.get().settings;
+  const task = jobs.beginTask(TASK_LABEL.search, { detail: '调用检索服务商' });
+  try {
+    const out = await SEARCH.runProviderSearch(s, query, { onLog: (m) => task.detail(m) });
+    const current = store.get().search || {};
+    const counts = SEARCH.countCitations(store.get().summary || '', out.results);
+    store.set({
+      search: {
+        ...current,
+        results: out.results,
+        counts,
+        query: out.query,
+        provider: out.provider,
+        lastAt: out.at
+      }
+    });
+    toast({ title: `检索完成：${out.results.length} 条来源`, detail: '结果会作为 AI 回答的依据（已消耗额度）' }, 'ok');
+    renderPanels();
+    return out;
+  } catch (err) {
+    showError(err, '服务商检索失败');
+    return null;
+  } finally {
+    task.end();
+  }
+}
+
+export async function doEngineSearch(query) {
+  const s = store.get().settings;
+  try {
+    const out = await SEARCH.openEngineSearch(s, query);
+    toast({ title: `已用 ${SEARCH.engineLabel(out.engine)} 打开结果页`, detail: '直接搜索引擎不消耗额度，也不会进入 AI 上下文。' }, 'ok', 3500);
+    return out;
+  } catch (err) {
+    showError(err, '打开搜索引擎失败');
+    return null;
+  }
+}
+
+export function recountCitations(summaryText) {
+  const st = store.get();
+  const counts = SEARCH.countCitations(summaryText, st.search.results || []);
+  store.set({ search: { ...st.search, counts } });
+}
+
+// ---------------------------------------------------------------------------
+// 导出
+// ---------------------------------------------------------------------------
+
+export async function exportSubtitles(overrides = {}) {
+  const st = store.get();
+  const lines = st.subtitles || [];
+  if (!lines.length) {
+    toast({ title: '还没有字幕可以导出' }, 'warn');
+    return null;
+  }
+  const cfg = { ...st.settings.exportCfg, ...overrides };
+  const video = { ...st.video, summary: st.summary, stats: st.video?.stats };
+  const text = buildExport(lines, video, cfg);
+  const filename = safeFilename(video, cfg);
+  downloadFile(filename, text, cfg.format === 'json' ? 'application/json' : 'text/plain;charset=utf-8');
+  toast({ title: `已导出 ${filename}`, detail: `格式 ${cfg.format.toUpperCase()} · 模板 ${cfg.template}` }, 'ok');
+  return { filename, text };
+}
+
+export async function copyAllSubtitles(overrides = {}) {
+  const st = store.get();
+  const cfg = { ...st.settings.exportCfg, ...overrides };
+  const text = buildExport(st.subtitles || [], { ...st.video, summary: st.summary }, { ...cfg, format: cfg.format === 'json' ? 'json' : 'txt' });
+  await copyText(text);
+  toast({ title: '已复制全部字幕' }, 'ok');
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+// 历史
+// ---------------------------------------------------------------------------
+
+export async function saveHistory() {
+  const st = store.get();
+  if (!st.video || !st.video.bvid) return;
+  try {
+    await call('history.put', {
+      video: st.video,
+      entry: {
+        title: st.video.title,
+        partTitle: st.video.partTitle,
+        source: st.video.source,
+        subtitleMeta: st.video.subtitleMeta,
+        stats: st.video.stats,
+        chapters: st.video.chapters || [],
+        summary: st.summary || '',
+        lines: st.subtitles || []
+      }
+    });
+  } catch (err) {
+    /* 历史保存失败不打断主流程 */
+  }
+}
+
+export async function loadHistory() {
+  try {
+    const out = await call('history.list', { limit: 100 });
+    store.set({ history: out.rows || [] });
+    renderPanels();
+    return out.rows || [];
+  } catch (err) {
+    showError(err, '读取历史失败');
+    return [];
+  }
+}
+
+export async function restoreHistory(key) {
+  try {
+    const out = await call('history.get', { key });
+    const row = out.row;
+    if (!row) {
+      toast({ title: '历史记录不存在' }, 'warn');
+      return null;
+    }
+    store.set({
+      video: { ...row.video, stats: row.stats, subtitleMeta: row.subtitleMeta, chapters: row.chapters || [], source: row.source },
+      subtitles: row.lines || [],
+      summary: row.summary || ''
+    });
+    toast({ title: '已从历史恢复', detail: row.video?.title || '' }, 'ok');
+    renderPanels();
+    return row;
+  } catch (err) {
+    showError(err, '恢复历史失败');
+    return null;
+  }
+}
+
+export async function removeHistory(key) {
+  await call('history.remove', { key });
+  await loadHistory();
+  toast({ title: '已删除该记录' }, 'ok');
+}
+
+export async function clearHistory() {
+  await call('history.clear');
+  store.set({ history: [] });
+  renderPanels();
+  toast({ title: '历史已清空' }, 'ok');
+}
+
+// ---------------------------------------------------------------------------
+// 批量队列（串行处理，支持暂停 / 移除 / 进度）
+// ---------------------------------------------------------------------------
+
+export function batchAdd(urls) {
+  const list = String(urls || '')
+    .split(/[\s\n,，;；]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const items = [...app.batch.items];
+  for (const u of list) {
+    items.push({ id: `q${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, url: u, status: 'queued', progress: 0, title: '' });
+  }
+  app.batch.items = items;
+  store.set({ queue: items });
+  renderPanels();
+  if (!app.batch.running) runBatchQueue();
+}
+
+export function batchRemove(id) {
+  app.batch.items = app.batch.items.filter((x) => x.id !== id);
+  store.set({ queue: app.batch.items });
+  renderPanels();
+}
+
+export function batchPause(paused) {
+  app.batch.paused = paused;
+  if (!paused && !app.batch.running) runBatchQueue();
+  renderPanels();
+}
+
+export function batchClearDone() {
+  app.batch.items = app.batch.items.filter((x) => x.status !== 'done' && x.status !== 'error');
+  store.set({ queue: app.batch.items });
+  renderPanels();
+}
+
+async function runBatchQueue() {
+  if (app.batch.running) return;
+  app.batch.running = true;
+  try {
+    for (;;) {
+      if (app.batch.paused) break;
+      const item = app.batch.items.find((x) => x.status === 'queued');
+      if (!item) break;
+      item.status = 'running';
+      syncQueue();
+      const task = jobs.beginTask(TASK_LABEL.batch, { detail: item.url.slice(0, 50) });
+      try {
+        const resolved = await call('batch.resolve', { url: item.url }, { timeoutMs: 90000 });
+        const video = resolved.video;
+        item.title = video.title || item.url;
+        syncQueue();
+        store.set({ video, subtitles: [], summary: '' });
+        task.set(20, '抓取字幕');
+        const s = store.get().settings;
+        const result = await harvestSubtitles(video, s, {
+          onProgress: (p) => task.set(20 + p.percent * 0.6, p.detail)
+        });
+        if (result.ok) {
+          store.set({ subtitles: result.lines, video: { ...video, source: 'official', subtitleMeta: result.meta, stats: overallStats(result.lines) } });
+          await saveHistory();
+          item.status = 'done';
+          item.progress = 100;
+        } else {
+          item.status = 'error';
+          item.error = result.reason?.title || '没有可用字幕';
+        }
+        await call('batch.release', { tabId: resolved.tabId, closeTab: resolved.openedNew });
+        task.end();
+        syncQueue();
+        renderPanels();
+        await new Promise((r) => setTimeout(r, 400));
+      } catch (err) {
+        const payload = errorPayload(err);
+        item.status = 'error';
+        item.error = payload.title;
+        task.end();
+        syncQueue();
+        renderPanels();
+      }
+    }
+  } finally {
+    app.batch.running = false;
+    renderPanels();
+  }
+}
+
+function syncQueue() {
+  store.set({ queue: [...app.batch.items] });
+}
+
+// ---------------------------------------------------------------------------
+// 渲染
+// ---------------------------------------------------------------------------
+
+export function renderPanels() {
+  for (const api of Object.values(app.panels)) {
+    if (api && typeof api.render === 'function') {
+      try {
+        api.render();
+      } catch (err) {
+        console.error('[字幕助手] 面板渲染异常', err);
+      }
+    }
+  }
+}
+
+export function renderActions() {
+  const api = app.panels.actions;
+  if (api && typeof api.render === 'function') api.render();
+}
+
+// 供 AI 面板构造系统提示词（默认值必须一字不差）
+export function activePromptText() {
+  const s = store.get().settings;
+  const t = (s.prompt.templates || []).find((x) => x.id === s.prompt.activeId);
+  return (t && t.text) || DEFAULT_SYSTEM_PROMPT;
+}

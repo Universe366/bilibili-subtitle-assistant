@@ -1,0 +1,26 @@
+# 参考实现（别人的代码，仅本地只读参考，不入库）
+_src/
+
+# 依赖与构建产物
+node_modules/
+build/
+
+# 测试过程中生成的样本（可重新生成）
+verify/sample-mediarecorder.m4a
+verify/sample-ffmpeg.m4a
+verify/m4a-probe.html
+verify/audio.js
+
+# DSH 沙箱报告
+.acl-reports/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 密钥（本仓库不含密钥，这里作为防线）
+.env
+.env.*
+secrets.json
