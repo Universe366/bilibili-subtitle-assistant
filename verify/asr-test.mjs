@@ -1225,6 +1225,57 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('用户自建平台的 Key 未被清空', custom.ai.platforms.find((p) => p.id === 'my-own').apiKey === 'k', '');
 }
 
+// ---------------- 35. 扩展图标必须存在且被 manifest 正确引用 ----------------
+// 图标是扩展在工具栏/扩展页的外观。缺文件会让 Chrome 加载时报错或显示空白图标。
+{
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const root = path.resolve(here, '..', 'bilibili-subtitle-assistant');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+
+  check('manifest.icons 已声明', !!manifest.icons && typeof manifest.icons === 'object', JSON.stringify(manifest.icons));
+  check('action.default_icon 已声明', !!manifest.action && !!manifest.action.default_icon, JSON.stringify(manifest.action && manifest.action.default_icon));
+
+  const need = ['16', '32', '48', '128'];
+  const declared = manifest.icons || {};
+  const missingKeys = need.filter((k) => !declared[k]);
+  check('声明了 16/32/48/128 四种尺寸', missingKeys.length === 0, missingKeys.join(','));
+
+  // 每个声明路径都必须真实存在，且是合法 PNG（校验 PNG magic）
+  const badPath = [];
+  const badPng = [];
+  const seen = new Set();
+  for (const [size, rel] of Object.entries(declared)) {
+    if (seen.has(rel)) continue;
+    seen.add(rel);
+    const file = path.join(root, rel);
+    if (!fs.existsSync(file)) {
+      badPath.push(`${size}:${rel}`);
+      continue;
+    }
+    const buf = fs.readFileSync(file);
+    const isPng = buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+    if (!isPng) badPng.push(rel);
+  }
+  check('图标文件全部存在', badPath.length === 0, badPath.join(', '));
+  check('图标都是合法 PNG（magic 校验）', badPng.length === 0, badPng.join(', '));
+
+  // action 里引用的也要存在
+  const actBad = Object.values(manifest.action.default_icon || {}).filter((rel) => !fs.existsSync(path.join(root, rel)));
+  check('action.default_icon 引用的文件都存在', actBad.length === 0, actBad.join(', '));
+
+  // 128×128 常用于商店展示，单独校验尺寸
+  const png128 = path.join(root, declared['128'] || '');
+  if (fs.existsSync(png128)) {
+    const buf = fs.readFileSync(png128);
+    const w = buf.readUInt32BE(16);
+    const h = buf.readUInt32BE(20);
+    check('128 图标尺寸确实是 128×128', w === 128 && h === 128, `${w}×${h}`);
+  }
+}
+
 console.log('\n===== 语音识别平台适配 =====');
 let failed = 0;
 for (const r of results) {
