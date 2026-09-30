@@ -4180,3 +4180,121 @@ PASS  整条识别有随时长放大的超时
   没有真的提交给服务端**（沙箱里没有可用的 Key）。
   所以第一次真机跑如果被拒，日志会写「整条音轨识别结果为空」并自动
   回退到原路径 —— 不会让用户卡死，但**这一条我确实没端到端验证过**。
+
+## 第七十四轮（1.58.0）—— detached ArrayBuffer + 我自己新引入的两个 bug
+
+用户日志（1.57.0）非常有信息量，逐条看：
+
+```
+音轨来源：已用当前视频的 aid/cid 重新向接口请求（可信）   ← ✅ 归属修复生效
+已排除 6 条不属于当前视频的音轨候选                        ← ✅ 过滤生效
+整条音轨直传不可用（network），回退到「下载 + 解码」路径   ← ❌ 我的新功能坏了
+下载完成：62.0MB，用时 8.3s
+按 M4A 重封装上传（FFmpeg 流复制，不重新编码）
+第 1/13 片重封装：4806.3 KB
+Failed to execute 'postMessage' on 'Worker':
+An ArrayBuffer is detached and could not be cloned.        ← ❌ 老代码的隐藏 bug
+```
+
+### bug ①（老代码）detached ArrayBuffer：第 2 段就炸
+
+`transcribeViaRemux` 里**每段都调** `remuxToMp4(rawBytes)`：
+
+```js
+for (let i = 0; i < slices.length; i += 1) {
+  const out = await remuxToMp4(rawBytes, { ... });   // 同一个 rawBytes
+```
+
+而 `ffmpeg.writeFile()` 会**把 ArrayBuffer transfer（转移）给 Worker** ——
+transfer 之后**主线程这份就 detached 了**（`byteLength` 变 0）。
+所以：
+
+- 第 1 段：正常 → 「第 1/13 片重封装：4806.3 KB」
+- 第 2 段：`rawBytes` 已经是 detached 的空壳 → `postMessage` 报错
+
+**这是一个一直存在的 bug**，只是以前音轨小（整条装得下、只跑 1 段）时
+永远碰不到。用户 2 小时视频第一次让它现形。
+
+**修法**：改成「一个 FFmpeg 会话、输入只写一次」。
+新增 `openFfmpegSession()`：`writeInput` 一次，之后每段只 `exec` + `readFile` +
+`deleteFile`（产物读完即删，不让虚拟 FS 堆 13 个文件）。
+顺带省掉了「每段重复把 62MB 传进 Worker」的开销。
+
+`writeInput` 里还处理了一个细节：如果传进来的是**大 buffer 上的视图**，
+transfer 会带走整个 buffer —— 所以先 `slice()` 成独立副本。
+
+### bug ②（我新写的）`res.bytes` 判断错了 —— page.call 回的是 base64
+
+`fetchWholeAudio` 里我写的是：
+
+```js
+if (!res || !res.ok || !res.bytes || !res.bytes.length) { ... }
+```
+
+但 `page.call('fetchAudioRange')` 返回的是 **`{ ok, base64, byteLength }`**
+（不是 `bytes`）—— 于是**每次成功都被我判成失败**。
+这就是日志里那句「整条音轨直传不可用（network）」的真实来源：
+不是网络问题，是我自己把成功当失败。
+
+**修法**：面板层自己 `base64ToBytes(res.base64)`。
+同时把「取整条」改成**显式 Range**（`bytes=0-`）而不是不带 Range ——
+并且允许用 `Content-Range` 里的总长度再补一次精确请求。
+页面桥的 `fetchAudioRange` 现在也支持直接传 Range 串。
+
+### bug ③（我新写的）`throwIfAborted is not defined`
+
+`original-audio.js` 里调了 `throwIfAborted`，但那是 `audio.js` 的**内部**
+函数，我既没定义也没导入。**测试全绿**（因为没跑到那一行），
+只有真机执行才报 `ReferenceError`。
+
+**修法**：本模块自带一份定义（它是独立模块，不该依赖别人的内部函数）。
+
+> 这个 bug 值得记下来：**「所有测试通过」不等于「代码能跑」。**
+> 测试覆盖不到的分支里的 `ReferenceError`，语法检查、打包、
+> 静态体检**全都发现不了**。
+
+### 实测验证
+
+`ffmpeg-remux-test.mjs` 加了多段回归 —— **在真实 Chrome 里跑真实 FFmpeg**：
+
+```
+PASS  多段重封装全部成功（不再 detached）
+PASS  确实跑了 3 段
+PASS  每段都有产出
+PASS  writeInput 会 detach 调用方 buffer（预期行为，故只能写一次）
+```
+
+最后那条是**故意断言 detach 行为**：把「为什么只能写一次」变成一条
+可执行的说明，防止以后有人又写成循环复用同一份 buffer。
+
+整条直传路径（真机）：
+
+```
+ok: true
+用过的 range: ["bytes=0-"]
+字节: 5004974 = 4.77MB | 10.5s | original-audio-whole
+只回 base64 的 fetcher -> false（说明面板层必须自己解码，已修）
+```
+
+### 新增 11 项断言
+
+```
+PASS  original-audio 自带 throwIfAborted 定义
+PASS  original-audio 不从其它模块借 throwIfAborted
+PASS  取整条用显式 Range
+PASS  能从 Content-Range 解析总长度
+PASS  面板层把 base64 解成 bytes
+PASS  页面桥支持 Range 串写法 / 分发时透传 range
+（多段 detach 回归 4 项见上）
+```
+
+### 反思
+
+这一轮修了 **1 个老 bug + 2 个我自己刚引入的 bug**。
+两个新 bug 的共同点：**都是"只在运行时、且只在特定分支暴露"的问题**
+（把成功判成失败、未定义函数），而我上一轮声称「已实测验证」时
+**并没有真的跑过完整路径**。
+
+更诚实的说法应该是：上一轮我验证了 `original-audio.js` 的**纯函数**
+（大小估算、容器校验）和「从 Node 直接调 fetch 取整条」，
+但**没有验证它对 `page.call` 契约的假设** —— 而错误正好出在那里。

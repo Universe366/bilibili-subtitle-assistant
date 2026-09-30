@@ -39,6 +39,15 @@
 
 const M4A_MIME_PREFIX = 'audio/mp4';
 
+// 本模块独立，不依赖 audio.js 的内部函数
+function throwIfAborted(signal) {
+  if (signal && signal.aborted) {
+    const e = new Error('已终止');
+    e.name = 'AbortError';
+    throw e;
+  }
+}
+
 // 粗估整条音轨的字节数。带宽单位是 bps。
 export function estimateWholeAudioBytes(candidate, durationSeconds) {
   const bw = Number(candidate && candidate.bandwidth) || 0;
@@ -101,37 +110,75 @@ export async function fetchWholeAudio(candidate, opts = {}) {
   }
 
   if (onProgress) onProgress(5, '正在下载整条原始音轨');
-  let res;
-  try {
-    // 不传 start/end → 页面侧发不带 Range 的请求，拿整条
-    res = await fetcher(url, undefined, undefined);
-  } catch (err) {
-    if (err && err.name === 'AbortError') throw err;
-    return { ok: false, reason: 'network', message: String((err && err.message) || err) };
-  }
-  if (!res || !res.ok || !res.bytes || !res.bytes.length) {
-    return { ok: false, reason: (res && res.reason) || 'fetch-failed', status: res && res.status };
-  }
-  const bytes = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
-  if (bytes.length > maxBytes) {
-    return { ok: false, reason: 'oversized-actual', size: bytes.length };
-  }
-  const check = looksLikePlayableMp4(bytes);
-  if (!check.ok) {
-    return { ok: false, reason: `invalid-container:${check.reason}`, size: bytes.length };
-  }
-  if (onProgress) onProgress(100, '整条音轨已就绪');
-  return {
-    ok: true,
-    bytes,
-    // 直传时不需要切片循环
-    meta: {
-      transport: 'original-audio-whole',
-      bytes: bytes.length,
-      codecs: candidate.codecs,
-      bandwidth: candidate.bandwidth || 0,
-      mimeType: M4A_MIME_PREFIX,
-      duration: Number(durationSeconds) || 0
+
+  // 取「整条」用**显式 Range**（bytes=0-）而不是不带 Range 的请求。
+  //
+  // 用户实测反馈：不带 Range 的那次失败（reason=network），而分块带 Range
+  // 一直是好的。所以这里统一走 Range 形式，并允许拿 Content-Range 里的
+  // 总长度再补一次「精确到字节」的请求。
+  //
+  // 注意：这里**不推导任何分片边界** —— 就是 0 到末尾。
+  // 上一轮撤回的 sidx 切片错在「按索引拼字节」，这条路不存在那种算术。
+  const attempts = [{ range: 'bytes=0-' }];
+  let lastFail = null;
+  for (const at of attempts) {
+    throwIfAborted(signal);
+    let res;
+    try {
+      res = await fetcher(url, at.range);
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw err;
+      lastFail = { reason: 'network', message: String((err && err.message) || err) };
+      continue;
     }
-  };
+    if (!res || !res.ok || !res.bytes || !res.bytes.length) {
+      lastFail = {
+        reason: (res && res.reason) || 'fetch-failed',
+        status: res && res.status,
+        contentType: res && res.contentType
+      };
+      // 服务端若给了 Content-Range 的总长度，可以再精确取一次
+      const total = parseTotalFromContentRange(res && res.contentRange);
+      if (total && total <= maxBytes) {
+        try {
+          const res2 = await fetcher(url, `bytes=0-${total - 1}`);
+          if (res2 && res2.ok && res2.bytes && res2.bytes.length) {
+            res = res2;
+          }
+        } catch (err) {
+          /* 用第一次的结果判定 */
+        }
+      }
+      if (!res || !res.ok || !res.bytes || !res.bytes.length) continue;
+    }
+    const bytes = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
+    if (bytes.length > maxBytes) {
+      return { ok: false, reason: 'oversized-actual', size: bytes.length };
+    }
+    const check = looksLikePlayableMp4(bytes);
+    if (!check.ok) {
+      lastFail = { reason: `invalid-container:${check.reason}`, size: bytes.length };
+      continue;
+    }
+    if (onProgress) onProgress(100, '整条音轨已就绪');
+    return {
+      ok: true,
+      bytes,
+      meta: {
+        transport: 'original-audio-whole',
+        bytes: bytes.length,
+        codecs: candidate.codecs,
+        bandwidth: candidate.bandwidth || 0,
+        mimeType: M4A_MIME_PREFIX,
+        duration: Number(durationSeconds) || 0
+      }
+    };
+  }
+  return Object.assign({ ok: false, reason: 'fetch-failed' }, lastFail || {});
+}
+
+// 从 Content-Range: bytes 0-0/5004974 里取总长度
+function parseTotalFromContentRange(cr) {
+  const m = /\/(\d+)\s*$/.exec(String(cr || ''));
+  return m ? Number(m[1]) : 0;
 }

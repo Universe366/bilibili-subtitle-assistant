@@ -1683,7 +1683,15 @@
   async function fetchAudioRange(target, start, end, opts = {}) {
     if (!target) return { ok: false, reason: 'no-url' };
     const headers = {};
-    if (Number.isFinite(start) && Number.isFinite(end)) headers.Range = `bytes=${start}-${end}`;
+    // 支持三种写法：
+    //   fetchAudioRange(url, start, end)   —— 明确的起止字节
+    //   fetchAudioRange(url, 'bytes=0-')   —— 直接给 Range 串（整条下载用）
+    //   fetchAudioRange(url)               —— 不带 Range（服务端自行决定）
+    if (typeof start === 'string' && start) {
+      headers.Range = start;
+    } else if (Number.isFinite(start) && Number.isFinite(end)) {
+      headers.Range = `bytes=${start}-${end}`;
+    }
     let res;
     try {
       res = await fetch(target, {
@@ -2029,7 +2037,14 @@
     // 重新解析一份新鲜音轨地址（403 时用）
     refreshAudio: async (p) => refreshAudioUrl(p && p.aid, p && p.bvid, p && p.cid),
     // 页面上下文取字节
-    fetchAudioRange: async (p) => fetchAudioRange(p && p.url, p && p.start, p && p.end, { withCredentials: p && p.withCredentials }),
+    fetchAudioRange: async (p) =>
+      fetchAudioRange(
+        p && p.url,
+        // 兼容两种参数：{start,end} 或 {range:'bytes=0-'}
+        p && p.range ? p.range : p && p.start,
+        p && p.range ? undefined : p && p.end,
+        { withCredentials: p && p.withCredentials }
+      ),
     audioSniffStatus: () => ({ count: audioSniff.items.size, lastAt: audioSniff.lastAt }),
     // 诊断：把「页面当前认为是哪个视频」暴露出来，
     // 便于排查「标题对、内容错」——面板可以把它与自己展示的视频比对。
@@ -2104,7 +2119,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.57.0',
+    version: '1.58.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.57.0', contentVersion: '1.57.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.58.0', contentVersion: '1.58.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.57.0', stale: false }],
-    contentVersion: '1.57.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.58.0', stale: false }],
+    contentVersion: '1.58.0'
   },
   diagnostics: {
-    extensionVersion: '1.57.0',
-    contentVersion: '1.57.0',
+    extensionVersion: '1.58.0',
+    contentVersion: '1.58.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.57.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.58.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.57\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.58\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1353,6 +1353,28 @@ async function main() {
     check('WAV-only 模型不走整条直传', /if \(audioFormatFor\(platform\) !== 'wav'\)/.test(txSrc3), '');
     check('超限前先估算、不硬下', /超过上限 \$\{limitMB\}MB/.test(txSrc3), '');
     check('整条识别有随时长放大的超时', /function timeoutsForWholeAudio/.test(txSrc3), '');
+
+    // original-audio.js 必须自带 throwIfAborted ——
+    // 它是个独立模块，不能依赖 audio.js 的内部函数。
+    // 我第一版漏了，只有真正跑到才报 ReferenceError（测试全绿也发现不了）。
+    const oaSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'original-audio.js'),
+      'utf8'
+    );
+    check('original-audio 自带 throwIfAborted 定义', /function throwIfAborted\(signal\)/.test(oaSrc), '');
+    check('original-audio 不从其它模块借 throwIfAborted', !/import .*throwIfAborted/.test(oaSrc), '');
+    // 取整条走显式 Range（不带 Range 的那次实测失败过）
+    check('取整条用显式 Range', /range: 'bytes=0-'/.test(oaSrc), '');
+    check('能从 Content-Range 解析总长度', /function parseTotalFromContentRange/.test(oaSrc), '');
+    // page.call 的 fetchAudioRange 回的是 base64（不是 bytes）——
+    // 面板层必须自己解码，否则「成功」会被当成失败（用户日志里的 reason=network）
+    check('面板层把 base64 解成 bytes', /base64ToBytes\(res\.base64\)/.test(txSrc3), '');
+    const bSrc4 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'content', 'page-bridge.js'),
+      'utf8'
+    );
+    check('页面桥支持 Range 串写法', /typeof start === 'string' && start/.test(bSrc4), '');
+    check('页面桥分发时透传 range', /p && p\.range \? p\.range : p && p\.start/.test(bSrc4), '');
 
     // ---- 清空字幕（用户报「读取出来的字幕为什么不能清除」）----
     const ctxSrc3 = fs.readFileSync(

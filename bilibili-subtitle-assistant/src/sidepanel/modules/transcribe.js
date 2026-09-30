@@ -7,6 +7,7 @@ import { ASR_LIMITS, CONTENT_VERSION } from '../../shared/constants.js';
 import { isRetriableAsrError } from '../../background/providers.js';
 import {
   AudioDownloader,
+  base64ToBytes,
   decodeAudioBytes,
   toMono16k,
   planSlices,
@@ -288,8 +289,38 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
           durationSeconds: video.duration,
           maxBytesMB: limitMB,
           onLog,
-          fetcher: (u, start, end) =>
-            call('page.call', { name: 'fetchAudioRange', params: { url: u, start, end } }, { timeoutMs: 300000 }),
+          // page.call 的 fetchAudioRange 回的是 **base64**（不是 bytes）——
+          // 我第一版按 res.bytes 判定，于是「成功」也被当成失败
+          // （用户日志里那句 reason=network 就是这么来的）。
+          fetcher: async (u, range) => {
+            const res = await call(
+              'page.call',
+              { name: 'fetchAudioRange', params: range ? { url: u, range } : { url: u } },
+              { timeoutMs: 300000 }
+            );
+            if (!res || res.ok === false) {
+              return {
+                ok: false,
+                reason: (res && res.reason) || 'bridge-failed',
+                status: res && res.status,
+                contentType: res && res.contentType,
+                contentRange: res && res.contentRange
+              };
+            }
+            let bytes = null;
+            if (res.bytes) bytes = res.bytes instanceof Uint8Array ? res.bytes : new Uint8Array(res.bytes);
+            else if (res.base64) bytes = base64ToBytes(res.base64);
+            if (!bytes || !bytes.length) {
+              return { ok: false, reason: 'empty', byteLength: res.byteLength || 0 };
+            }
+            return {
+              ok: true,
+              bytes,
+              status: res.status,
+              contentType: res.contentType,
+              contentRange: res.contentRange
+            };
+          },
           onProgress: (pct, detail) => report(6 + (pct / 100) * 40, detail || '下载整条原始音轨')
         });
         if (fetched && fetched.ok) {
@@ -939,7 +970,7 @@ async function transcribeViaRemux({
   hooks
 }) {
   const { onLog, onProgress, signal } = hooks;
-  const { remuxToMp4 } = await import('./ffmpeg.js');
+  const { openFfmpegSession } = await import('./ffmpeg.js');
 
   const total = rawBytes.length;
   const perSecond = durationSeconds > 0 ? total / durationSeconds : 0;
@@ -961,22 +992,40 @@ async function transcribeViaRemux({
     }
   }
 
+  // 用**一个会话**跑完所有分段。
+  //
+  // 之前是每段都调 remuxToMp4(rawBytes) —— 而 writeFile 会把 ArrayBuffer
+  // transfer 给 Worker，transfer 之后主线程这份就 detached 了，
+  // 于是**第 2 段就报**「An ArrayBuffer is detached and could not be cloned」。
+  // 现在输入只写一次，后续每段只 exec + readFile。
+  if (onProgress) onProgress({ percent: 35, detail: '准备 FFmpeg 会话' });
+  const session = await openFfmpegSession({
+    onProgress: (m) => {
+      if (onLog) onLog(m);
+    }
+  });
   const outputs = [];
-  for (let i = 0; i < slices.length; i += 1) {
-    throwIfAborted(signal);
-    const s = slices[i];
-    if (onProgress) onProgress({ percent: 40 + (i / slices.length) * 35, detail: `重封装音频 ${i + 1}/${slices.length}` });
-    const out = await remuxToMp4(rawBytes, {
-      inputName: 'input.m4s',
-      outputName: `out-${i}.m4a`,
-      startSec: s.duration == null ? undefined : s.start,
-      durationSec: s.duration == null ? undefined : s.duration,
-      onProgress: (m) => {
-        if (onLog) onLog(m);
+  try {
+    // ⚠ writeInput 会 detach rawBytes —— 之后不能再读 rawBytes。
+    // 所有需要用到 rawBytes.length 的地方都在前面算完了。
+    await session.writeInput(rawBytes);
+    for (let i = 0; i < slices.length; i += 1) {
+      throwIfAborted(signal);
+      const s = slices[i];
+      if (onProgress) {
+        onProgress({ percent: 40 + (i / slices.length) * 35, detail: `重封装音频 ${i + 1}/${slices.length}` });
       }
-    });
-    if (onLog) onLog(`第 ${i + 1}/${slices.length} 片重封装：${(out.length / 1024).toFixed(1)} KB（普通 MP4，流复制）`);
-    outputs.push({ slice: s, bytes: out });
+      const out = await session.remuxSlice({
+        startSec: s.duration == null ? undefined : s.start,
+        durationSec: s.duration == null ? undefined : s.duration,
+        outputName: `out-${i}.m4a`
+      });
+      if (onLog) onLog(`第 ${i + 1}/${slices.length} 片重封装：${(out.length / 1024).toFixed(1)} KB（普通 MP4，流复制）`);
+      outputs.push({ slice: s, bytes: out });
+    }
+  } finally {
+    // 收掉虚拟 FS 里的输入文件（产物在每段读完后已删）
+    await session.dispose();
   }
 
   // 逐片识别（重封装很便宜，此处串行足够）

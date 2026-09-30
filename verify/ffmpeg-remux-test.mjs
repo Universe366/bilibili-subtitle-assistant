@@ -42,7 +42,7 @@ const sampleB64 = fs.readFileSync(samplePath).toString('base64');
 
 const html = `<!DOCTYPE html><html><body><pre id="out">run</pre><script type="module">
 window.chrome = { runtime: { getURL: (r) => new URL('/' + r, location.href).href } };
-import { remuxToMp4, ffmpegAvailable } from '/mod/ffmpeg.js';
+import { remuxToMp4, openFfmpegSession, ffmpegAvailable } from '/mod/ffmpeg.js';
 window.__err = '';
 window.addEventListener('error', (e) => { window.__err += e.message + ' | '; });
 window.addEventListener('unhandledrejection', (e) => { window.__err += String(e.reason && e.reason.message) + ' | '; });
@@ -57,6 +57,32 @@ window.__probe = async (b64) => {
   let ob = '';
   for (let i = 0; i < out.length; i += 0x8000) ob += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
   return { available: ffmpegAvailable(), notes, ms, size: out.length, base64: btoa(ob), inputSize: bytes.length };
+};
+// 多段重封装（回归：以前每段都调 remuxToMp4(rawBytes)，而 writeFile 会把
+// ArrayBuffer transfer 给 Worker，第 2 段就报
+// 「An ArrayBuffer is detached and could not be cloned」）
+window.__multi = async (b64, segs) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const total = bytes.length;
+  const s = await openFfmpegSession({});
+  const sizes = [];
+  const inputLenBefore = bytes.length;
+  try {
+    await s.writeInput(bytes);
+    // ⚠ writeInput 之后 bytes 应当已 detached（这是预期行为）
+    const inputLenAfter = bytes.length;
+    for (let i = 0; i < segs; i += 1) {
+      const out = await s.remuxSlice({ startSec: i * 1, durationSec: 1, outputName: 'o' + i + '.m4a' });
+      sizes.push(out.length);
+    }
+    return { ok: true, segs, sizes, total, inputLenBefore, inputLenAfter };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e), segs, sizes };
+  } finally {
+    await s.dispose();
+  }
 };
 document.title = 'READY';
 </script></body></html>`;
@@ -225,11 +251,24 @@ async function main() {
   if (res && res.exceptionDetails) {
     console.error('页面内异常:', JSON.stringify(res.exceptionDetails).slice(0, 500));
   }
-  return res && res.result && res.result.value;
+  const value = res && res.result && res.result.value;
+  // ---- 多段重封装（同一个页面会话里继续跑，Chrome 还没关）----
+  let multi = null;
+  try {
+    const mres = await rpc('Runtime.evaluate', {
+      expression: `window.__multi(${JSON.stringify(sampleB64)}, 3)`,
+      awaitPromise: true,
+      returnByValue: true
+    });
+    multi = mres && mres.result && mres.result.value;
+  } catch (e) {
+    multi = { ok: false, error: String((e && e.message) || e) };
+  }
+  return { value, multi };
 }
 
 main()
-  .then((out) => {
+  .then(({ value: out, multi }) => {
     console.log('\n===== FFmpeg.wasm 重封装验证 =====');
     try {
       child.kill();
@@ -258,6 +297,27 @@ main()
       fs.writeFileSync(path.join(__dirname, 'sample-ffmpeg.m4a'), buf);
       console.log('已写出 sample-ffmpeg.m4a');
     }
+
+    // ---- 多段重封装（detached ArrayBuffer 回归）----
+    //
+    // 用户日志：第 1/13 片成功，之后报
+    //   Failed to execute 'postMessage' on 'Worker':
+    //   An ArrayBuffer is detached and could not be cloned.
+    // 原因是每段都调 remuxToMp4(rawBytes)，而 writeFile 会把 ArrayBuffer
+    // transfer 给 Worker —— 第 2 段拿到的就是 detached 的 buffer。
+    // 现在改为「一个会话、输入只写一次」。
+    console.log('\n===== 多段重封装（detached 回归）=====');
+    console.log(JSON.stringify(multi, null, 2));
+    check('多段重封装全部成功（不再 detached）', !!(multi && multi.ok === true), multi && multi.error);
+    check('确实跑了 3 段', !!(multi && multi.segs === 3 && multi.sizes && multi.sizes.length === 3), multi && JSON.stringify(multi.sizes));
+    check('每段都有产出', !!(multi && multi.sizes && multi.sizes.every((n) => n > 1000)), multi && JSON.stringify(multi.sizes));
+    // writeInput 之后调用方那份应该已经 detached —— 这是**预期**行为，
+    // 正因如此才要求「输入只写一次」。断言它，防止以后又有人循环复用同一份。
+    check(
+      'writeInput 会 detach 调用方 buffer（预期行为，故只能写一次）',
+      !!(multi && multi.inputLenAfter === 0 && multi.inputLenBefore > 0),
+      multi ? `${multi.inputLenBefore} -> ${multi.inputLenAfter}` : ''
+    );
     let failed = 0;
     for (const r of results) {
       if (!r.ok) failed += 1;

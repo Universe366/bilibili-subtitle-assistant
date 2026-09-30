@@ -90,45 +90,100 @@ async function loadApi(onProgress) {
   }
 }
 
+// 打开一次 FFmpeg 会话，把输入写进它的虚拟 FS，并返回可复用的操作。
+//
+// 为什么需要「会话」而不是每次调用 remuxToMp4：
+//
+//   `ffmpeg.writeFile()` 会**把 ArrayBuffer transfer（转移）给 Worker** ——
+//   transfer 之后**主线程这份就 detached 了**（byteLength 变 0）。
+//   于是「同一份音频、循环重封装 13 段」的写法在**第 2 段就炸**：
+//       Failed to execute 'postMessage' on 'Worker':
+//       An ArrayBuffer is detached and could not be cloned.
+//   （用户 2 小时视频就是撞在这个上：第 1/13 片成功，第 2 片报错。）
+//
+//   会话模式只写一次输入，后续每段只 exec + readFile。
+//   既避开 detached，也省掉每段重复传 62MB 进 Worker 的开销。
+export async function openFfmpegSession(opts = {}) {
+  const { ffmpeg, logs } = await loadApi(opts.onProgress);
+  const inputName = opts.inputName || 'input.m4s';
+  return {
+    ffmpeg,
+    logs,
+    inputName,
+    /**
+     * 把输入写进虚拟 FS。
+     *
+     * ⚠ 传进来的 buffer 会被 **transfer 并被 detached**，调用方之后不能再碰它。
+     * 所以调用方要么本来就只传一次，要么传副本。
+     */
+    async writeInput(bytes) {
+      const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      // Uint8Array 视图若只覆盖大 buffer 的一部分，transfer 会带走整个 buffer。
+      // 切成独立副本，避免污染调用方那块大内存。
+      const standalone =
+        view.byteOffset === 0 && view.byteLength === view.buffer.byteLength ? view : view.slice();
+      await ffmpeg.writeFile(inputName, standalone);
+    },
+    /** 重封装一段（-c:a copy，产出普通 MP4）。返回 Uint8Array。 */
+    async remuxSlice({ startSec, durationSec, outputName = 'out.m4a' }) {
+      const args = ['-hide_banner', '-y'];
+      // -ss 放在 -i 之前：按输入时间戳定位，复制流时才准
+      if (startSec != null) args.push('-ss', String(startSec));
+      args.push('-i', inputName);
+      if (durationSec != null) args.push('-t', String(durationSec));
+      args.push('-vn', '-map', '0:a:0', '-c:a', 'copy', '-movflags', '+faststart', outputName);
+      let ret = null;
+      try {
+        ret = await ffmpeg.exec(args);
+      } catch (err) {
+        throw new Error(`FFmpeg 执行异常：${(err && err.message) || err}`);
+      }
+      if (typeof ret === 'number' && ret !== 0) {
+        const tail = logs.slice(-6).join(' / ');
+        throw new Error(`FFmpeg 执行失败（退出码 ${ret}）${tail ? `：${tail}` : ''}`);
+      }
+      let out;
+      try {
+        out = await ffmpeg.readFile(outputName);
+      } catch (err) {
+        const tail = logs.slice(-8).join('\n');
+        throw new Error(`FFmpeg 没有产出 ${outputName}${tail ? `。内核输出：\n${tail}` : ''}`);
+      }
+      // 每段用完立刻删掉产物，避免虚拟 FS 里堆 13 个文件
+      try {
+        await ffmpeg.deleteFile(outputName);
+      } catch (err) {
+        /* ignore */
+      }
+      if (!out || !out.length) throw new Error(`FFmpeg 产出为空：${outputName}`);
+      return out instanceof Uint8Array ? out : new Uint8Array(out);
+    },
+    async dispose() {
+      try {
+        await ffmpeg.deleteFile(inputName);
+      } catch (err) {
+        /* ignore */
+      }
+    }
+  };
+}
+
 // 把「原始音轨字节」重新封装成普通 MP4（只复制音频流，不重新编码）。
 // 与参考实现 Bilitato 完全一致：ffmpeg -c:a copy -movflags +faststart
+//
+// 单次调用保留（整条能装下时用），内部走会话，保证语义一致。
 export async function remuxToMp4(audioBytes, opts = {}) {
   const inputName = opts.inputName || 'input.m4s';
   const outputName = opts.outputName || 'out.m4a';
-  const { ffmpeg, logs } = await loadApi(opts.onProgress);
-  await ffmpeg.writeFile(inputName, audioBytes);
-  const args = ['-hide_banner', '-y', '-i', inputName];
-  if (opts.startSec != null) args.push('-ss', String(opts.startSec));
-  if (opts.durationSec != null) args.push('-t', String(opts.durationSec));
-  args.push('-vn', '-map', '0:a:0', '-c:a', 'copy', '-movflags', '+faststart', outputName);
-  let ret = null;
+  const session = await openFfmpegSession({ ...opts, inputName });
   try {
-    ret = await ffmpeg.exec(args);
-  } catch (err) {
-    throw new Error(`FFmpeg 执行异常：${(err && err.message) || err}`);
+    await session.writeInput(audioBytes);
+    return await session.remuxSlice({
+      startSec: opts.startSec,
+      durationSec: opts.durationSec,
+      outputName
+    });
+  } finally {
+    await session.dispose();
   }
-  if (typeof ret === 'number' && ret !== 0) {
-    const tail = logs.slice(-6).join(' / ');
-    throw new Error(`FFmpeg 执行失败（退出码 ${ret}）${tail ? `：${tail}` : ''}`);
-  }
-  let out;
-  try {
-    out = await ffmpeg.readFile(outputName);
-  } catch (err) {
-    const tail = logs.slice(-8).join('\n');
-    throw new Error(`FFmpeg 没有产出 ${outputName}${tail ? `。内核输出：\n${tail}` : ''}`);
-  }
-  // 清理虚拟 FS，避免内存堆积
-  try {
-    await ffmpeg.deleteFile(inputName);
-  } catch (err) {
-    /* ignore */
-  }
-  try {
-    await ffmpeg.deleteFile(outputName);
-  } catch (err) {
-    /* ignore */
-  }
-  if (!out || !out.length) throw new Error(`FFmpeg 产出为空：${outputName}`);
-  return out instanceof Uint8Array ? out : new Uint8Array(out);
 }
