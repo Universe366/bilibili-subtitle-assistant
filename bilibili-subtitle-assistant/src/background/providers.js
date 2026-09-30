@@ -3,6 +3,7 @@
 
 import { AppError, classifyHttp, classifyNetwork, httpError } from './errors.js';
 import { readLines, timedFetch, fetchJson, joinUrl, sleep } from './net.js';
+import * as TP from '../shared/time-range.js';
 
 function isAnthropic(baseUrl) {
   return /anthropic\.com/i.test(String(baseUrl || ''));
@@ -1126,6 +1127,10 @@ export async function searchProvider(platform, query, opts = {}) {
   let url = base;
   let init = { method: 'POST', headers: { 'content-type': 'application/json' } };
 
+  // 时间过滤：各家参数名不同，统一由 shared/time-range.js 换算。
+  // 不支持时间过滤的引擎，这里返回 {}，调用方会如实提示「可能包含较早内容」。
+  const tp = TP.timeParamsFor(kind, opts.timeRange);
+
   if (kind === 'tavily') {
     init = {
       method: 'POST',
@@ -1136,20 +1141,26 @@ export async function searchProvider(platform, query, opts = {}) {
         max_results: max,
         search_depth: 'basic',
         include_answer: false,
-        include_raw_content: !!opts.fetchPageContent
+        include_raw_content: !!opts.fetchPageContent,
+        ...(tp.time_range ? { time_range: tp.time_range } : {})
       })
     };
   } else if (kind === 'bocha') {
     init = {
       method: 'POST',
       headers: safeHeaders({ 'content-type': 'application/json', authorization: `Bearer ${platform.apiKey}` }),
-      body: JSON.stringify({ query, count: max, summary: !!opts.fetchPageContent })
+      body: JSON.stringify({
+        query,
+        count: max,
+        summary: !!opts.fetchPageContent,
+        ...(tp.freshness ? { freshness: tp.freshness } : {})
+      })
     };
   } else if (kind === 'serper') {
     init = {
       method: 'POST',
       headers: safeHeaders({ 'content-type': 'application/json', 'x-api-key': platform.apiKey }),
-      body: JSON.stringify({ q: query, num: max })
+      body: JSON.stringify({ q: query, num: max, ...(tp.tbs ? { tbs: tp.tbs } : {}) })
     };
   } else if (kind === 'zhipu') {
     // 智谱 Web 搜索：POST {search_query}，返回 search_result 数组
@@ -1160,7 +1171,8 @@ export async function searchProvider(platform, query, opts = {}) {
         search_engine: 'search_std',
         search_query: query,
         count: Math.min(50, max),
-        content_size: opts.fetchPageContent ? 'high' : 'medium'
+        content_size: opts.fetchPageContent ? 'high' : 'medium',
+        ...(tp.search_recency_filter ? { search_recency_filter: tp.search_recency_filter } : {})
       })
     };
   } else if (kind === 'metaso') {
@@ -1168,7 +1180,13 @@ export async function searchProvider(platform, query, opts = {}) {
     init = {
       method: 'POST',
       headers: safeHeaders({ 'content-type': 'application/json', authorization: `Bearer ${platform.apiKey}` }),
-      body: JSON.stringify({ q: query, scope: 'webpage', includeSummary: !!opts.fetchPageContent, size: String(Math.min(50, max)) })
+      body: JSON.stringify({
+        q: query,
+        scope: 'webpage',
+        includeSummary: !!opts.fetchPageContent,
+        size: String(Math.min(50, max)),
+        ...(tp.timeRange ? { timeRange: tp.timeRange } : {})
+      })
     };
   } else if (kind === 'baidu') {
     // 百度千帆 AI 搜索
@@ -1178,25 +1196,27 @@ export async function searchProvider(platform, query, opts = {}) {
       body: JSON.stringify({
         messages: [{ role: 'user', content: query }],
         search_source: 'baidu_search_v2',
-        resource_type_filter: [{ type: 'web', top_k: Math.min(50, max) }]
+        resource_type_filter: [{ type: 'web', top_k: Math.min(50, max) }],
+        ...(tp.search_recency_filter ? { search_recency_filter: tp.search_recency_filter } : {})
       })
     };
   } else if (kind === 'brave') {
-    // Brave Search：GET ?q=，带 X-Subscription-Token
-    url = `${base}?q=${encodeURIComponent(query)}&count=${Math.min(20, max)}`;
+    // Brave Search：GET ?q=，带 X-Subscription-Token；时效用 freshness
+    url = `${base}?q=${encodeURIComponent(query)}&count=${Math.min(20, max)}${tp.freshness ? `&freshness=${tp.freshness}` : ''}`;
     init = {
       method: 'GET',
       headers: safeHeaders({ accept: 'application/json', 'x-subscription-token': platform.apiKey })
     };
   } else if (kind === 'exa') {
-    // Exa：POST {query, numResults, contents}
+    // Exa：POST {query, numResults, contents}；时效用 startPublishedDate
     init = {
       method: 'POST',
       headers: safeHeaders({ 'content-type': 'application/json', 'x-api-key': platform.apiKey }),
       body: JSON.stringify({
         query,
         numResults: Math.min(25, max),
-        ...(opts.fetchPageContent ? { contents: { text: { maxCharacters: 4000 } } } : {})
+        ...(opts.fetchPageContent ? { contents: { text: { maxCharacters: 4000 } } } : {}),
+        ...(tp.startPublishedDate ? { startPublishedDate: tp.startPublishedDate } : {})
       })
     };
   } else if (kind === 'jina') {
@@ -1212,7 +1232,7 @@ export async function searchProvider(platform, query, opts = {}) {
     };
   } else if (kind === 'searxng') {
     // SearXNG：GET /search?q=&format=json（自建实例通常无需 Key，但可带 Token）
-    url = `${base}?q=${encodeURIComponent(query)}&format=json`;
+    url = `${base}?q=${encodeURIComponent(query)}&format=json${tp.time_range ? `&time_range=${tp.time_range}` : ''}`;
     init = {
       method: 'GET',
       headers: safeHeaders({

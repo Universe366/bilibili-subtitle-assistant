@@ -259,6 +259,122 @@ const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
   check('后台尊重 cacheMinutes 设置', /cacheMinutes/.test(swSrc), '');
 }
 
+// ---------------------------------------------------------------------------
+// 12. 时间范围解析
+// ---------------------------------------------------------------------------
+{
+  const TR = await import(mod('shared/time-range.js'));
+  const NOW = Date.UTC(2026, 5, 15); // 2026-06-15
+
+  const day = TR.normalizeTimeRange('day', NOW);
+  check('固定档 day 解析正确', day && day.days === 1 && day.id === 'day', JSON.stringify(day));
+  check('固定档标签可读', day.label === '最近一天', day.label);
+  check('week/month/year 天数正确', [TR.normalizeTimeRange('week', NOW).days, TR.normalizeTimeRange('month', NOW).days, TR.normalizeTimeRange('year', NOW).days].join(',') === '7,30,365', '');
+
+  const h12 = TR.normalizeTimeRange('12h', NOW);
+  check('相对值 12h 解析为 0.5 天', h12 && Math.abs(h12.days - 0.5) < 1e-9, JSON.stringify(h12));
+  check('相对值 3d 解析为 3 天', TR.normalizeTimeRange('3d', NOW).days === 3, '');
+  check('相对值 2w 解析为 14 天', TR.normalizeTimeRange('2w', NOW).days === 14, '');
+  check('相对值 6mo 解析为 180 天', TR.normalizeTimeRange('6mo', NOW).days === 180, '');
+  check('相对值 1y 解析为 365 天', TR.normalizeTimeRange('1y', NOW).days === 365, '');
+
+  const abs = TR.normalizeTimeRange('2026-01-01', NOW);
+  check('绝对日期解析正确', abs && abs.kind === 'absolute' && abs.sinceDate === '2026-01-01', JSON.stringify(abs));
+  check('绝对日期标签可读', /2026-01-01 之后/.test(abs.label), abs.label);
+  check('斜杠日期也支持', TR.normalizeTimeRange('2026/03/05', NOW).sinceDate === '2026-03-05', '');
+
+  check('中文固定档（今天）', TR.normalizeTimeRange('今天', NOW).id === 'day', '');
+  check('中文固定档（本周）', TR.normalizeTimeRange('本周', NOW).id === 'week', '');
+  check('无法识别时返回 null（不报错）', TR.normalizeTimeRange('乱写的', NOW) === null && TR.normalizeTimeRange('', NOW) === null && TR.normalizeTimeRange(null, NOW) === null, '');
+  check('非法日期返回 null', TR.normalizeTimeRange('2026-99-99', NOW) === null, '');
+
+  // 引擎参数映射
+  check('bing 映射为 filters', JSON.stringify(TR.timeParamsFor('bing', day)) === JSON.stringify({ filters: 'ex1:"ez1"' }), JSON.stringify(TR.timeParamsFor('bing', day)));
+  check('ddg 映射为 df', TR.timeParamsFor('ddg', day).df === 'd' && TR.timeParamsFor('ddg', TR.normalizeTimeRange('week', NOW)).df === 'w', '');
+  check('tavily 映射为 time_range', TR.timeParamsFor('tavily', day).time_range === 'day', '');
+  check('exa 映射为 startPublishedDate（ISO）', /^\d{4}-\d{2}-\d{2}T/.test(TR.timeParamsFor('exa', day).startPublishedDate || ''), String(TR.timeParamsFor('exa', day).startPublishedDate));
+  check('bocha 映射为 freshness', TR.timeParamsFor('bocha', day).freshness === 'oneDay', '');
+  check('zhipu 映射为 search_recency_filter', TR.timeParamsFor('zhipu', day).search_recency_filter === 'oneDay', '');
+  check('不支持时间时返回空对象', JSON.stringify(TR.timeParamsFor('anysearch', day)) === '{}', JSON.stringify(TR.timeParamsFor('anysearch', day)));
+  check('tr 为 null 时返回空对象', JSON.stringify(TR.timeParamsFor('bing', null)) === '{}', '');
+  check('year 档在 bing 上退化为 ez3（宁可偏新）', TR.timeParamsFor('bing', TR.normalizeTimeRange('year', NOW)).filters === 'ex1:"ez3"', '');
+}
+
+// ---------------------------------------------------------------------------
+// 13. supportsTime 只认「确实会过滤」的引擎（不含免费引擎）
+// ---------------------------------------------------------------------------
+{
+  const TR = await import(mod('shared/time-range.js'));
+  // 这是本轮最重要的诚实性断言：免费引擎实测都不会过滤
+  const freeShouldNotSupport = ['bing', 'ddg', 'ddg-lite', 'searxng', 'searxng-public', 'anysearch', 'exa-mcp'];
+  const wrong = freeShouldNotSupport.filter((id) => TR.supportsTime(id));
+  check('免费引擎一律不算「支持时间过滤」', wrong.length === 0, `误标为支持: ${wrong.join(',')}`);
+
+  const paidShouldSupport = ['tavily', 'exa', 'bocha', 'zhipu', 'metaso', 'baidu'];
+  const missing = paidShouldSupport.filter((id) => !TR.supportsTime(id));
+  check('文档支持的付费平台被正确标记', missing.length === 0, `漏标: ${missing.join(',')}`);
+  check('未知引擎不算支持', TR.supportsTime('nothing-here') === false, '');
+  check('isKeylessEngine 能识别免费引擎', TR.isKeylessEngine('bing') && TR.isKeylessEngine('exa-mcp') && !TR.isKeylessEngine('tavily'), '');
+}
+
+// ---------------------------------------------------------------------------
+// 14. 智能路由（auto）
+// ---------------------------------------------------------------------------
+{
+  const R = await import(mod('shared/search-router.js'));
+
+  check('中文查询被识别', R.isCjkQuery('人工智能最新进展') === true, '');
+  check('英文查询不被误判为中文', R.isCjkQuery('deepseek v4 release') === false, '');
+  check('日文假名也算 CJK', R.isCjkQuery('こんにちは') === true, '');
+
+  const cn = R.routeKeyless('人工智能进展', {});
+  check('中文路由把 bing 放首位', cn.order[0] === 'bing', cn.order.join(','));
+  check('中文路由下 anysearch 进 head', cn.order.slice(0, 2).includes('anysearch'), cn.order.join(','));
+  check('中文路由给出理由', cn.reasons.length > 0 && /中文/.test(cn.reasons[0]), JSON.stringify(cn.reasons));
+
+  const en = R.routeKeyless('deepseek v4 release', {});
+  check('英文路由把 exa-mcp 提前', en.order.slice(0, 3).includes('exa-mcp'), en.order.join(','));
+  check('英文路由理由提到质量', /质量/.test(en.reasons.join('')), JSON.stringify(en.reasons));
+
+  // 关键：时效需求**不能**假装改变引擎行为（免费引擎都不支持过滤）
+  const rec = R.routeKeyless('今天有什么 AI 新闻', {});
+  check('时效查询被识别', rec.recency === true, '');
+  check('时效查询如实提示免费引擎无法过滤', /无法按时间过滤/.test(rec.reasons.join('')), JSON.stringify(rec.reasons));
+  check('时效查询不改变引擎顺序（不做假动作）', rec.order[0] === 'bing', rec.order.join(','));
+
+  // 自定义顺序要被尊重：head 里不含的用户引擎仍保留
+  const custom = R.routeKeyless('测试', { order: ['anysearch', 'bing', 'ddg'] });
+  check('自定义顺序里的引擎不丢失', custom.order.length === 3 && custom.order.includes('ddg'), custom.order.join(','));
+
+  // 全量回退：路由结果必须是输入集合的排列（不丢不增）
+  const all = ['bing', 'anysearch', 'exa-mcp', 'ddg', 'searxng-public'];
+  const routed = R.routeKeyless('测试', {});
+  check('路由结果不丢引擎也不新增', routed.order.length === all.length && all.every((x) => routed.order.includes(x)), routed.order.join(','));
+
+  check('describeRoute 可读', /→/.test(R.describeRoute(cn)), R.describeRoute(cn));
+  check('describeRoute 对空输入安全', R.describeRoute(null) === '' && R.describeRoute({}) === '', '');
+}
+
+// ---------------------------------------------------------------------------
+// 15. 时间过滤参数确实被送进了请求（用 fetch 桩验证）
+// ---------------------------------------------------------------------------
+{
+  const TR = await import(mod('shared/time-range.js'));
+  const originalFetch = globalThis.fetch;
+  let seenUrl = '';
+  globalThis.fetch = async (url) => {
+    seenUrl = String(url);
+    // 返回一个最小可解析的 Bing 页面
+    return new Response('<ol><li class="b_algo"><h2><a href="https://x.com">T</a></h2><div class="b_caption"><p>S</p></div></li></ol>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' }
+    });
+  };
+  await K.searchKeyless('测试', { maxResults: 2, order: ['bing'], timeRange: TR.normalizeTimeRange('week'), timeoutMs: 5000 });
+  globalThis.fetch = originalFetch;
+  check('Bing 请求 URL 带上了 filters 参数', /filters=/.test(seenUrl) && /ez2/.test(decodeURIComponent(seenUrl)), seenUrl);
+}
+
 let failed = 0;
 for (const r of results) {
   if (!r.ok) failed += 1;

@@ -1,6 +1,6 @@
 # 验证套件（不属于扩展运行时）
 
-针对 `../bilibili-subtitle-assistant` 的自动化验证。**21 个套件共 799 项断言，全部通过。**
+针对 `../bilibili-subtitle-assistant` 的自动化验证。**21 个套件共 843 项断言，全部通过。**
 
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb

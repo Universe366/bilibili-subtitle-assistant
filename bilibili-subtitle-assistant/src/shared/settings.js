@@ -571,6 +571,9 @@ export function defaultSettings() {
       // 免费无 Key 引擎兜底：没配检索 Key 时也能真的联网
       // （Bing 网页 / AnySearch / Exa MCP 均已实测可用）
       keylessFallback: true,
+      // 默认时间范围：'' / day / week / month / year，或自定义 3d / 2w / 2026-01-01
+      // 注意：免费引擎实测无法按时间过滤；要严格生效需配置支持该能力的检索平台
+      timeRange: '',
       // 自定义免费引擎优先顺序（空 = 用默认顺序）
       keylessOrder: [],
       // 结果缓存时长（分钟，0 = 关闭）。

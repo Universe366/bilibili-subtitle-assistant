@@ -28,18 +28,20 @@ export async function runProviderSearch(settings, query, hooks = {}) {
       id: plat ? plat.id : undefined,
       query,
       maxResults: settings.search.maxResults,
-      fetchPageContent: settings.search.fetchPageContent
+      fetchPageContent: settings.search.fetchPageContent,
+      timeRange: hooks.timeRange !== undefined ? hooks.timeRange : settings.search.timeRange
     },
     { timeoutMs: 90000 }
   );
   const results = out.results || [];
   const who = out.provider || (plat && plat.name) || '检索';
   if (hooks.onLog) {
-    hooks.onLog(
-      out.cached
-        ? `命中缓存：${who}（${results.length} 条来源）`
-        : `${who} 返回 ${results.length} 条来源${out.note ? `（${out.note}）` : ''}`
-    );
+    const bits = [];
+    if (out.cached) bits.push('命中缓存');
+    if (out.timeRange) {
+      bits.push(out.timeFiltered ? `时间范围：${out.timeRange}` : `时间范围：${out.timeRange}（该引擎未生效）`);
+    }
+    hooks.onLog(`${who} 返回 ${results.length} 条来源${bits.length ? `（${bits.join('，')}）` : ''}`);
   }
   if (out.note && hooks.onNote) hooks.onNote(out.note);
 
@@ -60,7 +62,9 @@ export async function runProviderSearch(settings, query, hooks = {}) {
     at: Date.now(),
     keyless: out.keyless || null,
     note: out.note || '',
-    cached: !!out.cached
+    cached: !!out.cached,
+    timeRange: out.timeRange || '',
+    timeFiltered: out.timeFiltered !== false
   };
 }
 

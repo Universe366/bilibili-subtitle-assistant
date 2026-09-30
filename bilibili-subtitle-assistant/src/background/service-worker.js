@@ -13,6 +13,8 @@ import * as T from './tools.js';
 import * as KS from './keyless-search.js';
 import * as SC from './search-cache.js';
 import { sanitizeResult } from '../shared/untrusted.js';
+import { normalizeTimeRange, timeParamsFor, supportsTime, TIME_CAPABLE } from '../shared/time-range.js';
+import { routeKeyless, describeRoute, wantsRecency, isCjkQuery } from '../shared/search-router.js';
 import { stripQuery } from '../shared/storage.js';
 
 // 检索结果缓存（默认 5 分钟 / 50 条）。
@@ -664,6 +666,9 @@ const methods = {
     const hasKey = !!(plat && String(plat.apiKey || '').trim());
     const allowKeyless = s.search.keylessFallback !== false;
 
+    // 时间过滤：参数优先，其次设置里的默认值
+    const tr = normalizeTimeRange(params.timeRange !== undefined ? params.timeRange : s.search.timeRange);
+
     // 缓存时长由设置决定（分钟；0 = 关闭）
     searchCache.ttlMs = Math.max(0, Number(s.search.cacheMinutes ?? 5) || 0) * 60 * 1000;
 
@@ -671,7 +676,8 @@ const methods = {
     const cacheKey = searchCache.keyOf(params.query, {
       maxResults: params.maxResults || s.search.maxResults,
       providerId: hasKey ? plat.id : '',
-      fetchPageContent: params.fetchPageContent
+      fetchPageContent: params.fetchPageContent,
+      timeRange: tr ? tr.id : ''
     });
     const cached = searchCache.get(cacheKey);
     if (cached) {
@@ -690,10 +696,14 @@ const methods = {
           '可在 设置 → 联网检索 检查 Key，或开启「允许使用免费引擎兜底」。'
         );
       }
+      // 智能路由：按查询语言与时效需求决定先试谁
+      const customOrder = Array.isArray(s.search.keylessOrder) && s.search.keylessOrder.length ? s.search.keylessOrder : null;
+      const route = routeKeyless(params.query, { order: customOrder, timeRange: tr });
       const kl = await KS.searchKeyless(params.query, {
         maxResults: params.maxResults || s.search.maxResults,
         timeoutMs: 20000,
-        order: Array.isArray(s.search.keylessOrder) && s.search.keylessOrder.length ? s.search.keylessOrder : undefined
+        order: route.order,
+        timeRange: tr
       });
       if (!kl.results.length) {
         throw new AppError(
@@ -703,12 +713,29 @@ const methods = {
           '可在 设置 → 联网检索 填一个检索平台的 Key（更稳），或稍后重试（免费引擎偶发限流）。'
         );
       }
+      const notes = [];
+      if (reason) notes.push(`${reason}，已改用免费引擎 ${kl.engineLabel}`);
+      // 如实说明：免费引擎实测都不支持时间过滤
+      if (tr && !kl.timeFiltered) {
+        notes.push(
+          `免费引擎（${kl.engineLabel}）不支持按时间过滤，结果可能包含较早内容；` +
+            '需要严格的时间范围请配置 Tavily / Exa / 博查 等支持时间过滤的检索平台'
+        );
+      }
       return {
         results: kl.results.map((r) => sanitizeResult(r)),
         query: params.query,
         provider: `免费引擎（${kl.engineLabel}）`,
-        keyless: { engine: kl.engine, engineLabel: kl.engineLabel, attempts: kl.attempts },
-        note: reason ? `${reason}，已改用免费引擎 ${kl.engineLabel}` : ''
+        keyless: {
+          engine: kl.engine,
+          engineLabel: kl.engineLabel,
+          attempts: kl.attempts,
+          route: route.order,
+          routeReason: describeRoute(route)
+        },
+        timeRange: tr ? tr.label : '',
+        timeFiltered: !!kl.timeFiltered,
+        note: notes.join('；')
       };
     };
 
@@ -717,9 +744,20 @@ const methods = {
         const r = await P.searchProvider(plat, params.query, {
           maxResults: params.maxResults || s.search.maxResults,
           fetchPageContent: params.fetchPageContent,
+          timeRange: tr,
           signal: registerExternalAbort(params.rid)
         });
-        out = { ...r, results: (r.results || []).map((x) => sanitizeResult(x)) };
+        // 只有该平台**真的**支持时间过滤时才声称已过滤
+        const platformTimeOk = supportsTime(plat.kind) || supportsTime(plat.id);
+        out = {
+          ...r,
+          results: (r.results || []).map((x) => sanitizeResult(x)),
+          timeRange: tr ? tr.label : '',
+          timeFiltered: tr ? platformTimeOk : true
+        };
+        if (tr && !platformTimeOk) {
+          out.note = `${plat.name} 不支持按时间过滤，结果可能包含较早内容`;
+        }
       } catch (err) {
         const detail = (err && err.payload && err.payload.title) || (err && err.message) || '未知错误';
         out = await keylessFallback(`配置的检索平台（${plat.name}）失败：${detail}`);

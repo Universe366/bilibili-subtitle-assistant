@@ -16,6 +16,8 @@
 // 注意：这些是**第三方公开服务**，不保证长期稳定，也不保证额度。
 // 因此它们只作为「兜底」，用户配置了自己的付费/正式 Key 时优先用配置的。
 
+import { timeParamsFor, supportsTime } from '../shared/time-range.js';
+
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -158,7 +160,11 @@ export function parseBingHtml(html) {
 }
 
 async function searchBing(query, max, opts) {
-  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-CN&count=${Math.min(20, max)}`;
+  // 时间过滤：Bing 用 filters=ex1:"ez1|ez2|ez3"
+  const tp = timeParamsFor('bing', opts.timeRange);
+  const parts = [`q=${encodeURIComponent(query)}`, 'setlang=zh-CN', `count=${Math.min(20, max)}`];
+  if (tp.filters) parts.push(`filters=${encodeURIComponent(tp.filters)}`);
+  const url = `https://www.bing.com/search?${parts.join('&')}`;
   const res = await timedFetch(url, {
     method: 'GET',
     headers: {
@@ -202,7 +208,6 @@ async function searchAnySearch(query, max, opts) {
   if (!rows.length) throw new Error('AnySearch 返回空结果');
   return rows.slice(0, max);
 }
-
 // ---------------------------------------------------------------------------
 // 3. Exa MCP（匿名端点）
 // ---------------------------------------------------------------------------
@@ -285,7 +290,10 @@ async function searchExaMcp(query, max, opts) {
         jsonrpc: '2.0',
         id: 2,
         method: 'tools/call',
-        params: { name: 'web_search_exa', arguments: { query, numResults: Math.min(10, max) } }
+        params: {
+          name: 'web_search_exa',
+          arguments: { query, numResults: Math.min(10, max), ...timeParamsFor('exa-mcp', opts.timeRange) }
+        }
       })
     },
     opts
@@ -357,7 +365,8 @@ export function parseDdgHtml(html) {
 }
 
 async function searchDdg(query, max, opts) {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const tp = timeParamsFor('ddg', opts.timeRange);
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}${tp.df ? `&df=${tp.df}` : ''}`;
   const res = await timedFetch(
     url,
     { method: 'GET', headers: { 'user-agent': UA, accept: 'text/html', 'accept-language': 'zh-CN,zh;q=0.9' } },
@@ -386,7 +395,8 @@ async function searchSearxngPublic(query, max, opts) {
   const errors = [];
   for (const base of instances) {
     try {
-      const url = `${base.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}&format=json`;
+      const tp = timeParamsFor('searxng', opts.timeRange);
+      const url = `${base.replace(/\/+$/, '')}/search?q=${encodeURIComponent(query)}&format=json${tp.time_range ? `&time_range=${tp.time_range}` : ''}`;
       const res = await timedFetch(
         url,
         { method: 'GET', headers: { 'user-agent': UA, accept: 'application/json' } },
@@ -435,34 +445,52 @@ async function timedFetch(url, init, opts = {}) {
 
 // 按顺序尝试；返回第一个成功的结果集。
 // 失败原因全部保留，便于界面显示「为什么都失败了」。
+//
+// 关于时间过滤（重要）：
+//   免费无 Key 引擎**没有一个**支持时间过滤 ——
+//   Bing/DDG/SearXNG 的 URL 参数实测无效，Exa MCP 匿名端点也忽略日期。
+//   所以这里照常把参数发出去（万一服务端哪天支持了），
+//   但**不会声称结果已按时间过滤**；是否过滤由调用方按引擎如实标注。
 export async function searchKeyless(query, opts = {}) {
   const max = Math.max(1, Math.min(20, Number(opts.maxResults) || 6));
   const order = (Array.isArray(opts.order) && opts.order.length ? opts.order : DEFAULT_KEYLESS_ORDER)
     .filter((id) => RUNNERS[id]);
+  const tr = opts.timeRange || null;
+
   const attempts = [];
   for (const id of order) {
     const started = Date.now();
     try {
       const results = await RUNNERS[id](query, max, opts);
-      attempts.push({ engine: id, ok: true, ms: Date.now() - started, count: results.length });
+      attempts.push({
+        engine: id,
+        ok: true,
+        ms: Date.now() - started,
+        count: results.length,
+        timeFiltered: supportsTime(id)
+      });
       return {
         results,
         query,
         engine: id,
         engineLabel: keylessLabel(id),
         attempts,
-        provider: null
+        provider: null,
+        timeRange: tr,
+        timeFiltered: supportsTime(id)
       };
     } catch (err) {
       attempts.push({
         engine: id,
         ok: false,
         ms: Date.now() - started,
-        error: (err && err.message) || String(err)
+        error: (err && err.message) || String(err),
+        timeFiltered: supportsTime(id)
       });
     }
   }
-  return { results: [], query, engine: null, attempts };
+
+  return { results: [], query, engine: null, attempts, timeRange: tr, timeFiltered: false };
 }
 
 // 把尝试链路转成一句人话（用于界面提示）

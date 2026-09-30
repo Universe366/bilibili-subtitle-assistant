@@ -27,6 +27,7 @@ import { exportRuleGroups, parseRuleGroups } from './optimize.js';
 import { downloadFile } from './dom.js';
 import { batchAdd, batchRemove, batchPause, batchClearDone } from './context.js';
 import * as SKILLS from '../../shared/skills.js';
+import { TIME_PRESETS, normalizeTimeRange } from '../../shared/time-range.js';
 
 const state = { host: null, scrollHost: null, dirty: false, draft: null, modelCache: {} };
 
@@ -1205,6 +1206,71 @@ function searchGroup(d) {
         );
       });
     }
+    // ---- 时间过滤 ----
+    body.appendChild(h('div', { class: 'section-title', text: '时间范围' }));
+    body.appendChild(
+      field(
+        '默认时间范围',
+        select(
+          TIME_PRESETS.some((p) => p.id === (d.search.timeRange || ''))
+            ? d.search.timeRange || ''
+            : (d.search.timeRange ? '__custom' : ''),
+          [
+            ...TIME_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+            { value: '__custom', label: '自定义（相对时间或绝对日期）' }
+          ],
+          (v) => {
+            if (v === '__custom') {
+              const cur = String(d.search.timeRange || '');
+              d.search.timeRange = TIME_PRESETS.some((p) => p.id === cur) ? '3d' : cur;
+            } else {
+              d.search.timeRange = v;
+            }
+            markDirty();
+            render();
+          }
+        )
+      )
+    );
+    // 自定义输入：支持 12h / 3d / 2w / 6mo / 1y，或绝对日期 2026-01-01（表示该日期之后）
+    const customVal = String(d.search.timeRange || '');
+    const isCustom = customVal && !TIME_PRESETS.some((p) => p.id === customVal);
+    if (isCustom) {
+      const tr = normalizeTimeRange(customVal);
+      body.appendChild(
+        field(
+          '自定义时间范围',
+          h('input', {
+            class: 'input',
+            value: customVal,
+            placeholder: '例如 3d（近三天）、2w、6mo、2026-01-01',
+            oninput: (e) => {
+              d.search.timeRange = e.target.value.trim();
+              markDirty();
+            }
+          })
+        )
+      );
+      body.appendChild(
+        h('div', {
+          class: 'note',
+          text: tr
+            ? `解析为「${tr.label}」`
+            : '无法识别的写法 —— 支持 12h / 3d / 2w / 6mo / 1y，或绝对日期 2026-01-01'
+        })
+      );
+    }
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '⚠ 免费引擎（Bing 网页 / AnySearch / Exa 匿名端点）实测无法按时间过滤 ——\n' +
+          'URL 参数与日期参数都会被服务端忽略。\n' +
+          '要严格的时间范围，请配置 Tavily / Exa / 博查 / 智谱 / 秘塔 等检索平台。\n' +
+          '本扩展不会假装过滤生效：未生效时结果里会明确标注。'
+      })
+    );
+
     const row = h('div', { class: 'row tight' });
     const input = h('input', { class: 'input', placeholder: '检索关键词…', value: st.search.query || '', style: { flex: '1 1 auto' } });
     row.appendChild(input);
