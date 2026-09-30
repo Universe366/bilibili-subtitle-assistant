@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.51.0', contentVersion: '1.51.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.52.0', contentVersion: '1.52.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.51.0', stale: false }],
-    contentVersion: '1.51.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.52.0', stale: false }],
+    contentVersion: '1.52.0'
   },
   diagnostics: {
-    extensionVersion: '1.51.0',
-    contentVersion: '1.51.0',
+    extensionVersion: '1.52.0',
+    contentVersion: '1.52.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.51.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.52.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.51\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.52\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1300,6 +1300,13 @@ async function main() {
     check('追加失败带出 MediaSource 真实原因', /sb\.error \|\| ms\.error/.test(audioSrc), '');
     check('配额不足时明确提示', /SourceBuffer 配额不足/.test(audioSrc), '');
     check('大文件分块追加（避免一次 60MB）', /const APPEND_CHUNK = 4 \* 1024 \* 1024;/.test(audioSrc), '');
+    // ---- 内存优化：不许再复制整份 mono ----
+    //
+    // 实测 2 小时视频：解码后 2637MB，旧代码还额外复制 mono(1318MB)
+    // 与 OfflineAudioContext 输入(1318MB)，重采样阶段就 5GB 以上。
+    check('不再单独复制整份 mono', !/const mono = audioBuffer\.numberOfChannels > 1 \? mixToMono\(audioBuffer\) : audioBuffer\.getChannelData\(0\);\s*\n\s*if \(typeof OfflineAudioContext/.test(audioSrc), '');
+    check('有 mixToMonoInto（写入已有数组，不额外分配）', /function mixToMonoInto\(audioBuffer, dst\)/.test(audioSrc), '');
+    check('重采样直接写进 OfflineAudioContext 输入', /mixToMonoInto\(audioBuffer, tmp\.getChannelData\(0\)\)/.test(audioSrc), '');
     check('decodeAudioBytes 透传 codecs', /decodeViaMediaSource\(bytes, \{ \.\.\.opts, codecs \}\)/.test(audioSrc), '');
     const txSrc3 = fs.readFileSync(
       path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
@@ -1412,7 +1419,11 @@ async function main() {
       'utf8'
     );
     check('主流程接了原始音轨复用', /assembleOriginalAac/.test(txSrc2) && /原始音轨复用不可用/.test(txSrc2), '');
-    check('WAV-only 模型不走复用路径', /audioFormatFor\(platform\) !== 'wav'/.test(txSrc2), '');
+    check('WAV-only 模型不走复用路径', /audioFormatFor\(platform\) === 'wav'/.test(txSrc2), '');
+    check('原始音轨复用放在下载之前（省时间与内存）',
+      txSrc2.indexOf('assembleOriginalAac') < txSrc2.indexOf('--- 2. 分块下载'), '');
+    check('复用成功后逐片释放字节', /sl\.bytes = null/.test(txSrc2), '');
+    check('长视频有内存预估提示', /预计内存峰值约/.test(txSrc2), '');
     check('复用失败会回退（不抛错阻断）', /回退到解码 \+ 重编码路径/.test(txSrc2), '');
     check('复用路径走 page.call 取字节（Referer 限制）', /name: 'fetchAudioRange'/.test(txSrc2), '');
 

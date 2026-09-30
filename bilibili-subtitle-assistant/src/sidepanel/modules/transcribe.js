@@ -228,6 +228,99 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
     })();
     onLog(`音轨：${audio.mimeType || '未知类型'} 带宽 ${audio.bandwidth || '?'} 来源 ${audio.source} host ${host}`);
   }
+  // 这两个值后面多处要用（原始音轨复用、并发编码、识别循环），
+  // 提前算出来，避免把复用逻辑挤到「下载之后」——
+  // 那样会先白下 62MB 才去试复用，既慢又占内存。
+  const timeoutSeconds = Number(asr.timeoutSeconds) || ASR_LIMITS.defaultTimeoutSeconds;
+  const concurrency = Math.max(1, Math.min(8, Number(asr.concurrency) || ASR_LIMITS.defaultConcurrency));
+
+  // ------------------------------------------------------------------
+  // 【最优路径】直接复用 B 站**原始 AAC 音轨**（放在下载之前）
+  // ------------------------------------------------------------------
+  //
+  // 为什么必须放在下载之前：用户实测「时间大头在下载和上传」，
+  // 而 2 小时视频的音轨有 62MB。先下完再发现能复用，等于白花时间与内存。
+  //
+  // B 站自己的音轨是 ~41kbps AAC：974 秒的片子只有 **2.4MB**，
+  // 而 WAV 16kHz 单声道要 29.7MB、解码后的 PCM 更是 1.3GB 起。
+  // 按 sidx 索引只取需要的字节段 → 下载、解码、重编码全部省掉。
+  //
+  // 前提：模型接受 mp4/AAC。WAV-only 模型（XingChen 等）不能走这条路。
+  // 任何环节失败都**静默回退**到原来的「下载 → 解码 → 重编码」路径。
+  if (asr.reuseOriginalAudio === false) {
+    if (onLog) onLog('未复用原始音轨：设置里关掉了「优先复用 B 站原始音轨」');
+  } else if (audioFormatFor(platform) === 'wav') {
+    if (onLog) onLog(`未复用原始音轨：当前模型（${platform ? platform.model : ''}）要求 WAV，必须解码重编码`);
+  } else if (!audio.initRange || !audio.indexRange) {
+    if (onLog) {
+      onLog(
+        `未复用原始音轨：这条候选没有 SegmentBase 索引` +
+          `（initRange=${audio.initRange || '无'} indexRange=${audio.indexRange || '无'}，来源 ${audio.source}）`
+      );
+    }
+  } else {
+    try {
+      const aacMod = await import('./aac.js');
+      report(3, '检查能否复用 B 站原始 AAC 音轨');
+      const fetched = await aacMod.assembleOriginalAac(audio, {
+        fetcher: (u, start, end) =>
+          call('page.call', { name: 'fetchAudioRange', params: { url: u, start, end } }, { timeoutMs: 120000 }),
+        signal,
+        targetSeconds: Number(asr.sliceSeconds) || ASR_LIMITS.defaultSliceSeconds,
+        maxBytesMB: Number(asr.sizeLimitMB) || ASR_LIMITS.defaultSizeLimitMB,
+        onProgress: (pct, detail) => report(3 + (pct / 100) * 35, `复用原始音轨：${detail}`)
+      });
+      if (fetched && fetched.ok && fetched.slices && fetched.slices.length) {
+        const { slices, meta } = fetched;
+        const saved = meta.wavBytes ? (100 - (meta.totalBytes / meta.wavBytes) * 100).toFixed(0) : null;
+        if (onLog) {
+          onLog(
+            `复用 B 站原始音轨（${meta.codecs || 'AAC'}，${Math.round((meta.bandwidth || 0) / 1000)}kbps）：` +
+              `${slices.length} 片，共 ${(meta.totalBytes / 1024 / 1024).toFixed(2)}MB` +
+              (saved ? `；若用 WAV 需 ${(meta.wavBytes / 1024 / 1024).toFixed(1)}MB，省 ${saved}%` : '') +
+              '。不解码、不重编码、不整段下载，**内存占用也最小**。'
+          );
+        }
+        report(40, `识别中（原始音轨 ${slices.length} 片）`);
+        let aacDone = 0;
+        const rawAac = await runPool(
+          slices,
+          concurrency,
+          async (sl, idx) => {
+            throwIfAborted(signal);
+            const filename = `slice-${String(idx + 1).padStart(3, '0')}.m4a`;
+            const res = await callAsr(platform, sl.bytes, { timeoutMs: timeoutSeconds * 1000, signal, filename });
+            // 用完立刻释放这一片的字节，别让整轨一直挂在内存里
+            sl.bytes = null;
+            aacDone += 1;
+            report(40 + (aacDone / slices.length) * 50, `识别中 ${aacDone}/${slices.length}`);
+            return { idx, slice: { start: sl.from, end: sl.to }, result: res };
+          },
+          signal
+        );
+        const out = assembleRemuxOutcome({
+          rawResults: rawAac,
+          base: { slices: slices.length, sliceSeconds: meta.sliceSeconds || 0 },
+          platform,
+          durationSeconds: video.duration || meta.duration || 0,
+          bytes: meta.totalBytes
+        });
+        if (out.lines && out.lines.length) {
+          report(100, '转录完成');
+          out.meta.transport = 'original-aac-reuse';
+          out.meta.concurrency = concurrency;
+          out.meta.audioSavedRatio = meta.wavBytes ? 1 - meta.totalBytes / meta.wavBytes : null;
+          return out;
+        }
+        if (onLog) onLog('原始音轨识别结果为空，回退到解码路径');
+      } else if (onLog) {
+        onLog(`原始音轨复用不可用（${(fetched && fetched.reason) || '未知原因'}），回退到解码 + 重编码路径`);
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw err;
+      if (onLog) onLog(`原始音轨复用失败（${(err && err.message) || err}），回退到解码 + 重编码路径`);
+    }
+  }
 
   // --- 2. 分块下载（403 时刷新地址 / 换候选重试） ---
   const downloadStart = Date.now();
@@ -352,6 +445,40 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   }
 
   // --- 3. 解码 ---
+  //
+  // 先做**内存预估**，别把浏览器拖崩。
+  //
+  // 实测（2 小时视频）：解码后的 PCM 是 2637MB（48kHz 立体声 Float32），
+  // 重采样阶段还要再复制两份（各 1318MB），切片阶段全部 WAV 再驻留 220MB
+  // —— 峰值约 **6GB**。这个量级浏览器必然吃不住，而且失败信息往往是
+  // 一个没有上下文的 OOM，用户完全不知道该改什么。
+  //
+  // 所以这里主动拦下来，并**给出可照做的办法**。
+  const estSeconds = Number(video.duration) || 0;
+  if (estSeconds > 0) {
+    // 粗估：按 48kHz 立体声 Float32 的解码体积 + 同规模的中间副本
+    const decodedMB = (estSeconds * 48000 * 2 * 4) / 1024 / 1024;
+    const estimatedPeakMB = decodedMB * 1.7 + (estSeconds * 16000 * 4) / 1024 / 1024;
+    const budgetMB = 1800; // 保守预算：超过就提醒
+    if (estimatedPeakMB > budgetMB) {
+      const mins = Math.round(estSeconds / 60);
+      if (onLog) {
+        onLog(
+          `⚠ 预计内存峰值约 ${Math.round(estimatedPeakMB / 1024 * 10) / 10}GB（音频 ${mins} 分钟）。` +
+            `这条路径必须把**整段音频解码成 PCM**，长视频非常吃内存。`
+        );
+      }
+      // 给出可照做的降内存办法，而不是只报一个吓人的数字
+      const tips = [];
+      if (!audio.initRange || !audio.indexRange) {
+        tips.push('这条音轨没有 SegmentBase 索引，所以走不了「复用原始音轨」那条省内存的路');
+      }
+      tips.push('换用支持 mp4/AAC 的识别模型（可走原始音轨复用，不解码，内存极低）');
+      tips.push('或把长视频分段转录：先只转录感兴趣的片段');
+      if (onLog) onLog(`降内存办法：${tips.join('；')}。`);
+    }
+  }
+
   throwIfAborted(signal);
   report(46, '解码音频（可能需要一会儿）');
   const decoded = await decodeAudioBytes(dl.bytes, {
@@ -412,115 +539,11 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   }
 
   // --- 6. 逐片识别 ---
-  const timeoutSeconds = Number(asr.timeoutSeconds) || ASR_LIMITS.defaultTimeoutSeconds;
-  // 默认并发：以前是 1（等于完全串行）。分片是互相独立的，
-  // 提高并发几乎线性提速；上限 8，默认给 4（保守，避免撞平台的限流）。
-  const concurrency = Math.max(1, Math.min(8, Number(asr.concurrency) || ASR_LIMITS.defaultConcurrency));
-
+  // timeoutSeconds / concurrency 已在前面算好（原始音轨复用要用到）
   // 该平台是否偏好 M4A（硅基流动对 WAV 会 500）。MediaRecorder 是实时编码，
   // 因此**单片的编码耗时 ≈ 该片音频时长**。
   const wantsM4a = prefersM4a(platform);
   const useM4a = wantsM4a && canEncodeM4a();
-
-  // 原始音轨复用没做时，**明确说明为什么** —— 否则用户只看到
-  // 「下载完成 62MB」然后失败，完全不知道本来可以走更快的路。
-  if (asr.reuseOriginalAudio === false) {
-    if (onLog) onLog('未复用原始音轨：设置里关掉了「优先复用 B 站原始音轨」');
-  } else if (audioFormatFor(platform) === 'wav') {
-    if (onLog) onLog(`未复用原始音轨：当前模型（${platform ? platform.model : ''}）要求 WAV，必须解码重编码`);
-  } else if (!audio.initRange || !audio.indexRange) {
-    if (onLog) {
-      onLog(
-        `未复用原始音轨：这条候选没有 SegmentBase 索引` +
-          `（initRange=${audio.initRange || '无'} indexRange=${audio.indexRange || '无'}，来源 ${audio.source}）`
-      );
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // 【最优路径】直接复用 B 站**原始 AAC 音轨**
-  // ------------------------------------------------------------------
-  //
-  // 为什么放在这里：用户实测「时间大头在下载和上传」。
-  // B 站自己的音轨是 ~41kbps AAC，974 秒的片子只有 **2.4MB**，
-  // 而 WAV 16kHz 单声道要 **29.7MB**（体积降到 8%）。
-  // 按 sidx 索引只取需要的字节段 → 连「整段下载 + 解码 + 重编码」全免。
-  //
-  // 位置说明：必须放在「下载」之前才有效（否则下载已经花掉了）；
-  // 又必须在 concurrency / timeoutSeconds 之后（下面的识别循环要用）。
-  //
-  // 前提：模型接受 mp4/AAC。WAV-only 模型（XingChen 等）不能走这条路。
-  // 任何环节失败都**静默回退**到原来的「下载 → 解码 → 重编码」路径。
-  if (
-    asr.reuseOriginalAudio !== false &&
-    audioFormatFor(platform) !== 'wav' &&
-    audio.initRange &&
-    audio.indexRange &&
-    dl &&
-    dl.bytes &&
-    dl.bytes.length
-  ) {
-    try {
-      const aacMod = await import('./aac.js');
-      report(42, '检查能否复用 B 站原始 AAC 音轨');
-      const fetched = await aacMod.assembleOriginalAac(audio, {
-        // 音轨 CDN 校验 Referer，必须走页面主环境代取
-        fetcher: (u, start, end) =>
-          call('page.call', { name: 'fetchAudioRange', params: { url: u, start, end } }, { timeoutMs: 120000 }),
-        signal,
-        targetSeconds: Number(asr.sliceSeconds) || ASR_LIMITS.defaultSliceSeconds,
-        maxBytesMB: Number(asr.sizeLimitMB) || ASR_LIMITS.defaultSizeLimitMB,
-        onProgress: (pct, detail) => report(42 + (pct / 100) * 8, `复用原始音轨：${detail}`)
-      });
-      if (fetched && fetched.ok && fetched.slices && fetched.slices.length) {
-        const { slices, meta } = fetched;
-        const saved = meta.wavBytes ? (100 - (meta.totalBytes / meta.wavBytes) * 100).toFixed(0) : null;
-        if (onLog) {
-          onLog(
-            `复用 B 站原始音轨（${meta.codecs || 'AAC'}，${Math.round((meta.bandwidth || 0) / 1000)}kbps）：` +
-              `${slices.length} 片，共 ${(meta.totalBytes / 1024 / 1024).toFixed(2)}MB` +
-              (saved ? `；若用 WAV 需 ${(meta.wavBytes / 1024 / 1024).toFixed(1)}MB，省 ${saved}%` : '') +
-              '。不解码、不重编码、不整段下载。'
-          );
-        }
-        report(52, `识别中（原始音轨 ${slices.length} 片）`);
-        let aacDone = 0;
-        const rawAac = await runPool(
-          slices,
-          concurrency,
-          async (sl, idx) => {
-            throwIfAborted(signal);
-            const filename = `slice-${String(idx + 1).padStart(3, '0')}.m4a`;
-            const res = await callAsr(platform, sl.bytes, { timeoutMs: timeoutSeconds * 1000, signal, filename });
-            aacDone += 1;
-            report(52 + (aacDone / slices.length) * 42, `识别中 ${aacDone}/${slices.length}`);
-            return { idx, slice: { start: sl.from, end: sl.to }, result: res };
-          },
-          signal
-        );
-        const out = assembleRemuxOutcome({
-          rawResults: rawAac,
-          base: { slices: slices.length, sliceSeconds: meta.sliceSeconds || 0 },
-          platform,
-          durationSeconds: video.duration || meta.duration || 0,
-          bytes: meta.totalBytes
-        });
-        if (out.lines && out.lines.length) {
-          report(100, '转录完成');
-          out.meta.transport = 'original-aac-reuse';
-          out.meta.concurrency = concurrency;
-          out.meta.audioSavedRatio = meta.wavBytes ? 1 - meta.totalBytes / meta.wavBytes : null;
-          return out;
-        }
-        if (onLog) onLog('原始音轨识别结果为空，回退到解码路径');
-      } else if (onLog) {
-        onLog(`原始音轨复用不可用（${(fetched && fetched.reason) || '未知原因'}），回退到解码 + 重编码路径`);
-      }
-    } catch (err) {
-      if (err && err.name === 'AbortError') throw err;
-      if (onLog) onLog(`原始音轨复用失败（${(err && err.message) || err}），回退到解码 + 重编码路径`);
-    }
-  }
 
   // ------------------------------------------------------------------
   // 预先并发编码（关键提速点）

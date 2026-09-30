@@ -400,16 +400,23 @@ export async function toMono16k(audioBuffer, opts = {}) {
   const target = ASR_LIMITS.targetRate;
   const seconds = audioBuffer.duration;
   if (onProgress) onProgress({ stage: 'resample', percent: 0 });
-  // 先混合为单声道
-  const mono = audioBuffer.numberOfChannels > 1 ? mixToMono(audioBuffer) : audioBuffer.getChannelData(0);
 
+  // 内存优化（关键）：**不要再单独复制一份 mono**。
+  //
+  // 以前的写法：
+  //   const mono = mixToMono(audioBuffer);            // ← 1318MB（2 小时）
+  //   const tmp = off.createBuffer(...); tmp.copyToChannel(mono, 0);  // ← 又 1318MB
+  // 加上解码后的 2637MB，光重采样阶段就 5GB 以上。
+  //
+  // 现在把「混单声道」直接写进 OfflineAudioContext 的输入缓冲，
+  // 省掉中间那份 mono —— 2 小时视频少占约 1.3GB。
   if (typeof OfflineAudioContext === 'function') {
     try {
       const length = Math.max(1, Math.ceil(seconds * target));
       const off = new OfflineAudioContext(1, length, target);
       const src = off.createBufferSource();
-      const tmp = off.createBuffer(1, mono.length, audioBuffer.sampleRate);
-      tmp.copyToChannel(mono, 0);
+      const tmp = off.createBuffer(1, audioBuffer.length, audioBuffer.sampleRate);
+      mixToMonoInto(audioBuffer, tmp.getChannelData(0));
       src.buffer = tmp;
       src.connect(off.destination);
       src.start();
@@ -420,6 +427,8 @@ export async function toMono16k(audioBuffer, opts = {}) {
       /* 落到手写重采样 */
     }
   }
+  // 手写重采样兜底（此时才需要一份 mono）
+  const mono = audioBuffer.numberOfChannels > 1 ? mixToMono(audioBuffer) : audioBuffer.getChannelData(0);
   const ratio = audioBuffer.sampleRate / target;
   const outLen = Math.max(1, Math.floor(mono.length / ratio));
   const out = new Float32Array(outLen);
@@ -435,14 +444,22 @@ export async function toMono16k(audioBuffer, opts = {}) {
 }
 
 function mixToMono(audioBuffer) {
-  const n = audioBuffer.length;
-  const out = new Float32Array(n);
-  const chs = Math.min(2, audioBuffer.numberOfChannels);
-  for (let c = 0; c < chs; c += 1) {
-    const d = audioBuffer.getChannelData(c);
-    for (let i = 0; i < n; i += 1) out[i] += d[i] / chs;
-  }
+  const out = new Float32Array(audioBuffer.length);
+  mixToMonoInto(audioBuffer, out);
   return out;
+}
+
+// 把多声道混成单声道写入**已有的**目标数组（不额外分配）
+function mixToMonoInto(audioBuffer, dst) {
+  const n = audioBuffer.length;
+  const chs = Math.min(2, audioBuffer.numberOfChannels);
+  if (chs <= 1) {
+    dst.set(audioBuffer.getChannelData(0));
+    return;
+  }
+  const a = audioBuffer.getChannelData(0);
+  const b = audioBuffer.getChannelData(1);
+  for (let i = 0; i < n; i += 1) dst[i] = (a[i] + b[i]) / 2;
 }
 
 // ---------------------------------------------------------------------------
