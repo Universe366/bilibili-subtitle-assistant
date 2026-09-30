@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.53.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.54.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -449,6 +449,27 @@ async function main() {
     check('getAudioCandidates 也等身份稳定', /const settled = await waitForStableIdentity\(wantSig\);/.test(bridgeSrc), '');
     check('音轨用稳定身份的 cid 去采集', /cid: ident\.cid \|\| params\.cid/.test(bridgeSrc), '');
     check('音轨采集后再复核一次身份', /采集期间身份从/.test(bridgeSrc), '');
+
+    // ---- 音轨归属：不再给页面全局贴我们自己的 cid ----
+    //
+    // 用户报「识别出来了，但识别的是推荐视频」。
+    // 根因：__playinfo__ / __INITIAL_STATE__.dash / 播放器 API 在单页应用
+    // 切换后可能仍是上一个视频的，而旧代码用 currentCid() 给它们打标，
+    // 于是"看着匹配"、被采用、转录出别的视频的内容。
+    check('音轨候选带 verified 标记', /verified: !!verified/.test(bridgeSrc), '');
+    check('主动请求 playurl 的候选标为 verified', /push\(fresh\.audio, 'playurl-api（已验证）', identityCid, true\)/.test(bridgeSrc), '');
+    check('__playinfo__ 用自身 cid 而非 currentCid', /push\(pi\.audio, pi\.source, pi\.cid, false\)/.test(bridgeSrc), '');
+    check(
+      '__INITIAL_STATE__ 用自身 cid（不再贴 currentCid）',
+      /const stCid = \(st && st\.videoData && st\.videoData\.cid\)/.test(bridgeSrc) &&
+        /push\(dash\.audio, '__INITIAL_STATE__', stCid, false\)/.test(bridgeSrc),
+      ''
+    );
+    check('播放器 API 候选不作验证', /push\(player\.getAudioTracks\(\), 'player\.getAudioTracks', currentCid\(\), false\)/.test(bridgeSrc), '');
+    check('有可信来源时只用可信来源', /owned\.push\(\.\.\.verifiedCands\);/.test(bridgeSrc), '');
+    check('无 cid 的候选不再宽松放行（有 wantCid 时）', /if \(cid && cid === wantCid\) unverifiedCands\.push\(c\);/.test(bridgeSrc), '');
+    check('对外报告是否用了可信来源', /usingVerifiedSource: usingVerified/.test(bridgeSrc), '');
+    check('collectAudioCandidates 接收身份参数', /async function collectAudioCandidates\(ident = \{\}\)/.test(bridgeSrc), '');
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');

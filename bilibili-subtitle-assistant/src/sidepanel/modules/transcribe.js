@@ -166,6 +166,18 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
     candidates = (out && out.candidates) || [];
     audioDiag = (out && out.diag) || null;
     audioError = (out && out.diag && out.diag.bridgeError) || null;
+    // 音轨来源是否可信（由页面侧报告：是否来自「带我们的 aid/bvid/cid
+    // 主动请求 playurl」）。不可信时依然会用，但要在日志里说清楚 ——
+    // 用户报过「识别出来了，但识别的是推荐视频」，这就是线索。
+    if (onLog && out && out.usingVerifiedSource === false) {
+      onLog(
+        '⚠ 未能从接口取到可信音轨，只能使用页面已有的音轨地址；' +
+          '如果页面刚切换过视频，这段音轨可能属于上一个视频。'
+      );
+    }
+    if (onLog && out && out.usingVerifiedSource === true) {
+      onLog('音轨来源：已用当前视频的 aid/cid 重新向接口请求（可信）');
+    }
     if (onLog && out && out.foreignCandidates && out.foreignCandidates.length) {
       onLog(
         `已排除 ${out.foreignCandidates.length} 条不属于当前视频的音轨候选` +

@@ -1480,7 +1480,7 @@
         // blob:/data: 是 MSE 或内联数据，不是可下载的音轨地址
         if (!src || /^(blob:|data:|mediasource:)/i.test(src)) continue;
         if (!/bilivideo|akamaized|hdslb|\.m4s|\.mp3|\.m4a|audio/i.test(src)) continue;
-        push([{ base_url: src, bandwidth: 0, mime_type: '' }], 'media-element', currentCid());
+        push([{ base_url: src, bandwidth: 0, mime_type: '' }], 'media-element', currentCid(), false);
         n += 1;
       }
     } catch (err) {
@@ -1489,10 +1489,17 @@
     return n;
   }
 
-  function collectAudioCandidates() {
+  // 收集音轨候选。
+  //
+  // `ident` = { aid, bvid, cid }：**当前身份**。用它主动请求 playurl，
+  // 得到唯一可验证的音轨来源；页面全局只作兜底，且**不再被贴我们的 cid**。
+  async function collectAudioCandidates(ident = {}) {
+    const identityAid = ident.aid;
+    const identityBvid = ident.bvid;
+    const identityCid = ident.cid;
     const out = [];
     const seen = new Set();
-    const push = (list, source, cid) => {
+    const push = (list, source, cid, verified) => {
       for (const item of list || []) {
         const url = item.base_url || item.baseUrl || item.url || '';
         if (!url || seen.has(url)) continue;
@@ -1510,17 +1517,50 @@
           indexRange: item.index_range || item.indexRange || (sb && (sb.indexRange || sb.index_range)) || null,
           backupUrl: item.backup_url || item.backupUrl || null,
           source,
-          cid: cid || null
+          cid: cid || null,
+          // verified：这条音轨**确实是为「当前身份」向 B 站要来的**。
+          // 只有「主动调用 playurl 接口（带上我们的 aid/bvid/cid）」才为 true ——
+          // 那种情况下响应与身份一一对应，可验证。
+          verified: !!verified
         });
       }
     };
-    // ① 嗅探到的最新 playurl 响应（最鲜）
+    // ---- ①【可信来源】主动调用 playurl 接口 ----
+    //
+    // 这是唯一**可验证**的来源：请求里带的 aid/bvid/cid 就是「当前身份」，
+    // 于是响应必然属于那个视频。
+    //
+    // 必须放在最前面并优先使用。之前它是兜底的（页面读不到才用），
+    // 结果最常用的反而是不可信的那些 —— 用户报的
+    // 「识别出来了，但识别的是推荐视频」就是这么来的：
+    // 页面全局（__playinfo__ / __INITIAL_STATE__.dash / 播放器 API）
+    // 在单页应用切换后可能仍是**上一个视频**的，
+    // 而它们要么自带旧 cid（被过滤掉）、要么被我们**贴上当前 cid**
+    // （于是看着"匹配"，实际是别的视频）。
+    let verifiedList = [];
+    if (identityCid) {
+      try {
+        const fresh = await refreshAudioUrl(identityAid, identityBvid, identityCid);
+        if (fresh && fresh.ok && fresh.audio && fresh.audio.length) {
+          const before = out.length;
+          push(fresh.audio, 'playurl-api（已验证）', identityCid, true);
+          verifiedList = out.slice(before);
+        }
+      } catch (err) {
+        /* 落到页面全局 */
+      }
+    }
+
+    // ---- ② 页面全局（**不可信**，只在拿不到可信来源时才用）----
+    //
+    // 关键：**绝不**给它们贴当前 cid。能自证 cid 的就用它的 cid，
+    // 不能自证的一律标 null —— 宁可在后面被过滤掉，也不能假匹配。
     const sniffed = Array.from(audioSniff.items.values()).sort((a, b) => b.at - a.at);
-    for (const s of sniffed) push(s.audio, `playurl-sniff(${s.url.includes('wbi') ? 'wbi' : 'plain'})`, s.cid);
-    // ② __playinfo__
+    for (const s of sniffed) push(s.audio, `playurl-sniff(${s.url.includes('wbi') ? 'wbi' : 'plain'})`, s.cid, false);
+    // __playinfo__：它是页面级全局，SPA 切换后**不会被清掉**；
+    // 但它自带 data.cid，可以自证，所以照实用它自己的 cid。
     const pi = readPlayinfoAudio();
-    if (pi) push(pi.audio, pi.source, pi.cid);
-    // ③ initialState / 播放器 API
+    if (pi) push(pi.audio, pi.source, pi.cid, false);
     try {
       const st = initialState();
       const dash =
@@ -1528,14 +1568,18 @@
         (st && st.videoInfo && st.videoInfo.dash) ||
         (st && st.dash) ||
         null;
-      if (dash) push(dash.audio, '__INITIAL_STATE__', currentCid());
+      // ★ 这里以前写的是 currentCid() —— 那是**用我们自己的身份去标注
+      //   一段可能属于别的视频的数据**，于是假匹配、被采用、转录出错内容。
+      //   现在改用 initialState 自身的 cid 自证。
+      const stCid = (st && st.videoData && st.videoData.cid) || (st && st.cid) || null;
+      if (dash) push(dash.audio, '__INITIAL_STATE__', stCid, false);
     } catch (err) {
       /* ignore */
     }
     const player = getPlayer();
     try {
       if (player && typeof player.getAudioTracks === 'function') {
-        push(player.getAudioTracks(), 'player.getAudioTracks', currentCid());
+        push(player.getAudioTracks(), 'player.getAudioTracks', currentCid(), false);
       }
     } catch (err) {
       /* ignore */
@@ -1549,7 +1593,9 @@
   // 或者嗅探还没命中），就主动向 playurl 接口要一次——这样「语音转录」
   // 不会因为页面刚好没有缓存就失败。
   async function collectAudioCandidatesWithRefresh(hint = {}) {
-    let list = collectAudioCandidates();
+    // 身份从 hint 里取（调用方传的是「已稳定的那个身份」）
+    const ident = { aid: hint.aid, bvid: hint.bvid, cid: hint.cid };
+    let list = await collectAudioCandidates(ident);
     const diag = {
       hint,
       pageInfo: null,
@@ -1578,7 +1624,7 @@
       };
       diag.stages.push({ stage: '主动刷新 playurl', ok: diag.refreshed.ok, code: diag.refreshed.code, message: diag.refreshed.message, count: diag.refreshed.count });
       LOG('刷新结果', fresh && fresh.ok, fresh && fresh.message, fresh && (fresh.audio || []).length);
-      if (fresh && fresh.ok) list = collectAudioCandidates();
+      if (fresh && fresh.ok) list = await collectAudioCandidates(ident);
       diag.stages.push({ stage: '刷新后候选', count: list.length });
     } catch (err) {
       diag.stages.push({ stage: '刷新抛错', error: String((err && err.message) || err) });
@@ -1908,25 +1954,42 @@
       const { list, diag } = await collectAudioCandidatesWithRefresh({ ...params, cid: ident.cid || params.cid });
       // ---- 归属绑定：只保留**属于被请求那个视频**的音轨 ----
       //
-      // 与字幕同样的毛病：音轨候选来自页面各处（嗅探到的 playurl、
-      // __playinfo__、initialState、播放器 API），而这些地方在单页应用
-      // 切视频时都可能是**上一个视频**的。用户报的
-      // 「视频显示是对的，但转录出来不是当前视频」正是这条路径。
+      // 用户报「识别出来了，但识别的是推荐视频」。根因是音轨候选来自
+      // 页面全局（__playinfo__ / __INITIAL_STATE__.dash / 播放器 API），
+      // 而这些在单页应用切换后可能仍是**上一个视频**的；
+      // 更糟的是旧代码会给它们**贴上我们的 cid**，于是"看着匹配"、
+      // 被采用、转录出别的视频的内容。
       //
-      // 每个候选在采集时都记了它来自哪个 cid（push 的第三个参数），
-      // 所以这里能确定性过滤，不需要猜。
+      // 现在的规则分两级：
+      //   ① verified（主动用我们的 aid/bvid/cid 调 playurl 得到的）
+      //      —— 响应与身份一一对应，**最可信，优先全部采用**
+      //   ② 其余页面全局 —— 只有 cid **明确等于** wantCid 才采用；
+      //      没有 cid 或 cid 不符的一律排除（不再"宽松放行"）
       const wantCid = params.cid == null ? null : String(params.cid);
-      let owned = list;
       const foreign = [];
-      if (wantCid) {
-        owned = [];
-        for (const c of list) {
-          const cid = c && c.cid != null ? String(c.cid) : '';
-          // 没记 cid 的无法判断 → 放行（宁可放过不可误杀）
-          if (!cid || cid === wantCid) owned.push(c);
-          else foreign.push({ cid, source: c.source, url: String(c.url || '').slice(0, 100) });
+      const owned = [];
+      const verifiedCands = [];
+      const unverifiedCands = [];
+      for (const c of list) {
+        const cid = c && c.cid != null ? String(c.cid) : '';
+        if (c && c.verified) {
+          verifiedCands.push(c);
+          continue;
         }
+        if (!wantCid) {
+          unverifiedCands.push(c);
+          continue;
+        }
+        if (cid && cid === wantCid) unverifiedCands.push(c);
+        else foreign.push({ cid: cid || '(无)', source: c.source, url: String(c.url || '').slice(0, 100) });
       }
+      // 有可信来源就**只用**可信来源 —— 页面全局一个都不掺
+      if (verifiedCands.length) {
+        owned.push(...verifiedCands);
+      } else {
+        owned.push(...unverifiedCands);
+      }
+      const usingVerified = verifiedCands.length > 0;
       // 优先非 mirrorcos 节点（该节点最容易 403），其次带宽低的（体积小）
       const hostRank = (u) => {
         if (/mirrorcos/i.test(u)) return 2;
@@ -1953,7 +2016,9 @@
       return {
         ok: owned.length > 0,
         candidates: owned,
-        // 被判定为其它视频的候选，供诊断
+        // 是否全部来自「主动请求 playurl 且与身份一一对应」的可信来源
+        usingVerifiedSource: usingVerified,
+        // 被排除的候选（来自别的视频），供诊断
         foreignCandidates: foreign,
         sniffed: audioSniff.items.size,
         identity: after,
@@ -2039,7 +2104,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.53.0',
+    version: '1.54.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
