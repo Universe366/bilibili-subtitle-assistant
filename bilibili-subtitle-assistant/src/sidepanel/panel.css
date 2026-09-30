@@ -1969,12 +1969,23 @@ mark.hit {
      所以这里额外开了 .menu-safe 放开裁剪（见文件末尾）。*/
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  /*
+   * 必须**左对齐**触发器，不能右对齐。
+   * 触发器只有 ~32px（「⋯」很窄），而面板至少 190px；
+   * 若 `right: 0`，面板会一路伸到触发器左侧之外 ——
+   * 实测面板 left = -32px，于是左边的图标还能看到、
+   * 右边的文字被推出视口，看起来就是「按钮没有名称」。
+   */
+  left: 0;
+  right: auto;
   z-index: 2147483000;
   min-width: 190px;
-  max-width: min(280px, 92vw);
+  max-width: min(260px, calc(100vw - 16px));
   max-height: 60vh;
   overflow-y: auto;
+  overflow-x: hidden;
+  /* 让 1px 边框与 4px 内边距算进宽度，避免撑出容器 */
+  box-sizing: border-box;
   padding: 4px;
   border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
   border-radius: 8px;
@@ -2113,4 +2124,13 @@ mark.hit {
 .pane-body,
 .list {
   overflow-y: auto;
+}
+
+
+/* 极窄的侧边栏（<240px）：允许面板收缩到视口宽度，否则 190px 的
+   最小宽度会把它顶出屏幕 —— 靠左靠右都放不下。 */
+@media (max-width: 240px) {
+  .menu-panel {
+    min-width: 0;
+  }
 }

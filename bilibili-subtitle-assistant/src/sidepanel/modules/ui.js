@@ -51,11 +51,39 @@ export function popoverMenu(items, opts = {}) {
       trigger.focus();
     }
   };
+
+  // 把面板**夹进视口**。
+  //
+  // 只靠「左对齐 / 右对齐」不够：触发器在工具栏里可能靠右，
+  // 而面板比它宽得多，两边对齐都可能越界。
+  // 实测 320px 视口下：左对齐 → 右边缘 316（差一点点）、右对齐 → left=-32（越界）。
+  //
+  // 注意坐标系：`panel.style.left` 是相对**定位祖先**（.menu-wrap）的，
+  // 而 getBoundingClientRect() 是相对视口的 —— 两者必须换算，
+  // 否则会整体偏移一个 wrap.left（这个坑我踩了一次）。
+  const align = () => {
+    const pw = panel.offsetWidth || 0;
+    if (!pw) return;
+    const vw = window.innerWidth || 360;
+    const wrapRect = wrap.getBoundingClientRect();
+    const r = trigger.getBoundingClientRect();
+    // 默认让面板左边与触发器左边对齐（相对视口）
+    let viewportLeft = r.left;
+    // 夹进视口，留 8px 边距
+    const maxLeft = vw - pw - 8;
+    if (viewportLeft > maxLeft) viewportLeft = maxLeft;
+    if (viewportLeft < 8) viewportLeft = 8;
+    // 换算成相对 wrap 的偏移；wrap 本身是 position:relative
+    panel.style.left = `${Math.round(viewportLeft - wrapRect.left)}px`;
+    panel.style.right = 'auto';
+  };
+
   const openMenu = () => {
     if (open) return;
     open = true;
     wrap.setAttribute('data-open', 'true');
     setTimeout(() => {
+      align();
       document.addEventListener('pointerdown', onDocDown, true);
       document.addEventListener('keydown', onKey, true);
       window.addEventListener('resize', close, true);

@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.39.0', contentVersion: '1.39.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.40.0', contentVersion: '1.40.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.39.0', stale: false }],
-    contentVersion: '1.39.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.40.0', stale: false }],
+    contentVersion: '1.40.0'
   },
   diagnostics: {
-    extensionVersion: '1.39.0',
-    contentVersion: '1.39.0',
+    extensionVersion: '1.40.0',
+    contentVersion: '1.40.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.39.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.40.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.39\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.40\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -951,6 +951,18 @@ async function main() {
       // 面板留在 wrap 内做绝对定位（挂 body 会被「点外部」判定误伤触发器）
       const panelEl = wrap.querySelector('.menu-panel');
       check('菜单面板在 wrap 内（触发器不会被误判为外部）', !!panelEl && panelEl.parentNode === wrap, panelEl ? panelEl.parentNode && panelEl.parentNode.tagName : 'null');
+
+      // 定位回归：jsdom 不做布局，所以这里用**计算样式**兜住这次的坑。
+      // 历史问题：`right: 0` 让 190px 的面板相对 32px 的触发器向右对齐，
+      // 面板一路伸到触发器左侧之外（真实浏览器实测 left = -32px），
+      // 表现为「能看到图标、看不到文字」。
+      {
+        const cs = window.getComputedStyle(panelEl);
+        check('菜单面板左对齐触发器（不能用 right 定位）', cs.left === '0px' && (cs.right === 'auto' || cs.right === ''), `left=${cs.left} right=${cs.right}`);
+        check('菜单面板用 border-box（宽度不被 padding 撑大）', cs.boxSizing === 'border-box', cs.boxSizing);
+        check('菜单面板限制最大宽度', cs.maxWidth !== 'none' && /\d/.test(cs.maxWidth), cs.maxWidth);
+        check('菜单面板禁止横向溢出', cs.overflowX === 'hidden', cs.overflowX);
+      }
       const items = panelEl.querySelectorAll('.menu-item');
       check('菜单渲染出 3 个条目', items.length === 3, String(items.length));
       check('菜单有分隔线', !!panelEl.querySelector('.menu-divider'), '');
