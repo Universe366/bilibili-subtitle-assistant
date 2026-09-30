@@ -7,7 +7,7 @@ import { app, showError, saveHistory, doProviderSearch, doEngineSearch, recountC
 import { renderMarkdownInto, renderInline } from './markdown.js';
 import { selectContext, linesToTranscript } from './subtitles.js';
 import { searchContextBlockGuarded, engineLabel } from './search.js';
-import { Stream } from './bridge.js';
+import { Stream, call } from './bridge.js';
 import { promptDialog } from './ui.js';
 
 const SUGGESTIONS = [
@@ -768,6 +768,47 @@ export function searchCapabilityOf(settings) {
   };
 }
 
+// 判断「这个问题值不值得联网检索」。
+//
+// 除了时效/事实类关键词，还专门覆盖两类容易漏掉的提问：
+//   · 用户直接问「你能联网吗 / 帮我查一下」—— 这时他就是要联网，
+//     不搜的话模型只能回答「我查不到」，体验很差
+//   · 要求核实/求证（「对不对」「准确吗」「核实一下」）
+export function needsWebSearch(question) {
+  const q = String(question || '');
+  if (!q.trim()) return false;
+  const recencyOrFact =
+    /最新|最近|现在|目前|今年|今天|今日|昨天|本周|本月|新闻|动态|进展|价格|股价|汇率|多少人|是谁|什么时候|哪一年|几点|为什么|多少|对比|区别|官网|地址|链接|资料|出处|来源/i;
+  if (recencyOrFact.test(q)) return true;
+  // 明确要求检索 / 询问联网能力
+  const asksToSearch = /查一下|搜一下|帮我查|搜索一下|上网查|联网|上网|能不能查|可以查/i;
+  if (asksToSearch.test(q)) return true;
+  // 要求核实 / 求证
+  const asksToVerify = /核实|求证|验证|确认一下|准确吗|对不对|是真的吗|有没有错|事实核查|查证/i;
+  if (asksToVerify.test(q)) return true;
+  return false;
+}
+
+// 为「总结时联网核实」拼检索词。
+//
+// 目标是拿到能验证视频内容的资料，所以用「标题 + 字幕里最像事实的片段」，
+// 而不是整篇字幕（检索词太长反而查不准）。
+export function buildVerifyQuery(st) {
+  const title = String((st.video && st.video.title) || '').trim();
+  const owner = String((st.video && st.video.owner) || '').trim();
+  const lines = st.subtitles || [];
+  // 从字幕里挑最长的几句 —— 通常包含具体的人名、数字、产品名
+  const candidates = lines
+    .map((l) => String(l.text || '').trim())
+    .filter((t) => t.length >= 8)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 2);
+  const parts = [title, owner && !title.includes(owner) ? owner : '', ...candidates].filter(Boolean);
+  // 标题本身就够用时只用标题，避免检索词过长
+  return parts.slice(0, 3).join(' ').slice(0, 120);
+}
+
+// ---------------------------------------------------------------------------
 // 能力自述
 // ---------------------------------------------------------------------------
 
@@ -803,15 +844,28 @@ export function buildCapabilityBlock(info = {}) {
   lines.push('【你当前的能力（这是事实描述；关于「你能不能…」的问题请据此回答，不要凭训练印象否认）】');
 
   // 联网
+  //
+  // 这段措辞必须与**实际行为**一致。之前写「会自动检索网页，结果会附在下面」，
+  // 但检索是按关键词触发的 —— 问题没命中关键词时模型收到空资料，
+  // 只能回一句「系统提示说会附参考资料，但这次并没有」。
+  // 那是我们的提示在撒谎，不是模型出错。
   if (webCapable && searchOn) {
     const channel = hasSearchKey
       ? `已配置检索平台${searchProviderName ? `（${searchProviderName}）` : ''}`
       : '使用免费检索引擎（Bing / AnySearch / Exa，无需 Key）';
-    lines.push(
-      `· 联网检索：**可用**（${channel}）。${
-        alwaysSearch ? '本轮对话已自动检索网页' : '当提问涉及外部信息时（最新、是谁、多少钱、查一下等）会自动检索网页'
-      }，检索结果会作为参考资料附在下面。`
-    );
+    if (searchUsed && searchResultCount > 0) {
+      lines.push(`· 联网检索：**可用**（${channel}），**本轮已经检索过**，${searchResultCount} 条来源见下方参考资料。`);
+    } else if (alwaysSearch) {
+      lines.push(`· 联网检索：**可用**（${channel}），已设为每轮都检索。下方参考资料若为空说明这次检索失败。`);
+    } else {
+      lines.push(
+        `· 联网检索：**可用**（${channel}）。` +
+          '检索是按需触发的：只有提问含外部/时效信息时才自动检索。\n' +
+          '  └ **本轮没有进行检索，所以下面不会有网页资料**。' +
+          '如果确实需要联网，请告诉用户「这需要联网确认」，建议他把问题问得更明确（例如加「查一下」）；' +
+          '否则就基于已有知识回答，并说明可能过时。**绝对不要声称自己查过网页。**'
+      );
+    }
   } else if (webCapable && !searchOn) {
     lines.push('· 联网检索：**用户已关闭**（对话区的 🌐 开关处于关闭状态）。需要时请提示用户打开它。');
   } else {
@@ -822,8 +876,6 @@ export function buildCapabilityBlock(info = {}) {
   }
   if (searchFailNote) {
     lines.push(`  └ 注意：本轮尝试联网但失败了（${searchFailNote}），所以这次没有网页资料可用。`);
-  } else if (searchUsed && searchResultCount) {
-    lines.push(`  └ 本轮已检索到 ${searchResultCount} 条来源，已附在下方「联网检索到的参考资料」里。`);
   }
 
   // 视频字幕
@@ -1003,7 +1055,31 @@ export async function generateSummary() {
   const settings = st.settings;
   const promptText = activePromptText();
   const ctx = selectContext(st.subtitles, '', 40000);
-  const searchBlock = searchContextBlockGuarded(st.search.results || [], st.search.counts);
+
+  // ---- 总结时自动联网核实（参考用户需求：多方求证）----
+  // 之前总结只把「上一次的搜索结果」塞进去 —— 从没主动搜过，
+  // 所以联网核实形同虚设。这里在生成总结前**主动检索一次**，
+  // 检索词取自视频标题 + 字幕里的关键信息。
+  const capSearch = searchCapabilityOf(settings);
+  let searchBlock = '';
+  if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
+    const query = buildVerifyQuery(st);
+    if (query) {
+      try {
+        const out = await doProviderSearch(query);
+        if (out && out.results && out.results.length) {
+          searchBlock = searchContextBlockGuarded(out.results, store.get().search.counts);
+        }
+      } catch (err) {
+        // 核实失败不影响总结本身
+        const detail = (err && err.payload && err.payload.title) || (err && err.message) || '检索失败';
+        toast({ title: '联网核实失败，总结将不含网页资料', detail }, 'warn', 4000);
+      }
+    }
+  } else {
+    // 未核实：沿用已有的搜索结果（可能是用户手动搜过的）
+    searchBlock = searchContextBlockGuarded(st.search.results || [], st.search.counts);
+  }
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);
   // 总结也带上能力自述：用户可能在总结里问「这个结果是联网查的吗」
@@ -1021,12 +1097,44 @@ export async function generateSummary() {
     skillsCount: ((settings.skills && settings.skills.items) || []).length,
     activeSkill: activeSkill ? activeSkill.name : ''
   });
+  // ---- 视频简介 + 热门评论（用户希望总结时结合）----
+  let extraContext = '';
+  if (st.video && settings.summary && settings.summary.useVideoMeta !== false) {
+    const bits = [];
+    const desc = String(st.video.desc || '').trim();
+    if (desc) bits.push(`【视频简介】\n${desc.slice(0, 2000)}`);
+    // 评论按需抓取（失败不影响总结）
+    if (settings.summary.useComments === true && (st.video.aid || st.video.bvid)) {
+      try {
+        const out = await call(
+          'bili.comments',
+          { aid: st.video.aid, bvid: st.video.bvid, pageUrl: st.video.url, limit: 10 },
+          { timeoutMs: 20000 }
+        );
+        if (out && out.ok && out.comments && out.comments.length) {
+          const rows = out.comments.map((c, i) => `${i + 1}. [${c.like}赞] ${c.user}：${c.text}`);
+          bits.push(`【热门评论（供参考，不代表事实）】\n${rows.join('\n')}`);
+        }
+      } catch (err) {
+        /* 评论拿不到就不放 */
+      }
+    }
+    if (bits.length) extraContext = bits.join('\n\n');
+  }
+
   const messages = [
     {
       role: 'system',
       content: [
         activeSkill ? `${promptText}\n\n【当前技能：${activeSkill.name}】\n${activeSkill.body}` : promptText,
-        capBlock
+        capBlock,
+        // 有联网资料时，明确要求「核实而非照抄」
+        searchBlock
+          ? '【本次总结已联网核实】\n下面给了「参考资料」。请用它**校正**字幕里的数据、时间、人名、产品名等事实性内容：\n' +
+            '· 与字幕冲突时，以参考资料为准，并在正文里用 [来源 N] 标注出处\n' +
+            '· 参考资料没有覆盖的内容，保持字幕原样，不要臆测\n' +
+            '· 如果参考资料明确显示字幕里的某个说法是错的，请在文末单独列一条「⚠️ 已更正」说明改了什么'
+          : ''
       ].filter(Boolean).join('\n\n')
     },
     {
@@ -1035,6 +1143,7 @@ export async function generateSummary() {
         st.video ? `视频：${st.video.title || ''}${st.video.partTitle ? ` · ${st.video.partTitle}` : ''}` : '',
         st.video && st.video.owner ? `UP：${st.video.owner}` : '',
         st.video && st.video.duration ? `时长：${fmtTime(st.video.duration)}` : '',
+        extraContext,
         '下面是这期视频的字幕原文：',
         ctx.text,
         searchBlock
@@ -1178,9 +1287,7 @@ export async function sendMessage(text, opts = {}) {
   let searchUsed = false;
   let searchFailNote = '';
   if (settings.search.autoSearchOnChat !== false && question) {
-    const needsWeb = /最新|现在|目前|今年|今天|新闻|价格|多少人|是谁|什么时候|为什么|查一下|搜一下|官网|地址|链接|资料|出处|来源|对比|区别|多少|几点|哪一年/i.test(
-      question
-    );
+    const needsWeb = needsWebSearch(question);
     // 问题里有明显的外部信息需求时，或用户希望每轮都搜时，才真正发起检索
     const shouldSearch = needsWeb || settings.search.alwaysSearchOnChat === true;
     if (shouldSearch && !cap.webCapable) {

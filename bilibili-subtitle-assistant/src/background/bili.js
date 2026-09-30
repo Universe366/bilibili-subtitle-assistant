@@ -216,6 +216,8 @@ export async function fetchSubtitleTracks({ aid, bvid, cid, epId, pageUrl }, opt
           bvid: json.data.bvid,
           cid: json.data.cid,
           title: json.data.title,
+          // 简介：总结时结合它（常含补充说明、时间轴、参考链接）
+          desc: String(json.data.desc || '').trim(),
           owner: json.data.owner && json.data.owner.name,
           duration: json.data.duration,
           pages: (json.data.pages || []).map((p) => ({ index: p.page, cid: p.cid, title: p.part, duration: p.duration }))
@@ -297,4 +299,38 @@ export function extractLines(json) {
       };
     })
     .filter((l) => l.text.length);
+}
+
+
+// 抓取热门评论（用于总结时参考「观众关注什么」）。
+//
+// 走后台的好处：service worker 带扩展的 host 权限，能带 cookie 与 Referer，
+// 而页面主环境反而要处理 CORS。
+// 用非 wbi 的 /x/v2/reply（wbi 版需要签名，这里没必要）。
+//
+// 失败一律返回 ok:false —— 评论只是「锦上添花」，绝不能因为它让总结失败。
+export async function fetchTopComments({ aid, bvid, pageUrl }, opts = {}) {
+  const timeoutMs = opts.timeoutMs || 15000;
+  const limit = Math.max(1, Math.min(20, opts.limit || 10));
+  const oid = aid || bvid;
+  if (!oid) return { ok: false, comments: [], reason: '缺少 aid/bvid' };
+  try {
+    const q = [`oid=${encodeURIComponent(oid)}`, 'type=1', `ps=${limit}`, 'pn=1', 'sort=1', 'nohot=0'];
+    const { json } = await getJson(`https://api.bilibili.com/x/v2/reply?${q.join('&')}`, pageUrl, timeoutMs);
+    if (json.code !== 0 || !json.data) {
+      return { ok: false, comments: [], reason: `code=${json.code} ${json.message || ''}`.trim() };
+    }
+    const replies = json.data.replies || [];
+    const comments = replies
+      .map((r) => ({
+        user: (r.member && r.member.uname) || '',
+        like: Number(r.like) || 0,
+        text: String((r.content && r.content.message) || '').replace(/\s+/g, ' ').trim()
+      }))
+      .filter((c) => c.text)
+      .map((c) => ({ ...c, text: c.text.slice(0, 500) }));
+    return { ok: true, comments, total: Number(json.data.page && json.data.page.count) || comments.length };
+  } catch (err) {
+    return { ok: false, comments: [], reason: (err && err.message) || String(err) };
+  }
 }

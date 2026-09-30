@@ -185,6 +185,30 @@
     return el ? String(el.textContent || '').trim() : '';
   }
 
+  // 视频简介：用户希望总结时能结合它（往往包含补充说明、时间轴、参考链接）
+  function descFromPage() {
+    // ① __INITIAL_STATE__ 里最可靠
+    try {
+      const st = window.__INITIAL_STATE__;
+      const vd = st && (st.videoData || (st.videoInfo && st.videoInfo.videoData));
+      if (vd && typeof vd.desc === 'string' && vd.desc.trim()) return vd.desc.trim();
+      // 番剧
+      const ep = st && st.epInfo;
+      if (ep && typeof ep.desc === 'string' && ep.desc.trim()) return ep.desc.trim();
+    } catch (err) {
+      /* ignore */
+    }
+    // ② DOM 兜底（简介展开后在 .desc-info-text 里）
+    const el =
+      document.querySelector('.desc-info-text') ||
+      document.querySelector('.video-desc') ||
+      document.querySelector('.basic-desc-info') ||
+      document.querySelector('[class*="descInfo"] [class*="content"]') ||
+      null;
+    if (!el) return '';
+    return String(el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 4000);
+  }
+
   function pickBestVideoEl() {
     const list = Array.from(document.querySelectorAll('video'));
     let best = null;
@@ -351,6 +375,7 @@
       parts,
       title: title || document.title || '',
       owner,
+      desc: descFromPage(),
       duration,
       url: location.href,
       signature,
@@ -1590,7 +1615,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.31.0',
+    version: '1.32.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

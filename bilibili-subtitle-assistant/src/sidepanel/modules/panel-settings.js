@@ -1168,7 +1168,42 @@ function searchGroup(d) {
       checkbox(
         d.search.autoSearchOnChat,
         (v) => { d.search.autoSearchOnChat = v; markDirty(); },
-        '对话时自动联网（问题涉及最新/是谁/多少钱等外部信息时自动检索）'
+        '对话时自动联网（问题涉及最新/是谁/多少钱/查一下/核实等外部信息时自动检索）'
+      )
+    );
+
+    // ---- 总结时联网核实 + 视频简介 / 评论 ----
+    body.appendChild(h('div', { class: 'section-title', text: '总结时核实与补充' }));
+    body.appendChild(
+      checkbox(
+        d.search.verifyOnSummary !== false,
+        (v) => { d.search.verifyOnSummary = v; markDirty(); },
+        '生成总结前自动联网核实（用标题+字幕关键句检索，校正字幕里的事实性错误）'
+      )
+    );
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '开启后，生成总结会先检索一次网页，并要求模型：\n' +
+          '· 与字幕冲突时以网页资料为准，并用 [来源 N] 标注出处\n' +
+          '· 资料没覆盖的内容保持原样，不臆测\n' +
+          '· 发现字幕里说法有误时，文末单列一条「⚠️ 已更正」\n' +
+          '代价是每次总结多一次检索（免费引擎通常够用）。'
+      })
+    );
+    body.appendChild(
+      checkbox(
+        (d.summary && d.summary.useVideoMeta) !== false,
+        (v) => { d.summary = d.summary || {}; d.summary.useVideoMeta = v; markDirty(); },
+        '总结时带上视频简介（常含补充说明、时间轴、参考链接）'
+      )
+    );
+    body.appendChild(
+      checkbox(
+        d.summary && d.summary.useComments === true,
+        (v) => { d.summary = d.summary || {}; d.summary.useComments = v; markDirty(); },
+        '总结时带上热门评论（了解观众关注点；多跑一次接口，评论噪声较大，默认关闭）'
       )
     );
     body.appendChild(

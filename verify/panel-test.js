@@ -115,7 +115,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.31.0', contentVersion: '1.31.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.32.0', contentVersion: '1.32.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -136,12 +136,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.31.0', stale: false }],
-    contentVersion: '1.31.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.32.0', stale: false }],
+    contentVersion: '1.32.0'
   },
   diagnostics: {
-    extensionVersion: '1.31.0',
-    contentVersion: '1.31.0',
+    extensionVersion: '1.32.0',
+    contentVersion: '1.32.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -157,7 +157,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.31.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.32.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -229,7 +229,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.31\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.32\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
   check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
@@ -756,6 +756,55 @@ async function main() {
       check('测试桩能取到 bridge 模块', false, 'api.bridgeModule 未挂载');
     }
     window.chrome.runtime.connect = origConnect;
+  }
+
+  // ---- 联网核实 / 简介 / 评论 ----
+  {
+    const mod = api.panelAi;
+
+    // needsWebSearch：必须覆盖「问能不能联网」「要求核实」这类提问
+    const N = mod.needsWebSearch;
+    check('导出了 needsWebSearch', typeof N === 'function', typeof N);
+    if (typeof N === 'function') {
+      // 用户实际遇到的那类提问 —— 之前不匹配关键词，所以没检索，
+      // 模型只能回「系统提示说会附参考资料，但这次没有」
+      check('「你能联网吗」会触发检索', N('你能联网吗') === true, '');
+      check('「你可以上网查资料吗」会触发检索', N('你可以上网查资料吗') === true, '');
+      check('「帮我核实一下」会触发检索', N('帮我核实一下这个说法') === true, '');
+      check('「这个说法准确吗」会触发检索', N('这个说法准确吗') === true, '');
+      check('「查一下」会触发检索', N('查一下 DeepSeek V4') === true, '');
+      check('时效类提问仍然触发', N('今天有什么新闻') === true, '');
+      check('纯寒暄不触发（避免无谓消耗）', N('你好') === false, '');
+      check('空问题不触发', N('') === false && N('   ') === false, '');
+    }
+
+    // buildVerifyQuery：总结核实用的检索词
+    const Q = mod.buildVerifyQuery;
+    check('导出了 buildVerifyQuery', typeof Q === 'function', typeof Q);
+    if (typeof Q === 'function') {
+      const q1 = Q({
+        video: { title: 'DeepSeek V4 深度解析', owner: '某某频道' },
+        subtitles: [
+          { text: '短的' },
+          { text: 'DeepSeek V4 在 2026 年 3 月正式发布，参数量达到 6710 亿' },
+          { text: '它的定价是每百万 token 一元钱，非常便宜' }
+        ]
+      });
+      check('核实检索词含视频标题', /DeepSeek V4 深度解析/.test(q1), q1);
+      check('核实检索词含字幕里的长句（事实密集）', /6710 亿|每百万 token/.test(q1), q1);
+      check('核实检索词不会无限长', q1.length <= 120, `长度 ${q1.length}`);
+      const q2 = Q({ video: {}, subtitles: [] });
+      check('没有标题与字幕时返回空串', q2 === '', JSON.stringify(q2));
+    }
+
+    // 能力自述：未检索时不得承诺「会附参考资料」
+    const B = mod.buildCapabilityBlock;
+    const notSearched = B({ webCapable: true, searchOn: true, searchUsed: false, searchResultCount: 0 });
+    check('未检索时明说「本轮没有进行检索」', /本轮没有进行检索/.test(notSearched), notSearched.slice(0, 240));
+    check('未检索时不承诺「会附在下面」', !/检索结果会作为参考资料附在下面/.test(notSearched), '');
+    check('未检索时要求不得声称查过网页', /绝对不要声称自己查过网页/.test(notSearched), '');
+    const searched = B({ webCapable: true, searchOn: true, searchUsed: true, searchResultCount: 5 });
+    check('已检索时报告来源条数', /本轮已经检索过/.test(searched) && /5 条来源/.test(searched), searched.slice(0, 200));
   }
 
   report(results, errors);

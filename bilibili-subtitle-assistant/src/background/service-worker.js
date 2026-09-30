@@ -925,6 +925,13 @@ const methods = {
     };
   },
 
+  // 热门评论（总结时参考用；失败返回 ok:false，绝不抛错）
+  'bili.comments': async (params) =>
+    BILI.fetchTopComments(
+      { aid: params.aid, bvid: params.bvid, pageUrl: params.pageUrl },
+      { limit: params.limit || 10, timeoutMs: 20000 }
+    ),
+
   'cancel': async (params) => {
     const rec = inflight.get(params.rid);
     if (rec) {

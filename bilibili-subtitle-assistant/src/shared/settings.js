@@ -585,7 +585,16 @@ export function defaultSettings() {
       // 结果缓存时长（分钟，0 = 关闭）。
       // 免费引擎有限流、付费引擎按次计费，缓存能同时缓解两者。
       cacheMinutes: 5,
+      // 生成总结前**主动联网核实**：用视频标题+字幕关键句检索一次，
+      // 把网页资料交给模型去校正字幕里的事实性错误（用户明确要的「多方求证」）。
+      verifyOnSummary: true,
       alwaysVisible: true
+    },
+    // 总结的附加上下文：视频简介、热门评论
+    summary: {
+      useVideoMeta: true,
+      // 评论默认关闭 —— 需要多跑一次接口，且评论区噪声较大，让用户自己决定
+      useComments: false
     },
     exportCfg: {
       format: 'srt',
