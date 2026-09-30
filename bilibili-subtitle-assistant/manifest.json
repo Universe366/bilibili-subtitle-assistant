@@ -3,7 +3,7 @@
   "name": "B站字幕助手",
   "short_name": "字幕助手",
   "description": "B站视频侧边栏字幕抓取、语音转录、AI 总结与对话、导出。所有配置在侧边栏内完成，无 Obsidian 集成。",
-  "version": "1.29.1",
+  "version": "1.30.0",
   "minimum_chrome_version": "116",
   "background": {
     "service_worker": "src/background/service-worker.js",

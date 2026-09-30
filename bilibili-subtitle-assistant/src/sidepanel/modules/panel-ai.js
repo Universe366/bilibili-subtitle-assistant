@@ -335,17 +335,34 @@ function renderInput() {
     class: 'input',
     id: 'chat-input',
     placeholder: (store.get().subtitles || []).length
-      ? '基于这期视频提问…（Ctrl+Enter 发送，可粘贴或拖入图片 / 文本文件）'
-      : '直接提问即可 —— 没有字幕也能聊（可联网、可上传文件、可调用 MCP 工具）',
+      ? '基于这期视频提问…（回车发送，Shift+回车换行）'
+      : '直接提问即可 —— 没有字幕也能聊（回车发送，Shift+回车换行）',
     style: { flex: '1 1 auto', minHeight: '52px' }
   });
+  // 回车发送、Shift+回车换行 —— 这是聊天框的通行习惯。
+  // 之前是「Ctrl+回车发送」，多按一个修饰键，反而不顺手。
   area.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      sendMessage(area.value);
-      area.value = '';
+    if (e.key !== 'Enter') return;
+    // Shift+回车 / Alt+回车 / Ctrl+回车 → 换行（并把 Ctrl+回车保留为兼容）
+    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) {
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+回车：仍然发送（老用户的手感），但也允许 Shift 组合去换行
+        if (!e.shiftKey && !e.altKey) {
+          e.preventDefault();
+          submit();
+        }
+      }
+      return;
     }
+    e.preventDefault();
+    submit();
   });
+  function submit() {
+    const v = area.value;
+    if (!String(v || '').trim()) return;
+    sendMessage(v);
+    area.value = '';
+  }
   area.addEventListener('paste', async (e) => {
     const items = Array.from((e.clipboardData && e.clipboardData.files) || []);
     if (items.length) {
@@ -355,10 +372,7 @@ function renderInput() {
   });
   row.appendChild(area);
   const col = h('div', { class: 'row tight' }, [
-    button('发送', () => {
-      sendMessage(area.value);
-      area.value = '';
-    }, { small: true, primary: true }),
+    button('发送', () => submit(), { small: true, primary: true, title: '回车发送 / Shift+回车换行' }),
     button('停止', () => stopStream(), { small: true, danger: true, disabled: !state.streaming })
   ]);
   row.appendChild(col);
@@ -441,13 +455,31 @@ function buildChatToolbar() {
   );
 
   // 模型切换
+  //
+  // 只列**已配置**的平台（填过 API Key 的）——
+  // 之前把所有内置平台和它们的种子模型都列出来，几十个用不了的条目
+  // 混在一起，等于没有筛选。当前正在用的平台始终保留在列表里，
+  // 否则用户会看到下拉框里选不中自己当前用的模型。
   const platforms = ai.platforms || [];
   const cur = platforms.find((p) => p.id === ai.activeId) || platforms[0];
-  const sel = h('select', { class: 'model-select', title: '切换 AI 平台 / 模型' });
-  for (const p of platforms) {
+  const configured = platforms.filter(
+    (p) => String(p.apiKey || '').trim() || (cur && p.id === cur.id)
+  );
+  const sel = h('select', { class: 'model-select', title: '切换已配置的 AI 平台 / 模型' });
+  if (!configured.length) {
+    const opt = h('option', { value: '', text: '尚未配置任何 AI 平台' });
+    opt.disabled = true;
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
+  for (const p of configured) {
     const models = Array.isArray(p.models) && p.models.length ? p.models : [p.model].filter(Boolean);
+    const hasKey = !!String(p.apiKey || '').trim();
     for (const m of models) {
-      const opt = h('option', { value: `${p.id}::${m}`, text: `${p.id === ai.activeId ? '' : `${p.name} · `}${m}` });
+      const opt = h('option', {
+        value: `${p.id}::${m}`,
+        text: `${p.id === ai.activeId ? '' : `${p.name} · `}${m}${hasKey ? '' : '（未配 Key）'}`
+      });
       if (p.id === (cur && cur.id) && m === (cur && cur.model)) opt.selected = true;
       sel.appendChild(opt);
     }

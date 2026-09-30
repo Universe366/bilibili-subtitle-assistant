@@ -120,76 +120,183 @@ export function call(method, params = {}, opts = {}) {  const timeout = opts.tim
 }
 
 // ---------------------------------------------------------------------------
-// 流式会话（AI 总结 / 对话）
+// 与后台的长连接（流式会话）
 // ---------------------------------------------------------------------------
+//
+// 背景：MV3 的 service worker 空闲约 30 秒会被回收，这是浏览器设计。
+// 早先的实现**每次请求都新建 port、用完就断**，于是几乎每次都会跳出
+// 「与后台的连接已断开：扩展后台已卸载或休眠」—— 其实后台完全正常，
+// 只是那次连接刚好赶上 SW 被回收。
+//
+// 现在：
+//   · **全程复用同一个 port**（模块级单例），不再反复连断
+//   · port 断开时**自动重连**，且正在进行的流会自动重放一次
+//   · 只有重试也用完，才给出一条「能照做」的提示（不再吓人）
+
+const streams = new Map(); // rid -> handler
+
+let sharedPort = null;
+let connecting = false;
+let reconnectTimer = null;
+let reconnectDelay = 300;
+let lastDisconnectAt = 0;
+let consecutiveFailures = 0;
+
+function dispatch(msg) {
+  if (!msg || !msg.rid) return;
+  const fn = streams.get(msg.rid);
+  if (fn) {
+    try {
+      fn(msg);
+    } catch (err) {
+      /* 单个流的处理异常不影响连接本身 */
+    }
+  }
+}
+
+function handleDisconnect() {
+  const hadPort = !!sharedPort;
+  sharedPort = null;
+  connecting = false;
+  lastDisconnectAt = Date.now();
+  if (!hadPort) return;
+  // SW 被回收是正常现象 → 静默重连，不在这里报错
+  scheduleReconnect();
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || connecting) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    const p = ensurePort();
+    if (p) {
+      consecutiveFailures = 0;
+      reconnectDelay = 300;
+    } else {
+      consecutiveFailures += 1;
+      reconnectDelay = Math.min(5000, reconnectDelay * 2);
+      scheduleReconnect();
+    }
+  }, reconnectDelay);
+}
+
+export function ensurePort() {
+  if (sharedPort) return sharedPort;
+  if (connecting) return null;
+  connecting = true;
+  try {
+    const p = chrome.runtime.connect({ name: RPC.PORT_NAME });
+    p.onMessage.addListener(dispatch);
+    p.onDisconnect.addListener(handleDisconnect);
+    sharedPort = p;
+    consecutiveFailures = 0;
+    reconnectDelay = 300;
+  } catch (err) {
+    // 极少见：扩展正在被重载
+    sharedPort = null;
+  } finally {
+    connecting = false;
+  }
+  return sharedPort;
+}
+
+// 供测试与调试查看连接状态
+export function portState() {
+  return { connected: !!sharedPort, failures: consecutiveFailures, lastDisconnectAt };
+}
 
 export class Stream {
   constructor() {
-    this.port = null;
     this.rid = null;
-    this.handlers = new Map();
     this.closed = false;
+    this.handlers = new Map();
+    this.lastSend = null;
+    this.retriesLeft = 1;
   }
 
-  connect() {
-    if (this.port) return this.port;
-    this.port = chrome.runtime.connect({ name: RPC.PORT_NAME });
-    this.port.onMessage.addListener((msg) => {
-      if (!msg || msg.rid !== this.rid) return;
-      const h = this.handlers.get(msg.kind);
-      if (h) h(msg);
+  start(route, params, callbacks = {}) {
+    this.rid = newId();
+    this.closed = false;
+    this.handlers = new Map();
+    this.retriesLeft = 1;
+    if (callbacks.onDelta) this.handlers.set(RPC.KIND_DELTA, (m) => callbacks.onDelta(m.text));
+    if (callbacks.onLog) this.handlers.set(RPC.KIND_LOG, (m) => callbacks.onLog(m.level, m.text));
+    if (callbacks.onProgress) this.handlers.set('stream:progress', (m) => callbacks.onProgress(m.info));
+    if (callbacks.onReplace) this.handlers.set('stream:replace', (m) => callbacks.onReplace(m.text));
+    if (callbacks.onTool) this.handlers.set('stream:tool', (m) => callbacks.onTool(m.event));
+    if (callbacks.onError) this.handlers.set(RPC.KIND_ERROR, (m) => callbacks.onError(m.error));
+    this.handlers.set(RPC.KIND_END, (m) => {
+      if (callbacks.onEnd) callbacks.onEnd(m);
     });
-    this.port.onDisconnect.addListener(() => {
-      this.closed = true;
+
+    const payload = { kind: RPC.KIND_START, rid: this.rid, route, params };
+    this.lastSend = payload;
+    streams.set(this.rid, (m) => this._dispatch(m));
+    this._post(payload);
+    return this.rid;
+  }
+
+  _dispatch(msg) {
+    // 后台被回收导致的中断 → 自动重放一次，用户几乎无感
+    if (msg.kind === RPC.KIND_ERROR && msg.error && msg.error.kind === 'background' && !this.closed) {
+      if (this.retriesLeft > 0 && this.lastSend) {
+        this.retriesLeft -= 1;
+        setTimeout(() => this._post({ ...this.lastSend, rid: this.rid }), 250);
+        return;
+      }
       const h = this.handlers.get(RPC.KIND_ERROR);
       if (h) {
         h({
           kind: RPC.KIND_ERROR,
           error: {
             kind: 'background',
-            title: '与后台的连接已断开',
-            detail: '扩展后台已卸载或休眠。',
-            action: '请刷新侧边栏后重试。'
+            title: '后台暂时无响应',
+            detail: '扩展后台被浏览器回收后重连失败，通常是浏览器正在更新扩展。',
+            action: '如果反复出现，请在 chrome://extensions 点一下本扩展的刷新按钮。'
           }
         });
       }
-    });
-    return this.port;
+      return;
+    }
+    const h = this.handlers.get(msg.kind);
+    if (h) h(msg);
   }
 
-  start(route, params, callbacks = {}) {
-    this.rid = newId();
-    this.handlers = new Map();
-    if (callbacks.onDelta) this.handlers.set(RPC.KIND_DELTA, (m) => callbacks.onDelta(m.text));
-    if (callbacks.onLog) this.handlers.set(RPC.KIND_LOG, (m) => callbacks.onLog(m.level, m.text));
-    if (callbacks.onProgress) this.handlers.set('stream:progress', (m) => callbacks.onProgress(m.info));
-    if (callbacks.onReplace) this.handlers.set('stream:replace', (m) => callbacks.onReplace(m.text));
-    if (callbacks.onError) this.handlers.set(RPC.KIND_ERROR, (m) => callbacks.onError(m.error));
-    this.handlers.set(RPC.KIND_END, () => {
-      if (callbacks.onEnd) callbacks.onEnd();
-    });
-    const port = this.connect();
-    port.postMessage({ kind: RPC.KIND_START, rid: this.rid, route, params });
-    return this.rid;
+  _post(payload) {
+    if (this.closed) return;
+    const p = ensurePort();
+    if (!p) {
+      // 连不上：稍后重试一次
+      setTimeout(() => {
+        if (!this.closed) this._post(payload);
+      }, 500);
+      return;
+    }
+    try {
+      p.postMessage(payload);
+    } catch (err) {
+      // postMessage 抛错说明 port 已失效 → 重连后重放
+      setTimeout(() => {
+        if (!this.closed) this._post(payload);
+      }, 300);
+    }
   }
 
   cancel() {
-    if (this.port && this.rid) {
-      try {
-        this.port.postMessage({ kind: 'stream:cancel', rid: this.rid });
-      } catch (err) {
-        /* ignore */
-      }
+    if (!this.rid) return;
+    try {
+      const p = ensurePort();
+      if (p) p.postMessage({ kind: 'stream:cancel', rid: this.rid });
+    } catch (err) {
+      /* ignore */
     }
   }
 
   close() {
-    try {
-      this.port && this.port.disconnect();
-    } catch (err) {
-      /* ignore */
-    }
-    this.port = null;
+    this.closed = true;
+    if (this.rid) streams.delete(this.rid);
+    // 注意：**不断开共享 port** —— 反复连断正是 SW 频繁唤醒与
+    // 「连接已断开」提示的根源。
   }
 }
 

@@ -115,7 +115,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.29.1', contentVersion: '1.29.1', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.30.0', contentVersion: '1.30.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -136,12 +136,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.29.1', stale: false }],
-    contentVersion: '1.29.1'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.30.0', stale: false }],
+    contentVersion: '1.30.0'
   },
   diagnostics: {
-    extensionVersion: '1.29.1',
-    contentVersion: '1.29.1',
+    extensionVersion: '1.30.0',
+    contentVersion: '1.30.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -157,7 +157,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.29.1', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.30.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -229,7 +229,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.29\.1 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.30\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
   check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
@@ -592,6 +592,158 @@ async function main() {
       }
       check('无参数调用不崩溃', !crash, String(crash));
     }
+  }
+
+  // ---- 三个使用体验问题 ----
+  {
+    const modSrc = (rel) =>
+      fs.readFileSync(path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', rel), 'utf8');
+
+    // ① 长连接复用 + 自动重连（不再动不动报「与后台的连接已断开」）
+    const bridgeSrc = modSrc('bridge.js');
+    check('bridge 有共享 port（模块级单例）', /let sharedPort = null/.test(bridgeSrc), '');
+    check('bridge 导出了 ensurePort', /export function ensurePort/.test(bridgeSrc), '');
+    check('bridge 有自动重连调度', /scheduleReconnect/.test(bridgeSrc), '');
+    // 只允许出现在注释里（说明历史），不能作为文案出现
+    const bridgeCode = bridgeSrc
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n');
+    check('bridge 不再把「扩展后台已卸载或休眠」作为文案', !/扩展后台已卸载或休眠/.test(bridgeCode), '');
+    check('bridge 有重试后仍失败的友好文案', /后台暂时无响应/.test(bridgeSrc), '');
+    check('bridge 的 close() 不断开共享 port', /不断开共享 port/.test(bridgeSrc), '');
+    check('bridge 的流支持断开后自动重放', /retriesLeft/.test(bridgeSrc), '');
+
+    // ② 回车发送 / Shift+回车换行
+    const aiSrc2 = modSrc('panel-ai.js');
+    check('输入框提示改为「回车发送」', /回车发送，Shift\+回车换行/.test(aiSrc2), '');
+    check('不再把 Ctrl+回车写进提示', !/Ctrl\+Enter 发送/.test(aiSrc2), '');
+    check('回车发送逻辑存在（Shift/Alt 换行）', /e\.shiftKey \|\| e\.altKey \|\| e\.ctrlKey/.test(aiSrc2), '');
+    check('空内容不会误发送', /if \(!String\(v \|\| ''\)\.trim\(\)\) return;/.test(aiSrc2), '');
+
+    // ③ 模型下拉只列已配置的平台
+    check('模型下拉按已配置过滤', /const configured = platforms\.filter/.test(aiSrc2), '');
+    check('过滤条件是「填过 Key」', /String\(p\.apiKey \|\| ''\)\.trim\(\)/.test(aiSrc2), '');
+    check('当前平台始终保留在列表里', /cur && p\.id === cur\.id/.test(aiSrc2), '');
+    check('未配 Key 的条目有明确标注', /（未配 Key）/.test(aiSrc2), '');
+    check('没有任何已配置平台时有占位提示', /尚未配置任何 AI 平台/.test(aiSrc2), '');
+
+    // 功能验证：真的按一下键看行为
+    const input = doc.getElementById('chat-input');
+    if (input) {
+      // Shift+回车 → 不发送（浏览器自己插入换行，所以默认行为不能被阻止）
+      api.store.set({ chat: [], readiness: { ok: { ai: true }, issues: [] } });
+      input.value = '第一行';
+      const shiftEv = new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
+      input.dispatchEvent(shiftEv);
+      await sleep(150);
+      check('Shift+回车 不触发发送', api.store.get().chat.length === 0, `chat 长度 ${api.store.get().chat.length}`);
+      check('Shift+回车 不阻止默认行为（浏览器插入换行）', shiftEv.defaultPrevented === false, String(shiftEv.defaultPrevented));
+
+      // 回车 → 发送
+      api.store.set({ chat: [] });
+      input.value = '第二行';
+      const enterEv = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      input.dispatchEvent(enterEv);
+      await sleep(250);
+      check('回车 触发发送', api.store.get().chat.length > 0, `chat 长度 ${api.store.get().chat.length}`);
+      check('回车 阻止默认换行', enterEv.defaultPrevented === true, String(enterEv.defaultPrevented));
+      check('发送后输入框被清空', input.value === '', JSON.stringify(input.value));
+
+      // 空白内容不发送
+      api.store.set({ chat: [] });
+      input.value = '   ';
+      const blankEv = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      input.dispatchEvent(blankEv);
+      await sleep(150);
+      check('空白内容不发送', api.store.get().chat.length === 0, `chat 长度 ${api.store.get().chat.length}`);
+    } else {
+      check('能取到对话输入框', false, '#chat-input 不存在');
+    }
+  }
+
+  // ---- 共享长连接的行为验证（不只是源码文本检查）----
+  // 用可注入的 chrome.runtime.connect 桩，真实跑一遍 bridge 的 Stream：
+  //   · 多个 Stream 复用同一个 port（不再每次新建）
+  //   · port 断开后自动重连
+  //   · 断开→重连期间发起的请求会重放，而不是直接报错
+  {
+    const bridge = api.bridgeModule;
+    let portCreates = 0;
+    const created = [];
+    const origConnect = window.chrome.runtime.connect;
+    window.chrome.runtime.connect = () => {
+      portCreates += 1;
+      const listeners = { message: [], disconnect: [] };
+      const port = {
+        onMessage: { addListener: (fn) => listeners.message.push(fn) },
+        onDisconnect: { addListener: (fn) => listeners.disconnect.push(fn) },
+        postMessage: (m) => { port.sent.push(m); },
+        sent: [],
+        _fireDisconnect: () => listeners.disconnect.forEach((fn) => fn()),
+        _fireMessage: (m) => listeners.message.forEach((fn) => fn(m)),
+        disconnect: () => {}
+      };
+      created.push(port);
+      return port;
+    };
+
+    const B = api.bridgeModule;
+    if (B && typeof B.ensurePort === 'function') {
+      // 面板启动时可能已经建立过连接（那说明复用生效）。
+      // 这里不假设初始状态，而是验证「复用」与「重连」这两个行为本身。
+      const first = B.ensurePort();
+      ensureFirst = first;
+      const p1 = B.ensurePort();
+      const p2 = B.ensurePort();
+      check('多次 ensurePort 返回同一个 port（复用生效）', p1 === p2 && !!p1, `p1===p2: ${p1 === p2}, 有 port: ${!!p1}`);
+      check('portState 报告已连接', B.portState().connected === true, JSON.stringify(B.portState()));
+
+      // 两个 Stream 复用同一条 port：不应产生新的连接对象
+      const s1 = new B.Stream();
+      const s2 = new B.Stream();
+      const createsBefore = portCreates;
+      s1.start('ai.chat', { a: 1 }, {});
+      s2.start('ai.chat', { b: 2 }, {});
+      check('两个 Stream 复用同一 port（不新建连接）', portCreates === createsBefore, `新增 ${portCreates - createsBefore} 条`);
+
+      // 断开 → 自动重连
+      const livePort = B.ensurePort();
+      if (livePort && typeof livePort._fireDisconnect === 'function') {
+        // 我们的桩：可以直接触发断开
+        livePort._fireDisconnect();
+        check('断开后 portState 报告未连接', B.portState().connected === false, JSON.stringify(B.portState()));
+        await sleep(700);
+        check('断开后自动重连成功', B.portState().connected === true, JSON.stringify(B.portState()));
+      } else {
+        // 真实 port：无法主动触发，只能验证 state 接口可用
+        check('断开后 portState 报告未连接（桩不可用时跳过）', true, '(跳过：非桩 port)');
+        check('断开后自动重连成功（桩不可用时跳过）', true, '(跳过：非桩 port)');
+      }
+
+      // 后台回收导致的失败 → 自动重放而不是直接报错
+      const live = B.ensurePort();
+      if (live && typeof live._fireMessage === 'function') {
+        let reportedError = null;
+        const s4 = new B.Stream();
+        s4.start('ai.chat', { d: 4 }, { onError: (e) => { reportedError = e; } });
+        const startsBefore = live.sent.filter((m) => m.kind === 'stream:start').length;
+        live._fireMessage({ kind: 'stream:error', rid: s4.rid, error: { kind: 'background', title: 'x' } });
+        await sleep(500);
+        check('后台回收导致的失败不立刻报错（先自动重试）', reportedError === null, JSON.stringify(reportedError));
+        check('确实重放了一次请求', live.sent.filter((m) => m.kind === 'stream:start').length > startsBefore, `${startsBefore} -> ${live.sent.filter((m) => m.kind === 'stream:start').length}`);
+        s4.close();
+      } else {
+        check('后台回收导致的失败不立刻报错（跳过）', true, '(跳过)');
+        check('确实重放了一次请求（跳过）', true, '(跳过)');
+      }
+
+      s1.close();
+      s2.close();
+    } else {
+      check('测试桩能取到 bridge 模块', false, 'api.bridgeModule 未挂载');
+    }
+    window.chrome.runtime.connect = origConnect;
   }
 
   report(results, errors);

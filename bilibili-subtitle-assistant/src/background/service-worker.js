@@ -1124,7 +1124,8 @@ async function runStreamRoute(msg, port, controller) {
     delta: (text) => port.postMessage({ kind: RPC.KIND_DELTA, rid, text }),
     log: (level, text) => port.postMessage({ kind: RPC.KIND_LOG, rid, level, text }),
     progress: (info) => port.postMessage({ kind: 'stream:progress', rid, info }),
-    replace: (text) => port.postMessage({ kind: 'stream:replace', rid, text })
+    replace: (text) => port.postMessage({ kind: 'stream:replace', rid, text }),
+    tool: (event) => port.postMessage({ kind: 'stream:tool', rid, event })
   };
   const settings = await ST.loadSettings();
 
@@ -1132,6 +1133,42 @@ async function runStreamRoute(msg, port, controller) {
     const plat = settings.ai.platforms.find((p) => p.id === (params.platformId || settings.ai.activeId));
     const messages = params.messages || [];
     const timeoutMs = params.timeoutMs || (route === 'ai.summarize' ? 600000 : 300000);
+
+    // ---- MCP 工具（只对对话生效，总结不需要外部工具）----
+    // 注意：面板的对话走的是**流式**路由，而工具调用是非流式的多轮循环。
+    // 所以有工具时改走 chatWithTools，普通对话仍走 chatStream（保留逐字输出）。
+    let tools = [];
+    let mcpError = '';
+    if (route === 'ai.chat' && settings.mcp && settings.mcp.enabled) {
+      try {
+        tools = await collectMcpTools(settings.mcp, { signal: controller.signal });
+      } catch (err) {
+        mcpError = err && err.message ? err.message : String(err);
+      }
+    }
+
+    if (tools.length) {
+      send.log('info', `已连接 ${tools.length} 个 MCP 工具，本轮对话将按需要调用`);
+      const out = await T.chatWithTools(plat, messages, tools, {
+        temperature: params.temperature ?? settings.ai.temperature,
+        maxTokens: params.maxTokens || settings.ai.maxTokens,
+        signal: controller.signal,
+        timeoutMs,
+        maxToolRounds: settings.mcp && settings.mcp.maxToolRounds,
+        toolTimeoutMs: settings.mcp && settings.mcp.callTimeoutMs,
+        onToolEvent: (e) => send.tool(e)
+      });
+      // 工具循环本身是整段返回的，这里一次性推给面板
+      if (out.text) send.delta(out.text);
+      if (out.toolEvents && out.toolEvents.length) {
+        send.log('info', `本轮调用了 ${out.toolEvents.filter((e) => e.phase === 'end').length} 次工具`);
+      }
+      return { text: out.text };
+    }
+    if (mcpError) {
+      send.log('warn', `MCP 工具不可用，已降级为普通对话：${mcpError}`);
+    }
+
     const text = await P.chatStream(plat, messages, send.delta, {
       temperature: params.temperature ?? settings.ai.temperature,
       maxTokens: params.maxTokens || settings.ai.maxTokens,
