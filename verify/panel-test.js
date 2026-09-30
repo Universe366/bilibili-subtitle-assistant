@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.40.0', contentVersion: '1.40.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.41.0', contentVersion: '1.41.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.40.0', stale: false }],
-    contentVersion: '1.40.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.41.0', stale: false }],
+    contentVersion: '1.41.0'
   },
   diagnostics: {
-    extensionVersion: '1.40.0',
-    contentVersion: '1.40.0',
+    extensionVersion: '1.41.0',
+    contentVersion: '1.41.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.40.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.41.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.40\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.41\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -912,15 +912,18 @@ async function main() {
 
     // 飞书格式规则必须包含确定支持的那几类，且排除会失效的
     const rules = mod.FEISHU_FORMAT_RULES || '';
-    check('格式规则含标题', /`#`/.test(rules), '');
-    check('格式规则含表格（要求表头与分隔行）', /管道表格/.test(rules) && /表头与分隔行/.test(rules), '');
+    check('格式规则含标题层级限制', /标题最多三级/.test(rules), '');
+    check('格式规则含表格（要求表头与分隔行）', /管道表格/.test(rules) && /表头与 .*分隔行/.test(rules), '');
     check('格式规则含代码块（要求标注语言）', /三个反引号/.test(rules), '');
-    check('格式规则含引用与分割线', /`> `/.test(rules) && /`---`/.test(rules), '');
-    check('格式规则含 LaTeX 公式', /\$\.\.\.\$/.test(rules), '');
+    check('格式规则含引用与分割线', /引用块/.test(rules) && /分割线/.test(rules), '');
+    check('格式规则含 LaTeX 公式', /LaTeX/.test(rules) && /\$…\$/.test(rules), '');
     check('格式规则含超链接', /\[文字\]\(https/.test(rules), '');
-    check('格式规则排除内嵌 HTML', /不要输出\*\*：内嵌 HTML/.test(rules) || /内嵌 HTML/.test(rules), '');
+    check('格式规则含任务列表', /- \[ \]/.test(rules), '');
+    check('格式规则要求先给结论与速览表', /一句话结论/.test(rules) && /速览/.test(rules), '');
+    check('格式规则排除内嵌 HTML', /内嵌 HTML/.test(rules), '');
     check('格式规则说明图片无法携带', /图片无法通过文本携带/.test(rules), '');
     check('格式规则提醒不要编造链接', /不要编造/.test(rules), '');
+    check('格式规则要求内容全部来自字幕', /全部来自字幕/.test(rules), '');
 
     // 默认提示词就是用户指定的那一句
     check('默认提示词是用户指定的原句', /整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）/.test(api.DEFAULT_SYSTEM_PROMPT), '');
@@ -1078,6 +1081,43 @@ async function main() {
       T.clear();
       check('清空后归零', T.count() === 0, String(T.count()));
     }
+  }
+
+  // ---- 合集解析（纯逻辑，不需要网络）----
+  {
+    const C = api.context;
+    check('导出了 isCollectionUrl', typeof C.isCollectionUrl === 'function', typeof C.isCollectionUrl);
+    check('导出了 parseCollectionUrl', typeof C.parseCollectionUrl === 'function', typeof C.parseCollectionUrl);
+    if (typeof C.isCollectionUrl === 'function') {
+      check('识别 channel/collectiondetail 合集链接', C.isCollectionUrl('https://space.bilibili.com/946974/channel/collectiondetail?sid=2046621'));
+      check('识别 /lists/ 形式的合集链接', C.isCollectionUrl('https://space.bilibili.com/946974/lists/2046621?type=season'));
+      check('识别 seriesdetail 合集链接', C.isCollectionUrl('https://space.bilibili.com/946974/channel/seriesdetail?sid=123'));
+      check('普通视频链接不算合集', !C.isCollectionUrl('https://www.bilibili.com/video/BV1be41127ft'));
+      check('非 B 站链接不算合集', !C.isCollectionUrl('https://example.com/lists/1'));
+
+      const p1 = C.parseCollectionUrl('https://space.bilibili.com/946974/channel/collectiondetail?sid=2046621');
+      check('从合集链接解出 mid 与 seasonId', p1.mid === 946974 && p1.seasonId === 2046621, JSON.stringify(p1));
+      const p2 = C.parseCollectionUrl('https://space.bilibili.com/946974/lists/998877?type=season');
+      check('从 /lists/ 链接解出 mid 与 seasonId', p2.mid === 946974 && p2.seasonId === 998877, JSON.stringify(p2));
+      const p3 = C.parseCollectionUrl('https://www.bilibili.com/video/BV1xx');
+      check('普通视频链接解不出 mid/seasonId', p3.mid === 0 && p3.seasonId === 0, JSON.stringify(p3));
+    }
+  }
+
+  // ---- AI 工具栏：复制/导出/重置 应直接可见（用户要求从 ⋯ 里拿出来）----
+  {
+    const bar = doc.getElementById('ai-toolbar');
+    const text = bar ? bar.textContent : '';
+    check('AI 工具栏有复制总结', /复制总结/.test(text), text.slice(0, 120));
+    check('AI 工具栏有导出总结', /导出总结/.test(text), '');
+    check('AI 工具栏有重置对话', /重置对话/.test(text), '');
+    // 它们在工具栏上必须是「看得见」的按钮，而不是藏在菜单里
+    const visible = Array.from(bar.querySelectorAll('button'))
+      .filter((b) => !b.closest('.menu-panel'))
+      .map((b) => b.textContent.trim());
+    check('复制/导出/重置不在菜单里（直接可见）',
+      visible.some((t) => /复制总结/.test(t)) && visible.some((t) => /导出总结/.test(t)) && visible.some((t) => /重置对话/.test(t)),
+      visible.join('/'));
   }
 
   report(results, errors);

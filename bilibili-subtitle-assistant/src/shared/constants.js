@@ -1,7 +1,7 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '1.40.0';
+export const VERSION = '1.41.0';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
@@ -50,6 +50,8 @@ export const METHOD_TIMEOUT = {
   'subtitle.fetch': 45000,
   'subtitle.cache.get': 8000,
   'subtitle.cache.put': 15000,
+  // 展开合集：可能翻多页（一个 UP 的合集列表），给足时间
+  'bili.collection': 40000,
   'audio.head': 30000,
   'audio.chunk': 180000,
   // 语音识别：上一次真实请求要先把音频传上去（13MB 的 WAV 约需 30 秒），

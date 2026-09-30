@@ -10,7 +10,7 @@ import { transcribeVideo } from './transcribe.js';
 import * as OPT from './optimize.js';
 import * as SEARCH from './search.js';
 import { buildExport, safeFilename } from './exporter.js';
-import { DEFAULT_SYSTEM_PROMPT, TASK_LABEL } from '../../shared/constants.js';
+import { DEFAULT_SYSTEM_PROMPT, TASK_LABEL, METHOD_TIMEOUT } from '../../shared/constants.js';
 
 export const app = {
   panels: {},
@@ -764,6 +764,75 @@ export function batchAdd(urls) {
   store.set({ queue: items });
   renderPanels();
   if (!app.batch.running) runBatchQueue();
+}
+
+// ---------------------------------------------------------------------------
+// 合集：解析链接 →（可选）展开成多个视频 → 入队
+// ---------------------------------------------------------------------------
+
+// 从合集/空间链接里抠出 mid 与 season_id。
+// 支持的形态：
+//   https://space.bilibili.com/946974/channel/collectiondetail?sid=2046621
+//   https://space.bilibili.com/946974/lists/2046621?type=season
+//   https://www.bilibili.com/video/BV1xx  （普通视频，交给 batchAdd 原样处理）
+export function parseCollectionUrl(url) {
+  const raw = String(url || '').trim();
+  const mid = /space\.bilibili\.com\/(\d+)/.exec(raw);
+  const sid =
+    /[?&](?:sid|season_id)=(\d+)/i.exec(raw) ||
+    /\/lists\/(\d+)/.exec(raw) ||
+    /\/channel\/seriesdetail\?[^#]*\bsid=(\d+)/i.exec(raw);
+  return {
+    mid: mid ? Number(mid[1]) : 0,
+    seasonId: sid ? Number(sid[1]) : 0,
+    url: raw
+  };
+}
+
+export function isCollectionUrl(url) {
+  const s = String(url || '');
+  if (!/bilibili\.com/.test(s)) return false;
+  return /channel\/(collectiondetail|seriesdetail)/.test(s) || /\/lists\/\d+/.test(s);
+}
+
+// 展开链接里的合集。返回 { ok, videos, meta, reason }。
+// 展开后**不直接入队** —— 交给调用方展示，让用户决定全加还是挑着加。
+export async function expandCollectionsFromText(text) {
+  const urls = String(text || '')
+    .split(/[\s\n,，;；]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const collections = urls.filter(isCollectionUrl);
+  // 普通视频链接保持原样，一起返回，方便「合集 + 单个视频」混着提交
+  const plain = urls.filter((u) => !isCollectionUrl(u));
+  if (!collections.length) {
+    return { ok: true, videos: plain.map((u) => ({ url: u })), meta: { collections: 0, plain: plain.length } };
+  }
+  const videos = [];
+  const metas = [];
+  for (const c of collections) {
+    const { mid, seasonId } = parseCollectionUrl(c);
+    try {
+      const res = await call('bili.collection', { mid, seasonId, pageUrl: c }, { timeoutMs: METHOD_TIMEOUT['bili.collection'] });
+      if (res && res.ok && res.videos && res.videos.length) {
+        for (const v of res.videos) videos.push({ ...v, fromCollection: true });
+        metas.push({ url: c, ok: true, meta: res.meta });
+      } else {
+        metas.push({ url: c, ok: false, reason: (res && res.reason) || '没有解析到视频' });
+      }
+    } catch (err) {
+      metas.push({ url: c, ok: false, reason: (err && err.payload && err.payload.detail) || (err && err.message) || '展开失败' });
+    }
+  }
+  for (const u of plain) videos.push({ url: u });
+  const failed = metas.filter((m) => !m.ok);
+  return {
+    ok: videos.length > 0,
+    videos,
+    metas,
+    reason: videos.length ? '' : failed.map((f) => f.reason).join('；') || '没有解析到视频',
+    meta: { collections: collections.length, plain: plain.length }
+  };
 }
 
 export function batchRemove(id) {

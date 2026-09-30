@@ -334,3 +334,113 @@ export async function fetchTopComments({ aid, bvid, pageUrl }, opts = {}) {
     return { ok: false, comments: [], reason: (err && err.message) || String(err) };
   }
 }
+
+// ---------------------------------------------------------------------------
+// B 站合集（列表）展开
+// ---------------------------------------------------------------------------
+//
+// 用户需求：「添加支持对 b 站的合集进行批量的处理，同时也支持用户一个个处理」。
+//
+// 做法：把合集的 URL 展开成它包含的**每个视频的 URL**，
+// 再喂进已有的批量队列（`context.js` 的 batchAdd）——
+// 于是「批量」与「一个个」（手动从队列里移除/暂停）两种用法都成立，
+// 不需要为合集单独写一套流程。
+//
+// 用的接口（已实测）：
+//   GET /x/polymer/web-space/home/seasons_series?mid=&page_num=&page_size=
+//     返回 data.items_lists.seasons_list[]，**每一项自带完整的 archives[]**
+//     （即「一个合集 + 它的全部稿件」），以及 meta{season_id,title,total,mid}。
+//     实测 total=26 的合集一次就回全 26 条，所以不需要按稿件分页。
+//
+// 注意：该接口**不支持**用 season_id 过滤（带上会返回 code=-400 请求错误），
+// 所以按「拉 UP 主的合集列表 → 从中挑出目标合集」来取。
+//
+// 说明：需要 `mid`（UP 主 uid）。合集页 URL 里一般带 mid；
+// 没带时如实报错，不要静默失败。
+
+function pickSeasons(json) {
+  const lists = json && json.data && json.data.items_lists;
+  return (lists && lists.seasons_list) || [];
+}
+
+function seasonMeta(s) {
+  // 字段藏在 meta 里（不是顶层）—— 一开始读错层，导致「找不到合集」。
+  const m = (s && s.meta) || {};
+  return {
+    seasonId: m.season_id != null ? m.season_id : (s && s.season_id),
+    title: m.title || m.name || (s && (s.title || s.name)) || '',
+    total: Number(m.total) || 0,
+    mid: Number(m.mid) || 0
+  };
+}
+
+export async function expandCollection({ mid, seasonId, pageUrl }, opts = {}) {
+  const timeoutMs = opts.timeoutMs || 20000;
+  const maxItems = Math.max(1, Math.min(500, opts.maxItems || 400));
+  const myMid = Number(mid) || 0;
+  if (!myMid) return { ok: false, videos: [], reason: '缺少 UP 主 mid（合集链接里一般带 mid 参数）' };
+  const sid = seasonId ? String(seasonId) : '';
+
+  try {
+    const out = [];
+    let meta = null;
+    // page_size 上限是 **20** —— 传 30 会被拒（code=-400 请求错误）。
+    // 这是实测出来的，官方没有文档说明。
+    const pageSize = 20;
+    for (let pageNum = 1; pageNum <= 20; pageNum += 1) {
+      const q = `mid=${encodeURIComponent(myMid)}&page_num=${pageNum}&page_size=${pageSize}`;
+      const { json } = await getJson(`https://api.bilibili.com/x/polymer/web-space/home/seasons_series?${q}`, pageUrl, timeoutMs);
+      if (json.code !== 0) {
+        if (!out.length && !meta) return { ok: false, videos: [], reason: `code=${json.code} ${json.message || ''}`.trim() };
+        break;
+      }
+      const seasons = pickSeasons(json);
+      if (!seasons.length) break;
+
+      // 指定了 season_id 就找那一个；否则把该 UP 的**所有**合集都展开
+      const targets = sid
+        ? seasons.filter((s) => String(seasonMeta(s).seasonId) === sid)
+        : seasons;
+
+      if (sid && !targets.length) {
+        // 这一页没有目标合集，继续翻页找
+        const page = (json.data.items_lists && json.data.items_lists.page) || {};
+        const totalPages = Math.ceil((Number(page.total) || 0) / Math.max(1, Number(page.page_size) || pageSize));
+        if (pageNum >= totalPages) break;
+        continue;
+      }
+
+      for (const s of targets) {
+        const sm = seasonMeta(s);
+        if (!meta) meta = { ...sm, mid: myMid };
+        for (const a of s.archives || []) {
+          if (!a || !a.bvid) continue;
+          if (out.some((v) => v.bvid === a.bvid)) continue; // 去重
+          out.push({
+            bvid: a.bvid,
+            aid: a.aid,
+            title: String(a.title || '').slice(0, 200),
+            duration: Number(a.duration) || 0,
+            seasonTitle: sm.title,
+            url: `https://www.bilibili.com/video/${a.bvid}`
+          });
+          if (out.length >= maxItems) break;
+        }
+        if (out.length >= maxItems) break;
+      }
+      if (out.length >= maxItems) break;
+
+      // 还有没有下一页合集
+      const page = (json.data.items_lists && json.data.items_lists.page) || {};
+      const totalPages = Math.ceil((Number(page.total) || 0) / Math.max(1, Number(page.page_size) || pageSize));
+      if (!totalPages || pageNum >= totalPages) break;
+    }
+
+    if (!out.length) {
+      return { ok: false, videos: [], reason: sid ? '这个合集里没有解析到视频' : '这个 UP 主名下没有可展开的合集' };
+    }
+    return { ok: true, videos: out, meta: { ...(meta || {}), count: out.length } };
+  } catch (err) {
+    return { ok: false, videos: [], reason: (err && err.message) || String(err) };
+  }
+}

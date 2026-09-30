@@ -203,8 +203,8 @@ function renderToolbar() {
   const changed = (st.optimize && st.optimize.corrections ? st.optimize.corrections.length : 0) || 0;
   const canRevert = (st.subtitlesOriginal || []).length > 0 && hasLines;
 
-  // 只留一个主操作 + 一个停止（生成中才有意义）；
-  // 复制/导出/重置/回退全部收进「⋯」，避免一屏按钮。
+  // 主操作 + 常用操作直接摆出来（用户要求：复制/导出/重置从 ⋯ 里拿出来）。
+  // ⋯ 里只留低频的「回退字幕」（它需要先校对过才有意义）。
   bar.appendChild(
     button(state.summaryStreaming ? '生成中…' : '生成总结', () => generateSummary(), {
       small: true,
@@ -218,28 +218,26 @@ function renderToolbar() {
   if (state.streaming || state.summaryStreaming) {
     bar.appendChild(button('停止', () => stopStream(), { small: true, danger: true }));
   }
+  bar.appendChild(button('复制总结', () => copySummary(), { small: true, disabled: !st.summary, title: '复制总结全文（Markdown）' }));
+  bar.appendChild(button('导出总结', () => exportSummary(), { small: true, disabled: !st.summary, title: '下载为 Markdown 文件' }));
+  bar.appendChild(button('重置对话', () => resetChat(), { small: true, title: '清空对话历史（不影响字幕与总结）' }));
   bar.appendChild(
     popoverMenu(
       [
-        { icon: '📋', label: '复制总结', disabled: !st.summary, onClick: () => copySummary() },
-        { icon: '⬇️', label: '导出总结', disabled: !st.summary, onClick: () => exportSummary() },
-        { divider: true },
         {
           icon: '↩️',
           label: canRevert ? `回退字幕${changed ? `（已改 ${changed} 处）` : ''}` : '回退字幕',
           title: '把字幕恢复到 AI 更正之前的样子',
           disabled: !canRevert,
           onClick: () => revertSubtitles()
-        },
-        { divider: true },
-        { icon: '🧹', label: '重置会话', onClick: () => resetChat() }
+        }
       ],
       {
         label: '⋯',
         title: '更多操作',
         // 生成总结前这些都没有内容，点开只看到一片灰字会以为菜单坏了 ——
         // 与其留一堆禁用项，不如直接说清「先做什么」。
-        emptyText: !hasLines ? '还没有字幕' : '先生成一次总结',
+        emptyText: !hasLines ? '还没有字幕' : '暂无更多操作',
         emptyHint: !hasLines
           ? '先抓取字幕或做语音转录'
           : '生成后这里会出现：复制 / 导出 / 回退字幕 / 重置会话'
@@ -720,12 +718,21 @@ function buildChatToolbar() {
     sel.appendChild(opt);
   }
   for (const p of configured) {
-    const models = Array.isArray(p.models) && p.models.length ? p.models : [p.model].filter(Boolean);
+    // 关键：把**当前实际在用的模型**并进候选列表。
+    // 否则当 p.model 不在 p.models 里（例如用户手填过模型名、
+    // 或选过一个后来被清出种子列表的模型）时：
+    //   · 下拉框显示的是 p.models 的第一项
+    //   · 而真实请求用的是 p.model
+    // 于是「对话里显示的模型 ≠ 实际用的模型」—— 这就是用户报的
+    // 「对话旁边的模型名与设置里选的不一样」。
+    const raw = Array.isArray(p.models) && p.models.length ? p.models.slice() : [];
+    if (p.model && !raw.includes(p.model)) raw.unshift(p.model);
+    const models = raw.length ? raw : [p.model].filter(Boolean);
     const hasKey = !!String(p.apiKey || '').trim();
     for (const m of models) {
       const opt = h('option', {
         value: `${p.id}::${m}`,
-        text: `${p.id === ai.activeId ? '' : `${p.name} · `}${m}${hasKey ? '' : '（未配 Key）'}`
+        text: `${p.id === ai.activeId ? '' : `${p.name} · `}${m}${hasKey ? '' : '（未配 Key）'}${m === p.model ? '' : ''}`
       });
       if (p.id === (cur && cur.id) && m === (cur && cur.model)) opt.selected = true;
       sel.appendChild(opt);
@@ -955,21 +962,30 @@ export async function revertSubtitles() {
 // **没有对着官方规范逐条核对**。因此设计上做了防御 ——
 // 即使某个语法飞书不认，它也只是显示成纯文本，不会让总结出错或用不了。
 export const FEISHU_FORMAT_RULES = [
-  '【输出格式要求：飞书文档支持的 Markdown】',
-  '请严格使用下列写法，它们粘贴进飞书文档后能被正确渲染：',
-  '· 标题：`#` `##` `###`（最多三级，不要跳级）',
-  '· 强调：`**粗体**`、`*斜体*`、`~~删除线~~`',
-  '· 列表：`- ` 无序、`1. ` 有序；任务用 `- [ ]` / `- [x]`',
-  '· 引用：行首 `> `',
-  '· 代码：行内用反引号；多行用三个反引号并标注语言（如 ```js）',
-  '· 表格：标准 Markdown 管道表格，**必须有表头与分隔行**',
-  '· 链接：`[文字](https://...)`（只链接真实存在的 URL，不要编造）',
-  '· 分割线：单独一行 `---`',
+  '【输出风格：做成一份信息密度高的图文笔记，不要平铺直叙的流水账】',
   '',
-  '**不要输出**：内嵌 HTML、脚注、自定义容器语法、base64 图片。',
-  '图片无法通过文本携带，若需要配图请用文字说明「此处建议配图：…」。',
-  '公式用行内 `$...$` 或块级 `$$...$$`（LaTeX），飞书可识别。',
-  '适当使用 emoji 提升可读性，但不要每行都加。'
+  '飞书文档能渲染丰富结构，请**主动使用**，不要只用「标题 + 段落」：',
+  '',
+  '1. **先给一句话结论**，紧接一个「速览」表格（3~6 行），让读者 10 秒抓住重点。',
+  '2. **该用表格就用表格** —— 对比、参数、时间线、优劣、步骤一律用管道表格，',
+  '   不要写成句子。必须有表头与 `---` 分隔行。',
+  '3. **引用块（行首 `> `）用来强调关键判断或原话**，例如 `> **结论**：…`。',
+  '   飞书会把引用渲染成高亮块样式，是视觉最强的一种。',
+  '4. **代码块**（三个反引号 + 语言）用于命令、配置、代码、数据样例。',
+  '5. **超链接**写成 `[文字](https://…)`。**只链接字幕里明确出现过、'
+    + '或你确信真实存在的 URL**，**绝对不要编造**。',
+  '6. **公式**用 LaTeX：行内 `$…$`、块级 `$$…$$`。',
+  '7. **任务列表** `- [ ]` / `- [x]` 用于待办、检查项、可执行建议。',
+  '8. **分割线** `---` 用于分节。',
+  '9. **emoji 做小标题前缀**提升可读性（如 `## 🎯 核心结论`），但不要每行都加。',
+  '10. **图片无法通过文本携带**。某个位置适合配图时，用一行',
+  '    `> 🖼️ 建议配图：<放什么图>` 占位，不要输出假的图片语法。',
+  '',
+  '【硬性要求】',
+  '· 内容必须**全部来自字幕**（以及下方给出的简介/评论），不要引入字幕里没有的信息。',
+  '· **不要输出**内嵌 HTML、脚注、自定义容器语法、base64 图片。',
+  '· 标题最多三级（`#` / `##` / `###`），不要跳级。',
+  '· 篇幅服从内容：不要为凑格式灌水，也不要该展开时只写一句。'
 ].join('\n');
 
 // ---------------------------------------------------------------------------

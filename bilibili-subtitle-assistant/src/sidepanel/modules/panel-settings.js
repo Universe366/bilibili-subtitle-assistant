@@ -25,7 +25,7 @@ import { openOverlay, closeOverlays, confirmDialog, promptDialog } from './ui.js
 import { SEARCH_ENGINES, EXPORT_FORMATS, EXPORT_TEMPLATES, DEFAULT_SYSTEM_PROMPT } from '../../shared/constants.js';
 import { exportRuleGroups, parseRuleGroups } from './optimize.js';
 import { downloadFile } from './dom.js';
-import { batchAdd, batchRemove, batchPause, batchClearDone } from './context.js';
+import { batchAdd, batchRemove, batchPause, batchClearDone, expandCollectionsFromText } from './context.js';
 import * as SKILLS from '../../shared/skills.js';
 import { TIME_PRESETS, normalizeTimeRange } from '../../shared/time-range.js';
 
@@ -860,7 +860,18 @@ function platformDetail(kind, list, p, d, rerender) {
   body.appendChild(acts);
 
   // 可用模型标签
-  const models = state.modelCache[p.id] || p.models || [];
+  //
+  // 两种来源要分清（用户问「没点探测模型前为什么已经有可用模型」）：
+  //   · state.modelCache[p.id] —— **点过「探测模型/选择模型」后**从平台
+  //     `/v1/models` 拉回来的真实列表
+  //   · p.models —— 内置的**种子列表**（预置的常见模型名），只是为了
+  //     开箱即用，**不代表你的账号真的能用**
+  // 之前两者混在一起、文案都写「可用模型」，容易让人以为已经验证过了。
+  const probed = state.modelCache[p.id];
+  const modelsRaw = (probed && probed.length ? probed : p.models) || [];
+  // 把当前实际在用的模型并进去，避免「设置里显示的是别的模型」
+  const models = modelsRaw.slice();
+  if (p.model && !models.includes(p.model)) models.unshift(p.model);
   if (models.length) {
     const tags = h('div', { class: 'row tight model-tags' });
     for (const m of models) {
@@ -869,6 +880,12 @@ function platformDetail(kind, list, p, d, rerender) {
           class: 'tag',
           text: m,
           dataset: { active: String(p.model === m) },
+          title:
+            p.model === m
+              ? '当前使用的模型'
+              : probed
+                ? '平台返回的模型，点击切换'
+                : '内置预设的模型名（未向平台核实，可能不可用）',
           onclick: () => {
             p.model = m;
             markDirty();
@@ -877,7 +894,22 @@ function platformDetail(kind, list, p, d, rerender) {
         })
       );
     }
-    body.appendChild(field('可用模型（点标签选择）', tags));
+    body.appendChild(
+      field(
+        probed ? `模型（已核实 ${models.length} 个）` : `模型（内置预设 ${models.length} 个，未核实）`,
+        tags
+      )
+    );
+    if (!probed) {
+      body.appendChild(
+        h('div', {
+          class: 'note',
+          text:
+            '这些是**内置预设**的模型名，方便开箱即用，但**不代表你的账号真的能用**。\n' +
+            '点上面的「探测模型」会向平台拉取真实列表（需要已填 Key），拉回来后会替换成已核实的清单。'
+        })
+      );
+    }
   }
 
   // 高级项：按平台差异收起，避免干扰
@@ -1381,15 +1413,130 @@ function exportGroup(d) {
 }
 
 function batchGroup(d) {
-  return groupWrap('batch', '批量队列（串行处理）', false, (body) => {
-    const input = h('textarea', { class: 'input', placeholder: '每行一个 B 站视频链接…' });
-    body.appendChild(field('视频链接', input));
+  return groupWrap('batch', '批量队列（支持合集 / 单个视频）', false, (body) => {
+    const input = h('textarea', {
+      class: 'input',
+      placeholder:
+        '每行一个链接。支持：\n' +
+        '· 普通视频：https://www.bilibili.com/video/BV...\n' +
+        '· 合集：https://space.bilibili.com/<mid>/channel/collectiondetail?sid=<id>\n' +
+        '  （也支持 /lists/<id>）\n' +
+        '可以混着填。'
+    });
+    body.appendChild(field('视频 / 合集链接', input));
+
+    // 展开预览区：点「展开合集」后在这里列出解析结果，
+    // 让用户**看着清单**决定是全加还是挑着加（用户要求「也支持一个个处理」）。
+    let pending = [];
+    const preview = h('div', { class: 'row tight', style: { flexDirection: 'column', alignItems: 'stretch' } });
+    const renderPreview = () => {
+      clear(preview);
+      if (!pending.length) return;
+      const hasCollection = pending.some((v) => v.fromCollection);
+      preview.appendChild(
+        h('div', {
+          class: 'section-title',
+          text: `解析到 ${pending.length} 个视频${hasCollection ? '（含合集）' : ''}`
+        })
+      );
+      // 先展示前若干个，避免几百条把设置页撑爆
+      const shown = pending.slice(0, 200);
+      for (const v of shown) {
+        preview.appendChild(
+          h('div', { class: 'queue-row' }, [
+            h('div', { class: 't', text: v.title || v.url }),
+            h('div', {
+              class: 'muted',
+              text: [v.fromCollection ? `合集：${v.seasonTitle || '未命名'}` : '单个视频', v.bvid || '', v.duration ? `${Math.round(v.duration / 60)} 分钟` : '']
+                .filter(Boolean)
+                .join(' · ')
+            })
+          ])
+        );
+      }
+      if (pending.length > shown.length) {
+        preview.appendChild(h('div', { class: 'note', text: `其余 ${pending.length - shown.length} 个未展示，但都会加入队列。` }));
+      }
+      preview.appendChild(
+        h('div', { class: 'row tight' }, [
+          button(
+            `全部加入队列（${pending.length}）`,
+            () => {
+              batchAdd(pending.map((v) => v.url).join('\n'));
+              pending = [];
+              input.value = '';
+              renderPreview();
+              render();
+              toast({ title: `已加入 ${preview.children.length ? '' : ''}队列`, detail: '在下方「队列」里可以看到进度' }, 'ok');
+            },
+            { small: true, primary: true }
+          ),
+          button(
+            '取消',
+            () => {
+              pending = [];
+              renderPreview();
+            },
+            { small: true }
+          )
+        ])
+      );
+    };
+    body.appendChild(preview);
+
     body.appendChild(
-      button('加入队列', () => {
-        batchAdd(input.value);
-        input.value = '';
-      }, { small: true, primary: true })
+      h('div', { class: 'row tight' }, [
+        button(
+          '展开 / 加入队列',
+          async () => {
+            const text = input.value.trim();
+            if (!text) {
+              toast({ title: '请先粘贴链接' }, 'warn');
+              return;
+            }
+            // 没有合集链接就按原样入队，不必多一步
+            if (!/bilibili\.com\/.*(collectiondetail|seriesdetail|\/lists\/)/.test(text)) {
+              batchAdd(text);
+              input.value = '';
+              render();
+              return;
+            }
+            const res = await expandCollectionsFromText(text);
+            if (!res.ok || !res.videos.length) {
+              toast(
+                { title: '没能解析到视频', detail: (res.metas || []).map((m) => m.reason).filter(Boolean).join('；') || res.reason || '请检查链接' },
+                'warn',
+                6000
+              );
+              return;
+            }
+            pending = res.videos;
+            // 只解析出一个视频（且不是合集）时直接入队
+            if (pending.length === 1 && !pending[0].fromCollection) {
+              batchAdd(pending[0].url);
+              pending = [];
+              input.value = '';
+              render();
+              return;
+            }
+            renderPreview();
+          },
+          { small: true, primary: true, title: '普通视频直接入队；合集会先展开成清单，由你确认' }
+        ),
+        button(
+          '直接入队（不展开）',
+          () => {
+            batchAdd(input.value);
+            input.value = '';
+            pending = [];
+            renderPreview();
+            render();
+          },
+          { small: true, title: '把每行当成一个链接直接排队（合集链接会失败，因为队列需要视频链接）' }
+        )
+      ])
     );
+
     const st = store.get();
     const q = st.queue || [];
     if (q.length) {

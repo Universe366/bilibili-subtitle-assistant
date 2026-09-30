@@ -932,6 +932,13 @@ const methods = {
       { limit: params.limit || 10, timeoutMs: 20000 }
     ),
 
+  // 展开 B 站合集 → 视频列表（供批量队列使用）
+  'bili.collection': async (params) =>
+    BILI.expandCollection(
+      { mid: params.mid, seasonId: params.seasonId, pageUrl: params.pageUrl },
+      { timeoutMs: params.timeoutMs || 25000, maxItems: params.maxItems || 400 }
+    ),
+
   'cancel': async (params) => {
     const rec = inflight.get(params.rid);
     if (rec) {
