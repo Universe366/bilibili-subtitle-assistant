@@ -1454,3 +1454,73 @@ PASS  用户自建平台的 Key 未被清空
 此前加 ASR 平台、搜索平台、MCP/Skills 默认值时，我都只改了默认值，
 默认这次才通过用户反馈暴露出来 —— 这类缺陷测试很难主动发现，
 因为测试总是从「空配置」开始。
+
+## 第四十三轮（1.28.0）—— 免费无 Key 引擎 + 回退链（参考 dsh-free-search）
+
+用户建议参考 <https://github.com/DDDMUC/dsh-free-search>。
+
+### 之前的根本问题
+
+「联网检索」必须先配一个检索平台的 API Key，否则 `runProviderSearch`
+直接抛「检索服务商还没配好」—— **用户装完扩展，联网功能其实是不可用的**。
+而我们内置的 4 个平台 Key 全是空的，所以这个情况就是默认状态。
+
+### 参考它的三个设计
+
+| 设计 | 价值 |
+|---|---|
+| **无 Key 也能搜** | 装了就能用，不必先注册任何服务 |
+| **多引擎回退链** | 任何引擎失败自动轮下一个，搜索不会直接失败 |
+| **结果缓存** | 免费引擎有限流、付费引擎按次计费，缓存同时缓解两者 |
+
+### 实测（本机，2026-02）
+
+| 引擎 | 结果 |
+|---|---|
+| `html.duckduckgo.com` / `lite.duckduckgo.com` | ❌ 连不上 |
+| 6 个 SearXNG 公开实例 | ❌ 全部连不上 |
+| **Bing HTML** | ✅ **10 条结果，220~430ms，中文优化** |
+| **AnySearch** | ✅ 结构化 JSON，返回 `data.results` |
+| **Exa MCP** | ✅ 匿名 MCP，结果带正文 |
+
+> 教训：**先实测再实现**。如果照搬 dsh-free-search 的默认引擎顺序
+> （Exa → Tavily → … → Bing），在本机环境下第一次搜索要先把
+> 连不上的引擎全超时试一遍。
+
+### 落地
+
+**`src/background/keyless-search.js`（新增）**
+
+- 5 个免费引擎：Bing / AnySearch / Exa MCP / DuckDuckGo / SearXNG
+- 各自独立的响应解析器（Bing 抓 `b_algo`、AnySearch 取 `data.results`、
+  Exa MCP 解析 `Title:/URL:/Highlights:` 结构化文本）
+- `searchKeyless` 按顺序尝试，**返回第一个成功的结果集 + 完整尝试链**
+- 全失败时**不抛异常**，而是返回空结果 + 每个引擎的失败原因
+
+**`src/background/search-cache.js`（新增）** —— LRU + TTL
+
+**`src/shared/untrusted.js`（新增）** —— 提示注入防护
+
+- 网页内容包进 `<untrusted-web-content>` 边界
+- **剥离正文里自带的同名标记**（否则攻击者能提前闭合边界，
+  把后续内容伪装成可信区 —— 这是这类防护最容易漏的一点）
+
+**后台 `search.provider` 路由重写**
+
+```
+配置了 Key → 用配置的平台
+  └─ 失败 → 免费引擎兜底（结果里注明「已改用免费引擎 X」）
+没配 Key   → 直接免费引擎兜底
+```
+
+**面板**：`runProviderSearch` 不再因缺 Key 直接失败；对话与总结改用
+`searchContextBlockGuarded`。
+
+**设置页**：新增「免费引擎（无需 Key）」分组 —— 兜底开关 + 缓存时长。
+
+### 新增 65 项测试（`keyless-search-test.mjs`）
+
+覆盖：三种响应解析（含真实 HTML 结构）、MCP 的 JSON 与 SSE 两种回包、
+**回退链在首个引擎失败后自动轮到下一个**、全失败不抛异常、
+缓存 TTL/LRU/关闭、**注入防护的边界剥离**（含大小写变体）、
+以及「面板不再因缺 Key 拒绝联网」的源码断言。

@@ -10,7 +10,14 @@ import * as P from './providers.js';
 import * as BILI from './bili.js';
 import * as M from './mcp.js';
 import * as T from './tools.js';
+import * as KS from './keyless-search.js';
+import * as SC from './search-cache.js';
+import { sanitizeResult } from '../shared/untrusted.js';
 import { stripQuery } from '../shared/storage.js';
+
+// 检索结果缓存（默认 5 分钟 / 50 条）。
+// 免费引擎有限流、付费引擎按次计费，缓存能同时缓解两者。
+const searchCache = new SC.ResultCache({ max: 50, ttlMs: 5 * 60 * 1000 });
 
 // 汇总所有「已启用」MCP 服务的工具，统一命名空间为「服务名__工具名」。
 // 单个服务失败只记录、不中断其它服务。
@@ -654,11 +661,74 @@ const methods = {
   'search.provider': async (params) => {
     const s = await ST.loadSettings();
     const plat = s.search.platforms.find((p) => p.id === params.id) || CFG.activeSearch(s);
-    const out = await P.searchProvider(plat, params.query, {
+    const hasKey = !!(plat && String(plat.apiKey || '').trim());
+    const allowKeyless = s.search.keylessFallback !== false;
+
+    // 缓存时长由设置决定（分钟；0 = 关闭）
+    searchCache.ttlMs = Math.max(0, Number(s.search.cacheMinutes ?? 5) || 0) * 60 * 1000;
+
+    // 先查缓存：同一句话反复问时省额度也更快
+    const cacheKey = searchCache.keyOf(params.query, {
       maxResults: params.maxResults || s.search.maxResults,
-      fetchPageContent: params.fetchPageContent,
-      signal: registerExternalAbort(params.rid)
+      providerId: hasKey ? plat.id : '',
+      fetchPageContent: params.fetchPageContent
     });
+    const cached = searchCache.get(cacheKey);
+    if (cached) {
+      return { ...cached, cached: true };
+    }
+
+    // 配置了 Key → 走用户的正式渠道；否则（或它失败了）→ 用免费无 Key 引擎兜底。
+    // 这样「没配 Key」不再是「联网不可用」。
+    let out = null;
+    const keylessFallback = async (reason) => {
+      if (!allowKeyless) {
+        throw new AppError(
+          'search',
+          '检索失败',
+          reason || '当前检索平台不可用，且已在设置里关闭了免费引擎兜底。',
+          '可在 设置 → 联网检索 检查 Key，或开启「允许使用免费引擎兜底」。'
+        );
+      }
+      const kl = await KS.searchKeyless(params.query, {
+        maxResults: params.maxResults || s.search.maxResults,
+        timeoutMs: 20000,
+        order: Array.isArray(s.search.keylessOrder) && s.search.keylessOrder.length ? s.search.keylessOrder : undefined
+      });
+      if (!kl.results.length) {
+        throw new AppError(
+          'search',
+          '所有检索方式都失败了',
+          `${reason ? reason + '；' : ''}免费引擎也全部失败：${KS.describeAttempts(kl.attempts)}`,
+          '可在 设置 → 联网检索 填一个检索平台的 Key（更稳），或稍后重试（免费引擎偶发限流）。'
+        );
+      }
+      return {
+        results: kl.results.map((r) => sanitizeResult(r)),
+        query: params.query,
+        provider: `免费引擎（${kl.engineLabel}）`,
+        keyless: { engine: kl.engine, engineLabel: kl.engineLabel, attempts: kl.attempts },
+        note: reason ? `${reason}，已改用免费引擎 ${kl.engineLabel}` : ''
+      };
+    };
+
+    if (hasKey) {
+      try {
+        const r = await P.searchProvider(plat, params.query, {
+          maxResults: params.maxResults || s.search.maxResults,
+          fetchPageContent: params.fetchPageContent,
+          signal: registerExternalAbort(params.rid)
+        });
+        out = { ...r, results: (r.results || []).map((x) => sanitizeResult(x)) };
+      } catch (err) {
+        const detail = (err && err.payload && err.payload.title) || (err && err.message) || '未知错误';
+        out = await keylessFallback(`配置的检索平台（${plat.name}）失败：${detail}`);
+      }
+    } else {
+      out = await keylessFallback('');
+    }
+
+    searchCache.set(cacheKey, out);
     return out;
   },
 

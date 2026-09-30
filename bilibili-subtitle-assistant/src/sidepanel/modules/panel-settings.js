@@ -1161,6 +1161,37 @@ function searchGroup(d) {
         '每轮对话都联网检索（最准，但每问一句都会消耗检索额度）'
       )
     );
+
+    // ---- 免费无 Key 引擎（开箱即用）----
+    body.appendChild(h('div', { class: 'section-title', text: '免费引擎（无需 Key）' }));
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '没配检索 Key 时自动使用这些公开引擎 —— 装了扩展就能联网，不必先注册任何服务。\n' +
+          '已实测可用：Bing 网页 / AnySearch / Exa（MCP 匿名端点）。\n' +
+          '它们是第三方公开服务，不保证长期稳定与额度，所以只作兜底：\n' +
+          '配置了自己的检索平台时优先用配置的，它失败才回退到这里。'
+      })
+    );
+    body.appendChild(
+      checkbox(
+        d.search.keylessFallback !== false,
+        (v) => { d.search.keylessFallback = v; markDirty(); },
+        '允许使用免费引擎兜底（关闭后：没配 Key 就无法联网）'
+      )
+    );
+    body.appendChild(
+      field(
+        '结果缓存（分钟，0 = 关闭）',
+        numberInput(d.search.cacheMinutes ?? 5, (v) => {
+          d.search.cacheMinutes = Math.max(0, Math.min(60, v));
+          markDirty();
+        }, { min: 0, max: 60, step: 1 })
+      )
+    );
+    body.appendChild(h('div', { class: 'note', text: '同一问题重复提问时直接命中缓存，不再消耗检索额度。' }));
+
     const st = store.get();
     if ((st.search.results || []).length) {
       body.appendChild(h('div', { class: 'section-title', text: `检索来源面板（${st.search.results.length} 条）` }));

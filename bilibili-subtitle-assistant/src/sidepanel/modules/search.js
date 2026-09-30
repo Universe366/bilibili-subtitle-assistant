@@ -3,6 +3,7 @@
 
 import { call } from './bridge.js';
 import { SEARCH_ENGINES } from '../../shared/constants.js';
+import { wrapUntrusted, UNTRUSTED_NOTICE } from '../../shared/untrusted.js';
 
 export function engineUrl(engineId, query) {
   const e = SEARCH_ENGINES.find((x) => x.id === engineId) || SEARCH_ENGINES[0];
@@ -15,30 +16,32 @@ export function engineLabel(engineId) {
 }
 
 // 服务商检索：结果作为 AI 的依据（消耗额度）
+//
+// 注意：**这里不再因为「没配 Key」就直接失败**。
+// 后台会先试配置的平台，失败（或没配）时自动改用免费无 Key 引擎兜底，
+// 所以「装了扩展但没配检索 Key」也能真的联网。
 export async function runProviderSearch(settings, query, hooks = {}) {
   const plat = (settings.search.platforms || []).find((p) => p.id === settings.search.activeId) || null;
-  if (!plat || !String(plat.apiKey || '').trim()) {
-    const err = new Error('检索服务商未配置');
-    err.payload = {
-      kind: 'nokey',
-      title: '检索服务商还没配好',
-      detail: '缺少 API Key 或接口地址，无法进行「服务商检索」。',
-      action: '打开 设置 → 联网检索，填好 Key 后点「保存设置」；或者直接用「直接搜索引擎」（不消耗额度）。'
-    };
-    throw err;
-  }
   const out = await call(
     'search.provider',
     {
-      id: plat.id,
+      id: plat ? plat.id : undefined,
       query,
       maxResults: settings.search.maxResults,
       fetchPageContent: settings.search.fetchPageContent
     },
-    { timeoutMs: 60000 }
+    { timeoutMs: 90000 }
   );
   const results = out.results || [];
-  if (hooks.onLog) hooks.onLog(`服务商检索（${plat.name}）返回 ${results.length} 条来源`);
+  const who = out.provider || (plat && plat.name) || '检索';
+  if (hooks.onLog) {
+    hooks.onLog(
+      out.cached
+        ? `命中缓存：${who}（${results.length} 条来源）`
+        : `${who} 返回 ${results.length} 条来源${out.note ? `（${out.note}）` : ''}`
+    );
+  }
+  if (out.note && hooks.onNote) hooks.onNote(out.note);
 
   if (settings.search.fetchPageContent && results.length) {
     for (const r of results.slice(0, 4)) {
@@ -50,7 +53,15 @@ export async function runProviderSearch(settings, query, hooks = {}) {
       }
     }
   }
-  return { results, query, provider: plat.name, at: Date.now() };
+  return {
+    results,
+    query,
+    provider: who,
+    at: Date.now(),
+    keyless: out.keyless || null,
+    note: out.note || '',
+    cached: !!out.cached
+  };
 }
 
 // 直接搜索引擎：只打开结果页，不消耗额度，不进上下文
@@ -101,4 +112,13 @@ export function searchContextBlock(results, counts) {
     return `[来源 ${i + 1}] ${r.title}\nURL: ${r.url}\n被引用次数: ${cited}\n${label}: ${body}`;
   });
   return ['【联网检索到的参考资料】', ...rows].join('\n\n');
+}
+
+// 带「不可信外部数据」边界的安全版本。
+// 网页正文里可能藏着「忽略之前的指令」这类提示注入，直接拼进提示词有风险。
+// 这里把整块内容框进边界，并剥离正文自带的同名标记（防止提前闭合）。
+export function searchContextBlockGuarded(results, counts) {
+  const block = searchContextBlock(results, counts);
+  if (!block) return '';
+  return `${UNTRUSTED_NOTICE}\n\n${wrapUntrusted(block)}`;
 }

@@ -568,6 +568,14 @@ export function defaultSettings() {
       //   alwaysSearchOnChat —— 每一轮对话都检索（更准但更慢、更耗额度）
       autoSearchOnChat: true,
       alwaysSearchOnChat: false,
+      // 免费无 Key 引擎兜底：没配检索 Key 时也能真的联网
+      // （Bing 网页 / AnySearch / Exa MCP 均已实测可用）
+      keylessFallback: true,
+      // 自定义免费引擎优先顺序（空 = 用默认顺序）
+      keylessOrder: [],
+      // 结果缓存时长（分钟，0 = 关闭）。
+      // 免费引擎有限流、付费引擎按次计费，缓存能同时缓解两者。
+      cacheMinutes: 5,
       alwaysVisible: true
     },
     exportCfg: {

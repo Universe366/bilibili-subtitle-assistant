@@ -6,7 +6,7 @@ import { store } from './store.js';
 import { app, showError, saveHistory, doProviderSearch, doEngineSearch, recountCitations, activePromptText } from './context.js';
 import { renderMarkdownInto, renderInline } from './markdown.js';
 import { selectContext, linesToTranscript } from './subtitles.js';
-import { searchContextBlock, engineLabel } from './search.js';
+import { searchContextBlockGuarded, engineLabel } from './search.js';
 import { Stream } from './bridge.js';
 import { promptDialog } from './ui.js';
 
@@ -583,7 +583,7 @@ export async function generateSummary() {
   const settings = st.settings;
   const promptText = activePromptText();
   const ctx = selectContext(st.subtitles, '', 40000);
-  const searchBlock = searchContextBlock(st.search.results || [], st.search.counts);
+  const searchBlock = searchContextBlockGuarded(st.search.results || [], st.search.counts);
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);
   const messages = [
@@ -756,7 +756,7 @@ export async function sendMessage(text, opts = {}) {
       }
     }
   }
-  const searchBlock = searchContextBlock(searchResults, store.get().search.counts);
+  const searchBlock = searchContextBlockGuarded(searchResults, store.get().search.counts);
   // 系统提示按「有没有字幕」分两种形态。
   // 没有字幕时不再注入空字幕块，并如实告知模型当前没有字幕 ——
   // 这样它不会瞎编视频内容，而是当作普通问答来回答。
