@@ -543,10 +543,21 @@ export function defaultSettings() {
       overlapSeconds: ASR_LIMITS.overlapSeconds,
       autoOptimizeAfter: false, // 默认关闭
       autoApplyAfter: false, // 默认关闭
-      // 直接复用 B 站原始 AAC 音轨（不解码、不重编码、不整段下载）。
-      // 体积约为 WAV 的 8%，是「下载 + 上传」这两段耗时的大头来源。
-      // 失败会自动回退到解码路径，所以默认开启。
-      reuseOriginalAudio: true
+      // 直接复用 B 站原始 AAC 音轨（不解码、不重编码）。
+      //
+      // ⚠ **默认关闭** —— 实测发现按 sidx 切片的字节范围**不对**：
+      //   sidx 里第 1 个分片的偏移是对的（正好落在第一个 moof 上），
+      //   但 `offset + size` 并不落在下一个 moov 上，
+      //   说明这些 entry 描述的不是「连续完整的媒体字节」。
+      //   按它拼出来的音频**可能是坏的**（长度对、box 头也在，所以表面上正常），
+      //   而服务端多半会返回空结果或报错 —— 这种"静默错误"比慢更糟。
+      //
+      //   在把 sidx 语义彻底搞清之前，这条路径**不默认启用**。
+      //   想试的话可以打开，表现会在日志里明确写出。
+      //
+      // 想把它做对，需要先弄明白 B 站这个 fMP4 的真实分片语义
+      // （可能要把 moof 解出来看它引用了哪些字节范围）。
+      reuseOriginalAudio: false
     },
     prompt: {
       activeId: 'default',

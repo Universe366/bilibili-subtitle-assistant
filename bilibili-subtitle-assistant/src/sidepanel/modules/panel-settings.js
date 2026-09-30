@@ -493,12 +493,12 @@ function asrGroup(d) {
     body.appendChild(checkbox(d.asr.autoApplyAfter, (v) => { d.asr.autoApplyAfter = v; markDirty(); }, '转录完成后自动替换（默认关闭）'));
     body.appendChild(
       checkbox(
-        d.asr.reuseOriginalAudio !== false,
+        d.asr.reuseOriginalAudio === true,
         (v) => {
           d.asr.reuseOriginalAudio = v;
           markDirty();
         },
-        '优先复用 B 站原始音轨（不解码不重编码，体积约为 WAV 的 8%，明显更快）'
+        '优先复用 B 站原始音轨（实验性：按 sidx 切片尚未验证正确，可能得到坏音频，默认关闭）'
       )
     );
     body.appendChild(h('div', { class: 'note', text: '说明：分片时长会按「平台单文件上限」自动收缩；若某片仍超限，会按 0.7 系数重切，最多 3 次。终止后不会再继续消耗额度。' }));

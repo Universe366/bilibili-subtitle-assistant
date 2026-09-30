@@ -247,8 +247,13 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   //
   // 前提：模型接受 mp4/AAC。WAV-only 模型（XingChen 等）不能走这条路。
   // 任何环节失败都**静默回退**到原来的「下载 → 解码 → 重编码」路径。
-  if (asr.reuseOriginalAudio === false) {
-    if (onLog) onLog('未复用原始音轨：设置里关掉了「优先复用 B 站原始音轨」');
+  if (asr.reuseOriginalAudio !== true) {
+    if (onLog) {
+      onLog(
+        '未复用原始音轨：这个功能**默认关闭**（按 sidx 切片还没验证正确，' +
+          '拼出来的音频可能是坏的）。需要时可到 设置 → 语音识别 打开「优先复用 B 站原始音轨」。'
+      );
+    }
   } else if (audioFormatFor(platform) === 'wav') {
     if (onLog) onLog(`未复用原始音轨：当前模型（${platform ? platform.model : ''}）要求 WAV，必须解码重编码`);
   } else if (!audio.initRange || !audio.indexRange) {

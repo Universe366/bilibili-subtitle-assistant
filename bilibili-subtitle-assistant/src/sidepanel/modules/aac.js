@@ -22,13 +22,26 @@ export function parseByteRange(s) {
 
 // 解析 sidx box。
 //
-// ⚠ 结构里有 4 字节 `reference_ID` 紧跟在 version+flags 之后，
-// 漏掉它就会把 reference_count 读成 0（我第一次就是这么错的，
-// 表现为「索引里 0 个分片」）。
+// ⚠ 这里有两个**都踩过的坑**：
 //
-// 返回 { timescale, earliest, segments: [{ offset, size, dur }] }
-// offset 为**相对整个资源**的字节偏移（= index 段之后 + firstOffset 累加）。
+// 1) version+flags 之后还有 4 字节 `reference_ID`。漏掉它会把
+//    reference_count 读成 0（表现为「索引里 0 个分片」）。
+//
+// 2) **偏移的基准是「sidx 所在的那个数据段的起始」，不是文件起始**。
+//    `first_offset` 是相对 sidx box 之后的位置，所以第一个分片的绝对偏移是：
+//
+//        baseOffset + boxStart + boxSize + firstOffset
+//
+//    其中 baseOffset 是「传出这份 sidx 字节的那一段在文件里的起点」
+//    （B 站的 indexRange 从 943 开始，不是 0）。
+//    我一开始漏了 baseOffset，于是每个分片偏移都少了 943 字节 ——
+//    取回来的是**错位的字节**，拼出来的音频是坏的，
+//    而表面积上一切正常（长度对、box 头也在），极难发现。
+//
+// 返回 { timescale, earliest, segments:[{offset,size,dur}] }
+// offset 为**相对整个资源**的字节偏移。
 export function parseSidx(buf, opts = {}) {
+  const baseOffset = Math.max(0, Number(opts.baseOffset) || 0);
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf || 0);
   if (!bytes.length) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -70,7 +83,8 @@ export function parseSidx(buf, opts = {}) {
   q += 2;
 
   const segments = [];
-  let off = boxStart + boxSize + firstOffset;
+  // ★ 绝对偏移 = 数据段起点 + sidx 在段内的位置 + sidx 长度 + first_offset
+  let off = baseOffset + boxStart + boxSize + firstOffset;
   for (let i = 0; i < refCount && q + 12 <= bytes.length; i += 1) {
     const refSize = view.getUint32(q) >>> 1; // 最高位是 reference_type
     q += 4;
@@ -80,7 +94,7 @@ export function parseSidx(buf, opts = {}) {
     segments.push({ offset: off, size: refSize, dur });
     off += refSize;
   }
-  return { timescale, earliest, segments, boxSize };
+  return { timescale, earliest, segments, boxSize, firstOffset, baseOffset, dataStart: baseOffset + boxStart + boxSize };
 }
 
 // 把 sidx 的分片按目标时长（秒）分组成若干「切片」。
@@ -161,7 +175,9 @@ export async function assembleOriginalAac(candidate, opts = {}) {
 
     const idxBuf = await fetchRangeBytes(fetcher, url, index.start, index.end);
     if (!idxBuf || !idxBuf.length) return { ok: false, reason: 'sidx 索引下载失败' };
-    const sidx = parseSidx(idxBuf);
+    // ★ 必须把「index 段在文件里的起点」传进去，否则分片偏移会整体偏移
+    //   （B 站的 indexRange 从 init 之后开始，不是 0）
+    const sidx = parseSidx(idxBuf, { baseOffset: index.start });
     if (!sidx || !sidx.segments.length) return { ok: false, reason: 'sidx 索引解析不出分片' };
 
     // 分片 offset 是相对整个资源的，直接可用

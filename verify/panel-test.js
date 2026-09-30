@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.52.0', contentVersion: '1.52.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.53.0', contentVersion: '1.53.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.52.0', stale: false }],
-    contentVersion: '1.52.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.53.0', stale: false }],
+    contentVersion: '1.53.0'
   },
   diagnostics: {
-    extensionVersion: '1.52.0',
-    contentVersion: '1.52.0',
+    extensionVersion: '1.53.0',
+    contentVersion: '1.53.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.52.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.53.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.52\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.53\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1314,7 +1314,9 @@ async function main() {
     );
     check('转录把音轨 codec 传给解码器', /codecs: audio\.codecs \|\| ''/.test(txSrc3), '');
     check('跳过原始音轨复用会说明原因', /未复用原始音轨：这条候选没有 SegmentBase 索引/.test(txSrc3), '');
-    check('关掉开关时也说明', /设置里关掉了「优先复用 B 站原始音轨」/.test(txSrc3), '');
+    check('默认关闭并说明原因', /这个功能\*\*默认关闭\*\*/.test(txSrc3), '');
+    check('默认不启用原始音轨复用', /reuseOriginalAudio !== true/.test(txSrc3), '');
+    check('默认配置该开关为 false', require('./default-settings.json').asr.reuseOriginalAudio === false, String(require('./default-settings.json').asr.reuseOriginalAudio));
     check('WAV 模型时也说明', /要求 WAV，必须解码重编码/.test(txSrc3), '');
 
     // ---- 清空字幕（用户报「读取出来的字幕为什么不能清除」）----
@@ -1413,7 +1415,7 @@ async function main() {
       check('空输入返回 null', A.parseSidx(new Uint8Array(0)) === null, '');
     }
     const defS = require('./default-settings.json');
-    check('默认开启原始音轨复用', defS.asr.reuseOriginalAudio === true, String(defS.asr.reuseOriginalAudio));
+    check('原始音轨复用默认关闭（未验证正确）', defS.asr.reuseOriginalAudio === false, String(defS.asr.reuseOriginalAudio));
     const txSrc2 = fs.readFileSync(
       path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
       'utf8'

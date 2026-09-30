@@ -138,7 +138,7 @@
     "overlapSeconds": 4,
     "autoOptimizeAfter": false,
     "autoApplyAfter": false,
-    "reuseOriginalAudio": true
+    "reuseOriginalAudio": false
   },
   "prompt": {
     "activeId": "default",
