@@ -115,7 +115,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.29.0', contentVersion: '1.29.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.29.1', contentVersion: '1.29.1', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -136,12 +136,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.29.0', stale: false }],
-    contentVersion: '1.29.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.29.1', stale: false }],
+    contentVersion: '1.29.1'
   },
   diagnostics: {
-    extensionVersion: '1.29.0',
-    contentVersion: '1.29.0',
+    extensionVersion: '1.29.1',
+    contentVersion: '1.29.1',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -157,7 +157,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.29.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.29.1', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -229,7 +229,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.29\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.29\.1 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
   check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
@@ -494,6 +494,10 @@ async function main() {
       check('无字幕时如实告知模型「当前没有字幕」', /当前没有这期视频的字幕/.test(text), text.slice(0, 200));
       check('无字幕时不再注入空的「视频字幕原文」块', !/【视频字幕原文】/.test(text), text.slice(0, 200));
       check('无字幕时提示不要编造视频内容', /不要编造/.test(text), text.slice(0, 260));
+      // 能力自述必须真的进了系统提示 —— 否则模型又会答「我不能联网」
+      check('系统提示里包含能力自述块', /你当前的能力/.test(text), text.slice(0, 300));
+      check('系统提示告知联网能力状态', /联网检索：/.test(text), '');
+      check('系统提示同时给出字幕状态', /视频字幕：/.test(text), '');
     }
 
     // 有字幕时仍应注入字幕上下文
@@ -516,6 +520,78 @@ async function main() {
     }
 
     window.chrome.runtime.connect = origConnect;
+  }
+
+  // ---- 能力自述：用户问「你能不能联网」必须答对 ----
+  // 之前模型答「不能」，因为系统提示从没告诉它扩展里有联网能力。
+  {
+    const mod = api.panelAi;
+    check('导出了 buildCapabilityBlock', typeof mod.buildCapabilityBlock === 'function', typeof mod.buildCapabilityBlock);
+
+    const B = mod.buildCapabilityBlock;
+    if (typeof B === 'function') {
+      // 1. 有免费引擎（无 Key）时，必须说「可用」
+      const free = B({ webCapable: true, keylessOn: true, hasSearchKey: false, searchOn: true });
+      check('无 Key 但有免费引擎 → 告知联网可用', /联网检索：\*\*可用\*\*/.test(free), free.slice(0, 130));
+      check('无 Key 时说明靠免费引擎', /免费检索引擎/.test(free), '');
+      check('明确禁止「凭训练印象否认」', /不要凭训练印象否认/.test(free), '');
+
+      // 2. 配了 Key 时，说明走配置的平台
+      const keyed = B({ webCapable: true, hasSearchKey: true, searchProviderName: '博查 Bocha', searchOn: true });
+      check('配了 Key 时点名检索平台', /博查 Bocha/.test(keyed), keyed.slice(0, 160));
+
+      // 3. 用户关了联网开关 → 必须说「已关闭」，不能吹成可用
+      const off = B({ webCapable: true, searchOn: false });
+      check('联网关闭时如实说「用户已关闭」', /用户已关闭/.test(off), off.slice(0, 140));
+      check('联网关闭时不说「可用」', !/联网检索：\*\*可用\*\*/.test(off), '');
+
+      // 4. 真的没能力 → 说不可用并给引导
+      const none = B({ webCapable: false });
+      check('真没能力时如实说不可用', /联网检索：\*\*当前不可用\*\*/.test(none), none.slice(0, 140));
+      check('不可用时给出配置引导', /设置 → 联网检索/.test(none), '');
+
+      // 5. 本轮检索到了结果 → 告知条数
+      const used = B({ webCapable: true, searchUsed: true, searchResultCount: 7 });
+      check('检索成功时告知来源条数', /7 条来源/.test(used), used.slice(0, 200));
+
+      // 6. 检索失败 → 告知失败而不是假装有资料
+      const fail = B({ webCapable: true, searchFailNote: 'HTTP 429' });
+      check('检索失败时如实说明', /联网但失败了/.test(fail) && /HTTP 429/.test(fail), fail.slice(0, 200));
+
+      // 7. 字幕状态
+      check('有字幕时告知已加载', /字幕：\*\*已加载\*\*/.test(B({ hasSubtitles: true, subtitleCount: 120 })), '');
+      check('有字幕时给出行数', /120 行/.test(B({ hasSubtitles: true, subtitleCount: 120 })), '');
+      check('无字幕时告知尚未加载', /字幕：\*\*尚未加载\*\*/.test(B({ hasSubtitles: false })), '');
+      check('无字幕时禁止编造视频内容', /不要编造视频里说过的话/.test(B({ hasSubtitles: false })), '');
+
+      // 8. 附件
+      check('有附件时告知数量', /上传了 3 个文件/.test(B({ attachmentCount: 3 })), '');
+      check('无附件时不提附件', !/上传了/.test(B({ attachmentCount: 0 })), '');
+
+      // 9. MCP
+      const mcp = B({ mcpOn: true, mcpServerCount: 2 });
+      check('MCP 启用时告知服务数', /已启用\*\*，连接了 2 个服务/.test(mcp), mcp.slice(0, 240));
+      check('MCP 启用时要求直接调用工具', /不要声称自己做不到/.test(mcp), '');
+      check('MCP 配了但关闭时如实说', /已配置但\*\*用户关闭了\*\*/.test(B({ mcpOn: false, mcpServerCount: 2 })), '');
+      check('MCP 未配置时如实说', /MCP）：未配置/.test(B({ mcpServerCount: 0 })), '');
+
+      // 10. Skills
+      check('选定技能时告知技能名', /已选定「深度总结」/.test(B({ activeSkill: '深度总结' })), '');
+      check('有技能未选时告知数量', /有 4 个可用技能/.test(B({ skillsCount: 4 })), '');
+
+      // 11. 关键区分：不能让模型误以为「自己就是联网的」
+      check('提醒区分「模型本身」与「扩展提供的能力」', /你本身仍然是语言模型/.test(B({ webCapable: true })), '');
+
+      // 12. 容错：什么都不传也不能崩
+      let crash = null;
+      try {
+        const empty = B();
+        if (typeof empty !== 'string' || !empty) crash = '返回非字符串';
+      } catch (err) {
+        crash = String(err && err.message);
+      }
+      check('无参数调用不崩溃', !crash, String(crash));
+    }
   }
 
   report(results, errors);

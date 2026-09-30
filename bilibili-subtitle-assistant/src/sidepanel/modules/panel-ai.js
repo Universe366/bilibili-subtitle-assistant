@@ -503,6 +503,121 @@ function structuredCloneSafe(v) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 判断「联网能力」的真实状态。对话与总结共用，避免两处判断不一致。
+export function searchCapabilityOf(settings) {
+  const search = (settings && settings.search) || {};
+  const platforms = search.platforms || [];
+  const active = platforms.find((p) => p.id === search.activeId) || platforms[0] || null;
+  const hasSearchKey = !!(active && String(active.apiKey || '').trim());
+  const keylessOn = search.keylessFallback !== false;
+  return {
+    active,
+    hasSearchKey,
+    keylessOn,
+    webCapable: hasSearchKey || keylessOn,
+    searchOn: search.autoSearchOnChat !== false,
+    alwaysSearch: search.alwaysSearchOnChat === true,
+    providerName: active ? active.name || '' : ''
+  };
+}
+
+// 能力自述
+// ---------------------------------------------------------------------------
+
+// 拼出「我当前有什么能力」这一段系统提示。
+//
+// 为什么需要：用户问「你能不能联网」时，模型原本只能凭训练印象猜，
+// 于是答「我是语言模型，不能联网」—— 而扩展明明可以联网。
+// 根因是**模型看不到自己的运行时能力**（联网开关、检索结果、MCP 工具）。
+// 这里把当前真实状态如实告诉它，能力类问题才能答对。
+//
+// 原则：只描述**此刻确实成立**的事实，绝不夸大 ——
+// 不能说「你可以联网」而实际上关了联网。
+export function buildCapabilityBlock(info = {}) {
+  const {
+    webCapable = false,
+    searchOn = true,
+    alwaysSearch = false,
+    hasSearchKey = false,
+    searchProviderName = '',
+    searchUsed = false,
+    searchResultCount = 0,
+    searchFailNote = '',
+    hasSubtitles = false,
+    subtitleCount = 0,
+    attachmentCount = 0,
+    mcpOn = false,
+    mcpServerCount = 0,
+    skillsCount = 0,
+    activeSkill = ''
+  } = info;
+
+  const lines = [];
+  lines.push('【你当前的能力（这是事实描述；关于「你能不能…」的问题请据此回答，不要凭训练印象否认）】');
+
+  // 联网
+  if (webCapable && searchOn) {
+    const channel = hasSearchKey
+      ? `已配置检索平台${searchProviderName ? `（${searchProviderName}）` : ''}`
+      : '使用免费检索引擎（Bing / AnySearch / Exa，无需 Key）';
+    lines.push(
+      `· 联网检索：**可用**（${channel}）。${
+        alwaysSearch ? '本轮对话已自动检索网页' : '当提问涉及外部信息时（最新、是谁、多少钱、查一下等）会自动检索网页'
+      }，检索结果会作为参考资料附在下面。`
+    );
+  } else if (webCapable && !searchOn) {
+    lines.push('· 联网检索：**用户已关闭**（对话区的 🌐 开关处于关闭状态）。需要时请提示用户打开它。');
+  } else {
+    lines.push(
+      '· 联网检索：**当前不可用**（既没有配置检索平台的 Key，也关闭了免费引擎兜底）。' +
+        '如果用户需要联网，请引导他到 设置 → 联网检索 填 Key 或开启「免费引擎兜底」。'
+    );
+  }
+  if (searchFailNote) {
+    lines.push(`  └ 注意：本轮尝试联网但失败了（${searchFailNote}），所以这次没有网页资料可用。`);
+  } else if (searchUsed && searchResultCount) {
+    lines.push(`  └ 本轮已检索到 ${searchResultCount} 条来源，已附在下方「联网检索到的参考资料」里。`);
+  }
+
+  // 视频字幕
+  if (hasSubtitles) {
+    lines.push(`· 视频字幕：**已加载**（${subtitleCount} 行），已在下方给出原文，你可以基于视频内容回答。`);
+  } else {
+    lines.push('· 视频字幕：**尚未加载**，所以你现在看不到视频内容；不要编造视频里说过的话。');
+  }
+
+  // 附件
+  if (attachmentCount > 0) {
+    lines.push(`· 用户本轮上传了 ${attachmentCount} 个文件/图片，已作为消息附件发送。`);
+  }
+
+  // MCP 工具
+  if (mcpOn && mcpServerCount > 0) {
+    lines.push(
+      `· 外部工具（MCP）：**已启用**，连接了 ${mcpServerCount} 个服务。` +
+        '你能调用的工具见请求里的 tools 定义；需要外部数据或操作时请直接调用，不要声称自己做不到。'
+    );
+  } else if (mcpServerCount > 0) {
+    lines.push('· 外部工具（MCP）：已配置但**用户关闭了**（对话区的 🔌 开关）。');
+  } else {
+    lines.push('· 外部工具（MCP）：未配置。');
+  }
+
+  // Skills
+  if (activeSkill) {
+    lines.push(`· 技能：本轮已选定「${activeSkill}」，请按该技能的正文要求执行。`);
+  } else if (skillsCount > 0) {
+    lines.push(`· 技能：有 ${skillsCount} 个可用技能（对话区点 ✨ 选择），本轮未选定。`);
+  }
+
+  lines.push(
+    '注意：上面只是「这个浏览器扩展能给模型提供什么」。' +
+      '你本身仍然是语言模型；请准确区分「我能推理」与「这个扩展给我接了联网/工具」。'
+  );
+  return lines.join('\n');
+}
+
 // Skills 选择面板
 function openSkillPicker() {
   const s = store.get().settings || {};
@@ -586,8 +701,29 @@ export async function generateSummary() {
   const searchBlock = searchContextBlockGuarded(st.search.results || [], st.search.counts);
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);
+  // 总结也带上能力自述：用户可能在总结里问「这个结果是联网查的吗」
+  const cap = searchCapabilityOf(settings);
+  const capBlock = buildCapabilityBlock({
+    webCapable: cap.webCapable,
+    searchOn: cap.searchOn,
+    hasSearchKey: cap.hasSearchKey,
+    searchProviderName: cap.providerName,
+    searchResultCount: (st.search.results || []).length,
+    hasSubtitles: (st.subtitles || []).length > 0,
+    subtitleCount: (st.subtitles || []).length,
+    mcpOn: !!(settings.mcp && settings.mcp.enabled),
+    mcpServerCount: ((settings.mcp && settings.mcp.servers) || []).filter((x) => x.enabled !== false).length,
+    skillsCount: ((settings.skills && settings.skills.items) || []).length,
+    activeSkill: activeSkill ? activeSkill.name : ''
+  });
   const messages = [
-    { role: 'system', content: activeSkill ? `${promptText}\n\n【当前技能：${activeSkill.name}】\n${activeSkill.body}` : promptText },
+    {
+      role: 'system',
+      content: [
+        activeSkill ? `${promptText}\n\n【当前技能：${activeSkill.name}】\n${activeSkill.body}` : promptText,
+        capBlock
+      ].filter(Boolean).join('\n\n')
+    },
     {
       role: 'user',
       content: [
@@ -720,38 +856,48 @@ export async function sendMessage(text, opts = {}) {
   const settings = st.settings;
   const ctx = selectContext(st.subtitles, question, 30000);
 
+  // 「联网到底能不能用」的真实判断：
+  //   配了检索平台的 Key        → 能（走用户的正式渠道）
+  //   没配 Key 但开了免费引擎兜底 → 也能（Bing/AnySearch/Exa）
+  //   两者都没有                 → 真的不能
+  const cap = searchCapabilityOf(settings);
+
   // 对话时按需自动检索。
   // 之前这里只是读取 `st.search.results`（上一次搜索结果），
   // 也就是说**必须先前手动搜过一次**才会有资料 —— 对话本身从不联网，
   // 用户看到的自然就是「对话不能联网」。
   let searchResults = st.search.results || [];
+  let searchUsed = false;
+  let searchFailNote = '';
   if (settings.search.autoSearchOnChat !== false && question) {
     const needsWeb = /最新|现在|目前|今年|今天|新闻|价格|多少人|是谁|什么时候|为什么|查一下|搜一下|官网|地址|链接|资料|出处|来源|对比|区别|多少|几点|哪一年/i.test(
       question
     );
     // 问题里有明显的外部信息需求时，或用户希望每轮都搜时，才真正发起检索
     const shouldSearch = needsWeb || settings.search.alwaysSearchOnChat === true;
-    const activeSearch = (settings.search.platforms || []).find((p) => p.id === settings.search.activeId) ||
-      (settings.search.platforms || [])[0];
-    if (shouldSearch && !(activeSearch && String(activeSearch.apiKey || '').trim())) {
+    if (shouldSearch && !cap.webCapable) {
       // 明确告知「为什么没联网」，而不是静默跳过
       toast(
         {
-          title: '未能联网：检索平台还没配置 Key',
-          detail: '打开 设置 → 联网检索，填入 Key 后即可让对话/总结引用网页资料。'
+          title: '未能联网：没有可用的检索方式',
+          detail: '打开 设置 → 联网检索，填入 Key，或开启「免费引擎兜底」（无需 Key 即可联网）。'
         },
         'warn',
         6000
       );
-    } else if (shouldSearch && Array.isArray(settings.search.platforms) && settings.search.platforms.length) {
+    } else if (shouldSearch) {
       try {
         // 复用已有的检索流程（它自己会写回 store.search）
         await doProviderSearch(question);
         const after = store.get().search || {};
-        if (Array.isArray(after.results) && after.results.length) searchResults = after.results;
+        if (Array.isArray(after.results) && after.results.length) {
+          searchResults = after.results;
+          searchUsed = true;
+        }
       } catch (err) {
-        // 检索失败不影响对话本身
+        // 检索失败不影响对话本身，但要让模型知道「这次没查到」
         const detail = (err && err.payload && err.payload.title) || (err && err.message) || '检索失败';
+        searchFailNote = detail;
         toast({ title: '联网检索失败，已跳过', detail }, 'warn', 3500);
       }
     }
@@ -761,6 +907,32 @@ export async function sendMessage(text, opts = {}) {
   // 没有字幕时不再注入空字幕块，并如实告知模型当前没有字幕 ——
   // 这样它不会瞎编视频内容，而是当作普通问答来回答。
   const systemParts = [activePromptText(), settings.prompt.chatPrefix || ''];
+
+  // ---- 能力自述 ----
+  // 用户问「你能不能联网」时，模型只能凭训练印象猜，然后答「不能」——
+  // 因为它**看不到**扩展里其实有联网开关和检索结果。
+  // 这里把「当前实际可用的能力」如实告诉它，它才能正确回答能力类问题。
+  systemParts.push(
+    buildCapabilityBlock({
+      webCapable: cap.webCapable,
+      searchOn: cap.searchOn,
+      alwaysSearch: cap.alwaysSearch,
+      hasSearchKey: cap.hasSearchKey,
+      keylessOn: cap.keylessOn,
+      searchProviderName: searchUsed ? store.get().search.provider || '' : '',
+      searchUsed,
+      searchResultCount: (searchResults || []).length,
+      searchFailNote,
+      hasSubtitles,
+      subtitleCount: (st.subtitles || []).length,
+      attachmentCount: attachments.length,
+      mcpOn: !!(settings.mcp && settings.mcp.enabled),
+      mcpServerCount: ((settings.mcp && settings.mcp.servers) || []).filter((x) => x.enabled !== false).length,
+      skillsCount: ((settings.skills && settings.skills.items) || []).length,
+      activeSkill: (((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId) || {}).name || ''
+    })
+  );
+
   if (hasSubtitles) {
     if (ctx.truncated) systemParts.push('（字幕较长，已按与问题的相关性截取）');
     systemParts.push(`【视频字幕原文】\n${ctx.text}`);
