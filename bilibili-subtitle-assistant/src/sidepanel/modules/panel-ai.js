@@ -886,7 +886,7 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
   if (!st.subtitlesOriginal || !st.subtitlesOriginal.length) {
     store.set({ subtitlesOriginal: lines.map((l) => ({ ...l })) });
   }
-  setLines(applied.lines);
+  setLines(applied.lines, { label: 'AI 校对并更正字幕', detail: `更正 ${applied.changed} 处` });
   await saveHistory();
 
   // 生成「改了哪些」的报告，用于总结顶部与提示
@@ -928,7 +928,7 @@ export async function revertSubtitles() {
     toast({ title: '没有可回退的原始字幕' }, 'warn');
     return false;
   }
-  setLines(orig.map((l) => ({ ...l })));
+  setLines(orig.map((l) => ({ ...l })), { label: '回退字幕到原始版本' });
   store.set({ optimize: { ...(st.optimize || {}), corrections: [], pending: false } });
   await saveHistory();
   toast({ title: '已回退到原始字幕', detail: 'AI 的更正已撤销。' }, 'ok', 3000);

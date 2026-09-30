@@ -14,6 +14,8 @@ function emptyState() {
     subtitles: [],
     // AI 校对前的原始字幕（用于「回退字幕」）。只在换视频时清空。
     subtitlesOriginal: [],
+    // 操作留痕时间线（每个改变内容的步骤一份快照），用于回退
+    timeline: [],
     subtitleMeta: null,
     summary: '',
     chat: [],

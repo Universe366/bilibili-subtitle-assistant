@@ -22,6 +22,7 @@ import {
 import { call } from './bridge.js';
 import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
 import { engineLabel } from './search.js';
+import * as TIMELINE from './timeline.js';
 
 let host = null;
 let searchQuery = '';
@@ -108,7 +109,14 @@ export function render() {
         if (app.panels.ai && app.panels.ai.focusInput) app.panels.ai.focusInput();
       }, { title: '基于这期视频的字幕向 AI 提问' })
     );
-    host.appendChild(button('导出', () => exportSubtitles(), { title: 'SRT / WebVTT / ASS / TXT / Markdown / JSON' }));
+    // 「导出」也走格式选择弹窗 —— 之前这里直接下载（用上次记住的设置），
+    // 而菜单里那个才弹格式选择，两个入口行为不一致，用户会以为「不能选格式」。
+    host.appendChild(
+      button('导出', () => {
+        if (app.panels.subtitles && app.panels.subtitles.exportDialog) app.panels.subtitles.exportDialog();
+        else exportSubtitles();
+      }, { title: '选择格式后导出（SRT / WebVTT / ASS / TXT / Markdown / JSON）' })
+    );
   }
 
   // ---- 次要操作：收进「⋯」菜单，界面只留主流程 ----
@@ -300,6 +308,72 @@ function showSources() {
 
 function showHistory(rows) {
   const body = h('div');
+
+  // ---- 当前会话的「操作留痕」（可回退到任意一步）----
+  // 用户要求「全流程留痕，可以回退」。
+  // 这里与下面的跨视频历史并列：上面是本会话的步骤时间线，下面是别的视频。
+  const tlTitle = h('div', { class: 'section-title', text: '本会话操作留痕（可回退）' });
+  body.appendChild(tlTitle);
+  const entries = TIMELINE.list();
+  if (!entries.length) {
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text: '还没有留痕。抓取字幕、AI 优化、AI 校对、生成总结都会自动记一步。'
+      })
+    );
+  } else {
+    for (let i = 0; i < entries.length; i += 1) {
+      const e = entries[i];
+      const isCurrent = i === 0;
+      body.appendChild(
+        h('div', { class: 'history-row' }, [
+          h('div', { class: 't', text: e.label + (isCurrent ? '（当前）' : '') }),
+          h('div', {
+            class: 'muted',
+            text: `${new Date(e.at).toLocaleTimeString('zh-CN', { hour12: false })}${e.detail ? ` · ${e.detail}` : ''}`
+          }),
+          h('div', { class: 'row tight' }, [
+            button(
+              '回退到这一步',
+              () => {
+                const restored = TIMELINE.revertTo(e.id);
+                if (restored) {
+                  closeOverlays();
+                  toast(
+                    { title: `已回退到「${e.label}」`, detail: '回退本身也留了痕，可以再退回来。' },
+                    'ok',
+                    3500
+                  );
+                  render();
+                  if (app.panels.subtitles) app.panels.subtitles.render();
+                  if (app.panels.ai) app.panels.ai.render();
+                }
+              },
+              { small: true, primary: !isCurrent, disabled: isCurrent }
+            )
+          ])
+        ])
+      );
+    }
+    body.appendChild(
+      h('div', { class: 'row tight' }, [
+        button(
+          '清空留痕',
+          () => {
+            TIMELINE.clear();
+            closeOverlays();
+            toast({ title: '已清空操作留痕' }, 'ok');
+          },
+          { small: true }
+        ),
+        h('span', { class: 'muted', text: `最多保留 ${TIMELINE.TIMELINE_MAX} 步` })
+      ])
+    );
+  }
+
+  // ---- 跨视频的历史记录 ----
+  body.appendChild(h('div', { class: 'section-title', text: '其它视频的历史' }));
   if (!rows.length) body.appendChild(h('div', { class: 'note', text: '还没有历史记录。抓取或转录成功后会自动保存。' }));
   for (const r of rows) {
     body.appendChild(
@@ -318,5 +392,5 @@ function showHistory(rows) {
       ])
     );
   }
-  openOverlay('历史记录', body, [{ label: '关闭', onClick: () => closeOverlays() }], { width: '480px' });
+  openOverlay('历史记录与操作留痕', body, [{ label: '关闭', onClick: () => closeOverlays() }], { width: '480px' });
 }

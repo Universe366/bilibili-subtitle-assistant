@@ -1965,11 +1965,14 @@ mark.hit {
 }
 
 .menu-panel {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 60;
+  /* 挂到 body 上用 fixed 定位：#view 有 overflow:hidden，
+     留在原地做绝对定位会被祖先裁掉（表现为「点开看不到」）*/
+  position: fixed;
+  z-index: 2147483000;
   min-width: 190px;
+  max-width: min(280px, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
   padding: 4px;
   border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
   border-radius: 8px;

@@ -162,6 +162,9 @@ export async function loadVideo(opts = {}) {
     }
 
     store.set({ video, ...cleared });
+    // 换视频后重开一条留痕时间线 —— 旧视频的步骤混进来会让人困惑
+    if (changed) store.set({ timeline: [] });
+    recordTimeline(changed ? '读取视频' : '重新读取视频', video.title || '');
     if (changed && prevSig) {
       toast(
         {
@@ -336,9 +339,20 @@ export function updateLine(index, text) {
   refreshStats();
 }
 
-export function setLines(lines) {
+// 所有「改写字幕」的路径都汇聚到这里，所以留痕也放在这里 ——
+// 这样抓字幕、AI 优化、AI 校对、手动改行都会被自动记录，不用逐处调用。
+export function setLines(lines, meta = {}) {
   store.set({ subtitles: lines });
   refreshStats();
+  recordTimeline(meta.label || '字幕已更新', meta.detail || `${(lines || []).length} 行`);
+}
+
+// 延迟到运行期再取 timeline 模块：timeline.js 依赖 store，
+// 用顶层 import 会形成循环依赖（虽然 ESM 能处理，但初始化顺序很脆）。
+function recordTimeline(label, detail) {
+  import('./timeline.js')
+    .then((T) => T.record(label, { detail }))
+    .catch(() => {});
 }
 
 export function refreshStats() {
