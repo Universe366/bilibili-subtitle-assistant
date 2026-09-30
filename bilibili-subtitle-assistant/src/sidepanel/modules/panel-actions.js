@@ -20,7 +20,7 @@ import {
   copyAllSubtitles
 } from './context.js';
 import { call } from './bridge.js';
-import { openOverlay, closeOverlays } from './ui.js';
+import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
 import { engineLabel } from './search.js';
 
 let host = null;
@@ -100,7 +100,7 @@ export function render() {
       button(hasSummary ? '重新生成总结' : '③ 生成总结', () => {
         store.set({ activeTab: 'ai' });
         if (app.panels.ai && app.panels.ai.generateSummary) app.panels.ai.generateSummary();
-      }, { primary: true, title: '基于当前字幕生成总结（流式 + Markdown 渲染）' })
+      }, { primary: true, title: '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结' })
     );
     host.appendChild(
       button('去提问', () => {
@@ -108,29 +108,45 @@ export function render() {
         if (app.panels.ai && app.panels.ai.focusInput) app.panels.ai.focusInput();
       }, { title: '基于这期视频的字幕向 AI 提问' })
     );
-    host.appendChild(button('④ 导出', () => exportSubtitles(), { title: 'SRT / WebVTT / ASS / TXT / Markdown / JSON' }));
+    host.appendChild(button('导出', () => exportSubtitles(), { title: 'SRT / WebVTT / ASS / TXT / Markdown / JSON' }));
   }
 
-  // ---- 次要操作 ----
-  host.appendChild(button('读取视频', () => reload(), { small: true, title: '重新读取当前页面的视频信息' }));
-  host.appendChild(button('抓取字幕', () => contextHarvest(), { small: true, disabled: !hasVideo, title: '重新抓取官方字幕' }));
-  host.appendChild(button('语音转录', () => contextTranscribe(), { small: true, title: hasLines ? '重新转录（会消耗语音识别额度）' : '把音轨转成文字' }));
-  host.appendChild(button('AI 优化', () => optimizeWithAi(), { small: true, disabled: !hasLines, title: '用 AI 修正错别字 / 同音字 / 专有名词' }));
-  host.appendChild(button('全部替换', () => applyActiveRules(), { small: true, disabled: !hasLines, title: '一键自动全部进行：直接应用当前替换规则组' }));
-  host.appendChild(button('章节', () => generateChapters(), { small: true, disabled: !hasLines, title: '把视频按内容切成若干段并可跳转' }));
-  host.appendChild(button('自检', () => runQualityCheck(), { small: true, disabled: !hasLines, title: '检查漏段与时间异常' }));
-
-  host.appendChild(h('span', { class: 'spacer' }));
-
-  host.appendChild(button('复制全部', () => copyAllSubtitles(), { small: true, disabled: !hasLines, title: '复制纯文本字幕' }));
-  host.appendChild(button('历史', async () => showHistory(await loadHistory()), { small: true, title: '处理过的视频与结果' }));
-  host.appendChild(
-    button('批量', () => {
-      store.set({ activeTab: 'settings' });
-      store.setGroupOpen('batch', true);
-      if (app.panels.settings) app.panels.settings.render();
-    }, { small: true, title: '一次提交多个视频，串行处理' })
-  );
+  // ---- 次要操作：收进「⋯」菜单，界面只留主流程 ----
+  //
+  // 之前这里是 7 个平铺的小按钮（读取视频/抓取字幕/语音转录/AI 优化/
+  // 全部替换/章节/自检）+ 4 个（复制全部/历史/批量/…），
+  // 一屏十几个按钮，用户不知道该点哪个。现在按语义分组收进菜单。
+  const moreItems = [
+    { icon: '🔄', label: '重新读取视频', title: '重新读取当前页面的视频信息', onClick: () => reload() },
+    { icon: '📥', label: '重新抓取字幕', title: '重新抓取官方字幕', disabled: !hasVideo, onClick: () => contextHarvest() },
+    { icon: '🎙️', label: '语音转录', title: hasLines ? '重新转录（会消耗语音识别额度）' : '把音轨转成文字', onClick: () => contextTranscribe() },
+    { divider: true },
+    { icon: '✨', label: 'AI 优化字幕', title: '只修正字幕文本（错别字/术语/时间/数据/逻辑），不改写内容', disabled: !hasLines, onClick: () => optimizeWithAi() },
+    {
+      icon: '🔁',
+      label: '应用替换规则',
+      title: '按当前替换规则组一键全部替换',
+      disabled: !hasLines,
+      onClick: () => applyActiveRules()
+    },
+    { divider: true },
+    { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段并可跳转', disabled: !hasLines, onClick: () => generateChapters() },
+    { icon: '🩺', label: '质量自检', title: '检查漏段与时间异常', disabled: !hasLines, onClick: () => runQualityCheck() },
+    { icon: '📋', label: '复制全部字幕', title: '复制纯文本字幕', disabled: !hasLines, onClick: () => copyAllSubtitles() },
+    { divider: true },
+    { icon: '🕘', label: '历史记录', title: '处理过的视频与结果', onClick: async () => showHistory(await loadHistory()) },
+    {
+      icon: '🗂️',
+      label: '批量处理',
+      title: '一次提交多个视频，串行处理',
+      onClick: () => {
+        store.set({ activeTab: 'settings' });
+        store.setGroupOpen('batch', true);
+        if (app.panels.settings) app.panels.settings.render();
+      }
+    }
+  ];
+  host.appendChild(popoverMenu(moreItems, { label: '⋯', title: '更多操作' }));
 
   // ---- 检索行（字幕就绪后即可见，且一直可见）----
   const searchRow = h('div', { class: 'row tight', style: { flexBasis: '100%' } });
@@ -145,7 +161,7 @@ export function render() {
   });
   searchRow.appendChild(input);
   searchRow.appendChild(
-    button('服务商检索', () => {
+    button('检索', () => {
       const q = (searchQuery || (st.video && st.video.title) || '').trim();
       if (!q) {
         toast({ title: '请输入检索关键词' }, 'warn');
@@ -155,24 +171,21 @@ export function render() {
     }, { small: true, primary: true, title: '走检索 API，结果会作为 AI 的依据（消耗额度）' })
   );
   searchRow.appendChild(
-    button(`直接搜索（${engineLabel((st.settings && st.settings.search.engine) || 'bing')}）`, () => {
+    button('直接搜索', () => {
       const q = (searchQuery || (st.video && st.video.title) || '').trim();
       if (!q) {
         toast({ title: '请输入检索关键词' }, 'warn');
         return;
       }
       doEngineSearch(q);
-    }, { small: true, title: '只打开搜索引擎结果页，不消耗额度，也不进入 AI 上下文' })
+    }, {
+      small: true,
+      title: `只打开搜索引擎结果页（当前：${engineLabel((st.settings && st.settings.search.engine) || 'bing')}），不消耗额度，也不进入 AI 上下文`
+    })
   );
   const count = (st.search.results || []).length;
   if (count) {
-    searchRow.appendChild(button(`来源（${count}）`, () => showSources(), { small: true, title: '查看检索到的页面、数量与引用次数' }));
-    searchRow.appendChild(
-      h('span', {
-        class: 'muted',
-        text: `引用合计 ${st.search.counts ? Object.values(st.search.counts).reduce((a, b) => a + b, 0) : 0} 次`
-      })
-    );
+    searchRow.appendChild(button(`来源 ${count}`, () => showSources(), { small: true, title: '查看检索到的页面、数量与引用次数' }));
   }
   host.appendChild(searchRow);
 

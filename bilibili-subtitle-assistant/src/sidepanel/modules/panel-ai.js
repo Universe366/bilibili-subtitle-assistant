@@ -10,7 +10,7 @@ import { searchContextBlockGuarded, engineLabel } from './search.js';
 import * as OPT from './optimize.js';
 import { extractVerifyItems, verifyItems, verifyContextBlock } from '../../shared/verify.js';
 import { Stream, call } from './bridge.js';
-import { promptDialog } from './ui.js';
+import { promptDialog, popoverMenu } from './ui.js';
 
 const SUGGESTIONS = [
   '用 5 句话总结这期视频',
@@ -198,37 +198,45 @@ function renderToolbar() {
   if (!bar) return;
   clear(bar);
   const hasLines = (st.subtitles || []).length > 0;
+  const changed = (st.optimize && st.optimize.corrections ? st.optimize.corrections.length : 0) || 0;
+  const canRevert = (st.subtitlesOriginal || []).length > 0 && hasLines;
+
+  // 只留一个主操作 + 一个停止（生成中才有意义）；
+  // 复制/导出/重置/回退全部收进「⋯」，避免一屏按钮。
   bar.appendChild(
     button(state.summaryStreaming ? '生成中…' : '生成总结', () => generateSummary(), {
       small: true,
       primary: true,
       disabled: !hasLines || state.streaming,
       title: hasLines
-        ? '先生成字幕更正（联网核对术语/逻辑/时间/事实），再据此生成总结'
+        ? '先联网校对字幕（术语/逻辑/时间/事实），再用更正后的字幕生成总结'
         : '需要先有字幕'
     })
   );
-  bar.appendChild(button('停止', () => stopStream(), { small: true, danger: true, disabled: !state.streaming }));
-  // 字幕被校对过就给一个回退入口（用户要求「可以回退至原有的字幕」）
-  if ((st.subtitlesOriginal || []).length && (st.subtitles || []).length) {
-    const changed = (st.optimize && st.optimize.corrections ? st.optimize.corrections.length : 0) || 0;
-    bar.appendChild(
-      button(changed ? `回退字幕（已改 ${changed} 处）` : '回退字幕', () => revertSubtitles(), {
-        small: true,
-        title: '把字幕恢复到 AI 更正之前的样子'
-      })
-    );
+  if (state.streaming || state.summaryStreaming) {
+    bar.appendChild(button('停止', () => stopStream(), { small: true, danger: true }));
   }
-  bar.appendChild(button('复制总结', () => copySummary(), { small: true, disabled: !st.summary }));
-  bar.appendChild(button('导出总结', () => exportSummary(), { small: true, disabled: !st.summary }));
-  bar.appendChild(button('重置会话', () => resetChat(), { small: true }));
-  bar.appendChild(h('span', { class: 'spacer' }));
   bar.appendChild(
-    h('span', {
-      class: 'muted',
-      text: st.readiness?.ok?.ai ? '' : 'AI 未就绪'
-    })
+    popoverMenu(
+      [
+        { icon: '📋', label: '复制总结', disabled: !st.summary, onClick: () => copySummary() },
+        { icon: '⬇️', label: '导出总结', disabled: !st.summary, onClick: () => exportSummary() },
+        { divider: true },
+        {
+          icon: '↩️',
+          label: canRevert ? `回退字幕${changed ? `（已改 ${changed} 处）` : ''}` : '回退字幕',
+          title: '把字幕恢复到 AI 更正之前的样子',
+          disabled: !canRevert,
+          onClick: () => revertSubtitles()
+        },
+        { divider: true },
+        { icon: '🧹', label: '重置会话', onClick: () => resetChat() }
+      ],
+      { label: '⋯', title: '更多操作' }
+    )
   );
+  bar.appendChild(h('span', { class: 'spacer' }));
+  if (!st.readiness?.ok?.ai) bar.appendChild(h('span', { class: 'muted', text: 'AI 未就绪' }));
 }
 
 function renderSummary() {

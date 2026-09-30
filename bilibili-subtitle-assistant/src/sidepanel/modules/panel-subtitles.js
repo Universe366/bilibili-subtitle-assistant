@@ -8,7 +8,7 @@ import { call } from './bridge.js';
 import { lineStats, overallStats, langLabel } from './subtitles.js';
 import { FORMATTERS } from './exporter.js';
 import { EXPORT_FORMATS, EXPORT_TEMPLATES } from '../../shared/constants.js';
-import { openOverlay, closeOverlays } from './ui.js';
+import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
 
 const OVERSCAN = 6;
 const state = {
@@ -444,11 +444,22 @@ function renderToolbar() {
     }, { small: true, title: '字幕自动高亮并滚动到当前句；暂停后不再自动滚动' })
   );
 
-  bar.appendChild(button('复制全部', () => copyAllSubtitles(), { small: true }));
-  bar.appendChild(button('导出', () => exportDialog(), { small: true }));
-  bar.appendChild(button('统计', () => statsDialog(), { small: true }));
-  bar.appendChild(button('章节', () => generateChapters(), { small: true, disabled: !(store.get().subtitles || []).length, title: '把视频按内容切成若干段，可点击跳转' }));
-  bar.appendChild(button('自检', () => runQualityCheck(), { small: true, disabled: !(store.get().subtitles || []).length, title: '检查是否漏段、时间是否异常' }));
+  // 次要操作收进「⋯」：复制/导出/统计/章节/自检 都是低频动作，
+  // 平铺出来会让工具栏变得很长。
+  const hasLinesNow = (store.get().subtitles || []).length > 0;
+  bar.appendChild(
+    popoverMenu(
+      [
+        { icon: '📋', label: '复制全部字幕', onClick: () => copyAllSubtitles(), disabled: !hasLinesNow },
+        { icon: '⬇️', label: '导出字幕', onClick: () => exportDialog(), disabled: !hasLinesNow },
+        { icon: '📊', label: '字幕统计', onClick: () => statsDialog(), disabled: !hasLinesNow },
+        { divider: true },
+        { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段，可点击跳转', onClick: () => generateChapters(), disabled: !hasLinesNow },
+        { icon: '🩺', label: '质量自检', title: '检查是否漏段、时间是否异常', onClick: () => runQualityCheck(), disabled: !hasLinesNow }
+      ],
+      { label: '⋯', title: '更多操作' }
+    )
+  );
 
   // 优化建议条
   const corrections = (st.optimize && st.optimize.corrections) || [];

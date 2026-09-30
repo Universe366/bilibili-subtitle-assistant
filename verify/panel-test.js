@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.35.0', contentVersion: '1.35.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.36.0', contentVersion: '1.36.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.35.0', stale: false }],
-    contentVersion: '1.35.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.36.0', stale: false }],
+    contentVersion: '1.36.0'
   },
   diagnostics: {
-    extensionVersion: '1.35.0',
-    contentVersion: '1.35.0',
+    extensionVersion: '1.36.0',
+    contentVersion: '1.36.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.35.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.36.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,11 +233,27 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.35\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.36\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
-  check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
-  check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
-  check('检索入口常驻可见（服务商 + 直接搜索）', /服务商检索/.test(doc.getElementById('actionbar').textContent) && /直接搜索/.test(doc.getElementById('actionbar').textContent));
+  // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
+  {
+    const bar = doc.getElementById('actionbar');
+    const barText = bar.textContent;
+    const visibleBtns = Array.from(bar.querySelectorAll('button')).filter(
+      (b) => !b.closest('.menu-panel') && b.offsetParent !== null
+    );
+    check('操作区渲染出读取视频', /读取当前视频|抓取官方字幕|生成总结/.test(barText), barText.slice(0, 80));
+    check('检索入口常驻可见（检索 + 直接搜索）', /检索/.test(barText) && /直接搜索/.test(barText), '');
+    // 界面可见按钮要少 —— 这是本轮的核心目标
+    check('可见按钮不超过 6 个（避免一屏全是按钮）', visibleBtns.length <= 6, `可见 ${visibleBtns.length} 个: ${visibleBtns.map((b) => b.textContent).join('/')}`);
+    check('存在「更多操作」菜单', !!bar.querySelector('.menu-wrap .menu-trigger'), '');
+    const menuText = (bar.querySelector('.menu-panel') || {}).textContent || '';
+    check('菜单里含 AI 优化字幕', /AI 优化字幕/.test(menuText), menuText.slice(0, 120));
+    check('菜单里含生成章节与质量自检', /生成章节/.test(menuText) && /质量自检/.test(menuText), '');
+    check('菜单里含历史记录与批量处理', /历史记录/.test(menuText) && /批量处理/.test(menuText), '');
+    check('菜单里含语音转录', /语音转录/.test(menuText), '');
+    check('菜单默认是收起的', bar.querySelector('.menu-wrap').getAttribute('data-open') !== 'true', '');
+  }
   const subEmpty = doc.getElementById('subtitles-pane').textContent;
   check('字幕面板空态渲染（含引导清单）', /还没有拿到视频信息|读取当前视频/.test(subEmpty));
   check('空态给出 4 步流程引导', (doc.querySelectorAll('#subtitles-pane .step').length >= 3) && /抓取官方字幕/.test(subEmpty) && /语音转录/.test(subEmpty) && /生成总结/.test(subEmpty), JSON.stringify(Array.from(doc.querySelectorAll('#subtitles-pane .step-title')).map((e) => e.textContent)));
@@ -882,6 +898,57 @@ async function main() {
 
     // 默认提示词就是用户指定的那一句
     check('默认提示词是用户指定的原句', /整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）/.test(api.DEFAULT_SYSTEM_PROMPT), '');
+  }
+
+  // ---- 溢出菜单组件的行为 ----
+  {
+    const U = api.ui;
+    check('导出了 popoverMenu', !!U && typeof U.popoverMenu === 'function', typeof U);
+    if (U && typeof U.popoverMenu === 'function') {
+      const clicked = [];
+      const wrap = U.popoverMenu([
+        { icon: 'A', label: '项目一', onClick: () => clicked.push('a') },
+        { divider: true },
+        { icon: 'B', label: '项目二', disabled: true, onClick: () => clicked.push('b') },
+        { icon: 'C', label: '项目三', onClick: () => clicked.push('c') }
+      ], { label: '⋯' });
+      doc.body.appendChild(wrap);
+
+      const trigger = wrap.querySelector('.menu-trigger');
+      const items = wrap.querySelectorAll('.menu-item');
+      check('菜单渲染出 3 个条目', items.length === 3, String(items.length));
+      check('菜单有分隔线', !!wrap.querySelector('.menu-divider'), '');
+      check('禁用的条目被置灰', items[1].disabled === true, String(items[1].disabled));
+      check('初始为收起状态', wrap.getAttribute('data-open') !== 'true', String(wrap.getAttribute('data-open')));
+
+      trigger.click();
+      await sleep(60);
+      check('点击触发器后展开', wrap.getAttribute('data-open') === 'true', String(wrap.getAttribute('data-open')));
+
+      items[0].click();
+      await sleep(60);
+      check('点条目会执行回调', clicked.join('') === 'a', clicked.join(','));
+      check('点条目后自动收起', wrap.getAttribute('data-open') !== 'true', '');
+
+      trigger.click();
+      await sleep(60);
+      check('可再次展开', wrap.getAttribute('data-open') === 'true', '');
+
+      const outside = doc.createElement('div');
+      doc.body.appendChild(outside);
+      outside.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await sleep(60);
+      check('点菜单外部会收起', wrap.getAttribute('data-open') !== 'true', String(wrap.getAttribute('data-open')));
+
+      trigger.click();
+      await sleep(60);
+      doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(60);
+      check('按 Esc 会收起', wrap.getAttribute('data-open') !== 'true', '');
+
+      wrap.remove();
+      outside.remove();
+    }
   }
 
   report(results, errors);

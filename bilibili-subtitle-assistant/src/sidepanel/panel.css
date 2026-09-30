@@ -1942,3 +1942,120 @@ mark.hit {
 }
 
 .queue-del:hover { background: rgba(220, 80, 80, 0.35); color: #fff; }
+
+/* ------------------------------------------------------------------ */
+/* 溢出菜单（把次要按钮收进「⋯」）                                      */
+/* ------------------------------------------------------------------ */
+
+.menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-trigger {
+  min-width: 30px;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 1px;
+}
+
+.menu-wrap[data-open='true'] .menu-trigger {
+  background: var(--bg-soft, rgba(127, 127, 127, 0.16));
+  border-color: var(--border, rgba(127, 127, 127, 0.4));
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+  border-radius: 8px;
+  background: var(--bg, #1b1b1d);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
+  display: none;
+}
+
+.menu-wrap[data-open='true'] .menu-panel {
+  display: block;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg, inherit);
+  font-size: calc(var(--fs) * 0.9);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--bg-soft, rgba(127, 127, 127, 0.16));
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu-item.is-danger { color: #e06060; }
+
+.menu-icon {
+  flex: 0 0 16px;
+  text-align: center;
+  font-size: calc(var(--fs) * 0.95);
+}
+
+.menu-label { flex: 1 1 auto; }
+
+.menu-hint {
+  flex: 0 0 auto;
+  font-size: calc(var(--fs) * 0.76);
+  color: var(--fg-soft, #888);
+}
+
+.menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border, rgba(127, 127, 127, 0.2));
+}
+
+/* ------------------------------------------------------------------ */
+/* 工具栏视觉整理：把「图标组」和「选择器」在视觉上分开                  */
+/* ------------------------------------------------------------------ */
+
+/* 模型下拉推到右侧，与左侧图标组拉开距离 */
+.chat-toolbar .model-select {
+  margin-left: auto;
+  max-width: 46%;
+}
+
+/* 图标按钮再小一点、更紧凑，减少视觉噪声 */
+.chat-icon {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 5px;
+  font-size: calc(var(--fs) * 0.95);
+  border-radius: 6px;
+}
+
+/* 动作按钮统一圆角与高度，看起来更整齐 */
+#actionbar .btn,
+#ai-toolbar .btn,
+#subtitles-pane .toolbar .btn {
+  border-radius: 7px;
+}
+
+/* 主按钮加一点存在感，让「下一步点哪」一目了然 */
+#actionbar .btn-primary {
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+}

@@ -4,6 +4,87 @@
 
 import { h, button, setBoolAttr } from './dom.js';
 
+// ---------------------------------------------------------------------------
+// 溢出菜单（把一堆次要按钮收进一个「⋯」里）
+//
+// 为什么要做：界面上按钮太多会让人不知道该点哪个。
+// 参照通行做法 —— 每屏只留 1 个主操作 + 少量常用操作，
+// 其余按语义收进菜单。
+//
+// items 支持分隔线：传 { divider: true } 即可。
+// ---------------------------------------------------------------------------
+export function popoverMenu(items, opts = {}) {
+  const wrap = h('div', { class: 'menu-wrap' });
+  const trigger = h('button', {
+    class: `btn btn-sm menu-trigger${opts.primary ? ' btn-primary' : ''}`,
+    type: 'button',
+    title: opts.title || '更多操作',
+    text: opts.label || '⋯'
+  });
+  const panel = h('div', { class: 'menu-panel' });
+  panel.setAttribute('role', 'menu');
+
+  let open = false;
+  const close = () => {
+    if (!open) return;
+    open = false;
+    wrap.removeAttribute('data-open');
+    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onDocClick = (ev) => {
+    if (!wrap.contains(ev.target)) close();
+  };
+  const onKey = (ev) => {
+    if (ev.key === 'Escape') {
+      ev.stopPropagation();
+      close();
+      trigger.focus();
+    }
+  };
+  const openMenu = () => {
+    if (open) return;
+    open = true;
+    wrap.setAttribute('data-open', 'true');
+    // 捕获阶段监听，保证点别处先于其它处理器关闭菜单
+    setTimeout(() => {
+      document.addEventListener('click', onDocClick, true);
+      document.addEventListener('keydown', onKey, true);
+    }, 0);
+  };
+
+  for (const it of items) {
+    if (!it) continue;
+    if (it.divider) {
+      panel.appendChild(h('div', { class: 'menu-divider' }));
+      continue;
+    }
+    const btn = h('button', {
+      class: `menu-item${it.danger ? ' is-danger' : ''}`,
+      type: 'button',
+      title: it.title || it.label,
+      onclick: () => {
+        close();
+        it.onClick && it.onClick();
+      }
+    });
+    if (it.icon) btn.appendChild(h('span', { class: 'menu-icon', text: it.icon }));
+    btn.appendChild(h('span', { class: 'menu-label', text: it.label }));
+    if (it.disabled) btn.disabled = true;
+    if (it.hint) btn.appendChild(h('span', { class: 'menu-hint', text: it.hint }));
+    panel.appendChild(btn);
+  }
+
+  trigger.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    open ? close() : openMenu();
+  });
+
+  wrap.appendChild(trigger);
+  wrap.appendChild(panel);
+  return wrap;
+}
+
 export function openOverlay(title, body, buttons = [], opts = {}) {
   const root = document.getElementById('overlay-root');
   if (!root) return null;
