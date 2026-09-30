@@ -370,19 +370,27 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
     return res.data || res;
   };
 
+  // 上一次采集是否因为「采集期间视频被切换」而作废
+  let lastSignatureChanged = false;
+
   const collectFromPage = async () => {
     try {
       const res = await call('page.call', { name: 'getSubtitleBundle', params: {} }, { timeoutMs: 45000 });
       const bundle = unwrap(res);
+      lastSignatureChanged = !!bundle.signatureChanged;
       diagnostic.pageBundle = {
         sources: bundle.sources || [],
         errors: bundle.errors || [],
         needLogin: !!bundle.needLogin,
         sniffCount: bundle.sniffCount || 0,
+        staleSniffCount: bundle.staleSniffCount || 0,
+        foreignTracks: bundle.foreignTracks || [],
+        signatureChanged: lastSignatureChanged,
         groups: bundle.groups || [],
         trackCount: (bundle.tracks || []).length
       };
       diagnostic.sniffedCount = bundle.sniffCount || 0;
+      diagnostic.staleSniffCount = bundle.staleSniffCount || 0;
       return (bundle.tracks || []).map((t) => ({ ...t, from: 'page', body: t.body || null }));
     } catch (err) {
       diagnostic.pageDetail = err.payload || { title: '页面读取失败', detail: String(err && err.message) };
@@ -394,6 +402,18 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
   };
 
   let pageTracks = await collectFromPage();
+
+  // 采集期间用户切了视频 → 那批轨已作废。等页面稳一下再采一次，
+  // 免得出现「切视频后拿到别的视频的字幕，要手动再点一次才换回来」。
+  if (!pageTracks.length && lastSignatureChanged && !(signal && signal.aborted)) {
+    if (onProgress) {
+      onProgress({ name: '字幕抓取', percent: 8, detail: '采集期间视频已切换，正在重新读取当前视频的字幕…' });
+    }
+    await new Promise((r) => setTimeout(r, 900));
+    pageTracks = await collectFromPage();
+    diagnostic.retriedAfterSwitch = true;
+  }
+
   diagnostic.pageTracks = pageTracks.map((s) => ({
     lan: s.lan,
     label: langLabel(s.lan),

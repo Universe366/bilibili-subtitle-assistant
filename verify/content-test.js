@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.46.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.47.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -384,6 +384,20 @@ async function main() {
     check('XHR 钩子把签名传下去', /recordSniffedSubtitle\(url, this\.responseText, 'xhr', sigAtRequest\)/.test(bridgeSrc), '');
     const recordFn = /function recordSniffedSubtitle[\s\S]*?\n  \}/.exec(bridgeSrc);
     check('记录时以请求时刻签名为准', !!recordFn && /sig: sigAtRequest \|\| currentSignature\(\)/.test(recordFn[0]), '');
+
+    // ---- SPA 切视频时「播放器实例还停在上一个视频」----
+    //
+    // 用户报：「切换视频后提取的字幕和原有字幕不一样，需要重新点一下重新读取才换回来」。
+    // 根因：player.getSubtitle() 取的是**播放器实例**上的轨，
+    // 而 B 站是单页应用，切视频的瞬间实例还没换过来。
+    check('有 subtitleOwnerOf 从 URL 抽归属', /function subtitleOwnerOf\(/.test(bridgeSrc), '');
+    check('有 trackBelongsToVideo 归属判断', /function trackBelongsToVideo\(/.test(bridgeSrc), '');
+    check('播放器实例的轨也过归属校验', /const list = keepOwn\(raw, 'player\.getSubtitle'\)/.test(bridgeSrc), '');
+    check('__INITIAL_STATE__ 的轨也过归属校验', /keepOwn\(raw, '__INITIAL_STATE__'\)/.test(bridgeSrc), '');
+    check('抽不到标识时放行（避免误杀）', /if \(own\.bvid && wantBvid && own\.bvid !== wantBvid\) return false;/.test(bridgeSrc), '');
+    check('采集开始/结束时各取一次签名', /const sigAtStart = currentSignature\(\);/.test(bridgeSrc) && /const sigAtEnd = currentSignature\(\);/.test(bridgeSrc), '');
+    check('签名不一致时整批作废', /sigAtStart !== sigAtEnd[\s\S]{0,500}signatureChanged: true/.test(bridgeSrc), '');
+    check('对外报告 foreignTracks 供诊断', /foreignTracks: foreign/.test(bridgeSrc), '');
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');

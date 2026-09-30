@@ -542,7 +542,11 @@ export function defaultSettings() {
       sliceSeconds: ASR_LIMITS.defaultSliceSeconds,
       overlapSeconds: ASR_LIMITS.overlapSeconds,
       autoOptimizeAfter: false, // 默认关闭
-      autoApplyAfter: false // 默认关闭
+      autoApplyAfter: false, // 默认关闭
+      // 直接复用 B 站原始 AAC 音轨（不解码、不重编码、不整段下载）。
+      // 体积约为 WAV 的 8%，是「下载 + 上传」这两段耗时的大头来源。
+      // 失败会自动回退到解码路径，所以默认开启。
+      reuseOriginalAudio: true
     },
     prompt: {
       activeId: 'default',

@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.46.0', contentVersion: '1.46.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.47.0', contentVersion: '1.47.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.46.0', stale: false }],
-    contentVersion: '1.46.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.47.0', stale: false }],
+    contentVersion: '1.47.0'
   },
   diagnostics: {
-    extensionVersion: '1.46.0',
-    contentVersion: '1.46.0',
+    extensionVersion: '1.47.0',
+    contentVersion: '1.47.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.46.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.47.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.46\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.47\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1282,6 +1282,74 @@ async function main() {
     );
     check('提示词要求更详细', /宁可详细，不要简略/.test(api.panelAi.FEISHU_FORMAT_RULES || ''), '');
     check('提示词保留反灌水约束', /不要为了凑长度/.test(api.panelAi.FEISHU_FORMAT_RULES || ''), '');
+  }
+
+  // ---- 原始 AAC 音轨复用（sidx 解析是纯逻辑，可用构造数据测）----
+  {
+    const A = api.aac;
+    check('导出了 aac 模块', !!A && typeof A.parseSidx === 'function', typeof A);
+    if (A && typeof A.parseSidx === 'function') {
+      // 手工构造 sidx box 验证解析（含最容易漏掉的 reference_ID）
+      const buildSidx = (timescale, segs) => {
+        // 头部 32 字节 = size(4)+type(4)+version+flags(4)+reference_ID(4)
+        //                +timescale(4)+earliest(4)+first_offset(4)+reserved(2)+refCount(2)
+        const total = 32 + segs.length * 12;
+        const buf = new Uint8Array(total);
+        const dv = new DataView(buf.buffer);
+        dv.setUint32(0, total);
+        buf.set([0x73, 0x69, 0x64, 0x78], 4); // 'sidx'
+        dv.setUint32(8, 0); // version + flags
+        dv.setUint32(12, 2); // ★ reference_ID（必须被跳过）
+        dv.setUint32(16, timescale);
+        dv.setUint32(20, 0);
+        dv.setUint32(24, 0);
+        dv.setUint16(28, 0);
+        dv.setUint16(30, segs.length);
+        let o = 32;
+        for (const s of segs) {
+          dv.setUint32(o, s.size << 1);
+          dv.setUint32(o + 4, s.dur);
+          dv.setUint32(o + 8, 0);
+          o += 12;
+        }
+        return buf;
+      };
+      const sidx = A.parseSidx(buildSidx(48000, [{ size: 1000, dur: 48000 }, { size: 2000, dur: 96000 }]));
+      check('解析出正确的 timescale', !!sidx && sidx.timescale === 48000, String(sidx && sidx.timescale));
+      check('解析出 2 个分片（证明跳过了 reference_ID）', !!sidx && sidx.segments.length === 2, String(sidx && sidx.segments.length));
+      check(
+        '分片大小正确（最高位是 reference_type）',
+        !!sidx && sidx.segments[0].size === 1000 && sidx.segments[1].size === 2000,
+        JSON.stringify(sidx && sidx.segments.map((s) => s.size))
+      );
+      check(
+        '分片偏移递增',
+        !!sidx && sidx.segments[1].offset === sidx.segments[0].offset + 1000,
+        JSON.stringify(sidx && sidx.segments.map((s) => s.offset))
+      );
+      const grouped = A.groupSegmentsIntoSlices(sidx, 500, 300);
+      check('按目标时长分组', grouped.length >= 1, JSON.stringify(grouped.map((g) => [g.from, g.to])));
+      check(
+        '分组带字节范围与分片清单',
+        grouped[0] && Array.isArray(grouped[0].parts) && typeof grouped[0].bytesTo === 'number',
+        JSON.stringify(grouped[0] && Object.keys(grouped[0]))
+      );
+      check('片内含 init 段体积', grouped[0] && grouped[0].bytes >= 1000 + 500, String(grouped[0] && grouped[0].bytes));
+      check('parseByteRange 解析正常', JSON.stringify(A.parseByteRange('0-942')) === '{"start":0,"end":942}', JSON.stringify(A.parseByteRange('0-942')));
+      check('parseByteRange 对非法值返回 null', A.parseByteRange('abc') === null, JSON.stringify(A.parseByteRange('abc')));
+      check('没有 sidx 时返回 null', A.parseSidx(new Uint8Array([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70])) === null, '');
+      check('空输入返回 null', A.parseSidx(new Uint8Array(0)) === null, '');
+    }
+    const defS = require('./default-settings.json');
+    check('默认开启原始音轨复用', defS.asr.reuseOriginalAudio === true, String(defS.asr.reuseOriginalAudio));
+    const txSrc2 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
+      'utf8'
+    );
+    check('主流程接了原始音轨复用', /assembleOriginalAac/.test(txSrc2) && /原始音轨复用不可用/.test(txSrc2), '');
+    check('WAV-only 模型不走复用路径', /audioFormatFor\(platform\) !== 'wav'/.test(txSrc2), '');
+    check('复用失败会回退（不抛错阻断）', /回退到解码 \+ 重编码路径/.test(txSrc2), '');
+    check('复用路径走 page.call 取字节（Referer 限制）', /name: 'fetchAudioRange'/.test(txSrc2), '');
   }
 
   report(results, errors);

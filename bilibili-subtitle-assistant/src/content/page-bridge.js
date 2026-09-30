@@ -811,15 +811,37 @@
     const sources = [];
     const errors = [];
     const groups = {};
+    // 采集开始时的签名。采集过程中要发好几个网络请求，
+    // 若这期间用户切了视频，结果就是**上一个视频的**，必须丢弃。
+    const sigAtStart = currentSignature();
+    // 归属校验用的「当前视频是哪一期」
+    const expect = { aid, bvid, cid };
+    // 被判定为「上一个视频残留」的轨，记下来供诊断
+    const foreign = [];
+    const keepOwn = (list, label) => {
+      const ok = [];
+      for (const t of list || []) {
+        if (trackBelongsToVideo(t, expect)) ok.push(t);
+        else foreign.push({ from: label, lan: t.lan, url: String(t.url || '').slice(0, 120) });
+      }
+      return ok;
+    };
 
     // ① 播放器实例
+    //
+    // ⚠ 这一路最容易拿到上一个视频的轨：B 站是单页应用，
+    // 切视频的瞬间播放器实例往往还没换过来。
+    // 所以这里必须按「URL 里的 bvid/cid 是不是当前视频」过滤。
     try {
       const player = getPlayer();
       if (player && typeof player.getSubtitle === 'function') {
-        const list = normalizeSubtitleList(player.getSubtitle());
+        const raw = normalizeSubtitleList(player.getSubtitle());
+        const list = keepOwn(raw, 'player.getSubtitle');
         if (list.length) {
           groups.player = list;
           sources.push('player.getSubtitle');
+        } else if (raw.length) {
+          sources.push('player.getSubtitle(已过滤非当前视频)');
         }
       }
     } catch (err) {
@@ -875,10 +897,14 @@
         (st && st.videoInfo && st.videoInfo.subtitle) ||
         (st && st.subtitle) ||
         null;
-      const list = normalizeSubtitleList(cand);
+      // 同样要过滤：SPA 切视频时 __INITIAL_STATE__ 也可能还是旧的
+      const raw = normalizeSubtitleList(cand);
+      const list = keepOwn(raw, '__INITIAL_STATE__');
       if (list.length) {
         groups.initialState = list;
         sources.push('__INITIAL_STATE__');
+      } else if (raw.length) {
+        sources.push('__INITIAL_STATE__(已过滤非当前视频)');
       }
     } catch (err) {
       /* ignore */
@@ -905,6 +931,31 @@
       sources.push('network-sniff');
     }
 
+    // 采集期间视频被切走了 → 整批结果都不可信，直接丢弃。
+    //
+    // 这是「切换视频后拿到别的视频字幕」的第二道防线：
+    // 第一道按 URL 里的 bvid/cid 过滤（见 trackBelongsToVideo），
+    // 但那依赖地址里带标识；这一道不依赖任何标识，
+    // 只要前后签名不一致就判废 —— 因为返回给调用方的所有轨
+    // 都应当是「为当初那个视频采的」。
+    const sigAtEnd = currentSignature();
+    if (sigAtStart && sigAtEnd && sigAtStart !== sigAtEnd) {
+      return {
+        tracks: [],
+        sources: sources.concat(['采集期间视频已切换，结果作废']),
+        errors,
+        needLogin,
+        sniffCount: 0,
+        staleSniffCount: 0,
+        foreignTracks: foreign,
+        signatureChanged: true,
+        fromSignature: sigAtStart,
+        toSignature: sigAtEnd,
+        groups: Object.keys(groups),
+        sniffed: []
+      };
+    }
+
     const tracks = mergeTracks(groups.player, groups.playerV2, groups.wbiV2, groups.initialState, groups.sniffed);
     return {
       tracks,
@@ -913,6 +964,9 @@
       needLogin,
       sniffCount: sniffed.length,
       staleSniffCount: staleSniffed,
+      // 被判为「上一个视频残留」而丢弃的轨，供诊断面板显示
+      foreignTracks: foreign,
+      signatureChanged: false,
       groups: Object.keys(groups),
       sniffed: groups.sniffed || []
     };
@@ -921,6 +975,46 @@
   // ---------------------------------------------------------------------------
   // 字幕轨
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // 字幕轨归属校验
+  // ---------------------------------------------------------------------------
+
+  // 从字幕 URL 里抽出它属于哪个视频（B 站的字幕地址里带 bvid / cid / aid）。
+  // 抽不到就返回空 —— 调用方对「抽不到」要保守处理。
+  function subtitleOwnerOf(url) {
+    const s = String(url || '');
+    const out = { bvid: '', cid: '', aid: '' };
+    const b = /(BV[0-9A-Za-z]{10})/.exec(s);
+    if (b) out.bvid = b[1];
+    // cid 一般形如 /<aid>/<cid>.json 或 /.../<cid>/...
+    const cidPaths = s.match(/\/(\d{6,})(?=[.\/])/g) || [];
+    const nums = cidPaths.map((x) => x.replace(/[/.]/g, ''));
+    if (nums.length) {
+      out.cid = nums[nums.length - 1];
+      if (nums.length >= 2) out.aid = nums[nums.length - 2];
+    }
+    return out;
+  }
+
+  // 这条轨是不是**当前视频**的。
+  //
+  // 为什么需要：`player.getSubtitle()` 拿的是**播放器实例**上的字幕，
+  // 而 B 站是单页应用 —— 切视频时播放器实例常常**还没换过来**，
+  // 于是拿回来的仍是上一个视频的字幕轨。
+  // 表现就是用户报的「切换视频后提取的字幕和原有字幕不一样，
+  // 要再点一次重新读取才换回来」。
+  //
+  // 判据只用**确定性**证据：URL 里明确写了别的 bvid / cid。
+  // 抽不到信息的一律放行（宁可放过，不可误杀 —— 有些地址不带标识）。
+  function trackBelongsToVideo(track, expect) {
+    const own = subtitleOwnerOf(track && track.url);
+    const wantBvid = String((expect && expect.bvid) || '');
+    const wantCid = String((expect && expect.cid) || '');
+    if (own.bvid && wantBvid && own.bvid !== wantBvid) return false;
+    if (own.cid && wantCid && own.cid !== wantCid) return false;
+    return true;
+  }
 
   function normalizeSubtitleList(raw) {
     const out = [];
@@ -1287,12 +1381,17 @@
         const url = item.base_url || item.baseUrl || item.url || '';
         if (!url || seen.has(url)) continue;
         seen.add(url);
+        // SegmentBase 里的 Initialization / indexRange 是**原样复用音轨**的关键：
+        // 有了它们才能按字节范围取「init + sidx 索引 + 各分片」，
+        // 拼成完整 fMP4 直接上传，完全不重新编码。
+        const sb = item.SegmentBase || item.segment_base || item.segmentBase || null;
         out.push({
           url,
           bandwidth: Number(item.bandwidth) || 0,
           mimeType: item.mime_type || item.mimeType || '',
           codecs: item.codecs || '',
-          initRange: item.init_range || item.initRange || null,
+          initRange: item.init_range || item.initRange || (sb && (sb.Initialization || sb.initialization)) || null,
+          indexRange: item.index_range || item.indexRange || (sb && (sb.indexRange || sb.index_range)) || null,
           backupUrl: item.backup_url || item.backupUrl || null,
           source,
           cid: cid || null
@@ -1689,7 +1788,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.46.0',
+    version: '1.47.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
