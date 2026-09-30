@@ -1748,3 +1748,90 @@ close() { this.port.disconnect(); this.port = null; }   // ← 用完就断
 - 回车键：**真实按键模拟**（dispatchEvent 后断言是否发送、
   Shift+回车是否阻止默认行为、输入框是否清空、空白内容是否被拦）
 - 模型下拉：过滤条件、当前平台保留、未配 Key 标注、空态占位
+
+## 第四十七轮（1.31.0）—— 思维链分离 + 参考 obsidian-yolo 的对话体验
+
+用户提出两点：① 思维链与最终结果分开、可折叠；② 对话功能参考
+<https://github.com/Lapis0x0/obsidian-yolo>。
+
+### ① 思维链与最终回答混在一起
+
+**根因是一行代码**（`providers.js` 的 `chatStream`）：
+
+```js
+piece = (c.delta && (c.delta.content || c.delta.reasoning_content)) || c.text || '';
+```
+
+`reasoning_content` 与 `content` 被当成同一个东西，一起拼进 `full`。
+于是推理模型（deepseek-reasoner）的**心路历程和最终回答混成一段文字**，
+既读不清，也无法折叠。
+
+改法：两条通道彻底分开
+
+```js
+think = d.reasoning_content || d.reasoning || d.thinking || '';
+piece = d.content || '';
+if (think) { reasoning += think; onReasoning?.(think); }
+if (piece) { full += piece; onDelta(piece); }
+```
+
+`onReasoning` 由后台经新增的 `stream:reasoning` 通道推给面板。
+
+### 折叠块的三个状态（照抄 yolo 的 stage 设计）
+
+| 阶段 | 条件 | 显示 |
+|---|---|---|
+| `requesting` | 已发请求、还没吐字 | 「正在请求…」 |
+| `thinking` | 正在输出思维链、正文未开始 | 「思考中…」+ **单行滚动预览** |
+| `settled` | 正文开始或结束 | 「已思考 N 秒」，点击展开全文 |
+
+**关键设计（也是抄 yolo 的）**：
+
+- **默认折叠** —— 思考过程动辄上千字，展开会把回答挤出屏幕
+- **折叠时不渲染全文** —— yolo 的注释说得很清楚：上万字的子树留在
+  `grid-template-rows: 0fr` 里只是视觉压成零高，**整棵子树仍参与每次布局**
+- **折叠时给单行预览** —— 用户仍知道模型在想什么，又不占地方
+- 设置里可改「默认展开」，用户点过则以其选择为准
+
+### ② 参考 obsidian-yolo 做的对话改进
+
+选的是**可移植**的部分（它是 Obsidian/Electron 插件，Vault / CLI / 本地 Bash
+这些都依赖桌面能力，浏览器扩展做不到）：
+
+| 借来的做法 | 落地 |
+|---|---|
+| **生成中可继续发消息，排队** | 输入框不再只是「禁用」；回车把消息入队，当前回合结束后自动发出，队列条可单条移除 |
+| **中止时未发出的消息还回输入框** | 不静默丢弃 —— 这是 yolo 明确写出的行为 |
+| **消息级操作** | AI 消息：复制 / 重新生成（截断其后对话并重跑）；用户消息：编辑重发（取回输入框并截断其后） |
+| **Esc 全局停止生成** | 不再只能点按钮 |
+| **可配置回车行为** | 对应它的「Use Enter to start a new line」：默认回车发送，可切成回车换行 + Ctrl/Cmd 回车发送 |
+
+### 过程中发现的第三个 bug：`state.streaming` 会永久卡住
+
+写测试时发现的：`state.streaming` 是纯内存标志，
+**如果某条流既没收到 `onEnd` 也没收到 `onError`**（SW 被回收、页面挂起、
+连接静默断开），它会永远停在 `true` —— 后果是回车永远变成「排队」、
+发送按钮一直不可用，**用户完全没法继续对话**。
+
+加了自愈：`isBusy()` 检查标志为 true 但没有 stream 对象、
+且超过 15 秒没有新内容时，判定失效并复位。
+
+### 新增 28 项测试（`reasoning-test.mjs`）
+
+用**可编排的假 SSE 服务端**真实跑 `chatStream`：
+
+```
+PASS  正文只包含最终回答
+PASS  正文**不含**推理内容
+PASS  推理内容通过 onReasoning 单独产出
+PASS  onDelta 只收到正文分片
+PASS  reasoning 与 reasoning_content 都被识别为推理
+PASS  交错到达时正文仍只含回答
+PASS  非推理模型不产生推理内容
+PASS  未传 onReasoning 时不报错
+```
+
+> **诚实标注**：Anthropic 的 `thinking_delta` 分支**无法端到端验证** ——
+> `isAnthropic()` 靠 URL 里是否含 `anthropic.com` 判断，而该域在当前沙箱
+> 被网络策略拦截（connect=0）。所以那一部分只做了源码级断言，
+> 并在测试里明确注明「未经真实请求验证」。

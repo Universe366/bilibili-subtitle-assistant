@@ -1782,3 +1782,163 @@ mark.hit {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ------------------------------------------------------------------ */
+/* 思维链折叠块（参考 obsidian-yolo 的 AssistantMessageReasoning）      */
+/* ------------------------------------------------------------------ */
+
+.reason-block {
+  margin: 6px 0 8px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.22));
+  border-left: 3px solid var(--accent, #fb7299);
+  border-radius: 6px;
+  background: var(--bg-soft, rgba(127, 127, 127, 0.06));
+  overflow: hidden;
+}
+
+/* 思考中：左侧竖条轻微呼吸，表示"还在进行" */
+.reason-block.is-requesting,
+.reason-block.is-thinking {
+  border-left-color: var(--accent, #fb7299);
+  animation: reason-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes reason-breathe {
+  0%, 100% { border-left-color: var(--accent, #fb7299); }
+  50% { border-left-color: rgba(251, 114, 153, 0.35); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reason-block.is-requesting,
+  .reason-block.is-thinking { animation: none; }
+}
+
+.reason-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: calc(var(--fs) * 0.86);
+  color: var(--fg-soft, #888);
+}
+
+.reason-head:hover:not(:disabled) { background: rgba(127, 127, 127, 0.1); }
+.reason-head:disabled { cursor: default; }
+
+.reason-icon { flex: 0 0 auto; font-size: calc(var(--fs) * 0.9); }
+.reason-label { flex: 1 1 auto; font-weight: 600; }
+.reason-chevron { flex: 0 0 auto; opacity: 0.7; }
+
+/* 折叠时的单行滚动预览 */
+.reason-preview {
+  padding: 0 8px 6px;
+  font-size: calc(var(--fs) * 0.8);
+  color: var(--fg-soft, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+/* 展开后的全文 */
+.reason-body {
+  padding: 4px 10px 8px;
+  border-top: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+  font-size: calc(var(--fs) * 0.86);
+  color: var(--fg-soft, #aaa);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.reason-body p { margin: 0.4em 0; }
+.reason-body pre { font-size: calc(var(--fs) * 0.8); }
+
+/* ------------------------------------------------------------------ */
+/* 消息级操作 + 排队条                                                 */
+/* ------------------------------------------------------------------ */
+
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.msg:hover .msg-actions,
+.msg-actions:focus-within {
+  opacity: 1;
+}
+
+/* 触屏 / 无 hover 时始终可见，否则根本点不到 */
+@media (hover: none) {
+  .msg-actions { opacity: 1; }
+}
+
+.msg-action {
+  padding: 2px 8px;
+  font-size: calc(var(--fs) * 0.76);
+  color: var(--fg-soft, #888);
+  background: var(--bg-soft, rgba(127, 127, 127, 0.08));
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.msg-action:hover {
+  color: var(--fg, #ddd);
+  border-color: var(--border, rgba(127, 127, 127, 0.35));
+}
+
+.queue-bar {
+  margin: 8px 0 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border, rgba(127, 127, 127, 0.35));
+  border-radius: 6px;
+  background: var(--bg-soft, rgba(127, 127, 127, 0.05));
+}
+
+.queue-title {
+  display: block;
+  font-size: calc(var(--fs) * 0.76);
+  font-weight: 600;
+  color: var(--fg-soft, #999);
+  margin-bottom: 4px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.queue-text {
+  flex: 1 1 auto;
+  font-size: calc(var(--fs) * 0.8);
+  color: var(--fg-soft, #aaa);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-del {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--fg-soft, #999);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.queue-del:hover { background: rgba(220, 80, 80, 0.35); color: #fff; }

@@ -1125,7 +1125,8 @@ async function runStreamRoute(msg, port, controller) {
     log: (level, text) => port.postMessage({ kind: RPC.KIND_LOG, rid, level, text }),
     progress: (info) => port.postMessage({ kind: 'stream:progress', rid, info }),
     replace: (text) => port.postMessage({ kind: 'stream:replace', rid, text }),
-    tool: (event) => port.postMessage({ kind: 'stream:tool', rid, event })
+    tool: (event) => port.postMessage({ kind: 'stream:tool', rid, event }),
+    reasoning: (text) => port.postMessage({ kind: 'stream:reasoning', rid, text })
   };
   const settings = await ST.loadSettings();
 
@@ -1173,7 +1174,9 @@ async function runStreamRoute(msg, port, controller) {
       temperature: params.temperature ?? settings.ai.temperature,
       maxTokens: params.maxTokens || settings.ai.maxTokens,
       signal: controller.signal,
-      timeoutMs
+      timeoutMs,
+      // 思维链单独走一条通道，绝不混进正文
+      onReasoning: send.reasoning
     });
     return { text };
   }

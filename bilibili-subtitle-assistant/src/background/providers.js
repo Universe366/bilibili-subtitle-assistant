@@ -344,7 +344,9 @@ export async function chatStream(platform, messages, onDelta, opts = {}) {
   }
 
   let full = '';
+  let reasoning = '';
   const anthropic = isAnthropic(platform.baseUrl);
+  const onReasoning = typeof opts.onReasoning === 'function' ? opts.onReasoning : null;
   try {
     await readLines(
       res,
@@ -368,17 +370,52 @@ export async function chatStream(platform, messages, onDelta, opts = {}) {
             '换一个模型或平台后重试。'
           );
         }
+        // 思维链与正文必须**分开**累计。
+        //
+        // 之前这一行是：
+        //   piece = (c.delta && (c.delta.content || c.delta.reasoning_content)) || ...
+        // 推理内容被当成正文拼进同一个 full —— 用户看到的就是
+        // 「模型的心路历程 + 最终回答」混在一起、且无法折叠。
+        //
+        // 现在：reasoning 走 onReasoning，content 走 onDelta，两条互不干扰。
         let piece = '';
+        let think = '';
         if (anthropic) {
-          if (json.type === 'content_block_delta' && json.delta && json.delta.text) {
-            piece = json.delta.text;
+          if (json.type === 'content_block_delta' && json.delta) {
+            // Anthropic 扩展思考：thinking_delta 是思维链，text_delta 才是正文
+            if (json.delta.type === 'thinking_delta' && json.delta.thinking) {
+              think = json.delta.thinking;
+            } else if (json.delta.thinking) {
+              think = json.delta.thinking;
+            } else if (json.delta.text) {
+              piece = json.delta.text;
+            }
+          } else if (json.type === 'content_block_start' && json.content_block) {
+            if (json.content_block.type === 'thinking' && json.content_block.thinking) {
+              think = json.content_block.thinking;
+            } else if (json.content_block.text) {
+              piece = json.content_block.text;
+            }
           }
         } else if (Array.isArray(json.choices)) {
           const c = json.choices[0] || {};
-          piece = (c.delta && (c.delta.content || c.delta.reasoning_content)) || c.text || '';
+          const d = c.delta || {};
+          // 各家字段名不同：DeepSeek/Moonshot 用 reasoning_content，
+          // 部分网关用 reasoning，Anthropic 兼容层用 thinking
+          think = d.reasoning_content || d.reasoning || (typeof d.thinking === 'string' ? d.thinking : '') || '';
+          piece = d.content || '';
+          // 少数平台把推理塞在 message 里（非流式回包混入流）
+          if (!think && c.message && typeof c.message.reasoning_content === 'string') {
+            think = c.message.reasoning_content;
+          }
           if (!piece && c.message && typeof c.message.content === 'string') piece = c.message.content;
+          if (!piece && !think && typeof c.text === 'string') piece = c.text;
         } else if (typeof json.response === 'string') {
           piece = json.response; // 少数 Ollama 风格
+        }
+        if (think) {
+          reasoning += think;
+          if (onReasoning) onReasoning(think);
         }
         if (piece) {
           full += piece;

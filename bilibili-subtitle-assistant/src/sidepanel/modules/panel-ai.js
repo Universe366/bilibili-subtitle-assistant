@@ -30,7 +30,12 @@ const state = {
   streaming: false,
   stream: null,
   summaryStreaming: false,
-  lastSignature: ''
+  lastSignature: '',
+  // 生成中排队的消息（当前回合结束后自动发出；中止则还回输入框）
+  queue: [],
+  // 思维链展开状态：用户点过就以他的选择为准，否则用设置里的默认值
+  reasonOpen: null,
+  reasonClosed: null
 };
 
 // ---------------------------------------------------------------------------
@@ -261,6 +266,180 @@ function renderSummary() {
   host.appendChild(box);
 }
 
+// 思维链折叠块。
+//
+// 参考 obsidian-yolo 的 AssistantMessageReasoning 设计：三个阶段
+//   · requesting —— 已发出请求、还没吐字        →「正在请求…」
+//   · thinking   —— 正在输出思维链、正文还没开始 →「思考中…」+ 单行滚动预览
+//   · settled    —— 正文开始/结束               →「已思考 N 秒」，可展开看全文
+//
+// 关键：**默认折叠**。思维链动辄上千字，默认展开会把回答挤到屏幕外。
+// 折叠时不渲染正文内容（yolo 也是这么做的：上万字的子树留着只是白占布局）。
+export function buildReasoningBlock(msg) {
+  const st = store.get();
+  const text = String(msg.reasoning || '');
+  const hasText = text.trim().length > 0;
+  const streaming = !!msg.streaming;
+  const hasAnswer = !!(msg.text && msg.text.trim());
+  const stage = streaming && !hasText && !hasAnswer ? 'requesting' : streaming && !hasAnswer ? 'thinking' : 'settled';
+  const expandedDefault = !!(st.settings && st.settings.ai && st.settings.ai.expandReasoning);
+  // 用户手动点过就以用户的选择为准（同一会话内记住）
+  const key = msg.reasonId || (msg.reasonId = `r${Math.random().toString(36).slice(2, 8)}`);
+  const expanded = state.reasonOpen && state.reasonOpen.has(key) ? true : state.reasonClosed && state.reasonClosed.has(key) ? false : expandedDefault;
+
+  const wrap = h('div', { class: `reason-block is-${stage}`, dataset: { stage } });
+  const btn = h('button', { class: 'reason-head', type: 'button' });
+
+  let label;
+  if (stage === 'requesting') label = '正在请求…';
+  else if (stage === 'thinking') label = '思考中…';
+  else if (msg.reasonMs) label = `已思考 ${Math.max(1, Math.round(msg.reasonMs / 1000))} 秒`;
+  else label = '思考过程';
+
+  btn.appendChild(h('span', { class: 'reason-icon', text: stage === 'settled' ? '💭' : '🧠' }));
+  btn.appendChild(h('span', { class: 'reason-label', text: label }));
+  if (hasText) {
+    btn.appendChild(h('span', { class: 'reason-chevron', text: expanded ? '▾' : '▸' }));
+  }
+  btn.disabled = !hasText;
+  wrap.appendChild(btn);
+
+  // 折叠时的单行滚动预览：让用户知道模型在想什么，又不占地方
+  if (hasText && !expanded) {
+    const preview = h('div', { class: 'reason-preview' });
+    // 只取末尾一段（思考内容可能很长）
+    const tail = text.replace(/\s+/g, ' ').trim().slice(-260);
+    preview.textContent = tail;
+    wrap.appendChild(preview);
+  }
+
+  // 展开态才挂载全文 —— 折叠时留着整棵子树只是白占布局
+  if (hasText && expanded) {
+    const body = h('div', { class: 'reason-body' });
+    renderMarkdownInto(body, text);
+    wrap.appendChild(body);
+  }
+
+  if (hasText) {
+    btn.addEventListener('click', () => {
+      state.reasonOpen = state.reasonOpen || new Set();
+      state.reasonClosed = state.reasonClosed || new Set();
+      if (expanded) {
+        state.reasonOpen.delete(key);
+        state.reasonClosed.add(key);
+      } else {
+        state.reasonClosed.delete(key);
+        state.reasonOpen.add(key);
+      }
+      renderChat();
+    });
+  }
+  return wrap;
+}
+
+// 「是否真的还在生成」。
+//
+// `state.streaming` 是个纯内存标志。如果某条流既没收到 onEnd、也没收到 onError
+// （例如 service worker 被回收、页面被挂起、连接静默断开），这个标志会**永远卡在
+// true** —— 后果是回车变成「排队」、发送按钮一直不可用，用户完全没法继续对话。
+//
+// 这里做个自愈：如果标志为 true，但既没有 stream 对象、又超过一段时间没有新内容，
+// 就判定它已经失效并复位。
+const BUSY_STALE_MS = 15000;
+function isBusy() {
+  if (!state.streaming) return false;
+  const stale = !state.stream && Date.now() - (state.lastStreamActivity || 0) > BUSY_STALE_MS;
+  if (stale) {
+    state.streaming = false;
+    state.stream = null;
+  }
+  return state.streaming;
+}
+
+function touchStream() {
+  state.lastStreamActivity = Date.now();
+}
+
+// 测试用：把生成状态复位（真实环境里由 onEnd / onError 负责）
+export function resetStreamStateForTest() {
+  state.streaming = false;
+  state.stream = null;
+  state.queue = [];
+  state.lastStreamActivity = 0;
+}
+
+// ---------------------------------------------------------------------------
+// 消息级操作
+// ---------------------------------------------------------------------------
+
+function msgAction(label, onclick) {
+  return h('button', { class: 'msg-action', type: 'button', text: label, onclick });
+}
+
+async function copyMessage(msg) {
+  await copyText(msg.text || '');
+  toast({ title: '已复制这条回复' }, 'ok', 1500);
+}
+
+// 重新生成：删掉这条 AI 回复及其之后的对话，用最后一条用户消息重跑
+export async function regenerateAt(msg) {
+  if (state.streaming) {
+    toast({ title: '正在生成中，请先停止' }, 'warn', 2000);
+    return;
+  }
+  const st = store.get();
+  const idx = st.chat.indexOf(msg);
+  if (idx < 0) return;
+  // 往前找最近的用户消息
+  let userIdx = -1;
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    if (st.chat[i].role === 'user') {
+      userIdx = i;
+      break;
+    }
+  }
+  if (userIdx < 0) {
+    toast({ title: '找不到对应的问题', detail: '无法重新生成。' }, 'warn', 2500);
+    return;
+  }
+  const question = st.chat[userIdx].text || '';
+  // 截断到该问题之前，然后重新问 —— 相当于「从这条消息重跑」
+  store.set({ chat: st.chat.slice(0, userIdx) });
+  await sendMessage(question, { alreadyInHistory: false, regenerating: true });
+}
+
+// 编辑重发：把用户消息放回输入框，并截断其后所有对话
+export function editAndResend(msg) {
+  if (state.streaming) {
+    toast({ title: '正在生成中，请先停止' }, 'warn', 2000);
+    return;
+  }
+  const st = store.get();
+  const idx = st.chat.indexOf(msg);
+  if (idx < 0) return;
+  const text = msg.text || '';
+  // 截断这条消息**及其之后**的所有内容，让用户改完重新走一遍
+  store.set({ chat: st.chat.slice(0, idx) });
+  if (state.inputArea) {
+    state.inputArea.value = text;
+    state.inputArea.focus();
+  }
+  render();
+  toast({ title: '已取回输入框', detail: '修改后回车重新发送（其后的对话已清除）' }, 'ok', 3000);
+}
+
+// 全局 Esc 停止生成（参考 obsidian-yolo：Esc 全局取消所有在跑的 AI 任务）
+if (typeof document !== 'undefined' && !document.__bsubEscBound) {
+  document.__bsubEscBound = true;
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (state.streaming) {
+      e.preventDefault();
+      stopStream();
+    }
+  });
+}
+
 function renderChat() {
   const st = store.get();
   const host = state.chatHost;
@@ -272,11 +451,20 @@ function renderChat() {
   for (const msg of st.chat) {
     const el = h('div', { class: 'msg', dataset: { role: msg.role } });
     el.appendChild(h('div', { class: 'msg-role', text: msg.role === 'user' ? '我' : msg.role === 'assistant' ? 'AI' : '系统' }));
+
+    // 思维链：**独立折叠块**，与最终回答彻底分开
+    if (msg.role === 'assistant' && (msg.reasoning || (msg.streaming && !msg.text))) {
+      el.appendChild(buildReasoningBlock(msg));
+    }
+
     if (msg.role === 'assistant' && msg.streaming) {
       setBoolAttr(el, 'data-streaming', true);
-      const pre = h('pre', { class: 'plain-stream' });
-      pre.textContent = msg.text || '…';
-      el.appendChild(pre);
+      // 有思维链时正文还没开始 —— 上面那块已经在显示「思考中」，这里不必再占位
+      if (msg.text) {
+        const pre = h('pre', { class: 'plain-stream' });
+        pre.textContent = msg.text;
+        el.appendChild(pre);
+      }
     } else if (msg.role === 'user') {
       el.appendChild(h('div', { style: { whiteSpace: 'pre-wrap' }, text: msg.text }));
     } else {
@@ -296,8 +484,25 @@ function renderChat() {
       }
       el.appendChild(row);
     }
+
+    // 消息级操作（参考 obsidian-yolo 的「停止/重试/编辑问题」）：
+    //   · AI 消息 → 复制、重新生成
+    //   · 用户消息 → 编辑后重新发送（会截断其后的对话）
+    if (!msg.streaming) {
+      const acts = h('div', { class: 'msg-actions' });
+      if (msg.role === 'assistant' && msg.text) {
+        acts.appendChild(msgAction('复制', () => copyMessage(msg)));
+        acts.appendChild(msgAction('重新生成', () => regenerateAt(msg)));
+      }
+      if (msg.role === 'user') {
+        acts.appendChild(msgAction('编辑重发', () => editAndResend(msg)));
+      }
+      if (acts.childNodes.length) el.appendChild(acts);
+    }
+
     host.appendChild(el);
   }
+  renderQueueBar(host);
 }
 
 function renderInput() {
@@ -339,27 +544,36 @@ function renderInput() {
       : '直接提问即可 —— 没有字幕也能聊（回车发送，Shift+回车换行）',
     style: { flex: '1 1 auto', minHeight: '52px' }
   });
-  // 回车发送、Shift+回车换行 —— 这是聊天框的通行习惯。
-  // 之前是「Ctrl+回车发送」，多按一个修饰键，反而不顺手。
+  // 回车行为可配置（参考 obsidian-yolo 的「Use Enter to start a new line」）：
+  //   默认 sendOnEnter = true  → 回车发送、Shift+回车换行
+  //   改成 false               → 回车换行、Ctrl/Cmd+回车发送
+  const sendOnEnter = !(store.get().settings?.ai?.sendOnEnter === false);
   area.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
-    // Shift+回车 / Alt+回车 / Ctrl+回车 → 换行（并把 Ctrl+回车保留为兼容）
-    if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) {
-      if (e.ctrlKey || e.metaKey) {
-        // Ctrl+回车：仍然发送（老用户的手感），但也允许 Shift 组合去换行
-        if (!e.shiftKey && !e.altKey) {
-          e.preventDefault();
-          submit();
-        }
-      }
+    const mod = e.ctrlKey || e.metaKey;
+    if (sendOnEnter) {
+      // Shift / Alt 换行；Ctrl+回车保留为兼容（老手感）
+      if (e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      submit();
       return;
     }
-    e.preventDefault();
-    submit();
+    // 反过来的模式：回车换行，只有 Ctrl/Cmd+回车才发送
+    if (mod && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      submit();
+    }
   });
   function submit() {
     const v = area.value;
     if (!String(v || '').trim()) return;
+    // 正在生成时**不丢弃**，而是排队 —— 参考 yolo：可以继续输入并发送，
+    // 消息排在当前回合结束后自动发出。
+    if (isBusy()) {
+      enqueueMessage(v);
+      area.value = '';
+      return;
+    }
     sendMessage(v);
     area.value = '';
   }
@@ -650,6 +864,65 @@ export function buildCapabilityBlock(info = {}) {
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// 消息队列（生成中继续输入）
+// ---------------------------------------------------------------------------
+//
+// 参考 obsidian-yolo：生成过程中可以继续打字并发送，消息排队，
+// 当前回合结束后自动发出；**中止时未发出的消息要还回输入框**，不能丢。
+
+function enqueueMessage(text) {
+  const q = state.queue || (state.queue = []);
+  q.push({ id: `q${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, text });
+  toast({ title: '已排队', detail: '当前回答结束后会自动发送' }, 'ok', 2000);
+  renderChat();
+}
+
+function dequeueNext() {
+  const q = state.queue || [];
+  const next = q.shift();
+  state.queue = q;
+  return next || null;
+}
+
+// 中止时把队列还回输入框（而不是静默丢弃）
+function restoreQueueToInput() {
+  const q = state.queue || [];
+  if (!q.length) return;
+  const text = q.map((x) => x.text).join('\n\n');
+  state.queue = [];
+  if (state.inputArea) {
+    state.inputArea.value = state.inputArea.value ? `${state.inputArea.value}\n\n${text}` : text;
+  }
+  toast({ title: '已把排队的消息放回输入框', detail: `${q.length} 条未发送` }, 'warn', 3000);
+}
+
+// 渲染队列条（显示待发送的消息，可单条移除）
+function renderQueueBar(host) {
+  const q = state.queue || [];
+  if (!q.length) return;
+  const bar = h('div', { class: 'queue-bar' });
+  bar.appendChild(h('span', { class: 'queue-title', text: `排队中 ${q.length} 条` }));
+  for (const item of q) {
+    const row = h('div', { class: 'queue-item' });
+    row.appendChild(h('span', { class: 'queue-text', text: item.text }));
+    row.appendChild(
+      h('button', {
+        class: 'queue-del',
+        type: 'button',
+        title: '移除这条',
+        text: '×',
+        onclick: () => {
+          state.queue = (state.queue || []).filter((x) => x.id !== item.id);
+          renderChat();
+        }
+      })
+    );
+    bar.appendChild(row);
+  }
+  host.appendChild(bar);
+}
+
 // Skills 选择面板
 function openSkillPicker() {
   const s = store.get().settings || {};
@@ -822,6 +1095,9 @@ export async function generateSummary() {
 function stopStream() {
   if (state.stream) {
     state.stream.cancel();
+    // 中止时把队列还回输入框（参考 yolo：不丢排队的消息）
+    restoreQueueToInput();
+    renderChat();
     toast({ title: '已请求终止生成' }, 'warn', 1500);
   }
 }
@@ -993,6 +1269,7 @@ export async function sendMessage(text, opts = {}) {
 
   const stream = new Stream();
   state.stream = stream;
+  touchStream();
   const streamedTools = [];
   stream.start(
     'ai.chat',
@@ -1005,6 +1282,7 @@ export async function sendMessage(text, opts = {}) {
         streamedTools.push(ev);
       },
       onDelta: (text2) => {
+        touchStream();
         const cur = store.get();
         const chat = [...cur.chat];
         const last = chat[chat.length - 1];
@@ -1014,8 +1292,27 @@ export async function sendMessage(text, opts = {}) {
             : '';
           chat[chat.length - 1] = {
             ...last,
+            // 正文一开始输出，就说明「思考阶段」结束了 → 记下耗时
+            reasonMs: last.reasonMs || (last.reasoning ? Date.now() - (last.reasonStart || Date.now()) : 0),
             toolTrace: streamedTools.length ? streamedTools.map((x) => x.name) : last.toolTrace,
             text: (last.text || '') + (prefix || '') + text2
+          };
+          store.set({ chat });
+        }
+        renderChat();
+        scrollAiBottom();
+      },
+      // 思维链单独累加，绝不混进正文
+      onReasoning: (piece) => {
+        touchStream();
+        const cur = store.get();
+        const chat = [...cur.chat];
+        const last = chat[chat.length - 1];
+        if (last && last.role === 'assistant') {
+          chat[chat.length - 1] = {
+            ...last,
+            reasoning: (last.reasoning || '') + piece,
+            reasonStart: last.reasonStart || Date.now()
           };
           store.set({ chat });
         }
@@ -1026,13 +1323,25 @@ export async function sendMessage(text, opts = {}) {
         const cur = store.get();
         const chat = [...cur.chat];
         const last = chat[chat.length - 1];
-        if (last && last.role === 'assistant') chat[chat.length - 1] = { ...last, streaming: false };
+        if (last && last.role === 'assistant') {
+          chat[chat.length - 1] = {
+            ...last,
+            streaming: false,
+            reasonMs: last.reasonMs || (last.reasoning ? Date.now() - (last.reasonStart || Date.now()) : 0)
+          };
+        }
         state.streaming = false;
         state.stream = null;
         store.set({ chat });
         recountCitations(chat.map((c) => c.text).join('\n'));
         render();
         await saveHistory();
+        // 队列里还有消息 → 自动发出下一条
+        const next = dequeueNext();
+        if (next) {
+          renderChat();
+          setTimeout(() => sendMessage(next.text), 120);
+        }
       },
       onError: (payload) => {
         const cur = store.get();

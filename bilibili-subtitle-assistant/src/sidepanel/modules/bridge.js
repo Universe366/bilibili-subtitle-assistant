@@ -224,6 +224,7 @@ export class Stream {
     if (callbacks.onProgress) this.handlers.set('stream:progress', (m) => callbacks.onProgress(m.info));
     if (callbacks.onReplace) this.handlers.set('stream:replace', (m) => callbacks.onReplace(m.text));
     if (callbacks.onTool) this.handlers.set('stream:tool', (m) => callbacks.onTool(m.event));
+    if (callbacks.onReasoning) this.handlers.set('stream:reasoning', (m) => callbacks.onReasoning(m.text));
     if (callbacks.onError) this.handlers.set(RPC.KIND_ERROR, (m) => callbacks.onError(m.error));
     this.handlers.set(RPC.KIND_END, (m) => {
       if (callbacks.onEnd) callbacks.onEnd(m);

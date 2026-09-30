@@ -525,7 +525,13 @@ export function defaultSettings() {
       platforms: defaultAiPlatforms(),
       temperature: 0.3,
       maxTokens: 4096,
-      stream: true
+      stream: true,
+      // 思维链默认折叠。推理模型（deepseek-reasoner 等）的思考过程动辄上千字，
+      // 默认展开会把最终回答挤出屏幕。
+      expandReasoning: false,
+      // 回车行为：true = 回车发送、Shift+回车换行（默认，聊天框习惯）
+      //           false = 回车换行、Ctrl/Cmd+回车发送（写长消息更方便）
+      sendOnEnter: true
     },
     asr: {
       activeId: 'siliconflow',

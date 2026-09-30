@@ -441,6 +441,22 @@ function aiGroup(d) {
       field('温度（0~2）', numberInput(d.ai.temperature, (v) => { d.ai.temperature = Math.max(0, Math.min(2, v)); markDirty(); }, { min: 0, max: 2, step: 0.1 }))
     );
     body.appendChild(field('最大输出 token', numberInput(d.ai.maxTokens, (v) => { d.ai.maxTokens = v; markDirty(); }, { min: 256, max: 32000, step: 256 })));
+    body.appendChild(
+      checkbox(
+        d.ai.expandReasoning === true,
+        (v) => { d.ai.expandReasoning = v; markDirty(); },
+        '思维链默认展开（推理模型如 deepseek-reasoner 会返回思考过程）'
+      )
+    );
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '思维链与最终回答是**分开显示**的：回答上方会有一个可折叠的「💭 思考过程」块。\n' +
+          '默认折叠 —— 思考过程动辄上千字，展开会把回答挤出屏幕。\n' +
+          '折叠时会显示一行滚动的思考摘要，鼠标点标题即可展开全文。'
+      })
+    );
   });
 }
 

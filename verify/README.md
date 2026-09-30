@@ -1,11 +1,11 @@
 # 验证套件（不属于扩展运行时）
 
-针对 `../bilibili-subtitle-assistant` 的自动化验证。**21 个套件共 900 项断言，全部通过。**
+针对 `../bilibili-subtitle-assistant` 的自动化验证。**22 个套件共 932 项断言，全部通过。**
 
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb
 node bundle.js              # 把面板打包成 IIFE（jsdom 不执行 type=module 脚本）
-node panel-test.js          # 侧边栏渲染与纯逻辑          145 项
+node panel-test.js          # 侧边栏渲染与纯逻辑          149 项
 node bg-test.js             # 后台 service worker 端到端    64 项
 node content-test.js        # 内容脚本 + 主环境桥           38 项
 node flow2.js               # 完整业务流程（最关键）         34 项
@@ -22,7 +22,8 @@ node mp4-structure-test.mjs        # MP4 结构正确性               5 项
 node patch-ffmpeg-vendor.mjs       # FFmpeg 补丁与 CSP 校验      17 项
 node mcp-test.mjs                  # MCP 客户端 + 工具调用循环    23 项
 node skills-test.mjs               # SKILL.md 解析与导入         18 项
-node keyless-search-test.mjs       # 免费引擎回退链/缓存/注入防护 65 项
+node keyless-search-test.mjs       # 免费引擎回退链/缓存/注入防护 109 项
+node reasoning-test.mjs            # 思维链与正文分离              28 项
 node checklist.js                  # 需求文档功能清单逐项核对    87 项
 ```
 
