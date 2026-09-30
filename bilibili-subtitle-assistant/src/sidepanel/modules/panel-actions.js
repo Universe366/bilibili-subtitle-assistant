@@ -148,46 +148,25 @@ export function render() {
   ];
   host.appendChild(popoverMenu(moreItems, { label: '⋯', title: '更多操作' }));
 
-  // ---- 检索行（字幕就绪后即可见，且一直可见）----
-  const searchRow = h('div', { class: 'row tight', style: { flexBasis: '100%' } });
-  const input = h('input', {
-    class: 'input',
-    placeholder: '检索关键词（默认用视频标题）…',
-    value: searchQuery || (st.video && st.video.title) || '',
-    style: { flex: '1 1 150px' },
-    oninput: (e) => {
-      searchQuery = e.target.value;
-    }
-  });
-  searchRow.appendChild(input);
-  searchRow.appendChild(
-    button('检索', () => {
-      const q = (searchQuery || (st.video && st.video.title) || '').trim();
-      if (!q) {
-        toast({ title: '请输入检索关键词' }, 'warn');
-        return;
-      }
-      doProviderSearch(q);
-    }, { small: true, primary: true, title: '走检索 API，结果会作为 AI 的依据（消耗额度）' })
-  );
-  searchRow.appendChild(
-    button('直接搜索', () => {
-      const q = (searchQuery || (st.video && st.video.title) || '').trim();
-      if (!q) {
-        toast({ title: '请输入检索关键词' }, 'warn');
-        return;
-      }
-      doEngineSearch(q);
-    }, {
-      small: true,
-      title: `只打开搜索引擎结果页（当前：${engineLabel((st.settings && st.settings.search.engine) || 'bing')}），不消耗额度，也不进入 AI 上下文`
-    })
-  );
+  // ---- 检索来源：只在**已经有来源**时给一个入口 ----
+  //
+  // 原本这里是一整行「关键词输入框 + 检索 + 直接搜索」的手动检索栏。
+  // 但实际用法是「让 AI 自己联网」—— 生成总结与对话时会自动检索，
+  // 手动那一行既占地方，也容易被误以为「必须自己点才会联网」。
+  // 现在只留一个查看来源的入口，没有来源时整行不出现。
   const count = (st.search.results || []).length;
   if (count) {
-    searchRow.appendChild(button(`来源 ${count}`, () => showSources(), { small: true, title: '查看检索到的页面、数量与引用次数' }));
+    const srcRow = h('div', { class: 'row tight', style: { flexBasis: '100%' } });
+    srcRow.appendChild(
+      button(`🔗 查看 ${count} 条检索来源`, () => showSources(), {
+        small: true,
+        title: '查看 AI 联网时引用的页面与引用次数'
+      })
+    );
+    const cited = st.search.counts ? Object.values(st.search.counts).reduce((a, b) => a + b, 0) : 0;
+    srcRow.appendChild(h('span', { class: 'muted', text: `已被引用 ${cited} 次` }));
+    host.appendChild(srcRow);
   }
-  host.appendChild(searchRow);
 
   // ---- 状态胶囊 ----
   if (hasVideo) {

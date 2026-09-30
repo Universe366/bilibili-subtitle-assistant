@@ -10,6 +10,8 @@ import { searchContextBlockGuarded, engineLabel } from './search.js';
 import * as OPT from './optimize.js';
 import { extractVerifyItems, verifyItems, verifyContextBlock } from '../../shared/verify.js';
 import { Stream, call } from './bridge.js';
+import * as jobs from './jobs.js';
+import { TASK_LABEL } from '../../shared/constants.js';
 import { promptDialog, popoverMenu } from './ui.js';
 
 const SUGGESTIONS = [
@@ -232,7 +234,16 @@ function renderToolbar() {
         { divider: true },
         { icon: '🧹', label: '重置会话', onClick: () => resetChat() }
       ],
-      { label: '⋯', title: '更多操作' }
+      {
+        label: '⋯',
+        title: '更多操作',
+        // 生成总结前这些都没有内容，点开只看到一片灰字会以为菜单坏了 ——
+        // 与其留一堆禁用项，不如直接说清「先做什么」。
+        emptyText: !hasLines ? '还没有字幕' : '先生成一次总结',
+        emptyHint: !hasLines
+          ? '先抓取字幕或做语音转录'
+          : '生成后这里会出现：复制 / 导出 / 回退字幕 / 重置会话'
+      }
     )
   );
   bar.appendChild(h('span', { class: 'spacer' }));
@@ -831,6 +842,8 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
   if (!hasLines) return null;
   const st = store.get();
   const cap = searchCapabilityOf(settings);
+  // 阶段回调：让调用方能把进度显示到进度条上
+  const onStage = typeof opts.onStage === 'function' ? opts.onStage : null;
 
   // 联网核对（可选）
   let verify = [];
@@ -842,13 +855,19 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
           items,
           // ephemeral：连续多条搜索，不能冲掉用户上次的检索面板结果
           (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
-          { maxItems: settings.search?.verifyItemCount || 8, perItem: 3 }
+          {
+            maxItems: settings.search?.verifyItemCount || 8,
+            perItem: 3,
+            // 逐条报告进度，界面能显示「正在核对 3/6：DeepSeek」
+            onProgress: (i, total, item) => onStage && onStage('verify', i, total, item)
+          }
         );
       } catch (err) {
         /* 核对失败仍可做纯文本校对 */
       }
     }
   }
+  if (onStage) onStage('correct', 0, 1, null);
 
   const messages = OPT.buildOptimizeMessages({
     lines,
@@ -1198,6 +1217,10 @@ export async function generateSummary() {
   const settings = st.settings;
   const promptText = activePromptText();
 
+  // 整个总结流程挂一个可取消的任务，进度显示在全局进度条上。
+  // 之前总结时界面只有「生成中…」，用户不知道卡在哪一步、还剩多久。
+  const task = jobs.beginTask(TASK_LABEL.summarize, { detail: '准备中…' });
+
   // ---- 阶段 1：校对字幕（联网核对术语/逻辑/时间/事实），并**实际更正字幕** ----
   //
   // 用户要求的流程：点「生成总结」时先查字幕里的错误 → 联网核对 → 更正字幕
@@ -1211,15 +1234,32 @@ export async function generateSummary() {
   let fixReport = '';
   if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
     try {
-      const out = await proofreadSubtitles(st.subtitles, settings, { quiet: false });
+      task.set(2, '第 1/3 步：准备校对字幕');
+      const out = await proofreadSubtitles(st.subtitles, settings, {
+        quiet: false,
+        onStage: (stage, i, total, item) => {
+          if (stage === 'verify') {
+            // 核对占总进度的 5%→50%（几步而已，但这是最耗时的一段）
+            const pct = 5 + (total ? (i / total) * 45 : 0);
+            task.set(pct, `第 2/3 步：联网核对 ${Math.min(i + 1, total)}/${total}${item ? ` · ${String(item).slice(0, 18)}` : ''}`);
+          } else if (stage === 'correct') {
+            task.set(52, '第 2/3 步：让 AI 给出字幕更正…');
+          }
+        }
+      });
       if (out && out.applied && out.applied.changed) {
         correctedLines = out.lines;
         fixReport = out.report;
       }
+      task.set(58, out && out.applied && out.applied.changed
+        ? `第 2/3 步：已更正 ${out.applied.changed} 处`
+        : '第 2/3 步：字幕未发现需要更正的地方');
     } catch (err) {
       const detail = (err && err.payload && err.payload.title) || (err && err.message) || '校对失败';
       toast({ title: '字幕校对失败，将用原字幕生成总结', detail }, 'warn', 4000);
     }
+  } else {
+    task.set(58, '第 1/3 步：跳过校对（未开启联网核实）');
   }
 
   const ctx = selectContext(correctedLines, '', 40000);
@@ -1301,8 +1341,12 @@ export async function generateSummary() {
   state.streaming = true;
   store.set({ summaryStream: '' });
   render();
+  task.set(60, '第 3/3 步：正在生成总结…');
   const stream = new Stream();
   state.stream = stream;
+  // 生成阶段无法预知总长度，所以用「已输出 N 字」做温和推进：
+  // 60% → 95%，永不假装到 100%（收尾时才置满）。
+  let streamedChars = 0;
   stream.start(
     'ai.summarize',
     { messages, platformId: settings.ai.activeId, temperature: settings.ai.temperature, maxTokens: settings.ai.maxTokens },
@@ -1310,6 +1354,8 @@ export async function generateSummary() {
       onDelta: (text) => {
         const cur = store.get();
         store.set({ summaryStream: (cur.summaryStream || '') + text });
+        streamedChars += text.length;
+        task.set(Math.min(95, 60 + Math.log10(streamedChars + 1) * 11), `第 3/3 步：生成中（已 ${streamedChars} 字）`);
         renderSummary();
         scrollAiBottom();
       },
@@ -1321,6 +1367,8 @@ export async function generateSummary() {
         store.set({ summary: finalText, summaryStream: '' });
         recountCitations(finalText);
         await saveHistory();
+        task.set(100, `完成（${finalText.length} 字）`);
+        task.end();
         render();
         toast({ title: '总结完成', detail: `已按 Markdown 渲染（${finalText.length} 字）` }, 'ok');
       },
@@ -1328,6 +1376,7 @@ export async function generateSummary() {
         state.summaryStreaming = false;
         state.streaming = false;
         state.stream = null;
+        task.end();
         const partial = store.get().summaryStream || '';
         if (partial) {
           store.set({ summary: partial, summaryStream: '' });

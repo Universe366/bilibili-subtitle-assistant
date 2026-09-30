@@ -75,6 +75,16 @@ export function popoverMenu(items, opts = {}) {
     panel.appendChild(btn);
   }
 
+  // 所有条目都不可用时给一句原因 —— 否则用户点开只看到一片灰字，
+  // 很容易以为「菜单是空的 / 坏了」。
+  const actionable = items.filter((x) => x && !x.divider && !x.disabled);
+  if (!actionable.length) {
+    // 把「禁用」改成「暂时不可用」的说明，而不是留一堆灰按钮
+    panel.textContent = '';
+    panel.appendChild(h('div', { class: 'menu-empty', text: opts.emptyText || '暂时没有可用的操作' }));
+    if (opts.emptyHint) panel.appendChild(h('div', { class: 'menu-empty-hint', text: opts.emptyHint }));
+  }
+
   trigger.addEventListener('click', (ev) => {
     ev.stopPropagation();
     open ? close() : openMenu();

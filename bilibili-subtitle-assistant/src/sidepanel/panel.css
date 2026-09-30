@@ -2059,3 +2059,24 @@ mark.hit {
   font-weight: 600;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
 }
+
+/* 菜单里全部条目都不可用时，用一句说明代替一堆灰按钮 */
+.menu-empty {
+  padding: 8px 10px 2px;
+  font-size: calc(var(--fs) * 0.88);
+  font-weight: 600;
+  color: var(--fg-soft, #999);
+}
+
+.menu-empty-hint {
+  padding: 0 10px 8px;
+  font-size: calc(var(--fs) * 0.78);
+  line-height: 1.45;
+  color: var(--fg-soft, #888);
+  opacity: 0.9;
+}
+
+/* 禁用但仍可见的菜单项：不要淡到看不见 */
+.menu-item:disabled {
+  opacity: 0.55;
+}

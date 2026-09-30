@@ -103,8 +103,13 @@ export function isRelevantToQuery(result, query) {
 export async function verifyItems(items, searchFn, opts = {}) {
   const maxItems = Math.max(1, Math.min(8, opts.maxItems || 5));
   const perItem = Math.max(1, Math.min(5, opts.perItem || 3));
+  const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+  const list = items.slice(0, maxItems);
   const out = [];
-  for (const item of items.slice(0, maxItems)) {
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    // 报告进度，让界面能显示「正在核对 3/6」
+    if (onProgress) onProgress(i, list.length, item);
     try {
       const res = await searchFn(item, { maxResults: perItem, fetchPageContent: false });
       const results = (res && res.results) || [];
@@ -124,6 +129,7 @@ export async function verifyItems(items, searchFn, opts = {}) {
       /* 单条失败不影响其它 */
     }
   }
+  if (onProgress) onProgress(list.length, list.length, null);
   return out;
 }
 
