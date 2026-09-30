@@ -18,6 +18,7 @@ import * as panelAi from './modules/panel-ai.js';
 import * as panelActions from './modules/panel-actions.js';
 import * as panelSubtitles from './modules/panel-subtitles.js';
 import * as bridgeModule from './modules/bridge.js';
+import * as verifyLib from '../shared/verify.js';
 
 const api = {
   VERSION: constants.VERSION,
@@ -41,6 +42,7 @@ const api = {
   panelActions,
   panelSubtitles,
   bridgeModule,
+  verifyLib,
   // 面板 API（app.panels.*）在 app.js 里挂载，这里给个便捷入口
   get panels() {
     return context.app.panels;

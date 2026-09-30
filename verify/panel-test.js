@@ -115,7 +115,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.32.0', contentVersion: '1.32.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.33.0', contentVersion: '1.33.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -136,12 +136,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.32.0', stale: false }],
-    contentVersion: '1.32.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.33.0', stale: false }],
+    contentVersion: '1.33.0'
   },
   diagnostics: {
-    extensionVersion: '1.32.0',
-    contentVersion: '1.32.0',
+    extensionVersion: '1.33.0',
+    contentVersion: '1.33.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -157,7 +157,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.32.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.33.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -229,7 +229,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.32\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.33\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
   check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
@@ -778,23 +778,35 @@ async function main() {
       check('空问题不触发', N('') === false && N('   ') === false, '');
     }
 
-    // buildVerifyQuery：总结核实用的检索词
-    const Q = mod.buildVerifyQuery;
-    check('导出了 buildVerifyQuery', typeof Q === 'function', typeof Q);
-    if (typeof Q === 'function') {
-      const q1 = Q({
-        video: { title: 'DeepSeek V4 深度解析', owner: '某某频道' },
-        subtitles: [
-          { text: '短的' },
-          { text: 'DeepSeek V4 在 2026 年 3 月正式发布，参数量达到 6710 亿' },
-          { text: '它的定价是每百万 token 一元钱，非常便宜' }
-        ]
-      });
-      check('核实检索词含视频标题', /DeepSeek V4 深度解析/.test(q1), q1);
-      check('核实检索词含字幕里的长句（事实密集）', /6710 亿|每百万 token/.test(q1), q1);
-      check('核实检索词不会无限长', q1.length <= 120, `长度 ${q1.length}`);
-      const q2 = Q({ video: {}, subtitles: [] });
-      check('没有标题与字幕时返回空串', q2 === '', JSON.stringify(q2));
+    // 核实项抽取：只挑具体的年份/数字/术语，不做整篇搜索
+    const V = api.verifyLib;
+    check('挂载了 verify 模块', !!V && typeof V.extractVerifyItems === 'function', typeof V);
+    if (V && typeof V.extractVerifyItems === 'function') {
+      const items = V.extractVerifyItems([
+        { text: 'DeepSeek V4 在 2026 年 3 月正式发布，参数量达到 6710 亿' },
+        { text: '它的定价是每百万 token 一元钱，非常便宜' },
+        { text: '这个视频我们就讲到这里，大家再见' }
+      ], 8);
+      check('抽出了年份或数字', items.some((x) => /2026|6710/.test(x)), JSON.stringify(items));
+      check('抽出了专有术语', items.some((x) => /DeepSeek|token/i.test(x)), JSON.stringify(items));
+      check('没有把口语词当核实项', !items.includes('视频') && !items.includes('大家'), JSON.stringify(items));
+
+      // 相关性过滤 —— 这是防污染的关键
+      check('无关结果被判定为不相关',
+        V.isRelevantToQuery({ title: '日历网', snippet: '今日黄历宜忌查询' }, 'DeepSeek V4') === false, '');
+      check('相关结果被保留',
+        V.isRelevantToQuery({ title: 'DeepSeek V4 正式发布', snippet: '参数量 6710 亿' }, 'DeepSeek V4') === true, '');
+      check('空标题空摘要判为不相关',
+        V.isRelevantToQuery({ title: '', snippet: '' }, 'DeepSeek V4') === false, '');
+
+      // 核实块必须明确要求「只校正、不要转述」
+      const block = V.verifyContextBlock([
+        { item: 'DeepSeek V4', evidence: [{ title: 'T', url: 'https://a.com', text: 'E' }] }
+      ]);
+      check('核实块要求只用于校正', /只用于\*\*校正\*\*/.test(block), block.slice(0, 160));
+      check('核实块禁止转述网页', /不要\*\*把证据里的内容写成总结/.test(block), '');
+      check('核实块不叫「参考资料」（避免模型转述）', !/【联网检索到的参考资料】/.test(block), '');
+      check('空核实结果返回空串', V.verifyContextBlock([]) === '', '');
     }
 
     // 能力自述：未检索时不得承诺「会附参考资料」

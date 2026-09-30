@@ -7,6 +7,7 @@ import { app, showError, saveHistory, doProviderSearch, doEngineSearch, recountC
 import { renderMarkdownInto, renderInline } from './markdown.js';
 import { selectContext, linesToTranscript } from './subtitles.js';
 import { searchContextBlockGuarded, engineLabel } from './search.js';
+import { extractVerifyItems, verifyItems, verifyContextBlock } from '../../shared/verify.js';
 import { Stream, call } from './bridge.js';
 import { promptDialog } from './ui.js';
 
@@ -789,25 +790,6 @@ export function needsWebSearch(question) {
   return false;
 }
 
-// 为「总结时联网核实」拼检索词。
-//
-// 目标是拿到能验证视频内容的资料，所以用「标题 + 字幕里最像事实的片段」，
-// 而不是整篇字幕（检索词太长反而查不准）。
-export function buildVerifyQuery(st) {
-  const title = String((st.video && st.video.title) || '').trim();
-  const owner = String((st.video && st.video.owner) || '').trim();
-  const lines = st.subtitles || [];
-  // 从字幕里挑最长的几句 —— 通常包含具体的人名、数字、产品名
-  const candidates = lines
-    .map((l) => String(l.text || '').trim())
-    .filter((t) => t.length >= 8)
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 2);
-  const parts = [title, owner && !title.includes(owner) ? owner : '', ...candidates].filter(Boolean);
-  // 标题本身就够用时只用标题，避免检索词过长
-  return parts.slice(0, 3).join(' ').slice(0, 120);
-}
-
 // ---------------------------------------------------------------------------
 // 能力自述
 // ---------------------------------------------------------------------------
@@ -1056,29 +1038,36 @@ export async function generateSummary() {
   const promptText = activePromptText();
   const ctx = selectContext(st.subtitles, '', 40000);
 
-  // ---- 总结时自动联网核实（参考用户需求：多方求证）----
-  // 之前总结只把「上一次的搜索结果」塞进去 —— 从没主动搜过，
-  // 所以联网核实形同虚设。这里在生成总结前**主动检索一次**，
-  // 检索词取自视频标题 + 字幕里的关键信息。
+  // ---- 总结时对**具体条目**做联网核实 ----
+  //
+  // 用户反馈过：「联网后的内容和字幕相差好大，还污染了输出」。
+  // 原因是早先的做法用整段标题搜一次，然后把 6 条来源、每条最多 3000 字正文
+  // 整块塞进上下文 —— 上万字无关网页把字幕挤成少数派，模型自然开始讲网页。
+  //
+  // 现在改成：先从字幕里抽出**具体的待核实项**（年份/数字/版本号/术语），
+  // 逐条检索，做相关性过滤，只把紧凑的「条目 → 证据摘录」交给模型，
+  // 并明确要求它**只用于校正、不要转述网页**。
   const capSearch = searchCapabilityOf(settings);
   let searchBlock = '';
   if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
-    const query = buildVerifyQuery(st);
-    if (query) {
-      try {
-        const out = await doProviderSearch(query);
-        if (out && out.results && out.results.length) {
-          searchBlock = searchContextBlockGuarded(out.results, store.get().search.counts);
+    try {
+      const items = extractVerifyItems(st.subtitles, settings.search.verifyItemCount || 6);
+      if (items.length) {
+        const verified = await verifyItems(
+          items,
+          // ephemeral：核实是连续多条搜索，不能把用户上次的检索面板结果冲掉
+          (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
+          { maxItems: settings.search.verifyItemCount || 5, perItem: 3 }
+        );
+        if (verified.length) {
+          searchBlock = verifyContextBlock(verified);
         }
-      } catch (err) {
-        // 核实失败不影响总结本身
-        const detail = (err && err.payload && err.payload.title) || (err && err.message) || '检索失败';
-        toast({ title: '联网核实失败，总结将不含网页资料', detail }, 'warn', 4000);
       }
+    } catch (err) {
+      // 核实失败不影响总结本身
+      const detail = (err && err.payload && err.payload.title) || (err && err.message) || '检索失败';
+      toast({ title: '联网核实失败，总结仍会正常生成', detail }, 'warn', 4000);
     }
-  } else {
-    // 未核实：沿用已有的搜索结果（可能是用户手动搜过的）
-    searchBlock = searchContextBlockGuarded(st.search.results || [], st.search.counts);
   }
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);

@@ -518,31 +518,45 @@ export function runQualityCheck() {
 // 检索
 // ---------------------------------------------------------------------------
 
-export async function doProviderSearch(query) {
+// 服务商检索。
+//
+// opts.fetchPageContent === false → 只要摘要，不抓网页正文
+//   （总结核实用的是这个：抓正文会把上万字无关内容灌进上下文）
+// opts.quiet === true            → 不显示任务提示
+// opts.ephemeral === true        → **不写入全局检索面板、不弹提示**
+//   核实流程会连续搜好几条，写面板会把用户上一次的检索结果冲掉
+export async function doProviderSearch(query, opts = {}) {
   const s = store.get().settings;
-  const task = jobs.beginTask(TASK_LABEL.search, { detail: '调用检索服务商' });
+  const task = opts.quiet ? null : jobs.beginTask(TASK_LABEL.search, { detail: '调用检索服务商' });
   try {
-    const out = await SEARCH.runProviderSearch(s, query, { onLog: (m) => task.detail(m) });
-    const current = store.get().search || {};
-    const counts = SEARCH.countCitations(store.get().summary || '', out.results);
-    store.set({
-      search: {
-        ...current,
-        results: out.results,
-        counts,
-        query: out.query,
-        provider: out.provider,
-        lastAt: out.at
-      }
+    const out = await SEARCH.runProviderSearch(s, query, {
+      onLog: (m) => task && task.detail(m),
+      ...(opts.fetchPageContent === false ? { fetchPageContent: false } : {})
     });
-    toast({ title: `检索完成：${out.results.length} 条来源`, detail: '结果会作为 AI 回答的依据（已消耗额度）' }, 'ok');
-    renderPanels();
+    if (out && out.results && !opts.ephemeral) {
+      const current = store.get().search || {};
+      const counts = SEARCH.countCitations(store.get().summary || '', out.results);
+      store.set({
+        search: {
+          ...current,
+          results: out.results,
+          counts,
+          query: out.query,
+          provider: out.provider,
+          lastAt: out.at
+        }
+      });
+    }
+    if (!opts.quiet && !opts.ephemeral) {
+      toast({ title: `检索完成：${out.results.length} 条来源`, detail: '结果会作为 AI 回答的依据（已消耗额度）' }, 'ok');
+      renderPanels();
+    }
     return out;
   } catch (err) {
-    showError(err, '服务商检索失败');
+    if (!opts.quiet) showError(err, '服务商检索失败');
     return null;
   } finally {
-    task.end();
+    if (task) task.end();
   }
 }
 

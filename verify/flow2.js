@@ -145,7 +145,7 @@ function handleRpc(method, params) {
     case 'settings.reset':
       return settings();
     case 'build.info':
-      return { app: 'B站字幕助手', version: '1.32.0', contentVersion: '1.32.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
+      return { app: 'B站字幕助手', version: '1.33.0', contentVersion: '1.33.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
     case 'page.info':
       return VIDEO;
     case 'page.call': {
@@ -201,7 +201,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-ext',
       lastError: null,
-      getManifest: () => ({ version: '1.32.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.33.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => ({
         name: 'bsub-stream',
@@ -247,7 +247,7 @@ function installChrome(window) {
     tabs: {
       query: () => Promise.resolve([TAB]),
       sendMessage: (tabId, msg) => {
-        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.32.0' });
+        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.33.0' });
         if (msg && msg.type === 'bsub:to-content') {
           if (msg.method === 'getSubtitleBundle') return Promise.resolve({ ok: true, data: bundle() });
           if (msg.method === 'triggerSubtitleMenu') {
