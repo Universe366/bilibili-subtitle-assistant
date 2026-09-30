@@ -36,3 +36,29 @@
 #__bsub_overlay__ {
   pointer-events: none !important;
 }
+
+/* 「侧边栏打不开」的兜底提示条 */
+.bsub-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 2147483000;
+  max-width: min(520px, 88vw);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: rgba(20, 20, 22, 0.94);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.bsub-hint.is-open {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

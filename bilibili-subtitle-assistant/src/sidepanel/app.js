@@ -257,7 +257,22 @@ async function handleContentEvent(msg) {
     const hadLines = (st.subtitles || []).length > 0;
     const oldSig = st.video && st.video.signature;
     if (payload.signature === oldSig) return;
-    store.set({ video: payload.info, subtitles: [], summary: '', chat: [], quality: null, subtitleError: null, subtitlesRevision: (st.subtitlesRevision || 0) + 1 });
+    // 换视频/分P 时要清掉**所有由视频派生的状态**。
+    // 早先漏了 search 与 transcriptLog —— 上一个视频的检索结果和转录日志
+    // 会跟着过来，表现为「上次的残留影响这次」。
+    store.set({
+      video: payload.info,
+      subtitles: [],
+      summary: '',
+      summaryStream: '',
+      chat: [],
+      quality: null,
+      subtitleError: null,
+      transcriptLog: [],
+      search: { ...(st.search || {}), results: [], counts: {}, query: '' },
+      // 让字幕列表等按依赖重绘
+      subtitlesRevision: (st.subtitlesRevision || 0) + 1
+    });
     settingsPanel.render();
     actionsPanel.render();
     if (hadLines) {

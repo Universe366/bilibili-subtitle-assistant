@@ -1068,6 +1068,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.event === 'player-button' || message.event === 'open-panel') {
       const tabId = sender?.tab?.id;
       if (tabId != null && chrome.sidePanel?.open) {
+        // 这里由内容脚本另外发一条 bsub:open-side-panel 来拿结果，
+        // 此处只做「顺手也开一下」，失败不额外处理（那条消息会报原因）。
         chrome.sidePanel.open({ tabId }).catch(() => {});
       }
     }
@@ -1075,12 +1077,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return undefined;
   }
   if (message.type === 'bsub:open-side-panel') {
+    // 打开侧边栏失败的原因必须**报出去**，不能吞掉。
+    //
+    // 早先这里是 `chrome.sidePanel.open({tabId}).catch(() => {})` ——
+    // 失败时用户看到的就是「点了没反应」，而我们什么都不知道。
+    // 常见失败原因：
+    //   · 页面主环境的点击没被 Chrome 认作「用户手势」（安全限制）
+    //   · 浏览器不支持 sidePanel.open（Chrome < 116）
+    //   · 该标签页被 setOptions 关掉了侧边栏
     const tabId = sender?.tab?.id;
-    if (tabId != null && chrome.sidePanel?.open) {
-      chrome.sidePanel.open({ tabId }).catch(() => {});
+    const done = (payload) => {
+      sendResponse(payload);
+    };
+    if (tabId == null) {
+      done({ ok: false, reason: 'no-tab', detail: '拿不到当前标签页 ID' });
+      return undefined;
     }
-    sendResponse({ ok: true });
-    return undefined;
+    if (!chrome.sidePanel?.open) {
+      done({
+        ok: false,
+        reason: 'unsupported',
+        detail: '当前浏览器不支持以程序方式打开侧边栏（需要 Chrome 116+），请点工具栏上的扩展图标。'
+      });
+      return undefined;
+    }
+    // 先确保这个标签页的侧边栏是启用的，再打开
+    try {
+      chrome.sidePanel
+        .setOptions({ tabId, path: 'src/sidepanel/panel.html', enabled: true })
+        .catch(() => {});
+    } catch (err) {
+      /* ignore */
+    }
+    chrome.sidePanel
+      .open({ tabId })
+      .then(() => done({ ok: true }))
+      .catch((err) => {
+        const msg = String((err && err.message) || err);
+        // 手势限制是唯一「用户自己能解决」的一类，单独说明
+        const gesture = /user gesture|must be called|gesture/i.test(msg);
+        done({
+          ok: false,
+          reason: gesture ? 'gesture' : 'error',
+          detail: gesture
+            ? '浏览器要求打开侧边栏必须来自用户手势。请点浏览器工具栏上的扩展图标打开（或在扩展设置里把它固定到工具栏）。'
+            : msg
+        });
+      });
+    return true; // 异步 sendResponse
   }
   return undefined;
 });

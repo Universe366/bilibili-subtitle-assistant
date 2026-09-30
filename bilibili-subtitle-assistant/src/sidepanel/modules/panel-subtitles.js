@@ -453,13 +453,24 @@ function renderToolbar() {
   // 优化建议条
   const corrections = (st.optimize && st.optimize.corrections) || [];
   if (corrections.length) {
+    // 按类别统计，让用户一眼看出都改了什么类型
+    const byKind = {};
+    for (const c of corrections) {
+      const k = c.kind || '其他';
+      byKind[k] = (byKind[k] || 0) + 1;
+    }
+    const kindText = Object.entries(byKind)
+      .map(([k, n]) => `${k} ${n}`)
+      .join(' · ');
     const box = h('div', { class: 'row tight', style: { flexBasis: '100%', borderTop: '1px dotted var(--line)', paddingTop: '4px' } });
-    box.appendChild(h('span', { text: `AI 修正建议 ${corrections.length} 条：` }));
+    box.appendChild(h('span', { text: `AI 修正建议 ${corrections.length} 条` }));
+    box.appendChild(h('span', { class: 'muted', text: `（${kindText}）` }));
     box.appendChild(button('一键全部应用', () => applyAllCorrections(), { small: true, primary: true }));
     for (let i = 0; i < Math.min(3, corrections.length); i += 1) {
       const c = corrections[i];
+      const label = c.kind ? `[${c.kind}] ${c.wrong} → ${c.right}` : `${c.wrong} → ${c.right}`;
       box.appendChild(
-        button(`${c.wrong} → ${c.right}`, () => applyCorrection(i), {
+        button(label, () => applyCorrection(i), {
           small: true,
           title: `${c.reason || ''}（点击应用这一条）`
         })

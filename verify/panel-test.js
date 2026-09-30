@@ -115,7 +115,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.33.0', contentVersion: '1.33.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.34.0', contentVersion: '1.34.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -136,12 +136,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.33.0', stale: false }],
-    contentVersion: '1.33.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.34.0', stale: false }],
+    contentVersion: '1.34.0'
   },
   diagnostics: {
-    extensionVersion: '1.33.0',
-    contentVersion: '1.33.0',
+    extensionVersion: '1.34.0',
+    contentVersion: '1.34.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -157,7 +157,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.33.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.34.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -229,7 +229,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.33\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.34\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
   check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
@@ -817,6 +817,45 @@ async function main() {
     check('未检索时要求不得声称查过网页', /绝对不要声称自己查过网页/.test(notSearched), '');
     const searched = B({ webCapable: true, searchOn: true, searchUsed: true, searchResultCount: 5 });
     check('已检索时报告来源条数', /本轮已经检索过/.test(searched) && /5 条来源/.test(searched), searched.slice(0, 200));
+  }
+
+  // ---- AI 优化升级 / 侧边栏打开 / 切换视频清残留 ----
+  {
+    const srcOf = (rel) =>
+      fs.readFileSync(path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', rel), 'utf8');
+    const ctxSrc = srcOf('sidepanel/modules/context.js');
+    const optSrc = srcOf('sidepanel/modules/optimize.js');
+    const appSrc = srcOf('sidepanel/app.js');
+    const swSrc = srcOf('background/service-worker.js');
+    const contentSrc = srcOf('content/content.js');
+
+    // ① AI 优化升级：五类修正
+    check('优化提示词覆盖错别字/术语/时间/数据/逻辑', /错别字[\s\S]{0,160}术语[\s\S]{0,160}时间[\s\S]{0,160}数据[\s\S]{0,160}逻辑/.test(optSrc), '');
+    check('优化提示词要求「宁可漏不要错改」', /宁可漏，不要错改/.test(optSrc), '');
+    check('优化提示词禁止把资料写进字幕', /不要把参考资料里的内容写进字幕/.test(optSrc), '');
+    check('优化结果解析 kind 字段', /kind: KINDS\.includes/.test(optSrc), '');
+    check('kind 归一到五个类别', /const KINDS = \['错别字', '术语', '时间', '数据', '逻辑'\]/.test(optSrc), '');
+    check('优化流程用逐条核对而不是整篇搜', /extractVerifyItems\(lines/.test(ctxSrc), '');
+    check('优化核对走 ephemeral（不冲掉检索面板）', /ephemeral: true/.test(ctxSrc), '');
+
+    // ② 侧边栏打开的失败必须报出来
+    // 只为「打开侧边栏」这条消息加了结果回报；content-event 里的顺手调用保留
+    check('bsub:open-side-panel 会回报失败原因', /reason: gesture \? 'gesture' : 'error'/.test(swSrc), '');
+    check('后台区分「需要用户手势」并给出指引', /gesture/.test(swSrc) && /工具栏上的扩展图标/.test(swSrc), '');
+    check('后台先 setOptions 再 open', /setOptions\(\{ tabId, path: 'src\/sidepanel\/panel\.html', enabled: true \}\)/.test(swSrc), '');
+    check('内容脚本有兜底提示条', /showPanelHint/.test(contentSrc) && /bsub-hint/.test(contentSrc), '');
+    check('内容脚本失败后会重试一次', /setTimeout\(\(\) => \{[\s\S]{0,500}open-side-panel/.test(contentSrc), '');
+
+    // ③ 切换视频清残留
+    check('loadVideo 会检测 signature 变化', /prevSig !== \(video\.signature/.test(ctxSrc), '');
+    check('loadVideo 换视频时清字幕', /cleared\.subtitles = \[\]/.test(ctxSrc), '');
+    check('loadVideo 换视频时清总结', /cleared\.summary = ''/.test(ctxSrc), '');
+    check('loadVideo 换视频时清对话', /cleared\.chat = \[\]/.test(ctxSrc), '');
+    check('loadVideo 换视频时清转录日志', /cleared\.transcriptLog = \[\]/.test(ctxSrc), '');
+    check('loadVideo 换视频时清检索结果', /cleared\.search = \{/.test(ctxSrc), '');
+    check('navigate 事件也清 transcriptLog', /transcriptLog: \[\]/.test(appSrc), '');
+    check('navigate 事件也清 search', /results: \[\], counts: \{\}, query: ''/.test(appSrc), '');
+    check('navigate 事件清 summaryStream', /summaryStream: ''/.test(appSrc), '');
   }
 
   report(results, errors);

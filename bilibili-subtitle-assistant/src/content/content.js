@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '1.33.0';
+  const CONTENT_VERSION = '1.34.0';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -217,6 +217,41 @@
 
   const BTN_ID = '__bsub_player_btn__';
 
+  // 「点不到侧边栏」的兜底提示条。
+  // 侧边栏打不开时，至少让用户知道发生了什么以及该怎么办 ——
+  // 之前是 `.catch(() => {})` 静默吞掉，表现就是「点了没反应」。
+  let hintTimer = 0;
+  function showPanelHint(text) {
+    let el = document.getElementById('__bsub_hint__');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = '__bsub_hint__';
+      el.className = 'bsub-hint';
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.textContent = text || '侧边栏未能自动打开，请点浏览器工具栏上的扩展图标。';
+    el.classList.add('is-open');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => el.classList.remove('is-open'), 6000);
+  }
+
+  // 尝试直接打开侧边栏。
+  //
+  // 说明：`chrome.sidePanel` **只在扩展页面里可用**，内容脚本拿不到
+  // （内容脚本只有 runtime / i18n 等少数 API）。所以这里实际做的是
+  // 「确认不可用就返回 false」，让调用方走后台路径。
+  // 保留这个探测是为了未来浏览器放开权限时能自动受益。
+  function tryOpenSidePanelDirect() {
+    try {
+      if (chrome.sidePanel && typeof chrome.sidePanel.open === 'function') {
+        return true; // 未来若放开，调用方会直接用
+      }
+    } catch (err) {
+      /* ignore */
+    }
+    return false;
+  }
+
   function removePlayerButton() {
     const el = document.getElementById(BTN_ID);
     if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -257,10 +292,29 @@
         ev.stopPropagation();
       }
       sendEvent('player-button', { prompt: state.options.playerButtonPrompt });
+      // 打开侧边栏失败时必须让用户看见 —— 否则就是「点了没反应」
       try {
-        chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' });
+        chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res) => {
+          const err = chrome.runtime.lastError;
+          if (err) return; // 后台没起来，事件其实已经发出去，会由侧边栏接手
+          // 打不开时重试一次：首次失败常常是侧边栏正在切换状态
+          if (res && res.ok === false) {
+            setTimeout(() => {
+              try {
+                chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res2) => {
+                  void chrome.runtime.lastError;
+                  if (res2 && res2.ok === false) {
+                    showPanelHint(res2.detail || '侧边栏未能自动打开，请点浏览器工具栏上的扩展图标。');
+                  }
+                });
+              } catch (e2) {
+                showPanelHint(res.detail || '');
+              }
+            }, 260);
+          }
+        });
       } catch (err) {
-        /* ignore */
+        /* 扩展已重载 */
       }
     };
     btn.addEventListener('click', fire, true);

@@ -72,32 +72,59 @@ export function parseRuleGroups(text) {
 // AI 优化
 // ---------------------------------------------------------------------------
 
-export function buildOptimizeMessages({ lines, glossary, searchResults, useSearch, platformName }) {
-  const transcript = linesToTranscript(lines, { withTime: false });
+// 构建「AI 优化」的提示词。
+//
+// 升级点（用户要求）：不再只纠错别字，还要核对**术语 / 事实 / 时间 / 数据 / 逻辑**。
+//
+// 联网证据的用法也改了：不再整篇搜索后把网页正文灌进来
+// （那会让模型开始改写成网页内容），而是**逐条核对**后只给紧凑证据，
+// 并明确要求「只用于判断该条是否正确」。
+export function buildOptimizeMessages({ lines, glossary, verify, searchResults, useSearch, platformName, videoTitle }) {
   const glossaryText = (glossary || [])
     .filter((g) => g && g.term)
     .map((g) => `- ${g.term}${g.note ? `（${g.note}）` : ''}`)
     .join('\n');
-  const searchText = useSearch && searchResults && searchResults.length
-    ? searchResults
-        .map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${(r.content || r.snippet || '').slice(0, 600)}`)
-        .join('\n\n')
-    : '';
+
+  // 优先用逐条核对的结果；没有时退回旧的整篇搜索结果（兼容旧调用）
+  let evidenceText = '';
+  if (verify && verify.length) {
+    evidenceText = verify
+      .map((v, i) => {
+        const ev = v.evidence.map((e) => `    · ${e.title}｜${e.text}`).join('\n');
+        return `[待核实 ${i + 1}] ${v.item}\n${ev}`;
+      })
+      .join('\n\n');
+  } else if (useSearch && searchResults && searchResults.length) {
+    evidenceText = searchResults
+      .map((r, i) => `[${i + 1}] ${r.title}\n${(r.snippet || r.content || '').slice(0, 400)}`)
+      .join('\n\n');
+  }
 
   const system = [
-    '你是中文视频字幕校对助手。请修正语音识别字幕里的错别字、同音字、专有名词错误、断句错误。',
+    '你是中文视频字幕校对助手。请找出字幕里需要修正的地方，覆盖这五类：',
+    '① **错别字 / 同音字**（语音识别最常见的问题）',
+    '② **专有名词与术语**（人名、公司名、产品名、技术名词的写法）',
+    '③ **时间**（年份、月份、日期与字幕上下文是否自洽）',
+    '④ **数据**（数字、金额、比例、参数量、版本号是否准确）',
+    '⑤ **逻辑**（前后矛盾、因果颠倒、同一数字前后不一致、明显违背常识）',
+    '',
     '严格要求：',
-    '1. 只做「错误写法 → 正确写法」的替换建议，不要润色、不要删减内容、不要改变原意。',
-    '2. 只输出 JSON，不要输出任何解释、不要用 Markdown 代码块包裹。',
-    '3. 格式：{"corrections":[{"wrong":"原始错误文本","right":"修正文本","reason":"原因","line":行号}]}',
-    '4. wrong 必须是字幕里出现过的原文片段（尽量短，只包含错误部分）。',
-    '5. 没有发现问题就返回 {"corrections":[]}。'
+    '1. 只做「错误写法 → 正确写法」的替换建议，不要润色、不要删减、不要改变原意。',
+    '2. **不要把参考资料里的内容写进字幕**。资料只用来判断某条是否正确。',
+    '3. 拿不准的不要提。宁可漏，不要错改 —— 错误的修正比不修正更糟。',
+    '4. 只输出 JSON，不要任何解释、不要用 Markdown 代码块包裹。',
+    '5. 格式：{"corrections":[{"wrong":"原始错误文本","right":"修正文本","reason":"原因","kind":"错别字|术语|时间|数据|逻辑","line":行号}]}',
+    '6. wrong 必须是字幕里出现过的原文片段（尽量短，只含错误部分）。',
+    '7. 没有发现问题就返回 {"corrections":[]}。'
   ].join('\n');
 
   const user = [
+    videoTitle ? `【视频标题】${videoTitle}` : '',
     glossaryText ? `【术语表（这些词的正确写法以此为准）】\n${glossaryText}` : '',
-    searchText ? `【联网检索到的参考资料】\n${searchText}` : '',
-    `【字幕全文（每行前缀是行号）】`,
+    evidenceText
+      ? `【字幕条目核对证据】\n这些是针对字幕中具体条目检索到的证据。**只用来判断对应条目对不对，不要转述它们。**\n\n${evidenceText}`
+      : '',
+    '【字幕全文（每行前缀是行号）】',
     lines.map((l) => `${l.i}: ${l.text}`).join('\n')
   ]
     .filter(Boolean)
@@ -118,18 +145,24 @@ export function parseOptimizeResult(text) {
   const first = stripped.indexOf('{');
   const last = stripped.lastIndexOf('}');
   if (first >= 0 && last > first) candidates.push(stripped.slice(first, last + 1));
+  const KINDS = ['错别字', '术语', '时间', '数据', '逻辑'];
   for (const c of candidates) {
     try {
       const json = JSON.parse(c);
       const arr = json.corrections || json.items || json.data || (Array.isArray(json) ? json : []);
       if (Array.isArray(arr)) {
         return arr
-          .map((r) => ({
-            wrong: String(r.wrong || r.from || r.错误写法 || '').trim(),
-            right: String(r.right || r.to || r.正确写法 || '').trim(),
-            reason: String(r.reason || r.说明 || '').trim(),
-            line: Number.isFinite(Number(r.line)) ? Number(r.line) : null
-          }))
+          .map((r) => {
+            const kind = String(r.kind || r.type || r.类型 || '').trim();
+            return {
+              wrong: String(r.wrong || r.from || r.错误写法 || '').trim(),
+              right: String(r.right || r.to || r.正确写法 || '').trim(),
+              reason: String(r.reason || r.说明 || '').trim(),
+              // 归一到设置的五个类别，未知则留空（界面不显示徽章）
+              kind: KINDS.includes(kind) ? kind : '',
+              line: Number.isFinite(Number(r.line)) ? Number(r.line) : null
+            };
+          })
           .filter((r) => r.wrong && r.right && r.wrong !== r.right);
       }
     } catch (err) {

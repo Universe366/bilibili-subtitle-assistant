@@ -137,7 +137,40 @@ export async function loadVideo(opts = {}) {
       subSources: detail.sources || [],
       subtitleDetail: detail
     };
-    store.set({ video });
+
+    // ---- 换了视频就必须清掉上一个视频的残留 ----
+    //
+    // 之前这里是直接 `store.set({ video })`，**什么都不清**。
+    // 结果：从 A 视频切到 B 视频后，左侧还是 A 的字幕、总结还是 A 的内容、
+    // 对话历史也还混着 A 的 —— 这就是用户报的
+    // 「上一次的读取残留影响这次读取」。
+    //
+    // 判据用 signature（bvid + 分P + cid），切分 P 也算换视频。
+    const prev = store.get();
+    const prevSig = (prev.video && prev.video.signature) || '';
+    const changed = prevSig !== (video.signature || '');
+    const cleared = {};
+    if (changed) {
+      // 只清「由视频派生的」数据，不动设置、缓存、导出配置等全局状态
+      cleared.subtitles = [];
+      cleared.summary = '';
+      cleared.summaryStream = '';
+      cleared.chat = [];
+      cleared.transcriptLog = [];
+      cleared.search = { ...(prev.search || {}), results: [], counts: {}, query: '' };
+    }
+
+    store.set({ video, ...cleared });
+    if (changed && prevSig) {
+      toast(
+        {
+          title: '已切换到新的视频',
+          detail: '上一个视频的字幕、总结与对话已清空，避免和这次混在一起。'
+        },
+        'ok',
+        3500
+      );
+    }
     if (store.get().settings) await pushPageOptions();
     return video;
   } catch (err) {
@@ -367,19 +400,38 @@ export async function optimizeWithAi(opts = {}) {
   const video = store.get().video;
   const task = jobs.beginTask(TASK_LABEL.optimize, { detail: '向 AI 提交字幕全文' });
   try {
+    // 联网核对：**逐条**查字幕里的术语/事实/时间/数据，而不是整篇搜。
+    // 整篇搜会把上万字网页灌进上下文，模型就开始把字幕改写成网页内容
+    // （总结那边已经踩过这个坑）。
+    let verify = [];
     let evidence = { results: [] };
     if (s.optimize.useSearch) {
-      task.detail('联网核对中…');
-      evidence = await OPT.gatherSearchEvidence(s, `${video?.title || ''} 专有名词 术语`);
-      if (evidence.results && evidence.results.length) {
-        store.set({ search: { ...store.get().search, results: evidence.results, query: `${video?.title || ''} 术语` , lastAt: Date.now() } });
+      task.detail('联网核对字幕里的术语与事实…');
+      try {
+        const items = extractVerifyItems(lines, s.optimize.verifyItemCount || 8);
+        if (items.length) {
+          verify = await verifyItems(
+            items,
+            (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
+            { maxItems: s.optimize.verifyItemCount || 8, perItem: 3 }
+          );
+          task.detail(`已核对 ${verify.length} 条`);
+        }
+      } catch (err) {
+        /* 核对失败不影响优化本身 */
+      }
+      // 兼容：用户可能仍想看整篇检索结果，仅在逐条核对一无所获时才回退
+      if (!verify.length) {
+        evidence = await OPT.gatherSearchEvidence(s, `${video?.title || ''} 专有名词 术语`);
       }
     }
     const messages = OPT.buildOptimizeMessages({
       lines,
       glossary: s.optimize.glossary,
+      verify,
       searchResults: evidence.results,
-      useSearch: !!s.optimize.useSearch
+      useSearch: !!s.optimize.useSearch,
+      videoTitle: (video && video.title) || ''
     });
     task.set(20, '等待 AI 返回修正建议');
     const res = await call('ai.chat', { messages, temperature: 0.1, maxTokens: 3000 }, { timeoutMs: 300000 });
