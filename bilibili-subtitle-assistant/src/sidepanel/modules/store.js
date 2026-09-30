@@ -12,6 +12,8 @@ function emptyState() {
     readiness: { ok: {}, issues: [] },
     video: null,
     subtitles: [],
+    // AI 校对前的原始字幕（用于「回退字幕」）。只在换视频时清空。
+    subtitlesOriginal: [],
     subtitleMeta: null,
     summary: '',
     chat: [],

@@ -69,7 +69,11 @@ function serve() {
     const server = http.createServer((req, res) => {
       const p = decodeURIComponent(req.url.split('?')[0]);
       if (p === '/' || p.endsWith('panel.html')) {
-        const html = skeleton.replace('__BUNDLE__', fs.readFileSync(BUNDLE, 'utf8'));
+        // 注意：必须用**函数形式**的 replace。
+  // 字符串形式的 replacement 里 `$$`、`$&` 等是特殊模式，
+  // 而 bundle 里现在含有 LaTeX 的 `$$...$$` —— 会被悄悄改写甚至插入错字符，
+  // 结果就是 jsdom 报一个和真实代码毫无关系的 SyntaxError。
+  const html = skeleton.replace('__BUNDLE__', () => fs.readFileSync(BUNDLE, 'utf8'));
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(html);
         return;
@@ -115,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.34.0', contentVersion: '1.34.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.35.0', contentVersion: '1.35.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -136,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.34.0', stale: false }],
-    contentVersion: '1.34.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.35.0', stale: false }],
+    contentVersion: '1.35.0'
   },
   diagnostics: {
-    extensionVersion: '1.34.0',
-    contentVersion: '1.34.0',
+    extensionVersion: '1.35.0',
+    contentVersion: '1.35.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -157,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.34.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.35.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -229,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.34\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.35\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   check('操作区渲染出抓取字幕', /抓取字幕/.test(doc.getElementById('actionbar').textContent));
   check('语音转录入口常驻可见', /语音转录/.test(doc.getElementById('actionbar').textContent));
@@ -856,6 +860,28 @@ async function main() {
     check('navigate 事件也清 transcriptLog', /transcriptLog: \[\]/.test(appSrc), '');
     check('navigate 事件也清 search', /results: \[\], counts: \{\}, query: ''/.test(appSrc), '');
     check('navigate 事件清 summaryStream', /summaryStream: ''/.test(appSrc), '');
+  }
+
+  // ---- 生成总结：先校对字幕再总结 + 飞书格式 + 可回退 ----
+  {
+    const mod = api.panelAi;
+    check('导出了 proofreadSubtitles', typeof mod.proofreadSubtitles === 'function', typeof mod.proofreadSubtitles);
+    check('导出了 revertSubtitles', typeof mod.revertSubtitles === 'function', typeof mod.revertSubtitles);
+
+    // 飞书格式规则必须包含确定支持的那几类，且排除会失效的
+    const rules = mod.FEISHU_FORMAT_RULES || '';
+    check('格式规则含标题', /`#`/.test(rules), '');
+    check('格式规则含表格（要求表头与分隔行）', /管道表格/.test(rules) && /表头与分隔行/.test(rules), '');
+    check('格式规则含代码块（要求标注语言）', /三个反引号/.test(rules), '');
+    check('格式规则含引用与分割线', /`> `/.test(rules) && /`---`/.test(rules), '');
+    check('格式规则含 LaTeX 公式', /\$\.\.\.\$/.test(rules), '');
+    check('格式规则含超链接', /\[文字\]\(https/.test(rules), '');
+    check('格式规则排除内嵌 HTML', /不要输出\*\*：内嵌 HTML/.test(rules) || /内嵌 HTML/.test(rules), '');
+    check('格式规则说明图片无法携带', /图片无法通过文本携带/.test(rules), '');
+    check('格式规则提醒不要编造链接', /不要编造/.test(rules), '');
+
+    // 默认提示词就是用户指定的那一句
+    check('默认提示词是用户指定的原句', /整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）/.test(api.DEFAULT_SYSTEM_PROMPT), '');
   }
 
   report(results, errors);

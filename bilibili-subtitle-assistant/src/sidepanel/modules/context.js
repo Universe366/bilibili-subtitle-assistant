@@ -153,6 +153,7 @@ export async function loadVideo(opts = {}) {
     if (changed) {
       // 只清「由视频派生的」数据，不动设置、缓存、导出配置等全局状态
       cleared.subtitles = [];
+      cleared.subtitlesOriginal = [];
       cleared.summary = '';
       cleared.summaryStream = '';
       cleared.chat = [];

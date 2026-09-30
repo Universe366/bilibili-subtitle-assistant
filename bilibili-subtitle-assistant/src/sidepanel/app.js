@@ -263,6 +263,7 @@ async function handleContentEvent(msg) {
     store.set({
       video: payload.info,
       subtitles: [],
+      subtitlesOriginal: [],
       summary: '',
       summaryStream: '',
       chat: [],

@@ -3,10 +3,11 @@
 
 import { h, clear, button, fmtTime, toast, copyText, setBoolAttr } from './dom.js';
 import { store } from './store.js';
-import { app, showError, saveHistory, doProviderSearch, doEngineSearch, recountCitations, activePromptText } from './context.js';
+import { app, showError, saveHistory, doProviderSearch, doEngineSearch, recountCitations, activePromptText, setLines } from './context.js';
 import { renderMarkdownInto, renderInline } from './markdown.js';
 import { selectContext, linesToTranscript } from './subtitles.js';
 import { searchContextBlockGuarded, engineLabel } from './search.js';
+import * as OPT from './optimize.js';
 import { extractVerifyItems, verifyItems, verifyContextBlock } from '../../shared/verify.js';
 import { Stream, call } from './bridge.js';
 import { promptDialog } from './ui.js';
@@ -202,10 +203,22 @@ function renderToolbar() {
       small: true,
       primary: true,
       disabled: !hasLines || state.streaming,
-      title: hasLines ? '按当前系统提示词生成总结' : '需要先有字幕'
+      title: hasLines
+        ? '先生成字幕更正（联网核对术语/逻辑/时间/事实），再据此生成总结'
+        : '需要先有字幕'
     })
   );
   bar.appendChild(button('停止', () => stopStream(), { small: true, danger: true, disabled: !state.streaming }));
+  // 字幕被校对过就给一个回退入口（用户要求「可以回退至原有的字幕」）
+  if ((st.subtitlesOriginal || []).length && (st.subtitles || []).length) {
+    const changed = (st.optimize && st.optimize.corrections ? st.optimize.corrections.length : 0) || 0;
+    bar.appendChild(
+      button(changed ? `回退字幕（已改 ${changed} 处）` : '回退字幕', () => revertSubtitles(), {
+        small: true,
+        title: '把字幕恢复到 AI 更正之前的样子'
+      })
+    );
+  }
   bar.appendChild(button('复制总结', () => copySummary(), { small: true, disabled: !st.summary }));
   bar.appendChild(button('导出总结', () => exportSummary(), { small: true, disabled: !st.summary }));
   bar.appendChild(button('重置会话', () => resetChat(), { small: true }));
@@ -791,7 +804,147 @@ export function needsWebSearch(question) {
 }
 
 // ---------------------------------------------------------------------------
-// 能力自述
+// 阶段 1：校对字幕
+// ---------------------------------------------------------------------------
+
+// 对字幕做「术语 / 逻辑 / 时间 / 事实」校对，并**把修正写回字幕**。
+//
+// 用户明确要求的流程：
+//   点生成总结 → 查字幕里的错误（联网）→ 更正 → 用更正后的字幕生成总结
+//   且「原有字幕文件已经发生修改，但是可以回退至原有的字幕」
+//
+// 因此这里做三件事：
+//   ① 把**原始字幕**备份到 `st.subtitlesOriginal`（回退用，只备份一次，
+//      避免二次校对把「已更正版」当成原文备份）
+//   ② 抽出待核实项 → 联网逐条核对 → 让模型给出修正
+//   ③ 应用修正并写回 store，同时生成一份「改了哪些」的报告
+export async function proofreadSubtitles(lines, settings, opts = {}) {
+  const hasLines = Array.isArray(lines) && lines.length;
+  if (!hasLines) return null;
+  const st = store.get();
+  const cap = searchCapabilityOf(settings);
+
+  // 联网核对（可选）
+  let verify = [];
+  if (cap.webCapable && cap.searchOn) {
+    const items = extractVerifyItems(lines, settings.search?.verifyItemCount || settings.optimize?.verifyItemCount || 8);
+    if (items.length) {
+      try {
+        verify = await verifyItems(
+          items,
+          // ephemeral：连续多条搜索，不能冲掉用户上次的检索面板结果
+          (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
+          { maxItems: settings.search?.verifyItemCount || 8, perItem: 3 }
+        );
+      } catch (err) {
+        /* 核对失败仍可做纯文本校对 */
+      }
+    }
+  }
+
+  const messages = OPT.buildOptimizeMessages({
+    lines,
+    glossary: settings.optimize?.glossary,
+    verify,
+    useSearch: false,
+    videoTitle: (st.video && st.video.title) || ''
+  });
+  const res = await call('ai.chat', { messages, temperature: 0.1, maxTokens: 4000 }, { timeoutMs: 300000 });
+  const corrections = OPT.parseOptimizeResult(res.text);
+  if (!corrections.length) return { corrections: [], applied: { changed: 0 }, lines, report: '' };
+
+  const applied = OPT.applyCorrections(lines, corrections);
+
+  // 备份原始字幕（只在还没有备份时备份，保住「最初的那一份」）
+  if (!st.subtitlesOriginal || !st.subtitlesOriginal.length) {
+    store.set({ subtitlesOriginal: lines.map((l) => ({ ...l })) });
+  }
+  setLines(applied.lines);
+  await saveHistory();
+
+  // 生成「改了哪些」的报告，用于总结顶部与提示
+  const rows = [];
+  const seen = new Set();
+  for (const c of corrections) {
+    const key = `${c.wrong}→${c.right}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(`- ${c.kind ? `[${c.kind}] ` : ''}${c.wrong} → ${c.right}${c.reason ? `（${c.reason}）` : ''}`);
+  }
+  const report = rows.join('\n');
+
+  const byKind = {};
+  for (const c of corrections) {
+    const k = c.kind || '其他';
+    byKind[k] = (byKind[k] || 0) + 1;
+  }
+  const kindText = Object.entries(byKind).map(([k, n]) => `${k} ${n}`).join(' · ');
+
+  if (!opts.quiet) {
+    toast(
+      {
+        title: `字幕已更正 ${applied.changed} 处`,
+        detail: `${kindText}。原字幕已备份，可随时回退。`
+      },
+      'ok',
+      5000
+    );
+  }
+  return { corrections, applied, lines: applied.lines, report, kindText };
+}
+
+// 回退到原始字幕（校对前的那一份）
+export async function revertSubtitles() {
+  const st = store.get();
+  const orig = st.subtitlesOriginal;
+  if (!orig || !orig.length) {
+    toast({ title: '没有可回退的原始字幕' }, 'warn');
+    return false;
+  }
+  setLines(orig.map((l) => ({ ...l })));
+  store.set({ optimize: { ...(st.optimize || {}), corrections: [], pending: false } });
+  await saveHistory();
+  toast({ title: '已回退到原始字幕', detail: 'AI 的更正已撤销。' }, 'ok', 3000);
+  render();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// 阶段 2：生成总结
+// ---------------------------------------------------------------------------
+
+// 总结的格式约束。
+//
+// 用户指定的提示词（原句）已经是 constants.js 里的 DEFAULT_SYSTEM_PROMPT：
+//   「整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、
+//     图片等飞书支持的格式输出，可以加上一些图标增加可读性）」
+//
+// 下面这段是给模型的**格式细则**，目的只有一个：让输出的 Markdown
+// 是飞书文档能正确识别的。飞书文档支持的标准 Markdown 子集：
+//   标题 / 粗体斜体删除线 / 有序无序列表 / 任务列表 / 引用 /
+//   围栏代码块（带语言）/ 表格 / 链接 / 分割线 / LaTeX 公式
+//
+// ⚠ 诚实说明：飞书官方文档站是 JS 渲染的，抓不到正文。这份清单基于既有知识，
+// **没有对着官方规范逐条核对**。因此设计上做了防御 ——
+// 即使某个语法飞书不认，它也只是显示成纯文本，不会让总结出错或用不了。
+export const FEISHU_FORMAT_RULES = [
+  '【输出格式要求：飞书文档支持的 Markdown】',
+  '请严格使用下列写法，它们粘贴进飞书文档后能被正确渲染：',
+  '· 标题：`#` `##` `###`（最多三级，不要跳级）',
+  '· 强调：`**粗体**`、`*斜体*`、`~~删除线~~`',
+  '· 列表：`- ` 无序、`1. ` 有序；任务用 `- [ ]` / `- [x]`',
+  '· 引用：行首 `> `',
+  '· 代码：行内用反引号；多行用三个反引号并标注语言（如 ```js）',
+  '· 表格：标准 Markdown 管道表格，**必须有表头与分隔行**',
+  '· 链接：`[文字](https://...)`（只链接真实存在的 URL，不要编造）',
+  '· 分割线：单独一行 `---`',
+  '',
+  '**不要输出**：内嵌 HTML、脚注、自定义容器语法、base64 图片。',
+  '图片无法通过文本携带，若需要配图请用文字说明「此处建议配图：…」。',
+  '公式用行内 `$...$` 或块级 `$$...$$`（LaTeX），飞书可识别。',
+  '适当使用 emoji 提升可读性，但不要每行都加。'
+].join('\n');
+
 // ---------------------------------------------------------------------------
 
 // 拼出「我当前有什么能力」这一段系统提示。
@@ -1036,39 +1189,32 @@ export async function generateSummary() {
   }
   const settings = st.settings;
   const promptText = activePromptText();
-  const ctx = selectContext(st.subtitles, '', 40000);
 
-  // ---- 总结时对**具体条目**做联网核实 ----
+  // ---- 阶段 1：校对字幕（联网核对术语/逻辑/时间/事实），并**实际更正字幕** ----
   //
-  // 用户反馈过：「联网后的内容和字幕相差好大，还污染了输出」。
-  // 原因是早先的做法用整段标题搜一次，然后把 6 条来源、每条最多 3000 字正文
-  // 整块塞进上下文 —— 上万字无关网页把字幕挤成少数派，模型自然开始讲网页。
+  // 用户要求的流程：点「生成总结」时先查字幕里的错误 → 联网核对 → 更正字幕
+  // （原字幕可回退）→ 用**更正后的字幕**生成总结。
   //
-  // 现在改成：先从字幕里抽出**具体的待核实项**（年份/数字/版本号/术语），
-  // 逐条检索，做相关性过滤，只把紧凑的「条目 → 证据摘录」交给模型，
-  // 并明确要求它**只用于校正、不要转述网页**。
+  // 早先的做法是把核对证据塞进总结的上下文里让模型「边说边改」，
+  // 那样校正和总结混在一起，用户既看不清改了什么，也没法回退。
+  // 现在拆成两个阶段，并真的把修正写回字幕。
   const capSearch = searchCapabilityOf(settings);
-  let searchBlock = '';
+  let correctedLines = st.subtitles;
+  let fixReport = '';
   if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
     try {
-      const items = extractVerifyItems(st.subtitles, settings.search.verifyItemCount || 6);
-      if (items.length) {
-        const verified = await verifyItems(
-          items,
-          // ephemeral：核实是连续多条搜索，不能把用户上次的检索面板结果冲掉
-          (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
-          { maxItems: settings.search.verifyItemCount || 5, perItem: 3 }
-        );
-        if (verified.length) {
-          searchBlock = verifyContextBlock(verified);
-        }
+      const out = await proofreadSubtitles(st.subtitles, settings, { quiet: false });
+      if (out && out.applied && out.applied.changed) {
+        correctedLines = out.lines;
+        fixReport = out.report;
       }
     } catch (err) {
-      // 核实失败不影响总结本身
-      const detail = (err && err.payload && err.payload.title) || (err && err.message) || '检索失败';
-      toast({ title: '联网核实失败，总结仍会正常生成', detail }, 'warn', 4000);
+      const detail = (err && err.payload && err.payload.title) || (err && err.message) || '校对失败';
+      toast({ title: '字幕校对失败，将用原字幕生成总结', detail }, 'warn', 4000);
     }
   }
+
+  const ctx = selectContext(correctedLines, '', 40000);
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);
   // 总结也带上能力自述：用户可能在总结里问「这个结果是联网查的吗」
@@ -1117,12 +1263,14 @@ export async function generateSummary() {
       content: [
         activeSkill ? `${promptText}\n\n【当前技能：${activeSkill.name}】\n${activeSkill.body}` : promptText,
         capBlock,
-        // 有联网资料时，明确要求「核实而非照抄」
-        searchBlock
-          ? '【本次总结已联网核实】\n下面给了「参考资料」。请用它**校正**字幕里的数据、时间、人名、产品名等事实性内容：\n' +
-            '· 与字幕冲突时，以参考资料为准，并在正文里用 [来源 N] 标注出处\n' +
-            '· 参考资料没有覆盖的内容，保持字幕原样，不要臆测\n' +
-            '· 如果参考资料明确显示字幕里的某个说法是错的，请在文末单独列一条「⚠️ 已更正」说明改了什么'
+        FEISHU_FORMAT_RULES,
+        // 字幕已在本轮校对过 —— 告诉模型「这是更正后的版本」，
+        // 并附上改了哪些，让它不要在总结里再纠结原文
+        fixReport
+          ? '【本次字幕已校对并更正】\n' +
+            '下面给你的**已经是更正后的字幕**，请直接据此整理，不要再提「字幕可能有误」。\n' +
+            `本轮更正了 ${(fixReport.match(/^- /gm) || []).length} 处：\n${fixReport}\n\n` +
+            '如果这些更正确实影响了对内容的理解，可在总结末尾用一行「⚠️ 字幕已更正」简要说明。'
           : ''
       ].filter(Boolean).join('\n\n')
     },
@@ -1134,17 +1282,12 @@ export async function generateSummary() {
         st.video && st.video.duration ? `时长：${fmtTime(st.video.duration)}` : '',
         extraContext,
         '下面是这期视频的字幕原文：',
-        ctx.text,
-        searchBlock
+        ctx.text
       ]
         .filter(Boolean)
         .join('\n\n')
     }
   ];
-  if (searchBlock) {
-    // 检索结果作为依据进入上下文
-    messages.push({ role: 'system', content: '回答时如引用了「参考资料」，请在正文里用 [来源 N] 标注。' });
-  }
 
   state.summaryStreaming = true;
   state.streaming = true;

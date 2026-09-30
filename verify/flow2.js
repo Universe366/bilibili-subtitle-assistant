@@ -145,7 +145,7 @@ function handleRpc(method, params) {
     case 'settings.reset':
       return settings();
     case 'build.info':
-      return { app: 'B站字幕助手', version: '1.34.0', contentVersion: '1.34.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
+      return { app: 'B站字幕助手', version: '1.35.0', contentVersion: '1.35.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
     case 'page.info':
       return VIDEO;
     case 'page.call': {
@@ -201,7 +201,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-ext',
       lastError: null,
-      getManifest: () => ({ version: '1.34.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.35.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => ({
         name: 'bsub-stream',
@@ -247,7 +247,7 @@ function installChrome(window) {
     tabs: {
       query: () => Promise.resolve([TAB]),
       sendMessage: (tabId, msg) => {
-        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.34.0' });
+        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.35.0' });
         if (msg && msg.type === 'bsub:to-content') {
           if (msg.method === 'getSubtitleBundle') return Promise.resolve({ ok: true, data: bundle() });
           if (msg.method === 'triggerSubtitleMenu') {
@@ -280,7 +280,12 @@ function serveHtml() {
       if (p === '/' || p.endsWith('panel.html')) {
         const raw = fs.readFileSync(path.join(ROOT, 'src/sidepanel/panel.html'), 'utf8');
         const bundleJs = fs.readFileSync(BUNDLE, 'utf8');
-        const html = raw.replace(/<script type="module"[^>]*><\/script>/g, '').replace('</body>', `<script>\n${bundleJs}\n</script>\n</body>`);
+        // 必须用**函数形式**的 replace：字符串 replacement 里 `$$` 是特殊模式，
+        // 而 bundle 现在含有 LaTeX 的 `$$...$$`，会被悄悄改写并在 jsdom 里
+        // 报一个与真实代码无关的 SyntaxError。
+        const html = raw
+          .replace(/<script type="module"[^>]*><\/script>/g, '')
+          .replace('</body>', () => `<script>\n${bundleJs}\n</script>\n</body>`);
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         res.end(html);
         return;
