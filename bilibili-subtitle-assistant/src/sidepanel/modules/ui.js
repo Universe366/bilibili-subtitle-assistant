@@ -12,6 +12,7 @@ import { h, button, setBoolAttr } from './dom.js';
 // 其余按语义收进菜单。
 //
 // items 支持分隔线：传 { divider: true } 即可。
+// 也支持分组小标题：传 { heading: '获取内容' }（不可点击，纯分组）。
 // ---------------------------------------------------------------------------
 export function popoverMenu(items, opts = {}) {
   const wrap = h('div', { class: 'menu-wrap' });
@@ -96,6 +97,12 @@ export function popoverMenu(items, opts = {}) {
 
   for (const it of items) {
     if (!it) continue;
+    if (it.heading) {
+      // 分组小标题：菜单项多起来之后，一大串平铺很难扫读。
+      // 用小标题按流程分组，比加更多分隔线更清楚。
+      panel.appendChild(h('div', { class: 'menu-heading', text: it.heading }));
+      continue;
+    }
     if (it.divider) {
       panel.appendChild(h('div', { class: 'menu-divider' }));
       continue;
@@ -118,7 +125,7 @@ export function popoverMenu(items, opts = {}) {
 
   // 所有条目都不可用时给一句原因 —— 否则用户点开只看到一片灰字，
   // 很容易以为「菜单是空的 / 坏了」。
-  const actionable = items.filter((x) => x && !x.divider && !x.disabled);
+  const actionable = items.filter((x) => x && !x.divider && !x.heading && !x.disabled);
   if (!actionable.length) {
     // 把「禁用」改成「暂时不可用」的说明，而不是留一堆灰按钮
     panel.textContent = '';

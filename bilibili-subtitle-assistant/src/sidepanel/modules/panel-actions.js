@@ -127,7 +127,8 @@ export function render() {
     // 这条路径除了官方字幕轨，还会用「页面嗅探到的 AI 字幕」，
     // 说「官方」会让人以为只取官方轨（用户就被这个措辞误导过）。
     host.appendChild(button('② 获取字幕', () => contextHarvest(), { primary: true, title: '优先官方字幕轨；也接受页面已捕获的 AI 字幕。没有就改用「语音转录」' }));
-    host.appendChild(button('语音转录', () => contextTranscribe(), { cls: 'btn-accent', title: '没有可用字幕时，把音轨转成文字' }));
+    // 走 runTranscribe（统一入口，会先关掉可能挡着的浮层）
+    host.appendChild(button('语音转录', () => runTranscribe(), { cls: 'btn-accent', title: '没有可用字幕时，把音轨转成文字' }));
   } else {
     host.appendChild(
       button(hasSummary ? '重新生成总结' : '③ 生成总结', () => summarize(false), {
@@ -135,26 +136,20 @@ export function render() {
         title: '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结'
       })
     );
-    // 快速总结：跳过联网校对，省掉最耗时的一段
+    // 快速总结：跳过联网校对，省掉最耗时的一段。
+    // 文案补全为「快速总结」—— 内部菜单与 AI 面板都叫这个名字，
+    // 只写「快速」会让人不确定快速的是哪一步。
     host.appendChild(
-      button('⚡ 快速', () => summarize(true), {
+      button('⚡ 快速总结', () => summarize(true), {
         title: '快速总结：跳过联网校对，直接用现有字幕生成（更快，但不会修正字幕错误）'
       })
     );
-    // 以下四个是字幕就绪后最常用的动作，直接摆出来
+    // 「去提问」是字幕就绪后的高频动作，摆出来
     host.appendChild(
       button('去提问', () => {
         store.set({ activeTab: 'ai' });
         if (app.panels.ai && app.panels.ai.focusInput) app.panels.ai.focusInput();
       }, { title: '基于这期视频的字幕向 AI 提问' })
-    );
-    host.appendChild(
-      button('✨ 优化字幕', () => optimizeWithAi(), {
-        title: '只修正字幕文本（错别字/术语/时间/数据/逻辑），不改写内容'
-      })
-    );
-    host.appendChild(
-      button('复制', () => copyAllSubtitles(), { title: '复制纯文本字幕' })
     );
     // 「导出」也走格式选择弹窗 —— 之前这里直接下载（用上次记住的设置），
     // 而菜单里那个才弹格式选择，两个入口行为不一致，用户会以为「不能选格式」。
@@ -164,25 +159,32 @@ export function render() {
         else exportSubtitles();
       }, { title: '选择格式后导出（SRT / WebVTT / ASS / TXT / Markdown / JSON）' })
     );
+    // 「✨ 优化字幕」与「复制」挪进「⋯」。
+    //
+    // 原因（实测）：操作区最多时有 7 个按钮，在 400px 宽下要占 **3 行 / 113px**，
+    // 接近侧边栏可视高度的三分之一，把真正要看的字幕往下挤。
+    // 这两个动作字幕面板的「⋯」里也有，属于「偶尔用一次」，
+    // 收进菜单后操作区从 3 行降到 2 行。
   }
 
   // ---- 不常用的操作：收进「⋯」菜单 ----
+  //
+  // 菜单按**流程顺序**分组（获取 → 加工 → 查看），并加了文字小标题，
+  // 而不是一大串平铺 —— 之前 10 项连排，用户得逐行读完才知道哪个是哪个。
   const moreItems = [
+    { heading: '获取内容' },
     { icon: '🔄', label: '重新读取视频', title: '重新读取当前页面的视频信息', onClick: () => reload() },
     { icon: '📥', label: '重新获取字幕', title: '重新抓取官方字幕轨（也会接受页面已捕获的 AI 字幕）', disabled: !hasVideo, onClick: () => contextHarvest() },
-    { icon: '🎙️', label: '语音转录', title: hasLines ? '重新转录（会消耗语音识别额度）' : '把音轨转成文字', onClick: () => contextTranscribe() },
+    { icon: '🎙️', label: '语音转录', title: hasLines ? '重新转录（会消耗语音识别额度）' : '把音轨转成文字', onClick: () => runTranscribe() },
     { divider: true },
-    {
-      icon: '🧽',
-      label: '清空字幕',
-      title: '清掉当前字幕（含校对备份、章节与统计），方便重新获取',
-      disabled: !hasLines,
-      onClick: () => clearSubtitles()
-    },
+    { heading: '加工字幕' },
+    { icon: '✨', label: '优化字幕（AI）', title: '只修正字幕文本（错别字/术语/时间/数据/逻辑），不改写内容', disabled: !hasLines, onClick: () => optimizeWithAi() },
     { icon: '🔁', label: '应用替换规则', title: '按当前替换规则组一键全部替换', disabled: !hasLines, onClick: () => applyActiveRules() },
     { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段并可跳转', disabled: !hasLines, onClick: () => generateChapters() },
     { icon: '🩺', label: '质量自检', title: '检查漏段与时间异常', disabled: !hasLines, onClick: () => runQualityCheck() },
     { divider: true },
+    { heading: '结果与记录' },
+    { icon: '📋', label: '复制全部字幕', title: '复制纯文本字幕到剪贴板', disabled: !hasLines, onClick: () => copyAllSubtitles() },
     { icon: '🕘', label: '历史记录与回退', title: '查看本会话操作留痕（可回退）与其它视频历史', onClick: async () => showHistory(await loadHistory()) },
     {
       icon: '🗂️',
@@ -193,6 +195,14 @@ export function render() {
         store.setGroupOpen('batch', true);
         if (app.panels.settings) app.panels.settings.render();
       }
+    },
+    { divider: true },
+    {
+      icon: '🧽',
+      label: '清空字幕',
+      title: '清掉当前字幕（含校对备份、章节与统计），方便重新获取',
+      disabled: !hasLines,
+      onClick: () => clearSubtitles()
     }
   ];
   host.appendChild(popoverMenu(moreItems, { label: '⋯', title: '更多操作' }));
@@ -219,14 +229,15 @@ export function render() {
 
   // ---- 状态胶囊 ----
   if (hasVideo) {
-    host.appendChild(
-      h('span', {
-        class: 'pill',
-        text: `${st.video.title || '未命名'}${st.video.partTitle ? ` · ${st.video.partTitle}` : ''}${
-          st.video.duration ? ` · ${fmtTime(st.video.duration)}` : ''
-        }`
-      })
-    );
+    const pillText = `${st.video.title || '未命名'}${st.video.partTitle ? ` · ${st.video.partTitle}` : ''}${
+      st.video.duration ? ` · ${fmtTime(st.video.duration)}` : ''
+    }`;
+    // 文本放在**内层 span** 里：外层的 .actionbar .pill 是 flex，
+    // 内层负责省略号截断。直接给胶囊加 text-overflow 不够 ——
+    // 胶囊会先随内容变宽、再换行，标题照样占两行（实测踩过）。
+    const titlePill = h('span', { class: 'pill', title: pillText });
+    titlePill.appendChild(h('span', { text: pillText }));
+    host.appendChild(titlePill);
     if (st.video.parts && st.video.parts.length > 1) {
       host.appendChild(h('span', { class: 'pill', text: `${st.video.parts.length} 个分 P（当前 P${st.video.page}）` }));
     }

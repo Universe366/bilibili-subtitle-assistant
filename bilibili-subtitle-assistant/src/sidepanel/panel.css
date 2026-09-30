@@ -1447,6 +1447,36 @@ mark.hit {
   white-space: nowrap;
 }
 
+/* 操作区里的视频标题胶囊：超长标题不许把工具栏撑成 4 行。
+   侧边栏往往只有 300~400px 宽，而标题可以很长。
+   实测（真实 Chrome + 本文件）改前 300px 下 4 行、超长标题 93px 高。
+
+   两个坑，都是实测出来的：
+
+   1) 光给 .pill 加 text-overflow 不够 —— 胶囊会随内容变宽，
+      于是「先换行、再截断」，标题照样占两行。
+      解法：胶囊内部改成 flex（外层 overflow:hidden + 内层 span 负责
+      ellipsis），min-width:0 让 flex 项真的能被压缩。
+
+   2) 标题胶囊会把 row 撑满（长标题时宽 340px），把同一行的
+      「240 行」胶囊挤到下一行，操作区还是多一行。
+      解法：给标题胶囊一个 70% 的宽度上限，留出位置给其它胶囊。
+      70% 而非 100% —— 100% 会独占一行、必然多一行。 */
+.actionbar .pill {
+  max-width: 70%;
+  min-width: 0;
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+}
+.actionbar .pill > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pill-brand {
   border-color: var(--brand);
   color: var(--brand);
@@ -2042,6 +2072,20 @@ mark.hit {
   height: 1px;
   margin: 4px 6px;
   background: var(--border, rgba(127, 127, 127, 0.2));
+}
+
+/* 菜单分组小标题：菜单项变多后，一大串平铺很难扫读 */
+.menu-heading {
+  padding: 6px 12px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft, #8a8a8a);
+  text-transform: none;
+  user-select: none;
+}
+.menu-heading:first-child {
+  padding-top: 3px;
 }
 
 /* ------------------------------------------------------------------ */
