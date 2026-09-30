@@ -80,7 +80,7 @@
       }
     ],
     "temperature": 0.3,
-    "maxTokens": 4096,
+    "maxTokens": 8192,
     "stream": true
   },
   "asr": {

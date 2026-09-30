@@ -185,7 +185,12 @@ export async function loadVideo(opts = {}) {
     //
     // 只填**空着的**字段：如果本次会话里已经有内容（例如刚生成过），
     // 不要被历史覆盖掉。
-    if (changed) await restoreFromHistory(video, { toast: true });
+    //
+    // opts.noRestore：**页面内跳转（SPA 导航）时必须传 true**。
+    // 否则换视频后会自动把上一个视频的字幕/总结从历史里载回来，
+    // 界面看起来「没有重新开始，还停在原来那期视频的总结上」——
+    // 用户实际报的就是这个现象。手动点「读取当前视频」时才回填。
+    if (changed && !opts.noRestore) await restoreFromHistory(video, { toast: true });
     return video;
   } catch (err) {
     showError(err, '读取视频信息失败');

@@ -276,13 +276,16 @@ async function handleContentEvent(msg) {
     });
     settingsPanel.render();
     actionsPanel.render();
+    // 换视频后要真的「从头开始」：这里必须 noRestore，
+    // 否则 loadVideo 会自动把上一期的字幕/总结从历史载回来，
+    // 界面看着还停在原来那期视频上（用户报过这个现象）。
     if (hadLines) {
       // 分 P 切换后字幕会不对，必须重新抓取（稳定性 #10）
       toast({ title: '检测到分 P / 视频切换', detail: '正在重新读取并抓取字幕…' }, 'warn', 4000);
-      const v = await loadVideo();
+      const v = await loadVideo({ noRestore: true });
       if (v) await harvest();
     } else {
-      await loadVideo();
+      await loadVideo({ noRestore: true });
     }
     return;
   }

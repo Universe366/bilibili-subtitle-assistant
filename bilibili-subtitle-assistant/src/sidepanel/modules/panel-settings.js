@@ -440,7 +440,23 @@ function aiGroup(d) {
     body.appendChild(
       field('温度（0~2）', numberInput(d.ai.temperature, (v) => { d.ai.temperature = Math.max(0, Math.min(2, v)); markDirty(); }, { min: 0, max: 2, step: 0.1 }))
     );
-    body.appendChild(field('最大输出 token', numberInput(d.ai.maxTokens, (v) => { d.ai.maxTokens = v; markDirty(); }, { min: 256, max: 32000, step: 256 })));
+    body.appendChild(
+      field(
+        '最大输出 token',
+        numberInput(d.ai.maxTokens, (v) => { d.ai.maxTokens = Math.max(256, Math.min(64000, Number(v) || 8192)); markDirty(); }, { min: 256, max: 64000, step: 512 })
+      )
+    );
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '说明：这个值决定 AI **一次最多输出多少字**（约 1 token ≈ 0.6~1 个汉字）。\n' +
+          '· 想要更长、更详细的总结就调大（8192 约能写 5000~8000 字）。\n' +
+          '· 上限由**模型本身**决定，不是每个模型都支持 64000；' +
+          '超出模型能力时服务端会直接报错，按平台文档调即可。\n' +
+          '· 调大后单次费用会相应增加。'
+      })
+    );
     body.appendChild(
       checkbox(
         d.ai.expandReasoning === true,

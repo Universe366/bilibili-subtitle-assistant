@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.45.0', contentVersion: '1.45.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.46.0', contentVersion: '1.46.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.45.0', stale: false }],
-    contentVersion: '1.45.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.46.0', stale: false }],
+    contentVersion: '1.46.0'
   },
   diagnostics: {
-    extensionVersion: '1.45.0',
-    contentVersion: '1.45.0',
+    extensionVersion: '1.46.0',
+    contentVersion: '1.46.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.45.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.46.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.45\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.46\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1252,6 +1252,36 @@ async function main() {
       const r4 = SUBS.validateLines(good, 200);
       check('不传 expect 时只做时长校验', r4.ok === true, `${r4.kind}`);
     }
+
+    // ---- 换视频后必须真的「重新开始」----
+    //
+    // 用户复现：读 A → 转录/总结 → 切到 B → 点重新抓取。
+    // 现象之一是「界面没重新开始，还停在 A 的总结上」。
+    // 原因是 SPA 导航处理器调 loadVideo() → 触发自动回填历史 → 把 A 的内容载了回来。
+    const appSrc2 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'app.js'),
+      'utf8'
+    );
+    check('导航处理器要求不回填历史', /loadVideo\(\{ noRestore: true \}\)/.test(appSrc2), '');
+    const ctxSrc2 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'context.js'),
+      'utf8'
+    );
+    check('loadVideo 支持 noRestore 选项', /if \(changed && !opts\.noRestore\)/.test(ctxSrc2), '');
+    check('手动读取时仍然回填历史', /restoreFromHistory\(video, \{ toast: true \}\)/.test(ctxSrc2), '');
+
+    // ---- 输出上限与详细程度 ----
+    const defSettings = require('./default-settings.json');
+    check('默认最大输出 token 提高到 8192', Number(defSettings.ai.maxTokens) === 8192, String(defSettings.ai.maxTokens));
+    check(
+      '旧默认 4096 会被迁移',
+      /Number\(merged\.ai\.maxTokens\) === 4096/.test(
+        fs.readFileSync(path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'shared', 'settings.js'), 'utf8')
+      ),
+      ''
+    );
+    check('提示词要求更详细', /宁可详细，不要简略/.test(api.panelAi.FEISHU_FORMAT_RULES || ''), '');
+    check('提示词保留反灌水约束', /不要为了凑长度/.test(api.panelAi.FEISHU_FORMAT_RULES || ''), '');
   }
 
   report(results, errors);

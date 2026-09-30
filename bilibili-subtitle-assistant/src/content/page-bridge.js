@@ -472,7 +472,22 @@
     return Array.from(subtitleSniff.items.values()).filter((s) => s && s.sig && s.sig === curSig);
   }
 
-  function recordSniffedSubtitle(url, text, source) {
+  // 记录一条嗅探到的字幕正文。
+  //
+  // `sigAtRequest` 必须是**请求发出那一刻**的视频签名（调用方传入）。
+  //
+  // ⚠ 这里曾经用 `currentSignature()`（即**响应到达时**的签名），
+  // 那是个隐蔽的竞态，正是用户报的
+  // 「切到另一个视频后重新抓取，出现随机别的视频的字幕，每次还不一样」的根因：
+  //
+  //   1. 在视频 A 的页面里，播放器请求了 A 的字幕正文（响应还没回来）
+  //   2. 用户切到视频 B
+  //   3. A 的响应**此时才到达** → 被贴上 **B 的签名**
+  //   4. 于是在 B 看来这条字幕「属于自己」，就混进了 B 的字幕里
+  //
+  // 哪一条慢请求先回来是随机的，所以每次混进来的内容都不一样。
+  // 把签名固定在请求发出时取，问题就消失了。
+  function recordSniffedSubtitle(url, text, source, sigAtRequest) {
     try {
       const json = typeof text === 'string' ? JSON.parse(text) : text;
       const body = extractSubtitleBody(json);
@@ -480,20 +495,14 @@
       const key = subtitlePathKey(url);
       const prev = subtitleSniff.items.get(key);
       if (prev && prev.body.length >= body.length) return;
-      // 打上**当时的视频签名**。
-      //
-      // 为什么必须记：这个 Map 是页面级的，**从不随换视频清空**。
-      // 于是从 A 切到 B 后，A 的字幕正文仍在 items 里，
-      // 并作为候选一起喂给 B —— 一旦被抓出来用上，
-      // 显示的字幕就与当前视频对不上（用户报的
-      // 「读取视频完后，显示的字幕与视频的字幕不一样」）。
-      // 有了签名，就能在取出时把不属于当前视频的过滤掉。
+      // 这个 Map 是页面级的、**从不随换视频清空**，所以必须按签名过滤，
+      // 否则 A 的字幕会作为候选喂给 B。
       subtitleSniff.items.set(key, {
         url: String(url),
         body,
         at: Date.now(),
         source: source || 'sniff',
-        sig: currentSignature()
+        sig: sigAtRequest || currentSignature()
       });
       subtitleSniff.count += 1;
       subtitleSniff.lastAt = Date.now();
@@ -513,6 +522,9 @@
       if (typeof origFetch === 'function' && !origFetch.__bsubPatched) {
         const patched = function (...args) {
           const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+          // 关键：签名在**请求发出时**取，不能等响应回来再取 ——
+          // 否则用户中途切视频时，上一个视频的响应会被贴上当前视频的签名（见 recordSniffedSubtitle 的注释）。
+          const sigAtRequest = currentSignature();
           const p = origFetch.apply(this, args);
           if (isSubtitleUrl(url)) {
             try {
@@ -521,7 +533,7 @@
                   res
                     .clone()
                     .text()
-                    .then((t) => recordSniffedSubtitle(url, t, 'fetch'))
+                    .then((t) => recordSniffedSubtitle(url, t, 'fetch', sigAtRequest))
                     .catch(() => {});
                 } catch (err) {
                   /* ignore */
@@ -551,13 +563,15 @@
         };
         XHR.prototype.send = function (...args) {
           const url = this.__bsubUrl;
+          // 同样在**发送时**固定签名（理由见 recordSniffedSubtitle 的注释）
+          const sigAtRequest = isSubtitleUrl(url) ? currentSignature() : '';
           if (isSubtitleUrl(url)) {
             this.addEventListener('load', () => {
               try {
                 if (!this.responseType || this.responseType === 'text') {
-                  recordSniffedSubtitle(url, this.responseText, 'xhr');
+                  recordSniffedSubtitle(url, this.responseText, 'xhr', sigAtRequest);
                 } else if (this.responseType === 'json') {
-                  recordSniffedSubtitle(url, this.response, 'xhr');
+                  recordSniffedSubtitle(url, this.response, 'xhr', sigAtRequest);
                 }
               } catch (err) {
                 /* ignore */
@@ -1675,7 +1689,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.45.0',
+    version: '1.46.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

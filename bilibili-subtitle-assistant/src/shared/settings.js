@@ -524,7 +524,7 @@ export function defaultSettings() {
       activeId: 'deepseek',
       platforms: defaultAiPlatforms(),
       temperature: 0.3,
-      maxTokens: 4096,
+      maxTokens: 8192,
       stream: true,
       // 思维链默认折叠。推理模型（deepseek-reasoner 等）的思考过程动辄上千字，
       // 默认展开会把最终回答挤出屏幕。
@@ -717,6 +717,12 @@ export function migrateSettings(raw) {
   }
   if (merged.asr && Number(merged.asr.sizeLimitMB) === 24) {
     merged.asr.sizeLimitMB = def.asr.sizeLimitMB;
+  }
+  // 输出上限升级：默认 4096 → 8192。
+  // 4096 写详细总结容易被截断。只迁移「恰好等于旧默认值」的配置，
+  // 用户手动设过的其它值不动。
+  if (merged.ai && Number(merged.ai.maxTokens) === 4096) {
+    merged.ai.maxTokens = def.ai.maxTokens;
   }
   // 保底：默认提示词必须存在
   if (!Array.isArray(merged.prompt.templates) || merged.prompt.templates.length === 0) {

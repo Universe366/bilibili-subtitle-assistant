@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.45.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.46.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -362,7 +362,7 @@ async function main() {
     check('字幕签名抽成了 buildSignature', /function buildSignature\(\{ bvid, aid, epId, idx, cid \}\)/.test(bridgeSrc), '');
     check('有 currentSignature 计算当前页签名', /function currentSignature\(\)/.test(bridgeSrc), '');
     check('签名格式与页面信息一致（bvid@pN@cCID）', /\`p\$\{idx\}\`, \`c\$\{cid \|\| '-'\}\`\]\.join\('@'\)/.test(bridgeSrc), '');
-    check('记录嗅探结果时打上签名', /source: source \|\| 'sniff',\s*\n\s*sig: currentSignature\(\)/.test(bridgeSrc), '');
+    check('记录嗅探结果时打上签名', /source: source \|\| 'sniff',\s*\n\s*sig: sigAtRequest \|\| currentSignature\(\)/.test(bridgeSrc), '');
     check('有 freshSniffed 只取当前视频的嗅探结果', /function freshSniffed\(\)/.test(bridgeSrc), '');
     check('freshSniffed 按签名过滤', /\.filter\(\(s\) => s && s\.sig && s\.sig === curSig\)/.test(bridgeSrc), '');
     check('等待新字幕用 freshSniffed（不会被旧残留误判）', /if \(freshSniffed\(\)\.length\) break;/.test(bridgeSrc), '');
@@ -370,6 +370,20 @@ async function main() {
     check('候选取过滤后的 sniffed', /const sniffedAll = Array\.from\(subtitleSniff\.items\.values\(\)\);\s*\n\s*const sniffed = freshSniffed\(\);/.test(bridgeSrc), '');
     check('对外报告残留条数以便诊断', /staleSniffCount/.test(bridgeSrc), '');
     check('没有签名的旧条目一律排除', /s && s\.sig && s\.sig === curSig/.test(bridgeSrc), '');
+
+    // ---- 竞态修复：签名必须在**请求发出时**取，不能等响应回来 ----
+    //
+    // 用户复现步骤：读视频 A → 转录/总结 → 保持侧边栏打开切到 B →
+    // 点重新抓取 → 出现 A 的（随机）字幕。
+    // 根因：A 的字幕响应在切到 B 之后才到达；若那时才取签名，
+    // 就会被贴上 **B 的签名**，看起来「属于 B」。哪条慢请求先回来是随机的。
+    check('recordSniffedSubtitle 接收请求时刻的签名', /function recordSniffedSubtitle\(url, text, source, sigAtRequest\)/.test(bridgeSrc), '');
+    check('fetch 钩子在请求发出时固定签名', /const sigAtRequest = currentSignature\(\);/.test(bridgeSrc), '');
+    check('fetch 钩子把签名传下去', /recordSniffedSubtitle\(url, t, 'fetch', sigAtRequest\)/.test(bridgeSrc), '');
+    check('XHR 钩子在 send 时固定签名', /const sigAtRequest = isSubtitleUrl\(url\) \? currentSignature\(\) : '';/.test(bridgeSrc), '');
+    check('XHR 钩子把签名传下去', /recordSniffedSubtitle\(url, this\.responseText, 'xhr', sigAtRequest\)/.test(bridgeSrc), '');
+    const recordFn = /function recordSniffedSubtitle[\s\S]*?\n  \}/.exec(bridgeSrc);
+    check('记录时以请求时刻签名为准', !!recordFn && /sig: sigAtRequest \|\| currentSignature\(\)/.test(recordFn[0]), '');
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');
