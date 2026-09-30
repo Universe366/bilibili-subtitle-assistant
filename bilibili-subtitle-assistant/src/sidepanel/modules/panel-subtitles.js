@@ -3,7 +3,7 @@
 
 import { h, clear, button, fmtTime, toast, copyText, escapeRegExp, debounce, setBoolAttr } from './dom.js';
 import { store } from './store.js';
-import { app, updateLine, exportSubtitles, copyAllSubtitles, applyCorrection, applyAllCorrections, generateChapters, runQualityCheck, transcribe } from './context.js';
+import { app, clearSubtitles, updateLine, exportSubtitles, copyAllSubtitles, applyCorrection, applyAllCorrections, generateChapters, runQualityCheck, transcribe } from './context.js';
 import { call } from './bridge.js';
 import { lineStats, overallStats, langLabel } from './subtitles.js';
 import { FORMATTERS } from './exporter.js';
@@ -455,7 +455,15 @@ function renderToolbar() {
         { icon: '📊', label: '字幕统计', onClick: () => statsDialog(), disabled: !hasLinesNow },
         { divider: true },
         { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段，可点击跳转', onClick: () => generateChapters(), disabled: !hasLinesNow },
-        { icon: '🩺', label: '质量自检', title: '检查是否漏段、时间是否异常', onClick: () => runQualityCheck(), disabled: !hasLinesNow }
+        { icon: '🩺', label: '质量自检', title: '检查是否漏段、时间是否异常', onClick: () => runQualityCheck(), disabled: !hasLinesNow },
+        { divider: true },
+        {
+          icon: '🧽',
+          label: '清空字幕',
+          title: '清掉当前字幕（含校对备份、章节与统计）。抓到可疑内容时用它重置，再重新获取',
+          disabled: !hasLinesNow,
+          onClick: () => clearSubtitles()
+        }
       ],
       { label: '⋯', title: '更多操作' }
     )
@@ -498,7 +506,7 @@ function renderToolbar() {
     const box = h('div', { class: 'row tight', style: { flexBasis: '100%', color: 'var(--danger)' } });
     box.appendChild(h('span', { text: `${st.subtitleError.title}：${first}`.slice(0, 200) }));
     box.appendChild(button('查看明细 / 诊断', () => attemptsDialog(), { small: true, primary: true }));
-    box.appendChild(button('语音转录', () => app.panels.actions.transcribe(), { small: true, title: '改用语音识别把音轨转成文字' }));
+    box.appendChild(button('语音转录', () => app.panels.actions.runTranscribe(), { small: true, title: '改用语音识别把音轨转成文字' }));
     bar.appendChild(box);
   }
   if (st.video && st.video.subtitleMeta) {
@@ -531,6 +539,22 @@ function emptyState(st) {
     const subCount = (st.video.subtitleTracks || []).length;
     bits.push(subCount ? `字幕轨 ${subCount} 条` : '未解析到字幕轨');
     box.appendChild(h('div', { class: 'muted', text: bits.join(' · ') }));
+
+    // 已经知道「一条字幕轨都没有」时，提前说清楚，别让用户以为
+    // 「获取字幕」还有东西可取。这不是禁用按钮（页面里可能还藏着
+    // 没被解析出来的 AI 字幕），而是给出预期 + 建议走转录。
+    if (!subCount && !hasLines && !failed) {
+      box.appendChild(
+        h('div', {
+          class: 'note',
+          style: { textAlign: 'left', marginTop: '6px' },
+          text:
+            '这个视频**没有解析到任何官方字幕轨**。点「获取字幕」仍会再试一次' +
+            '（页面里可能还藏有播放器已经拉过的 AI 字幕），但多数情况下会是没有。\n' +
+            '如果确实是空的，用「语音转录」把音轨转成文字即可；两者结果都会显示在这里。'
+        })
+      );
+    }
   } else {
     box.appendChild(h('div', { class: 'muted', text: '请先在浏览器里打开一个 B 站视频页面。' }));
   }
@@ -567,10 +591,10 @@ function emptyState(st) {
   steps.appendChild(
     mk(
       2,
-      '抓取官方字幕',
+      '获取字幕',
       failed
         ? '上次没有通过：点这里重试（会自动尝试全部来源），或看「查看明细」'
-        : '优先官方字幕，自动挑中文字幕轨并做时长校验；页面读不到时会直连 B 站接口',
+        : '优先官方字幕轨；也接受页面已经捕获到的 AI 字幕。会做时长与归属校验，没找到就是没找到',
       hasLines,
       () => app.panels.actions && app.panels.actions.harvest(),
       !hasVideo
@@ -579,10 +603,10 @@ function emptyState(st) {
   steps.appendChild(
     mk(
       3,
-      '没有官方字幕就用语音转录',
-      '把音轨切成分片做语音识别，可随时终止；完成后会自动填入字幕',
+      '没有字幕就用语音转录',
+      '入口在顶部操作区的「语音转录」。把音轨切成分片做识别，可随时终止；完成后自动填入字幕',
       hasLines && st.video && st.video.source === 'asr',
-      () => app.panels.actions && app.panels.actions.transcribe(),
+      () => app.panels.actions && app.panels.actions.runTranscribe(),
       false
     )
   );
@@ -606,9 +630,13 @@ function emptyState(st) {
       button('读取当前视频', () => app.panels.actions && app.panels.actions.reload(), { primary: true })
     );
   } else if (!hasLines) {
+    // 这里**只**放「获取字幕」。
+    //
+    // 以前这里还有一个「语音转录」按钮，而顶部操作区也有一个 ——
+    // 同一个空态下同一件事出现两次，用户会以为是两个不同的功能。
+    // 转录入口在顶部操作区已经明确摆着，这里不再重复放按钮。
     const row = h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '6px' } });
-    row.appendChild(button('抓取官方字幕', () => app.panels.actions.harvest(), { primary: true }));
-    row.appendChild(button('语音转录', () => app.panels.actions.transcribe(), { cls: 'btn-accent' }));
+    row.appendChild(button('获取字幕', () => app.panels.actions.harvest(), { primary: true, title: '优先官方字幕轨；也接受页面已捕获的 AI 字幕' }));
     box.appendChild(row);
     if (failed) {
       box.appendChild(

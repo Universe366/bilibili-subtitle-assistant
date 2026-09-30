@@ -323,6 +323,39 @@ export async function harvest(opts = {}) {
   }
 }
 
+// 清空当前字幕（含校对备份、章节、统计、诊断）。
+//
+// 为什么必须有这个功能：用户报
+// 「此时读取出来的字幕为什么不能清除？」——
+// 之前确实**没有任何清空字幕的入口**。抓到可疑内容（例如疑似别的视频的
+// 字幕）时，用户唯一的办法就是换视频或重启侧边栏。
+//
+// 只清「由视频派生的内容」，不动视频信息本身与设置。
+export function clearSubtitles(opts = {}) {
+  const st = store.get();
+  if (!(st.subtitles || []).length && !st.subtitleError && !(st.subtitlesOriginal || []).length) {
+    if (!opts.silent) toast({ title: '当前没有字幕可清除' }, 'warn');
+    return false;
+  }
+  store.set({
+    subtitles: [],
+    subtitlesOriginal: [],
+    // 章节是按原字幕切出来的，字幕没了就该一起清掉
+    video: st.video ? { ...st.video, chapters: [], stats: null, subtitleMeta: null, source: null } : st.video,
+    subtitleAttempts: [],
+    subtitleError: null,
+    subtitleDiagnostic: null,
+    // 让字幕列表等按依赖重绘
+    subtitlesRevision: (st.subtitlesRevision || 0) + 1
+  });
+  recordTimeline('清空字幕');
+  renderPanels();
+  if (!opts.silent) {
+    toast({ title: '已清空字幕', detail: '可以重新「获取字幕」或改用「语音转录」。' }, 'ok');
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // 语音转录
 // ---------------------------------------------------------------------------

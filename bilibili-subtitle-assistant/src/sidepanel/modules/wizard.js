@@ -15,7 +15,7 @@ const STEPS = [
     title: '欢迎使用 B站字幕助手',
     body: (box) => {
       box.appendChild(h('div', { text: '全部功能都在这个侧边栏里完成，不需要另开设置页。' }));
-      box.appendChild(h('div', { class: 'note', text: '三步走：① 打开一个 B 站视频 → ② 抓取字幕（没有就语音转录）→ ③ 生成总结 / 对话 / 导出。' }));
+      box.appendChild(h('div', { class: 'note', text: '三步走：① 打开一个 B 站视频 → ② 获取字幕（没有就语音转录）→ ③ 生成总结 / 对话 / 导出。' }));
     }
   },
   {
@@ -90,7 +90,7 @@ const STEPS = [
       box.appendChild(
         h('div', { class: 'row tight' }, [
           button('读取当前视频', () => { closeOverlays(); loadVideo(); }, { small: true }),
-          button('抓取字幕', () => { closeOverlays(); harvest(); }, { small: true, primary: true }),
+          button('获取字幕', () => { closeOverlays(); harvest(); }, { small: true, primary: true }),
           button('语音转录', () => { closeOverlays(); transcribe(); }, { small: true })
         ])
       );

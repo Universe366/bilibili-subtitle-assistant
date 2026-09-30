@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.50.0', contentVersion: '1.50.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.51.0', contentVersion: '1.51.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.50.0', stale: false }],
-    contentVersion: '1.50.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.51.0', stale: false }],
+    contentVersion: '1.51.0'
   },
   diagnostics: {
-    extensionVersion: '1.50.0',
-    contentVersion: '1.50.0',
+    extensionVersion: '1.51.0',
+    contentVersion: '1.51.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.50.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.51.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.50\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.51\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -275,7 +275,7 @@ async function main() {
   }
   const subEmpty = doc.getElementById('subtitles-pane').textContent;
   check('字幕面板空态渲染（含引导清单）', /还没有拿到视频信息|读取当前视频/.test(subEmpty));
-  check('空态给出 4 步流程引导', (doc.querySelectorAll('#subtitles-pane .step').length >= 3) && /抓取官方字幕/.test(subEmpty) && /语音转录/.test(subEmpty) && /生成总结/.test(subEmpty), JSON.stringify(Array.from(doc.querySelectorAll('#subtitles-pane .step-title')).map((e) => e.textContent)));
+  check('空态给出 4 步流程引导', (doc.querySelectorAll('#subtitles-pane .step').length >= 3) && /获取字幕/.test(subEmpty) && /语音转录/.test(subEmpty) && /生成总结/.test(subEmpty), JSON.stringify(Array.from(doc.querySelectorAll('#subtitles-pane .step-title')).map((e) => e.textContent)));
   check('空态有主行动按钮', !!doc.querySelector('#subtitles-pane .step + .row .btn-primary, #subtitles-pane .empty .btn-primary'));
   check('AI 面板渲染（总结 + 对话）', /AI 总结/.test(doc.getElementById('ai-pane').textContent) && /与 AI 对话/.test(doc.getElementById('ai-pane').textContent));
   check('默认单列堆叠布局', doc.getElementById('columns').getAttribute('data-mode') === 'one', doc.getElementById('columns').getAttribute('data-mode'));
@@ -1309,6 +1309,44 @@ async function main() {
     check('跳过原始音轨复用会说明原因', /未复用原始音轨：这条候选没有 SegmentBase 索引/.test(txSrc3), '');
     check('关掉开关时也说明', /设置里关掉了「优先复用 B 站原始音轨」/.test(txSrc3), '');
     check('WAV 模型时也说明', /要求 WAV，必须解码重编码/.test(txSrc3), '');
+
+    // ---- 清空字幕（用户报「读取出来的字幕为什么不能清除」）----
+    const ctxSrc3 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'context.js'),
+      'utf8'
+    );
+    check('导出了 clearSubtitles', /export function clearSubtitles\(/.test(ctxSrc3), '');
+    check('清空时同时清掉校对备份', /subtitlesOriginal: \[\]/.test(ctxSrc3), '');
+    check('清空时清掉章节与统计', /chapters: \[\], stats: null/.test(ctxSrc3), '');
+    check('清空会留痕', /recordTimeline\('清空字幕'\)/.test(ctxSrc3), '');
+    const actSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
+      'utf8'
+    );
+    const subSrc4 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-subtitles.js'),
+      'utf8'
+    );
+    check('操作区菜单有「清空字幕」', /label: '清空字幕'/.test(actSrc), '');
+    check('字幕面板菜单也有「清空字幕」', /label: '清空字幕'/.test(subSrc4), '');
+
+    // ---- 按钮审计：文案与防重复 ----
+    check('不再出现「抓取官方字幕」按钮文案', !/button\('抓取官方字幕'/.test(subSrc4) && !/button\('② 抓取官方字幕'/.test(actSrc), '');
+    check('空态只用「获取字幕」一个主按钮（转录不再重复出现）',
+      !/row\.appendChild\(button\('语音转录'/.test(subSrc4), '');
+    check('引导文案指向顶部转录入口', /入口在顶部操作区的「语音转录」/.test(subSrc4), '');
+    // 浮层里的转录按钮必须先关浮层，否则转录在浮层底下跑、用户以为没反应
+    check('有统一的 runTranscribe 入口', /export function runTranscribe\(\)/.test(actSrc), '');
+    check('runTranscribe 先关闭浮层', /export function runTranscribe\(\) \{\s*\n\s*closeOverlays\(\);/.test(actSrc), '');
+    check('失败提示里的转录走 runTranscribe', /button\('语音转录', \(\) => runTranscribe\(\)/.test(actSrc), '');
+    check('明细浮层里的转录走 runTranscribe', /label: '语音转录', primary: true, onClick: \(\) => runTranscribe\(\)/.test(actSrc), '');
+    check('字幕面板浮层也走 runTranscribe', /app\.panels\.actions\.runTranscribe\(\)/.test(subSrc4), '');
+    // 向导文案同步
+    const wizSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'wizard.js'),
+      'utf8'
+    );
+    check('向导按钮文案已同步为「获取字幕」', /button\('获取字幕'/.test(wizSrc) && !/button\('抓取字幕'/.test(wizSrc), '');
   }
 
   // ---- 原始 AAC 音轨复用（sidx 解析是纯逻辑，可用构造数据测）----

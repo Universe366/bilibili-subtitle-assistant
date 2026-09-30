@@ -156,7 +156,7 @@ function handleRpc(method, params) {
     case 'settings.reset':
       return settings();
     case 'build.info':
-      return { app: 'B站字幕助手', version: '1.50.0', contentVersion: '1.50.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
+      return { app: 'B站字幕助手', version: '1.51.0', contentVersion: '1.51.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
     case 'page.info':
       return VIDEO;
     case 'page.call': {
@@ -212,7 +212,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-ext',
       lastError: null,
-      getManifest: () => ({ version: '1.50.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.51.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => ({
         name: 'bsub-stream',
@@ -258,7 +258,7 @@ function installChrome(window) {
     tabs: {
       query: () => Promise.resolve([TAB]),
       sendMessage: (tabId, msg) => {
-        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.50.0' });
+        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.51.0' });
         if (msg && msg.type === 'bsub:to-content') {
           if (msg.method === 'getSubtitleBundle') return Promise.resolve({ ok: true, data: bundle() });
           if (msg.method === 'triggerSubtitleMenu') {
@@ -346,8 +346,9 @@ async function main() {
   check('① 读到视频信息', !!video && st.video && st.video.title === VIDEO.title && st.video.duration === 754 && st.video.parts.length === 2);
   check('① 识别当前分 P 与签名', st.video.page === 2 && st.video.signature === 'BV1xx411c7mD@p2@c999001');
   const bar1 = doc.getElementById('actionbar').textContent;
-  // 主按钮文案是「② 抓取官方字幕」；次要操作已收进「⋯」菜单
-  check('① 顶部出现读取/抓取按钮', /抓取官方字幕/.test(bar1), bar1.slice(0, 90));
+  // 主按钮文案是「② 获取字幕」（不再叫「抓取官方字幕」—— 这条路径
+  // 也会接受页面已捕获的 AI 字幕，说「官方」会误导）
+  check('① 顶部出现获取/读取按钮', /获取字幕/.test(bar1), bar1.slice(0, 90));
 
   // ---------- ② 抓取字幕 ----------
   const harvested = await api.context.harvest();

@@ -1,5 +1,5 @@
 // 顶部操作区：按「流程状态」决定主按钮，其余作为次要操作。
-// 流程：① 读取视频 → ② 抓取官方字幕（或语音转录）→ ③ 总结 / 对话 → ④ 导出。
+// 流程：① 读取视频 → ② 获取字幕（或语音转录）→ ③ 总结 / 对话 → ④ 导出。
 
 import { h, clear, button, toast, fmtTime } from './dom.js';
 import { store } from './store.js';
@@ -8,6 +8,7 @@ import {
   loadVideo,
   harvest as contextHarvest,
   transcribe as contextTranscribe,
+  clearSubtitles,
   generateChapters as contextGenerateChapters,
   runQualityCheck as contextQualityCheck,
   optimizeWithAi,
@@ -91,6 +92,16 @@ export function runQualityCheck() {
   return contextQualityCheck();
 }
 
+// 统一的「语音转录」入口：**先关掉可能挡着的浮层再跑**。
+//
+// 为什么需要：失败明细、候选轨明细、失败提示这几个浮层里都有
+// 「语音转录」按钮，但以前只是直接调 transcribe ——
+// 浮层不关，转录在底下跑，用户看不到进度，还以为是重复按钮。
+export function runTranscribe() {
+  closeOverlays();
+  return contextTranscribe();
+}
+
 export function render() {
   if (!host) return;
   const st = store.get();
@@ -107,8 +118,11 @@ export function render() {
   if (!hasVideo) {
     host.appendChild(button('① 读取当前视频', () => reload(), { primary: true, title: '读取当前 B 站视频页面的标题、时长、分 P 与字幕轨' }));
   } else if (!hasLines) {
-    host.appendChild(button('② 抓取官方字幕', () => contextHarvest(), { primary: true, title: '优先官方字幕；页面读不到时会自动直连 B 站接口再试一次' }));
-    host.appendChild(button('语音转录', () => contextTranscribe(), { cls: 'btn-accent', title: '没有官方字幕时，把音轨转成文字' }));
+    // 文案从「抓取官方字幕」改为「获取字幕」：
+    // 这条路径除了官方字幕轨，还会用「页面嗅探到的 AI 字幕」，
+    // 说「官方」会让人以为只取官方轨（用户就被这个措辞误导过）。
+    host.appendChild(button('② 获取字幕', () => contextHarvest(), { primary: true, title: '优先官方字幕轨；也接受页面已捕获的 AI 字幕。没有就改用「语音转录」' }));
+    host.appendChild(button('语音转录', () => contextTranscribe(), { cls: 'btn-accent', title: '没有可用字幕时，把音轨转成文字' }));
   } else {
     host.appendChild(
       button(hasSummary ? '重新生成总结' : '③ 生成总结', () => summarize(false), {
@@ -150,9 +164,16 @@ export function render() {
   // ---- 不常用的操作：收进「⋯」菜单 ----
   const moreItems = [
     { icon: '🔄', label: '重新读取视频', title: '重新读取当前页面的视频信息', onClick: () => reload() },
-    { icon: '📥', label: '重新抓取字幕', title: '重新抓取官方字幕', disabled: !hasVideo, onClick: () => contextHarvest() },
+    { icon: '📥', label: '重新获取字幕', title: '重新抓取官方字幕轨（也会接受页面已捕获的 AI 字幕）', disabled: !hasVideo, onClick: () => contextHarvest() },
     { icon: '🎙️', label: '语音转录', title: hasLines ? '重新转录（会消耗语音识别额度）' : '把音轨转成文字', onClick: () => contextTranscribe() },
     { divider: true },
+    {
+      icon: '🧽',
+      label: '清空字幕',
+      title: '清掉当前字幕（含校对备份、章节与统计），方便重新获取',
+      disabled: !hasLines,
+      onClick: () => clearSubtitles()
+    },
     { icon: '🔁', label: '应用替换规则', title: '按当前替换规则组一键全部替换', disabled: !hasLines, onClick: () => applyActiveRules() },
     { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段并可跳转', disabled: !hasLines, onClick: () => generateChapters() },
     { icon: '🩺', label: '质量自检', title: '检查漏段与时间异常', disabled: !hasLines, onClick: () => runQualityCheck() },
@@ -230,7 +251,7 @@ export function render() {
     const box = h('div', { class: 'row tight', style: { flexBasis: '100%', color: 'var(--danger)' } });
     box.appendChild(h('span', { text: `${st.subtitleError.title}：${first}`.slice(0, 180) }));
     box.appendChild(button('查看明细 / 诊断', () => showSubtitleDiagnostic(), { small: true, primary: true }));
-    box.appendChild(button('语音转录', () => contextTranscribe(), { small: true, title: '改用语音识别把音轨转成文字' }));
+    box.appendChild(button('语音转录', () => runTranscribe(), { small: true, title: '改用语音识别把音轨转成文字（会先关闭本浮层）' }));
     host.appendChild(box);
   }
 }
@@ -296,7 +317,7 @@ function showSubtitleDiagnostic() {
     }
   }
   openOverlay('字幕失败原因', body, [
-    { label: '语音转录', primary: true, onClick: () => { closeOverlays(); contextTranscribe(); } },
+    { label: '语音转录', primary: true, onClick: () => runTranscribe() },
     { label: '关闭', onClick: () => closeOverlays() }
   ], { width: '540px' });
 }

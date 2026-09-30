@@ -246,7 +246,7 @@ function renderToolbar() {
         // 与其留一堆禁用项，不如直接说清「先做什么」。
         emptyText: !hasLines ? '还没有字幕' : '暂无更多操作',
         emptyHint: !hasLines
-          ? '先抓取字幕或做语音转录'
+          ? '先获取字幕或做语音转录'
           : '生成后这里会出现：复制 / 导出 / 回退字幕 / 重置会话'
       }
     )
@@ -1243,7 +1243,7 @@ export async function generateSummary(opts = {}) {
     toast(
       {
         title: '生成总结需要字幕',
-        detail: '请先抓取官方字幕或做语音转录。如果只是想提问，直接在下方对话框输入即可（不需要字幕）。'
+        detail: '请先获取字幕（顶部「获取字幕」）或做语音转录。如果只是想提问，直接在下方对话框输入即可（不需要字幕）。'
       },
       'warn',
       5000
