@@ -145,7 +145,7 @@ function handleRpc(method, params) {
     case 'settings.reset':
       return settings();
     case 'build.info':
-      return { app: 'B站字幕助手', version: '1.38.0', contentVersion: '1.38.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
+      return { app: 'B站字幕助手', version: '1.39.0', contentVersion: '1.39.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
     case 'page.info':
       return VIDEO;
     case 'page.call': {
@@ -201,7 +201,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-ext',
       lastError: null,
-      getManifest: () => ({ version: '1.38.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.39.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => ({
         name: 'bsub-stream',
@@ -247,7 +247,7 @@ function installChrome(window) {
     tabs: {
       query: () => Promise.resolve([TAB]),
       sendMessage: (tabId, msg) => {
-        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.38.0' });
+        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.39.0' });
         if (msg && msg.type === 'bsub:to-content') {
           if (msg.method === 'getSubtitleBundle') return Promise.resolve({ ok: true, data: bundle() });
           if (msg.method === 'triggerSubtitleMenu') {
@@ -355,6 +355,19 @@ async function main() {
   const bar2 = doc.getElementById('actionbar').textContent;
   check('② 顶部胶囊显示行数', /240 行/.test(bar2), bar2.slice(-120));
   check('② 顶部主按钮变成「生成总结」', /生成总结/.test(bar2), bar2.slice(0, 90));
+  // 字幕就绪后，常用操作应**直接摆出来**（用户要求：常用摆外面、不常用进 ⋯）
+  check('② 常用按钮直接可见（提问 / 优化字幕 / 复制 / 导出）',
+    /去提问/.test(bar2) && /优化字幕/.test(bar2) && /复制/.test(bar2) && /导出/.test(bar2),
+    bar2.slice(0, 140));
+  // 常用按钮数量要克制，不能又铺平一堆
+  {
+    const barEl = doc.getElementById('actionbar');
+    const shown = Array.from(barEl.querySelectorAll('button'))
+      .filter((b) => !b.closest('.menu-panel'))
+      .map((b) => b.textContent.trim())
+      .filter(Boolean);
+    check('② 可见按钮不超过 7 个', shown.length <= 7, `${shown.length} 个: ${shown.join('/')}`);
+  }
 
   await sleep(300);
   const rows = doc.querySelectorAll('#subtitles-pane .subtitle-row');

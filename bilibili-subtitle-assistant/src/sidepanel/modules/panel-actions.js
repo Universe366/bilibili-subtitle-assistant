@@ -90,7 +90,11 @@ export function render() {
   const hasLines = (st.subtitles || []).length > 0;
   const hasSummary = !!(st.summary || '').length;
 
-  // ---- 主按钮：永远只有一个「下一步该点的按钮」----
+  // ---- 主按钮 + 常用操作 ----
+  //
+  // 用户要求：「将常用的功能按钮摆出来，不常用的放在⋯里面」。
+  // 所以这里不再只留一个主按钮 —— 把高频操作直接摆出来，
+  // 低频/一次性操作才收进菜单。
   if (!hasVideo) {
     host.appendChild(button('① 读取当前视频', () => reload(), { primary: true, title: '读取当前 B 站视频页面的标题、时长、分 P 与字幕轨' }));
   } else if (!hasLines) {
@@ -103,11 +107,20 @@ export function render() {
         if (app.panels.ai && app.panels.ai.generateSummary) app.panels.ai.generateSummary();
       }, { primary: true, title: '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结' })
     );
+    // 以下四个是字幕就绪后最常用的动作，直接摆出来
     host.appendChild(
       button('去提问', () => {
         store.set({ activeTab: 'ai' });
         if (app.panels.ai && app.panels.ai.focusInput) app.panels.ai.focusInput();
       }, { title: '基于这期视频的字幕向 AI 提问' })
+    );
+    host.appendChild(
+      button('✨ 优化字幕', () => optimizeWithAi(), {
+        title: '只修正字幕文本（错别字/术语/时间/数据/逻辑），不改写内容'
+      })
+    );
+    host.appendChild(
+      button('复制', () => copyAllSubtitles(), { title: '复制纯文本字幕' })
     );
     // 「导出」也走格式选择弹窗 —— 之前这里直接下载（用上次记住的设置），
     // 而菜单里那个才弹格式选择，两个入口行为不一致，用户会以为「不能选格式」。
@@ -119,30 +132,17 @@ export function render() {
     );
   }
 
-  // ---- 次要操作：收进「⋯」菜单，界面只留主流程 ----
-  //
-  // 之前这里是 7 个平铺的小按钮（读取视频/抓取字幕/语音转录/AI 优化/
-  // 全部替换/章节/自检）+ 4 个（复制全部/历史/批量/…），
-  // 一屏十几个按钮，用户不知道该点哪个。现在按语义分组收进菜单。
+  // ---- 不常用的操作：收进「⋯」菜单 ----
   const moreItems = [
     { icon: '🔄', label: '重新读取视频', title: '重新读取当前页面的视频信息', onClick: () => reload() },
     { icon: '📥', label: '重新抓取字幕', title: '重新抓取官方字幕', disabled: !hasVideo, onClick: () => contextHarvest() },
     { icon: '🎙️', label: '语音转录', title: hasLines ? '重新转录（会消耗语音识别额度）' : '把音轨转成文字', onClick: () => contextTranscribe() },
     { divider: true },
-    { icon: '✨', label: 'AI 优化字幕', title: '只修正字幕文本（错别字/术语/时间/数据/逻辑），不改写内容', disabled: !hasLines, onClick: () => optimizeWithAi() },
-    {
-      icon: '🔁',
-      label: '应用替换规则',
-      title: '按当前替换规则组一键全部替换',
-      disabled: !hasLines,
-      onClick: () => applyActiveRules()
-    },
-    { divider: true },
+    { icon: '🔁', label: '应用替换规则', title: '按当前替换规则组一键全部替换', disabled: !hasLines, onClick: () => applyActiveRules() },
     { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段并可跳转', disabled: !hasLines, onClick: () => generateChapters() },
     { icon: '🩺', label: '质量自检', title: '检查漏段与时间异常', disabled: !hasLines, onClick: () => runQualityCheck() },
-    { icon: '📋', label: '复制全部字幕', title: '复制纯文本字幕', disabled: !hasLines, onClick: () => copyAllSubtitles() },
     { divider: true },
-    { icon: '🕘', label: '历史记录', title: '处理过的视频与结果', onClick: async () => showHistory(await loadHistory()) },
+    { icon: '🕘', label: '历史记录与回退', title: '查看本会话操作留痕（可回退）与其它视频历史', onClick: async () => showHistory(await loadHistory()) },
     {
       icon: '🗂️',
       label: '批量处理',

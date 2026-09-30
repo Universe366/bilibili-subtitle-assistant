@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.38.0', contentVersion: '1.38.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.39.0', contentVersion: '1.39.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.38.0', stale: false }],
-    contentVersion: '1.38.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.39.0', stale: false }],
+    contentVersion: '1.39.0'
   },
   diagnostics: {
-    extensionVersion: '1.38.0',
-    contentVersion: '1.38.0',
+    extensionVersion: '1.39.0',
+    contentVersion: '1.39.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.38.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.39.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.38\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.39\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -251,19 +251,27 @@ async function main() {
     check('可见按钮不超过 6 个（避免一屏全是按钮）', visibleBtns.length <= 6, `可见 ${visibleBtns.length} 个: ${visibleBtns.map((b) => b.textContent).join('/')}`);
     check('存在「更多操作」菜单', !!bar.querySelector('.menu-wrap .menu-trigger'), '');
     check('菜单默认是收起的', bar.querySelector('.menu-wrap').getAttribute('data-open') !== 'true', '');
-    // 打开菜单才能看到条目（面板是打开时才挂到 body 上的）
-    bar.querySelector('.menu-trigger').click();
+    // 常用操作应直接摆出来（用户要求：常用的摆出来，不常用的进 ⋯）
+    // 注意：当前是「还没读视频」的空态，所以只断言引导按钮；
+    // 常用按钮要等字幕就绪后才出现（见下方 flow2 的流程断言）。
+    check('空态显示「读取当前视频」主按钮', /读取当前视频/.test(barText), barText.slice(0, 120));
+    // 打开菜单（用 pointerdown 开关，与实现一致）
+    const mt = bar.querySelector('.menu-trigger');
+    const tap = (el) => el.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    tap(mt);
     await sleep(60);
-    const openedPanel = doc.body.querySelector('.menu-panel');
+    const openedPanel = bar.querySelector('.menu-panel');
     const menuText = openedPanel ? openedPanel.textContent : '';
-    check('菜单能展开且挂到 body', !!openedPanel, menuText.slice(0, 60));
-    check('菜单里含 AI 优化字幕', /AI 优化字幕/.test(menuText), menuText.slice(0, 140));
+    check('菜单能展开', !!openedPanel && bar.querySelector('.menu-wrap').getAttribute('data-open') === 'true', menuText.slice(0, 60));
+    check('菜单里含应用替换规则', /应用替换规则/.test(menuText), menuText.slice(0, 160));
     check('菜单里含生成章节与质量自检', /生成章节/.test(menuText) && /质量自检/.test(menuText), '');
-    check('菜单里含历史记录与批量处理', /历史记录/.test(menuText) && /批量处理/.test(menuText), '');
+    check('菜单里含历史记录与回退', /历史记录与回退/.test(menuText), '');
+    check('菜单里含批量处理', /批量处理/.test(menuText), '');
     check('菜单里含语音转录', /语音转录/.test(menuText), '');
-    // 收起，避免影响后续断言
-    bar.querySelector('.menu-trigger').click();
+    // 再点一次能收起（防「点了没反应」回归）
+    tap(mt);
     await sleep(50);
+    check('再点一次可收起', bar.querySelector('.menu-wrap').getAttribute('data-open') !== 'true', '');
   }
   const subEmpty = doc.getElementById('subtitles-pane').textContent;
   check('字幕面板空态渲染（含引导清单）', /还没有拿到视频信息|读取当前视频/.test(subEmpty));
@@ -933,14 +941,16 @@ async function main() {
       doc.body.appendChild(wrap);
 
       const trigger = wrap.querySelector('.menu-trigger');
+      // 用 pointerdown 开关（组件就是用 pointerdown 实现的）
+      const tap = (el) => el.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
       check('初始为收起状态', wrap.getAttribute('data-open') !== 'true', String(wrap.getAttribute('data-open')));
 
-      trigger.click();
+      tap(trigger);
       await sleep(60);
       check('点击触发器后展开', wrap.getAttribute('data-open') === 'true', String(wrap.getAttribute('data-open')));
-      // 面板挂到 body 并用 fixed 定位 —— 这是为了绕开 #view 的 overflow:hidden
-      const panelEl = doc.body.querySelector('.menu-panel');
-      check('菜单面板挂到 body（不被 overflow 裁剪）', !!panelEl && panelEl.parentNode === doc.body, panelEl ? panelEl.parentNode && panelEl.parentNode.tagName : 'null');
+      // 面板留在 wrap 内做绝对定位（挂 body 会被「点外部」判定误伤触发器）
+      const panelEl = wrap.querySelector('.menu-panel');
+      check('菜单面板在 wrap 内（触发器不会被误判为外部）', !!panelEl && panelEl.parentNode === wrap, panelEl ? panelEl.parentNode && panelEl.parentNode.tagName : 'null');
       const items = panelEl.querySelectorAll('.menu-item');
       check('菜单渲染出 3 个条目', items.length === 3, String(items.length));
       check('菜单有分隔线', !!panelEl.querySelector('.menu-divider'), '');
@@ -950,22 +960,29 @@ async function main() {
       await sleep(60);
       check('点条目会执行回调', clicked.join('') === 'a', clicked.join(','));
       check('点条目后自动收起', wrap.getAttribute('data-open') !== 'true', '');
-      check('收起后菜单面板从 DOM 移除', !doc.body.querySelector('.menu-panel'), '');
 
-      trigger.click();
-      await sleep(60);
-      check('可再次展开', wrap.getAttribute('data-open') === 'true', '');
+      // 连续开关必须稳定 —— 之前「点一次开、再点一次被误关」就是这里的回归
+      tap(trigger);
+      await sleep(50);
+      const openA = wrap.getAttribute('data-open') === 'true';
+      tap(trigger);
+      await sleep(50);
+      const closedA = wrap.getAttribute('data-open') !== 'true';
+      tap(trigger);
+      await sleep(50);
+      const openB = wrap.getAttribute('data-open') === 'true';
+      check('连续点击能稳定开关（开关/开关）', openA && closedA && openB, `开=${openA} 关=${closedA} 开=${openB}`);
 
       const outside = doc.createElement('div');
       doc.body.appendChild(outside);
-      outside.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      outside.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }));
       await sleep(60);
       check('点菜单外部会收起', wrap.getAttribute('data-open') !== 'true', String(wrap.getAttribute('data-open')));
 
-      trigger.click();
-      await sleep(60);
+      tap(trigger);
+      await sleep(50);
       doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await sleep(60);
+      await sleep(50);
       check('按 Esc 会收起', wrap.getAttribute('data-open') !== 'true', '');
 
       wrap.remove();
@@ -977,25 +994,17 @@ async function main() {
         { label: '乙', disabled: true, onClick: () => {} }
       ], { emptyText: '先生成一次总结', emptyHint: '生成后这里会出现别的操作' });
       doc.body.appendChild(U2);
-      U2.querySelector('.menu-trigger').click();
+      tap(U2.querySelector('.menu-trigger'));
       await sleep(60);
-      const emptyPanel = doc.body.querySelector('.menu-panel');
+      const emptyPanel = U2.querySelector('.menu-panel');
       check('全部禁用时显示说明文字', /先生成一次总结/.test(emptyPanel.textContent), emptyPanel.textContent);
       check('全部禁用时给出下一步提示', /生成后这里会出现/.test(emptyPanel.textContent), '');
       check('全部禁用时不再渲染灰按钮', emptyPanel.querySelectorAll('.menu-item').length === 0, String(emptyPanel.querySelectorAll('.menu-item').length));
-      U2.querySelector('.menu-trigger').click();
-      await sleep(40);
       U2.remove();
 
       // 有可用条目时不应显示空态说明
       const U3 = U.popoverMenu([{ label: '可用的', onClick: () => {} }], { emptyText: '不该出现' });
-      doc.body.appendChild(U3);
-      U3.querySelector('.menu-trigger').click();
-      await sleep(60);
-      check('有可用条目时不显示空态说明', !/不该出现/.test(doc.body.querySelector('.menu-panel').textContent), '');
-      U3.querySelector('.menu-trigger').click();
-      await sleep(40);
-      U3.remove();
+      check('有可用条目时不显示空态说明', !/不该出现/.test(U3.querySelector('.menu-panel').textContent), '');
     }
   }
 

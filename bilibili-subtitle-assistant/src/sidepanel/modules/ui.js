@@ -26,27 +26,24 @@ export function popoverMenu(items, opts = {}) {
 
   let open = false;
 
-  // 菜单面板**挂在 body 上并用 position:fixed** 定位。
+  // 用 **pointerdown** 统一处理开关，而不是 click。
   //
-  // 为什么不能留在原地做绝对定位：`#view` 有 `overflow: hidden`，
-  // 菜单位于 `#actionbar` 内部，展开后会**被祖先裁掉** ——
-  // 表现就是「点开看不到任何东西」，而 DOM 里其实一切正常。
-  // 挂到 body 并固定定位，才能保证它一定画在最上层且不被裁剪。
+  // 为什么：pointerdown 先于 click 触发。若「打开」和「点外部关闭」都挂在
+  // click 上，同一次点击会先在文档上判为「外部」把菜单关掉，再触发触发器
+  // 把它打开 —— 顺序一乱就表现为「点了没反应」。
+  // 全部改到 pointerdown，两者都在同一个事件里判定，没有先后竞态。
   const close = () => {
     if (!open) return;
     open = false;
     wrap.removeAttribute('data-open');
-    if (panel.parentNode) panel.parentNode.removeChild(panel);
-    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('pointerdown', onDocDown, true);
     document.removeEventListener('keydown', onKey, true);
     window.removeEventListener('resize', close, true);
-    window.removeEventListener('scroll', onScrollClose, true);
   };
-  const onDocClick = (ev) => {
-    // 面板已挂到 body，所以「外部」要同时排除触发器与面板本身
-    if (!wrap.contains(ev.target) && !panel.contains(ev.target)) close();
+  const onDocDown = (ev) => {
+    // wrap 里同时包含触发器与面板，两者都算「内部」
+    if (!wrap.contains(ev.target)) close();
   };
-  const onScrollClose = () => close();
   const onKey = (ev) => {
     if (ev.key === 'Escape') {
       ev.stopPropagation();
@@ -54,39 +51,19 @@ export function popoverMenu(items, opts = {}) {
       trigger.focus();
     }
   };
-  const place = () => {
-    const r = trigger.getBoundingClientRect();
-    const vw = window.innerWidth || 360;
-    const vh = window.innerHeight || 640;
-    // 先挂上去量一次宽度，再决定靠哪边对齐（避免超出视口）
-    panel.style.visibility = 'hidden';
-    panel.style.top = '0px';
-    panel.style.left = '0px';
-    document.body.appendChild(panel);
-    const pw = panel.offsetWidth || 200;
-    const ph = panel.offsetHeight || 120;
-    let left = r.right - pw; // 默认右对齐触发器
-    if (left < 6) left = 6;
-    if (left + pw > vw - 6) left = Math.max(6, vw - pw - 6);
-    // 下方放不下就翻到上方
-    let top = r.bottom + 4;
-    if (top + ph > vh - 6 && r.top - ph - 4 > 6) top = r.top - ph - 4;
-    panel.style.left = `${Math.round(left)}px`;
-    panel.style.top = `${Math.round(top)}px`;
-    panel.style.visibility = '';
-  };
   const openMenu = () => {
     if (open) return;
     open = true;
     wrap.setAttribute('data-open', 'true');
-    place();
-    // 捕获阶段监听，保证点别处先于其它处理器关闭菜单
     setTimeout(() => {
-      document.addEventListener('click', onDocClick, true);
+      document.addEventListener('pointerdown', onDocDown, true);
       document.addEventListener('keydown', onKey, true);
       window.addEventListener('resize', close, true);
-      window.addEventListener('scroll', onScrollClose, true);
     }, 0);
+  };
+  const toggle = (ev) => {
+    if (ev) ev.preventDefault();
+    open ? close() : openMenu();
   };
 
   for (const it of items) {
@@ -121,14 +98,21 @@ export function popoverMenu(items, opts = {}) {
     if (opts.emptyHint) panel.appendChild(h('div', { class: 'menu-empty-hint', text: opts.emptyHint }));
   }
 
-  trigger.addEventListener('click', (ev) => {
+  // 触发器：用 pointerdown 开关（与关闭监听同一事件类型，无竞态）
+  trigger.addEventListener('pointerdown', (ev) => {
     ev.stopPropagation();
-    open ? close() : openMenu();
+    toggle();
+  });
+  // 键盘可达性：回车/空格也能开关
+  trigger.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      toggle();
+    }
   });
 
   wrap.appendChild(trigger);
-  // panel 不挂在 wrap 里 —— 打开时才挂到 body（见 place()），
-  // 否则会被 `#view` 的 overflow:hidden 裁掉。
+  wrap.appendChild(panel);
   return wrap;
 }
 
