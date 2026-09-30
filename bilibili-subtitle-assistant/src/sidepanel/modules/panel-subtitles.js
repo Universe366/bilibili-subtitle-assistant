@@ -770,6 +770,48 @@ export function attemptsDialog() {
   const d = st.subtitleDiagnostic;
 
   if (d) {
+    // 本次**实际采用**的字幕来自哪里 —— 排查「字幕与视频不符」时第一眼要看的信息
+    const meta = (st.video && st.video.subtitleMeta) || null;
+    if (meta) {
+      body.appendChild(h('div', { class: 'section-title', text: '本次实际采用的字幕' }));
+      body.appendChild(
+        h('div', { class: 'kv' }, [
+          h('span', { class: 'kv-key', text: '来源' }),
+          h('span', {
+            class: 'kv-val',
+            text: `${meta.from || '未知'}${meta.cached ? '（来自本地缓存）' : ''}${
+              meta.langLabel ? ` · ${meta.langLabel}` : ''
+            } · ${meta.count || 0} 行`
+          })
+        ])
+      );
+      body.appendChild(
+        h('div', { class: 'kv' }, [
+          h('span', { class: 'kv-key', text: '归属参考' }),
+          h('span', {
+            class: 'kv-val',
+            text: `与标题/简介的最长连续重合 ${
+              meta.overlapLcs == null ? '未记录' : `${meta.overlapLcs} 字`
+            }（该指标仅作参考，不参与判定）`
+          })
+        ])
+      );
+    }
+    // 网络嗅探的条数（含被排除的陈旧条目）——
+    // 出现「别的视频的字幕」时，这两个数字最有用
+    if (d.sniffedCount != null || d.staleSniffCount != null) {
+      body.appendChild(
+        h('div', { class: 'kv' }, [
+          h('span', { class: 'kv-key', text: '网络嗅探' }),
+          h('span', {
+            class: 'kv-val',
+            text: `属于当前视频 ${d.sniffedCount || 0} 条${
+              d.staleSniffCount ? `；已排除其它视频的残留 ${d.staleSniffCount} 条` : ''
+            }`
+          })
+        ])
+      );
+    }
     body.appendChild(h('div', { class: 'section-title', text: '字幕获取诊断' }));
     body.appendChild(
       h('div', { class: 'kv' }, [

@@ -94,7 +94,9 @@ export function parseSubtitleText(text, format = 'text') {
 // 时长校验（2.1）：防止抓到属于其它分 P 的字幕
 // ---------------------------------------------------------------------------
 
-export function validateLines(lines, videoDuration) {
+// videoDuration：视频时长（秒）
+// expect：{ bvid, cid, title, desc } —— 用于归属校验（可选，不给就只做时长校验）
+export function validateLines(lines, videoDuration, expect) {
   const result = {
     ok: false,
     kind: '',
@@ -146,9 +148,128 @@ export function validateLines(lines, videoDuration) {
       return result;
     }
   }
+
+  // ---- 归属校验：这份字幕真的是这个视频的吗 ----
+  //
+  // 用户报「没有字幕的视频点击抓取后，出现别的视频的字幕，每次还不一样」。
+  // 时长/覆盖度校验挡不住这种情况：B 站的推荐位、合集列表
+  // （`__INITIAL_STATE__.availableVideoList` 里就有整季 66 个视频）
+  // 以及网络嗅探残留，都可能给出**时长相近**的别的视频的字幕。
+  //
+  // 判据用两个**弱证据**，只在明显不对时才拒绝，避免误杀：
+  //   a) 字幕正文里出现了别的视频的 BV 号 / cid
+  //   b) 字幕内容与「标题 + 简介」几乎没有任何词重合
+  if (expect) {
+    const joined = lines.map((l) => String(l.text || '')).join(' ');
+    // a) 明确指向别的视频的标识符
+    const foreignId = findForeignVideoId(joined, expect);
+    if (foreignId) {
+      result.kind = 'foreign';
+      result.title = '字幕疑似来自其它视频';
+      result.detail = `字幕正文里出现了 ${foreignId}，与当前视频（${expect.bvid || expect.cid || '未知'}）不符，已拒绝采用。`;
+      return result;
+    }
+    // b) 与标题/简介有没有**连续**的共同用词
+    //
+    // ⚠ 这一项**只记录，不拒绝** —— 试过当门槛用，会误杀真实视频。
+    //
+    // 原因：真实视频的标题用词，往往**不会**原样出现在字幕正文里。
+    // 实测一个真实例子：标题「【测试】用于验证流程的视频」，
+    // 它的真实字幕里最长只和标题重合 2 个字（「视频」）——
+    // 因为字幕讲的是内容，不是复述标题。
+    // 而无字幕视频的无关内容，最长公共子串也是 1~2 字。
+    // 两个分布**重叠**，没有可用的分界，硬设门槛必然误杀。
+    //
+    // 所以归属判断只保留 bvid/cid 这种**确定性**证据（见上面 a)），
+    // 这一项写进诊断信息，方便排查时人工判断。
+    result.stats.overlapLcs = longestCommonSubstring(
+      joined,
+      [expect.title, expect.desc].filter(Boolean).join(' ')
+    );
+  }
+
   result.ok = true;
   result.title = '字幕校验通过';
   return result;
+}
+
+// 字幕正文里是否出现了**别的**视频的 BV 号 / cid。
+// 返回那个标识符；没发现返回 ''。
+export function findForeignVideoId(text, expect = {}) {
+  const s = String(text || '');
+  if (!s) return '';
+  const mineBvid = String((expect && expect.bvid) || '');
+  const ids = s.match(/BV[0-9A-Za-z]{10}/g) || [];
+  for (const id of ids) {
+    if (mineBvid && id === mineBvid) continue;
+    return id; // 只要出现一个不是自己的 BV 号就可疑
+  }
+  const mineCid = String((expect && expect.cid) || '');
+  if (mineCid) {
+    // 正文里出现 "cid": 别的数字这种明确引用
+    const m = s.match(/cid["'\s:=]{1,4}(\d{6,})/gi) || [];
+    for (const raw of m) {
+      const num = (raw.match(/(\d{6,})/) || [])[1];
+      if (num && num !== mineCid) return `cid=${num}`;
+    }
+  }
+  return '';
+}
+
+// 归一化：去掉空白、标点、符号，转小写。中英混排也能用。
+function normalizeForCompare(t) {
+  return String(t || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]/gu, '');
+}
+
+// 最长公共子串长度（字符数）。
+//
+// 用它判断「字幕和标题/简介是不是同一话题」，比重合比例可靠得多：
+// 比例会被中文常用词抬高，而**连续**匹配到 5 个字以上基本不可能是巧合。
+// 实测：无关内容 1~2 字，同话题 10 字以上。
+export function longestCommonSubstring(a, b) {
+  const sa = normalizeForCompare(a);
+  const sb = normalizeForCompare(b);
+  if (!sa || !sb) return 0;
+  let best = 0;
+  // 滚动数组做 O(n*m) 的经典 DP，避免二维数组占内存
+  let prev = new Uint32Array(sb.length + 1);
+  let cur = new Uint32Array(sb.length + 1);
+  for (let i = 1; i <= sa.length; i += 1) {
+    for (let j = 1; j <= sb.length; j += 1) {
+      if (sa[i - 1] === sb[j - 1]) {
+        cur[j] = prev[j - 1] + 1;
+        if (cur[j] > best) best = cur[j];
+      } else {
+        cur[j] = 0;
+      }
+    }
+    const tmp = prev;
+    prev = cur;
+    cur = tmp;
+    cur.fill(0);
+  }
+  return best;
+}
+
+// 保留二元组重合度：MCP / 其它地方可能拿它做「相关性」粗筛，
+// 但**不建议用它判断字幕归属**（短标题上会被常用词带偏）。
+export function contentOverlap(a, b) {
+  const sa = normalizeForCompare(a);
+  const sb = normalizeForCompare(b);
+  if (sa.length < 40 || sb.length < 8) return null; // 样本太小，不判断
+  const grams = (s) => {
+    const set = new Set();
+    for (let i = 0; i < s.length - 1; i += 1) set.add(s.slice(i, i + 2));
+    return set;
+  };
+  const ga = grams(sa);
+  const gb = grams(sb);
+  if (!gb.size) return null;
+  let hits = 0;
+  for (const g of gb) if (ga.has(g)) hits += 1;
+  return { ratio: hits / gb.size, hits, total: gb.size };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +324,16 @@ function secondsToLines(lines) {
     edited: false,
     original: l.text
   }));
+}
+
+// 归属校验需要的一组「这个视频是什么」标识
+function expectFor(video) {
+  return {
+    bvid: video && video.bvid,
+    cid: video && video.cid,
+    title: (video && video.title) || '',
+    desc: (video && video.desc) || ''
+  };
 }
 
 // 返回 { ok, lines, meta, attempts, diagnostic }
@@ -384,7 +515,7 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
             // 缓存也要校验：否则一旦某次把错误内容写进缓存，
             // 之后每次都会「稳定地」返回错内容（用户报的
             // 「出现别的视频的字幕」，而且因为缓存而反复出现）。
-            const cachedValidation = validateLines(cached, video.duration);
+            const cachedValidation = validateLines(cached, video.duration, expectFor(video));
             if (cachedValidation.ok) {
               lines = cached;
               attempt.cached = true;
@@ -439,7 +570,7 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
       }
 
       // 4) 校验（防串分 P / 覆盖度过低）。stage 保留「来源」语义，校验另记 validation。
-      const validation = validateLines(lines, video.duration);
+      const validation = validateLines(lines, video.duration, expectFor(video));
       attempt.validation = validation;
       attempt.lineCount = lines.length;
       if (!attempt.stage || attempt.stage === 'pending') attempt.stage = 'downloaded';
@@ -476,6 +607,9 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
           cached: attempt.cached,
           count: lines.length,
           from: attempt.from || cand.from,
+          // 摊平一个「归属参考」字段，方便诊断面板直接显示
+          // （validateLines 把最长连续重合写在 stats 里，只有参考价值）
+          overlapLcs: validation && validation.stats ? validation.stats.overlapLcs : null,
           validation
         }
       };

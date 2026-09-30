@@ -220,6 +220,13 @@ function renderToolbar() {
   }
   bar.appendChild(button('复制总结', () => copySummary(), { small: true, disabled: !st.summary, title: '复制总结全文（Markdown）' }));
   bar.appendChild(button('导出总结', () => exportSummary(), { small: true, disabled: !st.summary, title: '下载为 Markdown 文件' }));
+  bar.appendChild(
+    button('⚡ 快速总结', () => generateSummary({ skipProofread: true }), {
+      small: true,
+      disabled: !hasLines || state.streaming,
+      title: '跳过联网校对，直接用现有字幕生成总结（更快，但不会修正字幕里的术语/时间/事实错误）'
+    })
+  );
   bar.appendChild(button('重置对话', () => resetChat(), { small: true, title: '清空对话历史（不影响字幕与总结）' }));
   bar.appendChild(
     popoverMenu(
@@ -1217,7 +1224,13 @@ export function sendPending() {
 // 总结
 // ---------------------------------------------------------------------------
 
-export async function generateSummary() {
+// 生成总结。
+//
+// opts.skipProofread：跳过阶段 1 的联网校对，直接用现有字幕生成。
+//   为什么要有这个开关：联网核对要逐条搜索，是最耗时的一段（可能几十秒）。
+//   用户要求加一个「快速总结」按钮来跳过它。
+export async function generateSummary(opts = {}) {
+  const skipProofread = opts.skipProofread === true;
   const st = store.get();
   if (!(st.subtitles || []).length) {
     toast(
@@ -1248,18 +1261,21 @@ export async function generateSummary() {
   const capSearch = searchCapabilityOf(settings);
   let correctedLines = st.subtitles;
   let fixReport = '';
-  if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
+  const totalSteps = skipProofread ? 2 : 3;
+  if (skipProofread) {
+    task.set(5, '快速总结：跳过联网校对');
+  } else if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
     try {
-      task.set(2, '第 1/3 步：准备校对字幕');
+      task.set(2, `第 1/${totalSteps} 步：准备校对字幕`);
       const out = await proofreadSubtitles(st.subtitles, settings, {
         quiet: false,
         onStage: (stage, i, total, item) => {
           if (stage === 'verify') {
             // 核对占总进度的 5%→50%（几步而已，但这是最耗时的一段）
             const pct = 5 + (total ? (i / total) * 45 : 0);
-            task.set(pct, `第 2/3 步：联网核对 ${Math.min(i + 1, total)}/${total}${item ? ` · ${String(item).slice(0, 18)}` : ''}`);
+            task.set(pct, `第 2/${totalSteps} 步：联网核对 ${Math.min(i + 1, total)}/${total}${item ? ` · ${String(item).slice(0, 18)}` : ''}`);
           } else if (stage === 'correct') {
-            task.set(52, '第 2/3 步：让 AI 给出字幕更正…');
+            task.set(52, `第 2/${totalSteps} 步：让 AI 给出字幕更正…`);
           }
         }
       });
@@ -1268,14 +1284,14 @@ export async function generateSummary() {
         fixReport = out.report;
       }
       task.set(58, out && out.applied && out.applied.changed
-        ? `第 2/3 步：已更正 ${out.applied.changed} 处`
-        : '第 2/3 步：字幕未发现需要更正的地方');
+        ? `第 2/${totalSteps} 步：已更正 ${out.applied.changed} 处`
+        : `第 2/${totalSteps} 步：字幕未发现需要更正的地方`);
     } catch (err) {
       const detail = (err && err.payload && err.payload.title) || (err && err.message) || '校对失败';
       toast({ title: '字幕校对失败，将用原字幕生成总结', detail }, 'warn', 4000);
     }
-  } else {
-    task.set(58, '第 1/3 步：跳过校对（未开启联网核实）');
+  } else if (!skipProofread) {
+    task.set(58, `第 1/${totalSteps} 步：跳过校对（未开启联网核实）`);
   }
 
   const ctx = selectContext(correctedLines, '', 40000);
@@ -1357,7 +1373,7 @@ export async function generateSummary() {
   state.streaming = true;
   store.set({ summaryStream: '' });
   render();
-  task.set(60, '第 3/3 步：正在生成总结…');
+  task.set(60, `第 ${totalSteps}/${totalSteps} 步：正在生成总结…`);
   const stream = new Stream();
   state.stream = stream;
   // 生成阶段无法预知总长度，所以用「已输出 N 字」做温和推进：
@@ -1371,7 +1387,7 @@ export async function generateSummary() {
         const cur = store.get();
         store.set({ summaryStream: (cur.summaryStream || '') + text });
         streamedChars += text.length;
-        task.set(Math.min(95, 60 + Math.log10(streamedChars + 1) * 11), `第 3/3 步：生成中（已 ${streamedChars} 字）`);
+        task.set(Math.min(95, 60 + Math.log10(streamedChars + 1) * 11), `第 ${totalSteps}/${totalSteps} 步：生成中（已 ${streamedChars} 字）`);
         renderSummary();
         scrollAiBottom();
       },

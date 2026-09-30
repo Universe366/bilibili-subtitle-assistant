@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.43.0', contentVersion: '1.43.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.44.0', contentVersion: '1.44.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.43.0', stale: false }],
-    contentVersion: '1.43.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.44.0', stale: false }],
+    contentVersion: '1.44.0'
   },
   diagnostics: {
-    extensionVersion: '1.43.0',
-    contentVersion: '1.43.0',
+    extensionVersion: '1.44.0',
+    contentVersion: '1.44.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.43.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.44.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.43\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.44\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -898,8 +898,15 @@ async function main() {
 
     // 总结进度条：必须挂到全局 jobs 进度上，并分阶段报告
     check('总结流程创建了任务', /jobs\.beginTask\(TASK_LABEL\.summarize/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
-    check('校对阶段报告核对进度', /第 2\/3 步：联网核对/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
-    check('生成阶段报告已输出字数', /第 3\/3 步：生成中（已 \$\{streamedChars\} 字）/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check('校对阶段报告核对进度', /步：联网核对/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check('生成阶段报告已输出字数', /步：生成中（已 \$\{streamedChars\} 字）/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    // 步骤总数随「是否跳过校对」而变（快速总结只有两步）
+    check('步骤总数支持跳过校对', /const totalSteps = skipProofread \? 2 : 3;/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check('快速总结跳过联网校对', /opts\.skipProofread === true/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check('快速总结提示跳过校对', /快速总结：跳过联网校对/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check('AI 工具栏有快速总结按钮', /⚡ 快速总结/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check('操作区有快速总结按钮', /⚡ 快速/.test(srcOf('sidepanel/modules/panel-actions.js')), '');
+    check('两个入口共用 summarize()', /export function summarize\(skipProofread\)/.test(srcOf('sidepanel/modules/panel-actions.js')), '');
     check('结束时把进度置满并收尾', /task\.set\(100,/.test(srcOf('sidepanel/modules/panel-ai.js')) && /task\.end\(\)/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('出错时也收尾任务', /task\.end\(\);[\s\S]{0,120}const partial = store\.get\(\)\.summaryStream/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
   }
@@ -1164,13 +1171,87 @@ async function main() {
       path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'subtitles.js'),
       'utf8'
     );
-    check('缓存命中后仍做校验', /cachedValidation = validateLines\(cached, video\.duration\)/.test(subSrc), '');
+    check('缓存命中后仍做校验', /cachedValidation = validateLines\(cached, video\.duration, expectFor\(video\)\)/.test(subSrc), '');
     check('校验不过就不采用缓存', /attempt\.cacheRejected = cachedValidation/.test(subSrc), '');
     const swSrc = fs.readFileSync(
       path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'background', 'service-worker.js'),
       'utf8'
     );
     check('后台拒绝 octet-stream 响应', /octet-stream/.test(swSrc) && /接口返回二进制/.test(swSrc), '');
+  }
+
+  // ---- 字幕归属校验（防「抓到别的视频的字幕」）----
+  {
+    const SUBS = api.subtitles;
+    check('导出了 findForeignVideoId', typeof SUBS.findForeignVideoId === 'function', typeof SUBS.findForeignVideoId);
+    check('导出了 contentOverlap', typeof SUBS.contentOverlap === 'function', typeof SUBS.contentOverlap);
+
+    if (typeof SUBS.findForeignVideoId === 'function') {
+      // 字幕里提到别的 BV 号 → 可疑
+      check('识别正文里别的 BV 号',
+        SUBS.findForeignVideoId('我们下期见，记得看 BV1be41127ft 那期', { bvid: 'BV132421A7VN' }) === 'BV1be41127ft', '');
+      // 提到自己的 BV 号 → 不算可疑
+      check('提到自己的 BV 号不算可疑',
+        SUBS.findForeignVideoId('本期 BV132421A7VN 的内容', { bvid: 'BV132421A7VN' }) === '', '');
+      check('没有 BV 号时返回空', SUBS.findForeignVideoId('普通字幕内容，没有编号。', { bvid: 'BV132421A7VN' }) === '', '');
+    }
+
+    if (typeof SUBS.contentOverlap === 'function') {
+      const title = '零下26度的新疆，跟着影视飓风去拍样片！';
+      const desc = '我们去了新疆拍样片，这次挑战零下26度的低温环境。';
+      const onTopic = '大家好，这次我们来到了新疆，温度是零下26度，我们计划拍摄一组样片。新疆的风很大。跟着影视飓风一起出发。';
+      const ov1 = SUBS.contentOverlap(onTopic, title + ' ' + desc);
+      check('同话题命中数明显偏高', ov1 && ov1.hits >= 3, JSON.stringify(ov1));
+      const offTopic = '今天我们讲讲 Python 的异步编程，asyncio 事件循环如何调度协程，以及如何避免阻塞主线程导致性能下降的问题。';
+      const ov2 = SUBS.contentOverlap(offTopic, title + ' ' + desc);
+      check('无关内容命中数极低', ov2 && ov2.hits < 3, JSON.stringify(ov2));
+      check('样本太小时不判断（返回 null）', SUBS.contentOverlap('短', title) === null, '');
+    }
+
+    // ---- 最长公共子串：归属判断的实际判据 ----
+    check('导出了 longestCommonSubstring', typeof SUBS.longestCommonSubstring === 'function', typeof SUBS.longestCommonSubstring);
+    if (typeof SUBS.longestCommonSubstring === 'function') {
+      const title = '零下26度的新疆，跟着影视飓风去拍样片！';
+      const desc = '我们去了新疆拍样片，这次挑战零下26度的低温环境。';
+      const target = title + ' ' + desc;
+      const unrelated1 = '今天我们讲讲 Python 的异步编程，asyncio 事件循环如何调度协程，以及如何避免阻塞主线程导致性能下降的问题。';
+      const unrelated2 = '本次直播主要讲解英雄联盟新版本的装备改动，以及打野路线的优化思路和团战站位技巧。';
+      const weaklyRelated = '今天天气不错，我们随便聊聊，新疆是个好地方。';
+      const onTopic = '这次我们来到新疆拍样片，零下26度的低温环境对设备和人都非常具有挑战性。';
+      check('无关内容最长公共子串很小（<5）', SUBS.longestCommonSubstring(unrelated1, target) < 5, String(SUBS.longestCommonSubstring(unrelated1, target)));
+      check('另一无关内容同样很小（<5）', SUBS.longestCommonSubstring(unrelated2, target) < 5, String(SUBS.longestCommonSubstring(unrelated2, target)));
+      check('只是碰巧提到同一地名也判为无关（<5）', SUBS.longestCommonSubstring(weaklyRelated, target) < 5, String(SUBS.longestCommonSubstring(weaklyRelated, target)));
+      check('同话题内容明显更长（≥5）', SUBS.longestCommonSubstring(onTopic, target) >= 5, String(SUBS.longestCommonSubstring(onTopic, target)));
+      check('自身最长公共子串接近全文', SUBS.longestCommonSubstring(target, target) > 20, String(SUBS.longestCommonSubstring(target, target)));
+      check('空输入返回 0', SUBS.longestCommonSubstring('', target) === 0, '');
+    }
+
+    // 归属校验必须真的被接进 validateLines
+    if (typeof SUBS.validateLines === 'function') {
+      const title = '零下26度的新疆，跟着影视飓风去拍样片！';
+      const v = { bvid: 'BV132421A7VN', cid: 1433109361, title, desc: '我们去了新疆拍样片，挑战零下26度的低温环境。' };
+      const mk = (texts) => texts.map((t, i) => ({ from: i * 4, to: i * 4 + 3, text: t }));
+      // 正文字里带别的 BV 号 → 确定性证据，必须被拒
+      const withForeign = mk(Array.from({ length: 40 }, (_, i) => (i === 5 ? '更多内容见 BV1be41127ft 那一期' : '这是本期的正常字幕内容，讲的是新疆样片拍摄的经历和感受')));
+      const r2 = SUBS.validateLines(withForeign, 200, v);
+      check('含别的 BV 号的字幕被拒（确定性证据）', r2.ok === false && r2.kind === 'foreign', `${r2.kind} ${r2.detail || ''}`);
+      // 提到自己的 BV 号不算问题
+      const withOwn = mk(Array.from({ length: 40 }, (_, i) => (i === 5 ? '这是 BV132421A7VN 的第 6 句' : '这是本期的正常字幕内容，讲的是新疆样片拍摄的经历和感受')));
+      const r2b = SUBS.validateLines(withOwn, 200, v);
+      check('提到自己的 BV 号可以通过', r2b.ok === true, `${r2b.kind} ${r2b.detail || ''}`);
+      // 普通字幕（哪怕和标题用词不同）必须通过 —— 归属判断只认确定性证据，
+      // 不能用内容重合度硬卡（真实视频的标题用词通常不会出现在字幕里）
+      const good = mk(Array.from({ length: 40 }, () => '这次我们来到新疆拍样片，零下26度的低温环境对设备和人都非常具有挑战性'));
+      const r3 = SUBS.validateLines(good, 200, v);
+      check('同话题字幕通过校验', r3.ok === true, `${r3.kind} ${r3.detail || ''}`);
+      const offTopic = mk(Array.from({ length: 40 }, () => '今天我们讲讲 Python 的异步编程和事件循环调度协程的细节问题'));
+      const r5 = SUBS.validateLines(offTopic, 200, v);
+      check('用词完全不同的字幕不因“内容对不上”被拒（避免误杀）', r5.ok === true, `${r5.kind} ${r5.detail || ''}`);
+      check('仍然记录归属参考值', typeof r5.stats.overlapLcs === 'number', String(r5.stats.overlapLcs));
+      // 不给 expect 时不应因归属被拒（向后兼容）
+      const r4 = SUBS.validateLines(good, 200);
+      check('不传 expect 时只做时长校验', r4.ok === true, `${r4.kind}`);
+    }
   }
 
   report(results, errors);

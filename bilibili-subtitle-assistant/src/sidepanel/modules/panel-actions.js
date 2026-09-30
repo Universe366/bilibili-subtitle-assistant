@@ -78,6 +78,15 @@ export function generateChapters() {
   return contextGenerateChapters();
 }
 
+// 「生成总结」与「快速总结」的唯一区别就是是否跳过联网校对。
+// 抽成一个函数，避免以后调用方式变了只改一处。
+export function summarize(skipProofread) {
+  store.set({ activeTab: 'ai' });
+  if (app.panels.ai && app.panels.ai.generateSummary) {
+    app.panels.ai.generateSummary(skipProofread ? { skipProofread: true } : undefined);
+  }
+}
+
 export function runQualityCheck() {
   return contextQualityCheck();
 }
@@ -102,10 +111,16 @@ export function render() {
     host.appendChild(button('语音转录', () => contextTranscribe(), { cls: 'btn-accent', title: '没有官方字幕时，把音轨转成文字' }));
   } else {
     host.appendChild(
-      button(hasSummary ? '重新生成总结' : '③ 生成总结', () => {
-        store.set({ activeTab: 'ai' });
-        if (app.panels.ai && app.panels.ai.generateSummary) app.panels.ai.generateSummary();
-      }, { primary: true, title: '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结' })
+      button(hasSummary ? '重新生成总结' : '③ 生成总结', () => summarize(false), {
+        primary: true,
+        title: '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结'
+      })
+    );
+    // 快速总结：跳过联网校对，省掉最耗时的一段
+    host.appendChild(
+      button('⚡ 快速', () => summarize(true), {
+        title: '快速总结：跳过联网校对，直接用现有字幕生成（更快，但不会修正字幕错误）'
+      })
     );
     // 以下四个是字幕就绪后最常用的动作，直接摆出来
     host.appendChild(

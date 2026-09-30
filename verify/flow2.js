@@ -33,8 +33,19 @@ const VIDEO = {
   signature: 'BV1xx411c7mD@p2@c999001'
 };
 
-const SNIFFED = Array.from({ length: 240 }, (_, i) => ({ from: i * 3, to: i * 3 + 2.6, content: `这是第 ${i + 1} 句字幕，用于验证渲染、统计与导出。` }));
-const API_LINES = Array.from({ length: 60 }, (_, i) => ({ from: i * 12, to: i * 12 + 11, text: `接口下载的第 ${i + 1} 句` }));
+// 字幕正文必须与视频标题/简介**是同一话题** —— 现在 validateLines 会做归属校验
+// （防「抓到别的视频的字幕」），用无关的通用句子会被正确地判为 unrelated 而拒用。
+// 所以固定的测试数据要写成「像这期视频真实字幕」的样子。
+const SNIFFED = Array.from({ length: 240 }, (_, i) => ({
+  from: i * 3,
+  to: i * 3 + 2.6,
+  content: `这是本次流程验证视频的第 ${i + 1} 句字幕，讲的是抓取字幕与生成总结的完整步骤。`
+}));
+const API_LINES = Array.from({ length: 60 }, (_, i) => ({
+  from: i * 12,
+  to: i * 12 + 11,
+  text: `流程验证视频的字幕第 ${i + 1} 句（来自接口下载）`
+}));
 
 const SUMMARY_MD = [
   '# 视频总结',
@@ -145,7 +156,7 @@ function handleRpc(method, params) {
     case 'settings.reset':
       return settings();
     case 'build.info':
-      return { app: 'B站字幕助手', version: '1.43.0', contentVersion: '1.43.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
+      return { app: 'B站字幕助手', version: '1.44.0', contentVersion: '1.44.0', modules: 12, buildTime: '2025-06-01T00:00:00Z' };
     case 'page.info':
       return VIDEO;
     case 'page.call': {
@@ -201,7 +212,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-ext',
       lastError: null,
-      getManifest: () => ({ version: '1.43.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.44.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => ({
         name: 'bsub-stream',
@@ -247,7 +258,7 @@ function installChrome(window) {
     tabs: {
       query: () => Promise.resolve([TAB]),
       sendMessage: (tabId, msg) => {
-        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.43.0' });
+        if (msg && msg.type === 'bsub:ping') return Promise.resolve({ ok: true, version: '1.44.0' });
         if (msg && msg.type === 'bsub:to-content') {
           if (msg.method === 'getSubtitleBundle') return Promise.resolve({ ok: true, data: bundle() });
           if (msg.method === 'triggerSubtitleMenu') {
