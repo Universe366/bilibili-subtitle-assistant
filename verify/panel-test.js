@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.42.0', contentVersion: '1.42.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.43.0', contentVersion: '1.43.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.42.0', stale: false }],
-    contentVersion: '1.42.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.43.0', stale: false }],
+    contentVersion: '1.43.0'
   },
   diagnostics: {
-    extensionVersion: '1.42.0',
-    contentVersion: '1.42.0',
+    extensionVersion: '1.43.0',
+    contentVersion: '1.43.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.42.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.43.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.42\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.43\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1126,11 +1126,51 @@ async function main() {
       path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'context.js'),
       'utf8'
     );
-    check('loadVideo 会查历史', /history\.get/.test(ctxSrc) && /载入历史结果/.test(ctxSrc), '');
-    check('历史 key 与后台一致（bvid|cid|page）', /video\.bvid \|\| '-'/.test(ctxSrc) && /video\.page == null \? '-' : String\(video\.page\)/.test(ctxSrc), '');
+    check('loadVideo 会查历史并回填', /restoreFromHistory\(video, \{ toast: true \}\)/.test(ctxSrc), '');
+    check('抽出了 restoreFromHistory 供多入口复用', /export async function restoreFromHistory/.test(ctxSrc), '');
+    check('历史 key 与后台一致（bvid|cid|page）', /v\.bvid \|\| '-'/.test(ctxSrc) && /v\.page == null \? '-' : String\(v\.page\)/.test(ctxSrc), '');
     check('载入后提示可重新生成', /想重新生成/.test(ctxSrc), '');
-    check('载入失败不影响读视频', /载入历史失败不影响读取视频本身/.test(ctxSrc), '');
-    check('只填空着的字段（不与本次会话内容冲突）', /hasLines \? row\.lines : store\.get\(\)\.subtitles/.test(ctxSrc), '');
+    check('载入失败不影响主流程', /载入历史失败不影响主流程/.test(ctxSrc), '');
+    check('只填空着的字段（不与本次会话内容冲突）', /hasLines \? row\.lines : cur\.subtitles/.test(ctxSrc) && /hasSummary \? row\.summary : cur\.summary/.test(ctxSrc), '');
+    check('内容没变化就不重复 set', /sameLines && sameSummary/.test(ctxSrc), '');
+
+    // saveHistory 不能把已有的总结覆盖成空 —— 这正是「字幕有、总结没了」的根因
+    check('saveHistory 不写空 summary', /if \(st\.summary\) entry\.summary = st\.summary;/.test(ctxSrc), '');
+    check('summary 为空时先读已有值再决定', /const prev = \(await call\('history\.get'/.test(ctxSrc), '');
+    const storSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'shared', 'storage.js'),
+      'utf8'
+    );
+    check('historyPut 兜底：空 summary 不覆盖', /entry && entry\.summary === '' && prev\.summary/.test(storSrc), '');
+    check('historyPut 兜底：空 lines 不覆盖', /entry\.lines\.length === 0 && Array\.isArray\(prev\.lines\)/.test(storSrc), '');
+    check('批量处理保留已有总结', /restoredSummary/.test(ctxSrc), '');
+  }
+
+  // ---- 二进制垃圾不能当字幕解析 ----
+  {
+    const SUBS = api.subtitles;
+    check('导出了 looksLikeBinaryGarbage', !!SUBS && typeof SUBS.looksLikeBinaryGarbage === 'function', typeof SUBS);
+    if (SUBS && typeof SUBS.looksLikeBinaryGarbage === 'function') {
+      // 真实 protobuf 片段（/x/v2/subtitle/web/view 的返回）的形态
+      const proto = '\u0000\u0001\u0000\u0004\u0002\u0000\u001d\u0000\u0000\u0000\u0002\u001a\ufffd\ufffd\ufffd\u0003ai-zh"\ufffd\ufffd\u0000\u0001*//subtitle.bilibili.com/S\u0013\u001bP\u001d\u0000\u0001';
+      check('识别 protobuf 二进制垃圾', SUBS.looksLikeBinaryGarbage(proto) === true, '');
+      check('正常 SRT 不算垃圾', SUBS.looksLikeBinaryGarbage('1\n00:00:01,000 --> 00:00:03,000\n这是第一句\n') === false, '');
+      check('正常中文字幕不算垃圾', SUBS.looksLikeBinaryGarbage('大家好，今天我们聊聊 DeepSeek 的 MoE 架构。\n这是第二句话。') === false, '');
+      check('空文本不算垃圾', SUBS.looksLikeBinaryGarbage('') === false, '');
+      const parsed = SUBS.parseSubtitleText(proto, 'text');
+      check('二进制文本解析为空数组', Array.isArray(parsed) && parsed.length === 0, JSON.stringify(parsed).slice(0, 80));
+    }
+    const subSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'subtitles.js'),
+      'utf8'
+    );
+    check('缓存命中后仍做校验', /cachedValidation = validateLines\(cached, video\.duration\)/.test(subSrc), '');
+    check('校验不过就不采用缓存', /attempt\.cacheRejected = cachedValidation/.test(subSrc), '');
+    const swSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'background', 'service-worker.js'),
+      'utf8'
+    );
+    check('后台拒绝 octet-stream 响应', /octet-stream/.test(swSrc) && /接口返回二进制/.test(swSrc), '');
   }
 
   report(results, errors);

@@ -240,6 +240,16 @@ export async function historyPut(video, entry) {
     ...prev,
     ...entry
   };
+  // 空字符串/空数组不该覆盖已有内容。
+  //
+  // 这里是「合并写」（{...prev, ...entry}），而调用方经常在 summary
+  // 已被清空的时候保存字幕 —— 若 entry.summary === ''，已经存好的总结
+  // 就会被抹掉，表现为「字幕有、总结没了」。
+  // 调用方已尽量不写空值，这里再加一道兜底，防止将来别的调用方踩同一个坑。
+  if (entry && entry.summary === '' && prev.summary) row.summary = prev.summary;
+  if (entry && Array.isArray(entry.lines) && entry.lines.length === 0 && Array.isArray(prev.lines) && prev.lines.length) {
+    row.lines = prev.lines;
+  }
   await db.put(STORE_HISTORY, row);
   return row;
 }

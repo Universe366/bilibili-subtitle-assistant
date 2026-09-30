@@ -185,50 +185,72 @@ export async function loadVideo(opts = {}) {
     //
     // 只填**空着的**字段：如果本次会话里已经有内容（例如刚生成过），
     // 不要被历史覆盖掉。
-    if (changed) {
-      try {
-        // key 必须与 ST.historyKey 完全一致（bvid|cid|page），
-        // 否则查不到上次的结果。
-        const key = [video.bvid || '-', video.cid || '-', video.page == null ? '-' : String(video.page)].join('|');
-        const hit = await call('history.get', { key }, { timeoutMs: 8000 });
-        const row = hit && hit.row;
-        const hasLines = Array.isArray(row && row.lines) && row.lines.length > 0;
-        const hasSummary = !!(row && row.summary);
-        if (hasLines || hasSummary) {
-          store.set({
-            video: {
-              ...store.get().video,
-              stats: row.stats || store.get().video.stats,
-              subtitleMeta: row.subtitleMeta || store.get().video.subtitleMeta,
-              chapters: row.chapters || [],
-              source: row.source || store.get().video.source
-            },
-            subtitles: hasLines ? row.lines : store.get().subtitles,
-            summary: hasSummary ? row.summary : store.get().summary
-          });
-          recordTimeline('载入历史结果', `${hasLines ? `${row.lines.length} 行字幕` : ''}${hasLines && hasSummary ? ' + ' : ''}${hasSummary ? '总结' : ''}`);
-          renderPanels();
-          toast(
-            {
-              title: '已载入上次的结果',
-              detail: `${hasLines ? `字幕 ${row.lines.length} 行` : ''}${hasLines && hasSummary ? '，' : ''}${
-                hasSummary ? '总结已就绪' : ''
-              }。想重新生成，点「重新生成总结」。`
-            },
-            'ok',
-            4000
-          );
-        }
-      } catch (err) {
-        /* 载入历史失败不影响读取视频本身 */
-      }
-    }
+    if (changed) await restoreFromHistory(video, { toast: true });
     return video;
   } catch (err) {
     showError(err, '读取视频信息失败');
     return null;
   } finally {
     tab.end();
+  }
+}
+
+// 把历史里的字幕/总结填回当前状态。
+//
+// 抽成函数是为了**两个入口都能用**：
+//   · 点「读取当前视频」→ loadVideo
+//   · 页面内跳转（SPA 导航）→ app.js 的 navigate 处理器
+// 之前只在 loadVideo 里做了，于是「页面内点开另一个视频」这条路
+// 清空了总结却从不回填，表现为「字幕出来了、总结没出来」。
+export async function restoreFromHistory(video, opts = {}) {
+  const v = video || store.get().video;
+  if (!v || !v.bvid) return null;
+  try {
+    // key 必须与 ST.historyKey 完全一致（bvid|cid|page），否则查不到。
+    const key = [v.bvid || '-', v.cid || '-', v.page == null ? '-' : String(v.page)].join('|');
+    const hit = await call('history.get', { key }, { timeoutMs: 8000 });
+    const row = hit && hit.row;
+    const hasLines = Array.isArray(row && row.lines) && row.lines.length > 0;
+    const hasSummary = !!(row && row.summary);
+    if (!hasLines && !hasSummary) return null;
+
+    const cur = store.get();
+    const nextSubtitles = hasLines ? row.lines : cur.subtitles;
+    const nextSummary = hasSummary ? row.summary : cur.summary;
+    // 什么都没变就别 set（避免无意义的重渲染与提示）
+    const sameLines = JSON.stringify(nextSubtitles) === JSON.stringify(cur.subtitles || []);
+    const sameSummary = String(nextSummary || '') === String(cur.summary || '');
+    if (sameLines && sameSummary) return row;
+
+    store.set({
+      video: {
+        ...cur.video,
+        stats: row.stats || (cur.video && cur.video.stats),
+        subtitleMeta: row.subtitleMeta || (cur.video && cur.video.subtitleMeta),
+        chapters: row.chapters || [],
+        source: row.source || (cur.video && cur.video.source)
+      },
+      subtitles: nextSubtitles,
+      summary: nextSummary
+    });
+    recordTimeline('载入历史结果', `${hasLines ? `${row.lines.length} 行字幕` : ''}${hasLines && hasSummary ? ' + ' : ''}${hasSummary ? '总结' : ''}`);
+    renderPanels();
+    if (opts.toast !== false) {
+      toast(
+        {
+          title: '已载入上次的结果',
+          detail: `${hasLines ? `字幕 ${row.lines.length} 行` : ''}${hasLines && hasSummary ? '，' : ''}${
+            hasSummary ? '总结已就绪' : ''
+          }。想重新生成，点「重新生成总结」。`
+        },
+        'ok',
+        4000
+      );
+    }
+    return row;
+  } catch (err) {
+    /* 载入历史失败不影响主流程 */
+    return null;
   }
 }
 
@@ -728,20 +750,37 @@ export async function copyAllSubtitles(overrides = {}) {
 export async function saveHistory() {
   const st = store.get();
   if (!st.video || !st.video.bvid) return;
+  const key = [st.video.bvid || '-', st.video.cid || '-', st.video.page == null ? '-' : String(st.video.page)].join('|');
   try {
-    await call('history.put', {
-      video: st.video,
-      entry: {
-        title: st.video.title,
-        partTitle: st.video.partTitle,
-        source: st.video.source,
-        subtitleMeta: st.video.subtitleMeta,
-        stats: st.video.stats,
-        chapters: st.video.chapters || [],
-        summary: st.summary || '',
-        lines: st.subtitles || []
+    const entry = {
+      title: st.video.title,
+      partTitle: st.video.partTitle,
+      source: st.video.source,
+      subtitleMeta: st.video.subtitleMeta,
+      stats: st.video.stats,
+      chapters: st.video.chapters || [],
+      lines: st.subtitles || []
+    };
+    // 关键：**当前 summary 为空时，不要用它覆盖历史里已有的总结**。
+    //
+    // 历史是一次「合并写」（historyPut 用 {...prev, ...entry}），
+    // 而 entry.summary 之前一律写成 `st.summary || ''`。
+    // 于是只要 store 里的 summary 是空的（换视频/导航时会清空），
+    // 之后任何一个「保存历史」的动作（应用规则、AI 优化、生成章节…）
+    // 都会把已经存好的总结**抹成空字符串**。
+    // 结果就是用户报的「字幕出来了，但总结没出来」——
+    // 字幕刚抓完会重新存一份，而总结早被抹掉了。
+    if (st.summary) entry.summary = st.summary;
+    else {
+      // 本次没有总结：读一下已有的，避免写入空值
+      try {
+        const prev = (await call('history.get', { key }, { timeoutMs: 8000 })).row;
+        if (prev && prev.summary) entry.summary = prev.summary;
+      } catch (err) {
+        /* 读不到就保持不写 summary 字段，让 {...prev} 生效 */
       }
-    });
+    }
+    await call('history.put', { video: st.video, entry });
   } catch (err) {
     /* 历史保存失败不打断主流程 */
   }
@@ -916,14 +955,29 @@ async function runBatchQueue() {
         const video = resolved.video;
         item.title = video.title || item.url;
         syncQueue();
+        // 不要无脑清空 summary —— 那样会把历史里已生成的总结覆盖成空字符串
+        // （用户报的「字幕出来了但总结没出来」的一个来源）。
         store.set({ video, subtitles: [], summary: '' });
+        const batchKey = [video.bvid || '-', video.cid || '-', video.page == null ? '-' : String(video.page)].join('|');
+        let restoredSummary = '';
+        try {
+          const prevRow = (await call('history.get', { key: batchKey }, { timeoutMs: 8000 })).row;
+          if (prevRow && prevRow.summary) restoredSummary = prevRow.summary;
+        } catch (err) {
+          /* 历史读不到就继续生成 */
+        }
         task.set(20, '抓取字幕');
         const s = store.get().settings;
         const result = await harvestSubtitles(video, s, {
           onProgress: (p) => task.set(20 + p.percent * 0.6, p.detail)
         });
         if (result.ok) {
-          store.set({ subtitles: result.lines, video: { ...video, source: 'official', subtitleMeta: result.meta, stats: overallStats(result.lines) } });
+          // 汇总结论：历史里有总结就保留，避免把已有成果清掉
+          store.set({
+            subtitles: result.lines,
+            summary: store.get().summary || restoredSummary || '',
+            video: { ...video, source: 'official', subtitleMeta: result.meta, stats: overallStats(result.lines) }
+          });
           await saveHistory();
           item.status = 'done';
           item.progress = 100;

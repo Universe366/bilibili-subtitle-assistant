@@ -18,9 +18,36 @@ function parseClock(str) {
   return hh * 3600 + mm * 60 + ss + frac;
 }
 
+// 文本是不是「二进制被当字符串读」的产物。
+//
+// 为什么需要：B 站的 `/x/v2/subtitle/web/view` 返回的是
+// **protobuf（content-type: application/octet-stream）**，不是 JSON。
+// 一旦这种响应被当成文本走到 SRT/VTT 解析，控制字符与随机字节会被
+// 拼成一大堆毫无意义的「字幕行」，看起来就像
+// 「出现了一些别的视频的字幕，而且每次还不一样」。
+//
+// 判据：控制字符占比高，或替换字符（U+FFFD）很多 → 判定为二进制垃圾。
+export function looksLikeBinaryGarbage(text) {
+  const s = String(text || '');
+  if (!s) return false;
+  const sample = s.slice(0, 4000);
+  let ctrl = 0;
+  let repl = 0;
+  for (let i = 0; i < sample.length; i += 1) {
+    const c = sample.charCodeAt(i);
+    if (c === 0xfffd) repl += 1;
+    else if (c < 32 && c !== 9 && c !== 10 && c !== 13) ctrl += 1;
+  }
+  const n = sample.length || 1;
+  // 替换字符 / 控制字符占比超过 1% 就不正常（正常字幕几乎为 0）
+  return repl / n > 0.01 || ctrl / n > 0.01;
+}
+
 export function parseSubtitleText(text, format = 'text') {
   const body = String(text || '').replace(/\r\n?/g, '\n');
   if (!body.trim()) return [];
+  // 二进制垃圾直接判空，绝不进入后面的文本解析
+  if (looksLikeBinaryGarbage(body)) return [];
   // JSON
   const first = body.trim()[0];
   if (first === '{' || first === '[') {
@@ -353,9 +380,18 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
         try {
           const cache = await call('subtitle.cache.get', cacheParams);
           if (cache.hit && cache.row && Array.isArray(cache.row.payload?.lines) && cache.row.payload.lines.length) {
-            lines = cache.row.payload.lines.map((l) => ({ from: l.from, to: l.to, text: l.text }));
-            attempt.cached = true;
-            attempt.stage = 'cache';
+            const cached = cache.row.payload.lines.map((l) => ({ from: l.from, to: l.to, text: l.text }));
+            // 缓存也要校验：否则一旦某次把错误内容写进缓存，
+            // 之后每次都会「稳定地」返回错内容（用户报的
+            // 「出现别的视频的字幕」，而且因为缓存而反复出现）。
+            const cachedValidation = validateLines(cached, video.duration);
+            if (cachedValidation.ok) {
+              lines = cached;
+              attempt.cached = true;
+              attempt.stage = 'cache';
+            } else {
+              attempt.cacheRejected = cachedValidation;
+            }
           }
         } catch (err) {
           /* 缓存失败不影响主流程 */

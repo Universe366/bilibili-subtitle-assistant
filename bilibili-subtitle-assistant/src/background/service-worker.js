@@ -191,10 +191,19 @@ async function fetchSubtitleBody(url, pageUrl) {
     );
   }
   const text = await res.text();
+  // 有些接口（例如 /x/v2/subtitle/web/view）返回的是 **protobuf**
+  // （content-type: application/octet-stream），不是字幕正文。
+  // 把它当文本解析会得到一堆控制字符拼成的「随机字幕」，
+  // 看起来就像「出现了别的视频的字幕，而且每次还不一样」。
+  const ctype = String(res.headers.get('content-type') || '').toLowerCase();
+  const binaryish = /octet-stream|protobuf|grpc|video\/|audio\//.test(ctype);
   let json = null;
   try {
     json = JSON.parse(text);
   } catch (err) {
+    if (binaryish) {
+      return { format: 'text', body: '', url: target, rejected: `接口返回二进制（${ctype}），不是字幕正文` };
+    }
     return { format: 'text', body: text, url: target };
   }
   // 字幕正文的 JSON 形状有很多版本（body / data.body / content / 纯数组…），统一解析

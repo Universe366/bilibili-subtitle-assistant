@@ -2703,3 +2703,123 @@ PASS  历史 key 与后台一致（bvid|cid|page）
 PASS  只填空着的字段（不与本次会话内容冲突）
 PASS  载入失败不影响读视频
 ```
+
+## 第五十九轮（1.43.0）—— 用真实抓包定位「随机字幕」与「总结丢失」
+
+这一轮我**没有再靠猜**，而是搭了两个真实环境去测，两个问题都定位到了根因。
+
+### 方法：在真实 Chrome 里观察字幕请求
+
+写了个脚本用 CDP 打开真实的 B 站视频页，监听所有疑似字幕的请求。
+结果（BV1be41127ft，一个**没有官方字幕轨**的视频）：
+
+```
+捕获到的字幕请求：
+  https://api.bilibili.com/x/v2/subtitle/web/view?oid=1401371056&pid=238588630&...
+  （另有几条 data.bilibili.com 的埋点，无关）
+```
+
+只有这一个真正的字幕请求。把它拉下来看：
+
+```
+HTTP 200 | content-type: application/octet-stream | 392 字节
+可读片段：··················1398548857402574848··ai-zh"·······*··//subtitle.bilibili.com/S%13%1BP...
+```
+
+### 根因①：那个接口返回的是 **protobuf**，不是 JSON
+
+`/x/v2/subtitle/web/view` 返回 `application/octet-stream`。
+而 `fetchSubtitleBody` 的兜底分支是：
+
+```js
+try { json = JSON.parse(text); }
+catch (err) { return { format: 'text', body: text }; }   // ← 二进制当文本返回
+```
+
+于是这 392 字节的二进制被当作「纯文本字幕」交给 `parseSubtitleText`，
+控制字符与随机字节被拼成一大堆**毫无意义的字幕行** ——
+表现就是「出现了一些别的视频的字幕，而且每次还不一样」
+（`auth_key` 带时间戳，每次响应字节不同，所以拼出来的东西也不同）。
+
+> 为什么「每次不一样」：二进制里含一个带时间戳的 `auth_key=1790758661-...`，
+> 每次都变 → 解析出的垃圾行每次都不同。
+
+**三层防护**：
+
+1. `fetchSubtitleBody` 检查 `content-type`，二进制直接判空并给出
+   `rejected: 接口返回二进制（octet-stream），不是字幕正文`
+2. 新增 `looksLikeBinaryGarbage()`：替换字符 / 控制字符占比 > 1% 判为垃圾，
+   `parseSubtitleText` 直接返回空数组
+3. **缓存命中后也要 `validateLines`** —— 之前缓存路径**完全跳过校验**，
+   一旦把错误内容写进缓存，之后每次都会「稳定地」返回错内容
+
+实测判据（真实 protobuf vs 正常字幕）：
+
+| 输入 | 替换字符占比 | 控制字符占比 | 判定 |
+|---|---|---|---|
+| 真实 protobuf | 2.09% | 3.66% | **垃圾** ✅ |
+| 正常 SRT | 0% | 0% | 正常 ✅ |
+| 正常中文 | 0% | 0% | 正常 ✅ |
+
+### 根因②：`saveHistory` 把已有的总结**抹成空字符串**
+
+历史是**合并写**：
+
+```js
+const row = { key, savedAt, video, ...prev, ...entry };
+```
+
+而面板侧一直写 `summary: st.summary || ''`。
+换视频/导航时 store 的 summary 会被清空，此后**任何**一个保存历史的动作
+（应用替换规则、AI 优化、生成章节、抓完字幕…）都会把已存好的总结覆盖成空。
+
+这完全解释了用户的现象：
+
+> 「回到之前总结过的视频，字幕出来了，但总结没出来」
+
+字幕刚抓完会重新存一份 → 字幕有；而总结**早在上一次操作时就被抹掉了** → 总结没有。
+
+**修法（三道）**：
+
+1. `saveHistory()` 在 summary 为空时**不写这个字段**，先读一次已有的保留住
+2. `historyPut` 兜底：`entry.summary === ''` 且 `prev.summary` 存在时，保留 prev
+   （空 `lines` 同理）
+3. 批量处理里原本 `store.set({ video, subtitles: [], summary: '' })`
+   先把总结清掉再抓字幕，**从不回填** → 现改为先读出已有的总结，抓完后填回
+
+### 顺带：`restoreFromHistory` 抽成共用函数
+
+原来「读视频后回填历史」只写在 `loadVideo` 里。
+但**页面内跳转（SPA 导航）**走的是 `app.js` 的 navigate 处理器 ——
+它清了状态却从不回填，也是一条「总结不出来」的路径。
+现在两边共用同一个 `restoreFromHistory()`，并加了「内容没变就不重复 set」。
+
+### 新增 16 项测试
+
+```
+PASS  识别 protobuf 二进制垃圾
+PASS  正常 SRT 不算垃圾 / 正常中文字幕不算垃圾 / 空文本不算垃圾
+PASS  二进制文本解析为空数组
+PASS  缓存命中后仍做校验
+PASS  校验不过就不采用缓存
+PASS  后台拒绝 octet-stream 响应
+PASS  saveHistory 不写空 summary
+PASS  summary 为空时先读已有值再决定
+PASS  historyPut 兜底：空 summary 不覆盖
+PASS  historyPut 兜底：空 lines 不覆盖
+PASS  批量处理保留已有总结
+PASS  抽出了 restoreFromHistory 供多入口复用
+PASS  内容没变化就不重复 set
+```
+
+### 方法论收获
+
+上一轮我只加了「嗅探项按视频签名过滤」，那是**猜**出来的方向 ——
+虽然也修掉了一个真问题（嗅探缓存跨视频残留），但**没打中用户报的现象**。
+
+这一轮换了做法：**先把真实响应抓出来看**，一眼就看到了
+`content-type: application/octet-stream` 和一串乱码 URL。
+如果一开始就这么做，能省掉一轮。
+
+> **教训：凡是「内容不对」的问题，先把真实数据打印出来。**
+> 不要从「我改过的代码」倒推「可能哪里错了」。
