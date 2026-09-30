@@ -356,6 +356,9 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   report(46, '解码音频（可能需要一会儿）');
   const decoded = await decodeAudioBytes(dl.bytes, {
     signal,
+    // 把真实 codec 传下去：MSE 的 SourceBuffer 必须按实际 codec 建，
+    // 否则 appendBuffer 会失败（表现为「音频数据追加失败」）
+    codecs: audio.codecs || '',
     onProgress: (p) => {
       if (p.stage === 'decode') report(46 + (p.percent / 100) * 12, p.note || '解码音频');
       if (p.stage === 'playcapture') report(46 + (p.percent / 100) * 12, `流式采集音频 ${Math.round(p.percent)}%`);
@@ -418,6 +421,21 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   // 因此**单片的编码耗时 ≈ 该片音频时长**。
   const wantsM4a = prefersM4a(platform);
   const useM4a = wantsM4a && canEncodeM4a();
+
+  // 原始音轨复用没做时，**明确说明为什么** —— 否则用户只看到
+  // 「下载完成 62MB」然后失败，完全不知道本来可以走更快的路。
+  if (asr.reuseOriginalAudio === false) {
+    if (onLog) onLog('未复用原始音轨：设置里关掉了「优先复用 B 站原始音轨」');
+  } else if (audioFormatFor(platform) === 'wav') {
+    if (onLog) onLog(`未复用原始音轨：当前模型（${platform ? platform.model : ''}）要求 WAV，必须解码重编码`);
+  } else if (!audio.initRange || !audio.indexRange) {
+    if (onLog) {
+      onLog(
+        `未复用原始音轨：这条候选没有 SegmentBase 索引` +
+          `（initRange=${audio.initRange || '无'} indexRange=${audio.indexRange || '无'}，来源 ${audio.source}）`
+      );
+    }
+  }
 
   // ------------------------------------------------------------------
   // 【最优路径】直接复用 B 站**原始 AAC 音轨**

@@ -3388,3 +3388,88 @@ PASS  字幕身份不稳定也自动重采
 - 被排除掉的其它视频的音轨/字幕条数
 
 有了这些我就能判断是**这一类原因**，还是**另一条我还没找到的路径**。
+
+## 第六十六轮（1.50.0）—— 「音频数据追加失败」的真因
+
+### 用户的日志（2 小时视频）
+
+```
+音轨候选 3 条
+音轨：audio/mp4 带宽 67175 来源 __playinfo__ host upos-sz-estghw.bilivideo.com
+下载完成：62.0MB，用时 10.6s        ← 下载本身很快
+音频数据追加失败                    ← 卡在这里
+```
+
+### 根因：MSE 的 SourceBuffer 被**硬编码**成 mp4a.40.2
+
+失败点在 `audio.js` 的流式解码路径：
+
+```js
+const mime = 'audio/mp4; codecs="mp4a.40.2"';   // ← 写死的
+sb = ms.addSourceBuffer(mime);
+```
+
+而 B 站相当一部分音轨是 **HE-AAC（`mp4a.40.5`）**。
+codec 与 SourceBuffer 声明不一致时，`appendBuffer` 直接报错 ——
+而旧代码只抛一句「音频数据追加失败」，
+**完全看不出是 codec 对不上、还是配额不足**。排除它花了我好一会儿。
+
+> 顺带说明：`ffmpeg-remux` 那条路之所以没救到，是因为它有自己的
+> 走法；这条路是「整体 decodeAudioData 失败 → MSE 流式采集」的兜底。
+
+### 四处修改
+
+**① SourceBuffer 按实际 codec 建**
+
+候选顺序：实际 codec → `mp4a.40.2` → `mp4a.40.5` → 裸 `audio/mp4`，
+并用 `MediaSource.isTypeSupported` 过滤。全都建不起来时报出**真实 codec**。
+
+**② 追加失败要带出 MediaSource 的真实原因**
+
+```js
+const err = sb.error || ms.error || null;
+// 「音频数据追加失败（MediaError: ...）—— SourceBuffer 配额不足，音频过大；
+//   音轨 codec=mp4a.40.5，本次追加 62.0MB」
+```
+
+**③ 大文件分块追加（4MB 一块）**
+
+一次 `appendBuffer` 塞 60MB 很容易撞 SourceBuffer 配额。
+现在分块追加，并且**在缓冲领先播放位置超过 60 秒时先等一等**
+（配额压力下的背压）。`sb.buffered` 为空时 `end()` 会抛错，已护住。
+
+**④ 原始音轨复用被跳过时，明确说明原因**
+
+这次的日志里**完全没有**「复用 B 站原始音轨」的痕迹 —— 说明条件没满足，
+但用户看不到任何解释。现在会明确写出来：
+
+- 「未复用原始音轨：这条候选没有 SegmentBase 索引（initRange=无 indexRange=无，来源 __playinfo__）」
+- 「未复用原始音轨：设置里关掉了…」
+- 「未复用原始音轨：当前模型要求 WAV，必须解码重编码」
+
+**这一条是排查的关键**：2 小时视频最理想就是走原始音轨复用
+（62MB → 约 10MB，且完全不解码），如果它被跳过，日志必须说清为什么。
+
+> `__playinfo__` 这条来源：如果 B 站给它的 dash 数据里**没有 SegmentBase**，
+> 就确实走不了复用。这时上面那条日志会直接指出来。
+
+### 新增 11 项测试
+
+```
+PASS  SourceBuffer 按实际 codec 建
+PASS  codec 候选包含 mp4a.40.5（HE-AAC）
+PASS  找不到格式时报出真实 codec
+PASS  追加失败带出 MediaSource 真实原因
+PASS  配额不足时明确提示
+PASS  大文件分块追加（避免一次 60MB）
+PASS  decodeAudioBytes 透传 codecs
+PASS  转录把音轨 codec 传给解码器
+PASS  跳过原始音轨复用会说明原因 / 关掉开关时也说明 / WAV 模型时也说明
+```
+
+### 仍需用户确认
+
+这个视频**为什么没走原始音轨复用**，我这边无法判定 ——
+下次转录时看日志里那句「未复用原始音轨：…」就能知道确切原因。
+如果它说「没有 SegmentBase 索引」，那说明该视频的音轨确实不支持按字节切片，
+就只能走解码路径（此时上面的 codec 修复会生效）。

@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.49.0', contentVersion: '1.49.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.50.0', contentVersion: '1.50.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.49.0', stale: false }],
-    contentVersion: '1.49.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.50.0', stale: false }],
+    contentVersion: '1.50.0'
   },
   diagnostics: {
-    extensionVersion: '1.49.0',
-    contentVersion: '1.49.0',
+    extensionVersion: '1.50.0',
+    contentVersion: '1.50.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.49.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.50.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.49\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.50\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1282,6 +1282,33 @@ async function main() {
     );
     check('提示词要求更详细', /宁可详细，不要简略/.test(api.panelAi.FEISHU_FORMAT_RULES || ''), '');
     check('提示词保留反灌水约束', /不要为了凑长度/.test(api.panelAi.FEISHU_FORMAT_RULES || ''), '');
+
+    // ---- 解码路径必须按**实际 codec** 建 SourceBuffer ----
+    //
+    // 用户报：「2 小时视频转录后 —— 音频数据追加失败」。
+    // 根因：MSE 的 SourceBuffer 被硬编码成 mp4a.40.2，
+    // 而 B 站相当一部分音轨是 HE-AAC（mp4a.40.5）。
+    // codec 对不上 → appendBuffer 报错，而旧代码只抛
+    // 「音频数据追加失败」，完全看不出真因。
+    const audioSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'audio.js'),
+      'utf8'
+    );
+    check('SourceBuffer 按实际 codec 建', /audio\/mp4; codecs="\$\{codecs\}"/.test(audioSrc), '');
+    check('codec 候选包含 mp4a.40.5（HE-AAC）', /mp4a\.40\.5/.test(audioSrc), '');
+    check('找不到格式时报出真实 codec', /找不到可用的音频解码格式/.test(audioSrc), '');
+    check('追加失败带出 MediaSource 真实原因', /sb\.error \|\| ms\.error/.test(audioSrc), '');
+    check('配额不足时明确提示', /SourceBuffer 配额不足/.test(audioSrc), '');
+    check('大文件分块追加（避免一次 60MB）', /const APPEND_CHUNK = 4 \* 1024 \* 1024;/.test(audioSrc), '');
+    check('decodeAudioBytes 透传 codecs', /decodeViaMediaSource\(bytes, \{ \.\.\.opts, codecs \}\)/.test(audioSrc), '');
+    const txSrc3 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
+      'utf8'
+    );
+    check('转录把音轨 codec 传给解码器', /codecs: audio\.codecs \|\| ''/.test(txSrc3), '');
+    check('跳过原始音轨复用会说明原因', /未复用原始音轨：这条候选没有 SegmentBase 索引/.test(txSrc3), '');
+    check('关掉开关时也说明', /设置里关掉了「优先复用 B 站原始音轨」/.test(txSrc3), '');
+    check('WAV 模型时也说明', /要求 WAV，必须解码重编码/.test(txSrc3), '');
   }
 
   // ---- 原始 AAC 音轨复用（sidx 解析是纯逻辑，可用构造数据测）----

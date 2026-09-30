@@ -116,7 +116,7 @@ export class AudioDownloader {
 // ---------------------------------------------------------------------------
 
 export async function decodeAudioBytes(bytes, opts = {}) {
-  const { onProgress, signal } = opts;
+  const { onProgress, signal, codecs = '' } = opts;
   const raw = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const probe = new AudioContext();
   try {
@@ -126,8 +126,14 @@ export async function decodeAudioBytes(bytes, opts = {}) {
     return buf;
   } catch (err) {
     // 分片 MP4 有时无法整体解码：退化为 MediaSource + 实时采集
-    if (onProgress) onProgress({ stage: 'decode', percent: 5, note: '整体解码失败，改用流式采集' });
-    return await decodeViaMediaSource(bytes, opts);
+    if (onProgress) {
+      onProgress({
+        stage: 'decode',
+        percent: 5,
+        note: `整体解码失败（${(err && err.name) || 'Error'}），改用流式采集`
+      });
+    }
+    return await decodeViaMediaSource(bytes, { ...opts, codecs });
   } finally {
     try {
       await probe.close();
@@ -137,7 +143,7 @@ export async function decodeAudioBytes(bytes, opts = {}) {
   }
 }
 
-async function decodeViaMediaSource(bytes, { onProgress, signal, speed = 4 } = {}) {
+async function decodeViaMediaSource(bytes, { onProgress, signal, speed = 4, codecs = '' } = {}) {
   throwIfAborted(signal);
   const audioCtx = new AudioContext();
   const dest = audioCtx.createMediaStreamDestination();
@@ -220,24 +226,57 @@ async function decodeViaMediaSource(bytes, { onProgress, signal, speed = 4 } = {
       setTimeout(() => reject(new Error('MediaSource 超时')), 8000);
     });
 
-    const mime = 'audio/mp4; codecs="mp4a.40.2"';
-    let sb;
-    try {
-      sb = ms.addSourceBuffer(mime);
-    } catch (err) {
-      sb = ms.addSourceBuffer('audio/mp4');
+    // 用**实际音轨的 codec** 建 SourceBuffer。
+    //
+    // 以前硬编码 'audio/mp4; codecs="mp4a.40.2"' —— 而 B 站相当一部分
+    // 音轨是 HE-AAC（`mp4a.40.5`）。codec 对不上时 MediaSource 会在
+    // appendBuffer 时报错，表现为「音频数据追加失败」，
+    // 而且这个报错完全看不出真因（用户 2 小时的视频就撞在这里）。
+    const candidates = [];
+    if (codecs) candidates.push(`audio/mp4; codecs="${codecs}"`);
+    candidates.push('audio/mp4; codecs="mp4a.40.2"', 'audio/mp4; codecs="mp4a.40.5"', 'audio/mp4');
+    let sb = null;
+    let sbError = null;
+    for (const mime of candidates) {
+      if (typeof MediaSource.isTypeSupported === 'function' && !MediaSource.isTypeSupported(mime) && mime !== 'audio/mp4') {
+        continue;
+      }
+      try {
+        sb = ms.addSourceBuffer(mime);
+        if (onProgress) onProgress({ stage: 'decode', percent: 8, note: `流式解码：${codecs || mime}` });
+        break;
+      } catch (err) {
+        sbError = err;
+      }
+    }
+    if (!sb) {
+      throw new Error(`找不到可用的音频解码格式（音轨 codec=${codecs || '未知'}）：${(sbError && sbError.message) || ''}`);
     }
     const append = (data) =>
       new Promise((resolve, reject) => {
-        const onEnd = () => {
+        let settled = false;
+        const done = (err) => {
+          if (settled) return;
+          settled = true;
           sb.removeEventListener('updateend', onEnd);
           sb.removeEventListener('error', onErr);
-          resolve();
+          err ? reject(err) : resolve();
         };
+        const onEnd = () => done(null);
         const onErr = () => {
-          sb.removeEventListener('updateend', onEnd);
-          sb.removeEventListener('error', onErr);
-          reject(new Error('音频数据追加失败'));
+          // 把 MediaSource 的真实原因带出来。
+          // 以前只抛「音频数据追加失败」，完全看不出是 codec 不匹配、
+          // 还是配额不足 —— 排查时等于没有信息。
+          const err = sb.error || ms.error || null;
+          const detail = err ? `${err.name || 'MediaError'}: ${err.message || ''}` : '';
+          const quota = /quota|QuotaExceeded/i.test(detail);
+          done(
+            new Error(
+              `音频数据追加失败${detail ? `（${detail}）` : ''}` +
+                (quota ? ' —— SourceBuffer 配额不足，音频过大' : '') +
+                `；音轨 codec=${codecs || '未知'}，本次追加 ${(data.byteLength / 1024 / 1024).toFixed(1)}MB`
+            )
+          );
         };
         sb.addEventListener('updateend', onEnd);
         sb.addEventListener('error', onErr);
@@ -248,11 +287,41 @@ async function decodeViaMediaSource(bytes, { onProgress, signal, speed = 4 } = {
         }
       });
 
+    // 分块追加：一次塞 60MB 容易撞 SourceBuffer 配额，
+    // 分成 4MB 的小块逐段追加（等 updateend 再下一块）。
+    const APPEND_CHUNK = 4 * 1024 * 1024;
+    const appendAll = async (buf) => {
+      if (buf.byteLength <= APPEND_CHUNK) {
+        await append(buf);
+        return;
+      }
+      for (let off = 0; off < buf.byteLength; off += APPEND_CHUNK) {
+        throwIfAborted(signal);
+        // 配额紧张时等 SourceBuffer 被消费掉一部分再继续。
+        // buffered 为空时 end() 会抛错，所以整段都要护住。
+        let guard = 0;
+        for (;;) {
+          let behind = 0;
+          try {
+            if (sb.buffered.length) {
+              behind = sb.buffered.end(sb.buffered.length - 1) - (el.currentTime || 0);
+            }
+          } catch (err) {
+            behind = 0;
+          }
+          if (!(behind > 60) || guard >= 200) break;
+          guard += 1;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        await append(buf.slice(off, Math.min(buf.byteLength, off + APPEND_CHUNK)));
+      }
+    };
+
     // init 段（moov）优先；没有就整段试
     if (bytes.length > 8 && String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]) === 'ftyp') {
       await append(bytes.buffer.slice(0, Math.min(bytes.length, 2 * 1024 * 1024)));
     }
-    await append(bytes.buffer.slice(0));
+    await appendAll(bytes.buffer.slice(0));
 
     if (onProgress) onProgress({ stage: 'playcapture', percent: 0 });
 
