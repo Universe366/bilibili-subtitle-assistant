@@ -770,6 +770,26 @@ export function attemptsDialog() {
   const d = st.subtitleDiagnostic;
 
   if (d) {
+    // 身份不一致 / 不稳定 —— 这是「标题对、内容错」的直接证据，
+    // 放在最前面，因为它一眼就能解释「为什么内容不是这个视频的」
+    if (d.identityMismatch || d.identityUnstable) {
+      body.appendChild(h('div', { class: 'section-title', text: '⚠ 身份不一致（内容可能来自别的视频）' }));
+      body.appendChild(
+        h('div', { class: 'kv' }, [
+          h('span', { class: 'kv-key', text: d.identityMismatch ? '页面≠面板' : '页面状态未稳定' }),
+          h('span', { class: 'kv-val', text: d.identityMismatch ? d.identityMismatch.reason || '' : d.identityUnstable.reason || '' })
+        ])
+      );
+      body.appendChild(
+        h('div', {
+          class: 'note',
+          text:
+            '这次采集到的内容**已被丢弃**，不会拿来当这个视频的字幕。\n' +
+            '原因通常是 B 站页面还在切换中（单页应用切换时，URL、标题、cid 是分步更新的）。\n' +
+            '处理办法：等页面标题与分 P 都显示正常后再点一次；若反复出现，按 F5 刷新页面。'
+        })
+      );
+    }
     // 本次**实际采用**的字幕来自哪里 —— 排查「字幕与视频不符」时第一眼要看的信息
     const meta = (st.video && st.video.subtitleMeta) || null;
     if (meta) {

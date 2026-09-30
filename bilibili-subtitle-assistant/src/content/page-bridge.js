@@ -158,17 +158,76 @@
       }
       const idx = currentPartIndex();
       const cid = currentCid();
+      const signature = buildSignature({ bvid, aid, epId, idx, cid });
+
+      // ---- 一致性自检 ----
+      //
+      // B 站是单页应用，切换视频时 URL、__INITIAL_STATE__、pages[] 是
+      // 分几步更新的。中途会出现「这几者互相矛盾」的状态，
+      // 用它算出来的身份就是错的 —— 而界面看起来一切正常。
+      // 与其猜，不如**把矛盾检测出来并如实报告**。
+      const problems = [];
+      // ① URL 里的 bvid 与页面状态里的 bvid 不一致
+      const urlBvid = (location.pathname.match(/\/video\/(BV[0-9A-Za-z]{10})/) || [])[1] || '';
+      if (urlBvid && bvid && urlBvid !== bvid) {
+        problems.push(`URL 里是 ${urlBvid}，页面状态里是 ${bvid}`);
+      }
+      // ② 算出来的 cid 不在 pages[] 里（说明 pages[] 与 cid 来自不同视频）
+      const pages = vd && Array.isArray(vd.pages) ? vd.pages : [];
+      if (cid && pages.length) {
+        const inPages = pages.some((p) => String(p && p.cid) === String(cid));
+        if (!inPages) {
+          problems.push(`cid ${cid} 不在本稿件的 ${pages.length} 个分 P 里`);
+        }
+      }
+      // ③ ?p= 指向的分 P 不存在
+      const pParam = parseQuery().p;
+      if (pParam && pages.length) {
+        const found = pages.some((p) => Number(p && p.page) === Number(pParam));
+        if (!found) problems.push(`?p=${pParam} 在本稿件的分 P 里不存在`);
+      }
+
       return {
         bvid,
         aid,
         cid,
         epId,
         page: idx,
-        signature: buildSignature({ bvid, aid, epId, idx, cid })
+        signature,
+        // 空数组 = 身份自检通过
+        problems,
+        urlBvid
       };
     } catch (err) {
-      return { bvid: null, aid: null, cid: null, epId: null, page: 1, signature: '' };
+      return { bvid: null, aid: null, cid: null, epId: null, page: 1, signature: '', problems: ['身份计算异常'], urlBvid: '' };
     }
+  }
+
+  // 等页面身份「稳定」下来：自检无矛盾，且连续两次读到同一个签名。
+  //
+  // 为什么要等：单页应用切视频时 URL / __INITIAL_STATE__ / pages[] 是
+  // 分步更新的，中途算出来的身份是错的（界面却看着正常）。
+  // 与其在这种瞬间取内容，不如**先等它稳定** —— 这是成本最低、
+  // 也最不容易误伤的修法。
+  async function waitForStableIdentity(expectSignature, opts = {}) {
+    const tries = Math.max(1, Math.min(12, opts.tries || 8));
+    const gap = Math.max(60, Math.min(600, opts.gap || 180));
+    let prev = null;
+    for (let i = 0; i < tries; i += 1) {
+      const id = pageIdentity();
+      // 有矛盾 → 还没稳定，继续等
+      const clean = !id.problems || id.problems.length === 0;
+      if (clean && id.signature && (!expectSignature || id.signature === expectSignature)) {
+        // 连续两次一致才算稳定
+        if (prev === id.signature) return { id, stable: true };
+        prev = id.signature;
+      } else {
+        prev = null;
+      }
+      await new Promise((r) => setTimeout(r, gap));
+    }
+    const last = pageIdentity();
+    return { id: last, stable: false, problems: last.problems || [] };
   }
 
   // 采集一个「与视频身份有关」的结果，并保证它在采集期间没有变化。
@@ -179,10 +238,16 @@
   // 这样调用方就有**确定性**依据决定「这批内容可信吗」，
   // 而不是只看内容长得对不对。
   async function withIdentityGuard(collect, expectSignature) {
-    const before = pageIdentity();
-    // 调用方指定了期望签名时，先确认页面确实已经是那个视频
+    // 先等一个稳定的身份（避免在切换的中间态取内容）
+    const settled = await waitForStableIdentity(expectSignature);
+    const before = settled.id;
+    // 调用方指定了期望签名时，确认页面确实已经是那个视频
     if (expectSignature && before.signature && before.signature !== expectSignature) {
       return { ok: false, value: null, identity: before, reason: 'identity-mismatch' };
+    }
+    // 仍然自检不通过 → 如实报告，不要拿矛盾状态去取内容
+    if (before.problems && before.problems.length) {
+      return { ok: false, value: null, identity: before, reason: 'identity-unstable' };
     }
     const value = await collect(before);
     const after = pageIdentity();
@@ -1757,6 +1822,21 @@
           sniffed: []
         };
       }
+      // 页面身份自相矛盾（URL / __INITIAL_STATE__ / pages[] 对不上），
+      // 或等了很久仍然不稳定 → 不拿这种状态去取内容
+      if (!guard.ok && guard.reason === 'identity-unstable') {
+        return {
+          ok: false,
+          identityUnstable: true,
+          reason: `页面身份不一致：${(guard.identity.problems || []).join('；')}`,
+          identity: guard.identity,
+          tracks: [],
+          sources: [],
+          errors: [],
+          groups: [],
+          sniffed: []
+        };
+      }
       const out = guard.value || {};
       return {
         ok: true,
@@ -1794,7 +1874,38 @@
     // 音轨候选（按「鲜度」排序：嗅探到的最新 playurl 响应 > __playinfo__ > initialState > 播放器 API）
     getAudioCandidates: async (p) => {
       const params = p || {};
-      const { list, diag } = await collectAudioCandidatesWithRefresh(params);
+      // 与字幕同样先等身份稳定：转录用的就是音轨，
+      // 身份在中间态时取到的音轨就是别人的（用户报的
+      // 「视频显示是对的，但转录出来不是当前视频」正是这条路径）。
+      const wantSig = params.signature || '';
+      const settled = await waitForStableIdentity(wantSig);
+      const ident = settled.id;
+      if (wantSig && ident.signature && ident.signature !== wantSig) {
+        return {
+          ok: false,
+          identityMismatch: true,
+          reason: `页面当前是 ${ident.signature}，与请求的 ${wantSig} 不一致`,
+          identity: ident,
+          candidates: [],
+          foreignCandidates: [],
+          sniffed: audioSniff.items.size,
+          diag: null
+        };
+      }
+      if (ident.problems && ident.problems.length) {
+        return {
+          ok: false,
+          identityUnstable: true,
+          reason: `页面身份不一致：${ident.problems.join('；')}`,
+          identity: ident,
+          candidates: [],
+          foreignCandidates: [],
+          sniffed: audioSniff.items.size,
+          diag: null
+        };
+      }
+      // 用**已经稳定的那个身份**的 cid 去采集，而不是让采集过程自己再算一次
+      const { list, diag } = await collectAudioCandidatesWithRefresh({ ...params, cid: ident.cid || params.cid });
       // ---- 归属绑定：只保留**属于被请求那个视频**的音轨 ----
       //
       // 与字幕同样的毛病：音轨候选来自页面各处（嗅探到的 playurl、
@@ -1825,7 +1936,20 @@
         return 1;
       };
       owned.sort((a, b) => hostRank(a.url) - hostRank(b.url) || (a.bandwidth || 1e12) - (b.bandwidth || 1e12));
+      // 采集期间身份又变了 → 这批音轨同样不能要
       const after = pageIdentity();
+      if (after.signature !== ident.signature) {
+        return {
+          ok: false,
+          identityMismatch: true,
+          reason: `采集期间身份从 ${ident.signature} 变为 ${after.signature}`,
+          identity: after,
+          candidates: [],
+          foreignCandidates: [],
+          sniffed: audioSniff.items.size,
+          diag
+        };
+      }
       return {
         ok: owned.length > 0,
         candidates: owned,
@@ -1833,6 +1957,7 @@
         foreignCandidates: foreign,
         sniffed: audioSniff.items.size,
         identity: after,
+        identityProblems: after.problems || [],
         diag
       };
     },
@@ -1914,7 +2039,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.48.0',
+    version: '1.49.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

@@ -374,6 +374,8 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
   let lastSignatureChanged = false;
   // 上一次采集是否因为「页面当前视频 ≠ 面板展示的视频」而作废
   let lastIdentityMismatch = false;
+  // 上一次采集是否因为「页面身份自相矛盾」而作废
+  let lastIdentityUnstable = false;
 
   const collectFromPage = async () => {
     try {
@@ -390,10 +392,19 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
       // 页面当前视频与面板展示的视频不是同一个 → 这批内容根本不能要
       if (bundle && bundle.identityMismatch) {
         lastIdentityMismatch = true;
+        lastIdentityUnstable = false;
         diagnostic.identityMismatch = { reason: bundle.reason || '', identity: bundle.identity || null };
         return [];
       }
+      // 页面身份自相矛盾（URL / __INITIAL_STATE__ / pages[] 对不上）→ 同样不能用
+      if (bundle && bundle.identityUnstable) {
+        lastIdentityUnstable = true;
+        lastIdentityMismatch = false;
+        diagnostic.identityUnstable = { reason: bundle.reason || '', identity: bundle.identity || null };
+        return [];
+      }
       lastIdentityMismatch = false;
+      lastIdentityUnstable = false;
       lastSignatureChanged = !!bundle.signatureChanged;
       diagnostic.pageBundle = {
         sources: bundle.sources || [],
@@ -422,14 +433,16 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
 
   // 采集失败（页面已切走 / 采集期间被切换）→ 等页面稳一下再采一次。
   // 这样用户不用手动「再点一次重新读取」。
-  if (!pageTracks.length && (lastSignatureChanged || lastIdentityMismatch) && !(signal && signal.aborted)) {
+  if (!pageTracks.length && (lastSignatureChanged || lastIdentityMismatch || lastIdentityUnstable) && !(signal && signal.aborted)) {
     if (onProgress) {
       onProgress({
         name: '字幕抓取',
         percent: 8,
         detail: lastIdentityMismatch
           ? '页面当前视频与面板不一致，正在重新读取当前视频的字幕…'
-          : '采集期间视频已切换，正在重新读取当前视频的字幕…'
+          : lastIdentityUnstable
+            ? '页面状态还没稳定，正在重新读取当前视频的字幕…'
+            : '采集期间视频已切换，正在重新读取当前视频的字幕…'
       });
     }
     await new Promise((r) => setTimeout(r, 900));

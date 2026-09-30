@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.48.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.49.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -429,6 +429,26 @@ async function main() {
     check('音轨候选报告被排除的条目', /foreignCandidates: foreign/.test(bridgeSrc), '');
     check('每个音轨候选都记了来源 cid', /cid: cid \|\| null/.test(bridgeSrc), '');
     check('暴露 identity 诊断方法', /identity: \(\) => \{/.test(bridgeSrc) && /consistent: a\.signature === b\.signature/.test(bridgeSrc), '');
+
+    // ---- 身份自检 + 等稳定 ----
+    //
+    // 用户报「没有官方字幕的视频却出现别的视频的字幕，转录也转录成那个错的」。
+    // 转录走的是**音轨**路径 —— 转录出来是别人的字幕，说明音轨也是别人的，
+    // 也就是**身份本身指向了别的视频**。
+    // 单页应用切视频时 URL / __INITIAL_STATE__ / pages[] 分步更新，
+    // 中途算出的身份是错的，但界面看着正常。
+    check('身份带一致性自检（problems + urlBvid）', /problems,/.test(bridgeSrc) && /urlBvid/.test(bridgeSrc), '');
+    check('检测 URL bvid 与页面状态 bvid 不一致', /urlBvid && bvid && urlBvid !== bvid/.test(bridgeSrc) && /URL 里是/.test(bridgeSrc), '');
+    check('检测 cid 不在 pages[] 里', /不在本稿件的/.test(bridgeSrc), '');
+    check('检测 ?p= 指向不存在的分 P', /在本稿件的分 P 里不存在/.test(bridgeSrc), '');
+    check('有 waitForStableIdentity 等身份稳定', /async function waitForStableIdentity\(/.test(bridgeSrc), '');
+    check('要求连续两次签名一致才算稳定', /if \(prev === id\.signature\) return \{ id, stable: true \};/.test(bridgeSrc), '');
+    check('withIdentityGuard 先等稳定再采集', /const settled = await waitForStableIdentity\(expectSignature\);/.test(bridgeSrc), '');
+    check('仍不稳定则拒绝（identity-unstable）', /reason: 'identity-unstable'/.test(bridgeSrc), '');
+    check('字幕返回 identityUnstable 标记', /identityUnstable: true/.test(bridgeSrc), '');
+    check('getAudioCandidates 也等身份稳定', /const settled = await waitForStableIdentity\(wantSig\);/.test(bridgeSrc), '');
+    check('音轨用稳定身份的 cid 去采集', /cid: ident\.cid \|\| params\.cid/.test(bridgeSrc), '');
+    check('音轨采集后再复核一次身份', /采集期间身份从/.test(bridgeSrc), '');
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');

@@ -134,11 +134,35 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
     // 音轨候选来自页面各处（嗅探的 playurl / __playinfo__ / initialState /
     // 播放器 API），单页应用切视频时这些都可能是上一个视频的 ——
     // 用户报的「视频显示是对的，但转录出来不是当前视频」正是这条路径。
-    const out = await call(
-      'audio.candidates',
-      { aid: video.aid, bvid: video.bvid, cid: video.cid, signature: video.signature },
-      { timeoutMs: 40000 }
-    );
+    let out = null;
+    // 身份不符 / 页面状态未稳定时重试几次，等页面切换完成。
+    // 宁可多等一两秒，也不要用**别的视频的音轨**去转录。
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      out = await call(
+        'audio.candidates',
+        { aid: video.aid, bvid: video.bvid, cid: video.cid, signature: video.signature },
+        { timeoutMs: 40000 }
+      );
+      if (!out || (!out.identityMismatch && !out.identityUnstable)) break;
+      if (onLog) {
+        onLog(`页面身份还没就绪（${out.reason || '未知'}），等待后重试（第 ${attempt + 1} 次）…`);
+      }
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    if (out && (out.identityMismatch || out.identityUnstable)) {
+      const err = new Error('页面身份与当前视频不一致');
+      err.payload = {
+        kind: 'identity',
+        title: '拿不到当前视频的音轨',
+        detail:
+          `页面报告的当前视频与侧边栏展示的不是同一个：${out.reason || ''}\n` +
+          '为避免用**别的视频的音轨**转录出错内容，这里拒绝继续。',
+        action:
+          '请在 B 站页面上停在目标视频，等页面加载完（标题、分 P 都显示正常）后重试；' +
+          '若反复出现，按 F5 刷新页面（扩展更新后已在页面上运行的主环境脚本不会自动替换）。'
+      };
+      throw err;
+    }
     candidates = (out && out.candidates) || [];
     audioDiag = (out && out.diag) || null;
     audioError = (out && out.diag && out.diag.bridgeError) || null;
