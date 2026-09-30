@@ -72,7 +72,10 @@ export function init(container) {
   requestAnimationFrame(() => {
     scrollHost.scrollTop = store.scrollOf('subtitle', 0);
   });
-  return { render, renderToolbar, scrollToLine };
+  // exportDialog 必须在这里导出：操作区的「导出」按钮会通过
+  // app.panels.subtitles.exportDialog() 调它（走格式选择弹窗）。
+  // 只 `export function` 而忘了放进 return，那边拿到的就是 undefined。
+  return { render, renderToolbar, scrollToLine, exportDialog };
 }
 
 function signatureOf(st) {

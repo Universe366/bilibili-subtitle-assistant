@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.54.0', contentVersion: '1.54.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.55.0', contentVersion: '1.55.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.54.0', stale: false }],
-    contentVersion: '1.54.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.55.0', stale: false }],
+    contentVersion: '1.55.0'
   },
   diagnostics: {
-    extensionVersion: '1.54.0',
-    contentVersion: '1.54.0',
+    extensionVersion: '1.55.0',
+    contentVersion: '1.55.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.54.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.55.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.54\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.55\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1313,11 +1313,9 @@ async function main() {
       'utf8'
     );
     check('转录把音轨 codec 传给解码器', /codecs: audio\.codecs \|\| ''/.test(txSrc3), '');
-    check('跳过原始音轨复用会说明原因', /未复用原始音轨：这条候选没有 SegmentBase 索引/.test(txSrc3), '');
-    check('默认关闭并说明原因', /这个功能\*\*默认关闭\*\*/.test(txSrc3), '');
-    check('默认不启用原始音轨复用', /reuseOriginalAudio !== true/.test(txSrc3), '');
-    check('默认配置该开关为 false', require('./default-settings.json').asr.reuseOriginalAudio === false, String(require('./default-settings.json').asr.reuseOriginalAudio));
-    check('WAV 模型时也说明', /要求 WAV，必须解码重编码/.test(txSrc3), '');
+    // 原始音轨复用那条实验路径已按用户要求移除，不该再出现在代码里
+    check('已移除原始音轨复用（实验路径已撤）',
+      !/reuseOriginalAudio/.test(txSrc3) && !/assembleOriginalAac/.test(txSrc3) && !/未复用原始音轨/.test(txSrc3), '');
 
     // ---- 清空字幕（用户报「读取出来的字幕为什么不能清除」）----
     const ctxSrc3 = fs.readFileSync(
@@ -1356,78 +1354,6 @@ async function main() {
       'utf8'
     );
     check('向导按钮文案已同步为「获取字幕」', /button\('获取字幕'/.test(wizSrc) && !/button\('抓取字幕'/.test(wizSrc), '');
-  }
-
-  // ---- 原始 AAC 音轨复用（sidx 解析是纯逻辑，可用构造数据测）----
-  {
-    const A = api.aac;
-    check('导出了 aac 模块', !!A && typeof A.parseSidx === 'function', typeof A);
-    if (A && typeof A.parseSidx === 'function') {
-      // 手工构造 sidx box 验证解析（含最容易漏掉的 reference_ID）
-      const buildSidx = (timescale, segs) => {
-        // 头部 32 字节 = size(4)+type(4)+version+flags(4)+reference_ID(4)
-        //                +timescale(4)+earliest(4)+first_offset(4)+reserved(2)+refCount(2)
-        const total = 32 + segs.length * 12;
-        const buf = new Uint8Array(total);
-        const dv = new DataView(buf.buffer);
-        dv.setUint32(0, total);
-        buf.set([0x73, 0x69, 0x64, 0x78], 4); // 'sidx'
-        dv.setUint32(8, 0); // version + flags
-        dv.setUint32(12, 2); // ★ reference_ID（必须被跳过）
-        dv.setUint32(16, timescale);
-        dv.setUint32(20, 0);
-        dv.setUint32(24, 0);
-        dv.setUint16(28, 0);
-        dv.setUint16(30, segs.length);
-        let o = 32;
-        for (const s of segs) {
-          dv.setUint32(o, s.size << 1);
-          dv.setUint32(o + 4, s.dur);
-          dv.setUint32(o + 8, 0);
-          o += 12;
-        }
-        return buf;
-      };
-      const sidx = A.parseSidx(buildSidx(48000, [{ size: 1000, dur: 48000 }, { size: 2000, dur: 96000 }]));
-      check('解析出正确的 timescale', !!sidx && sidx.timescale === 48000, String(sidx && sidx.timescale));
-      check('解析出 2 个分片（证明跳过了 reference_ID）', !!sidx && sidx.segments.length === 2, String(sidx && sidx.segments.length));
-      check(
-        '分片大小正确（最高位是 reference_type）',
-        !!sidx && sidx.segments[0].size === 1000 && sidx.segments[1].size === 2000,
-        JSON.stringify(sidx && sidx.segments.map((s) => s.size))
-      );
-      check(
-        '分片偏移递增',
-        !!sidx && sidx.segments[1].offset === sidx.segments[0].offset + 1000,
-        JSON.stringify(sidx && sidx.segments.map((s) => s.offset))
-      );
-      const grouped = A.groupSegmentsIntoSlices(sidx, 500, 300);
-      check('按目标时长分组', grouped.length >= 1, JSON.stringify(grouped.map((g) => [g.from, g.to])));
-      check(
-        '分组带字节范围与分片清单',
-        grouped[0] && Array.isArray(grouped[0].parts) && typeof grouped[0].bytesTo === 'number',
-        JSON.stringify(grouped[0] && Object.keys(grouped[0]))
-      );
-      check('片内含 init 段体积', grouped[0] && grouped[0].bytes >= 1000 + 500, String(grouped[0] && grouped[0].bytes));
-      check('parseByteRange 解析正常', JSON.stringify(A.parseByteRange('0-942')) === '{"start":0,"end":942}', JSON.stringify(A.parseByteRange('0-942')));
-      check('parseByteRange 对非法值返回 null', A.parseByteRange('abc') === null, JSON.stringify(A.parseByteRange('abc')));
-      check('没有 sidx 时返回 null', A.parseSidx(new Uint8Array([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70])) === null, '');
-      check('空输入返回 null', A.parseSidx(new Uint8Array(0)) === null, '');
-    }
-    const defS = require('./default-settings.json');
-    check('原始音轨复用默认关闭（未验证正确）', defS.asr.reuseOriginalAudio === false, String(defS.asr.reuseOriginalAudio));
-    const txSrc2 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
-      'utf8'
-    );
-    check('主流程接了原始音轨复用', /assembleOriginalAac/.test(txSrc2) && /原始音轨复用不可用/.test(txSrc2), '');
-    check('WAV-only 模型不走复用路径', /audioFormatFor\(platform\) === 'wav'/.test(txSrc2), '');
-    check('原始音轨复用放在下载之前（省时间与内存）',
-      txSrc2.indexOf('assembleOriginalAac') < txSrc2.indexOf('--- 2. 分块下载'), '');
-    check('复用成功后逐片释放字节', /sl\.bytes = null/.test(txSrc2), '');
-    check('长视频有内存预估提示', /预计内存峰值约/.test(txSrc2), '');
-    check('复用失败会回退（不抛错阻断）', /回退到解码 \+ 重编码路径/.test(txSrc2), '');
-    check('复用路径走 page.call 取字节（Referer 限制）', /name: 'fetchAudioRange'/.test(txSrc2), '');
 
     // ---- 身份绑定：面板要把「自己展示的那个视频」告诉页面 ----
     const subSrc3 = fs.readFileSync(
@@ -1437,12 +1363,55 @@ async function main() {
     check('字幕请求带上期望签名', /expectSignature: expected/.test(subSrc3), '');
     check('身份不符时放弃这批字幕', /if \(bundle && bundle\.identityMismatch\)/.test(subSrc3), '');
     check('身份不符时也自动重采一次', /lastIdentityMismatch/.test(subSrc3), '');
-    check('音轨请求带上 cid 与签名', /cid: video\.cid, signature: video\.signature/.test(txSrc2), '');
-    check('日志报告被排除的音轨数', /foreignCandidates\.length/.test(txSrc2), '');
+    check('音轨请求带上 cid 与签名', /cid: video\.cid, signature: video\.signature/.test(txSrc3), '');
+    check('日志报告被排除的音轨数', /foreignCandidates\.length/.test(txSrc3), '');
     // 身份没就绪时重试，而不是拿别的视频的音轨去转录
-    check('音轨身份未就绪时重试', /for \(let attempt = 0; attempt < 4; attempt \+= 1\)/.test(txSrc2), '');
-    check('重试仍失败则拒绝继续', /拿不到当前视频的音轨/.test(txSrc2), '');
+    check('音轨身份未就绪时重试', /for \(let attempt = 0; attempt < 4; attempt \+= 1\)/.test(txSrc3), '');
+    check('重试仍失败则拒绝继续', /拿不到当前视频的音轨/.test(txSrc3), '');
     check('字幕身份不稳定也自动重采', /lastIdentityUnstable/.test(subSrc3), '');
+  }
+
+  // ---- 跨面板 API 契约：被调用的方法必须真的挂到面板对象上 ----
+  //
+  // 这类 bug 极隐蔽：`runTranscribe` 有 `export`，但忘了放进
+  // `init()` 的 return 对象 —— 于是 app.panels.actions.runTranscribe()
+  // 是 undefined，点击时抛「不是函数」。
+  // 语法检查、打包、其它测试**全都发现不了**：
+  // 它们只检查「函数存在」，不检查「函数挂上去了没有」。
+  {
+    const dir = path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules');
+    const MODULE_OF = { actions: 'panel-actions.js', ai: 'panel-ai.js', subtitles: 'panel-subtitles.js' };
+    const sources = {};
+    for (const f of Object.values(MODULE_OF)) sources[f] = fs.readFileSync(path.join(dir, f), 'utf8');
+    // init() 的 return 块里有没有这个键
+    const initKeys = (file) => {
+      const m = /export function init\([\s\S]*?\n\s*return \{([\s\S]*?)\n\s*\};/.exec(sources[file] || '');
+      return m ? m[1] : null;
+    };
+    const hasKey = (file, key) => {
+      const block = initKeys(file);
+      if (block == null) return null;
+      return new RegExp(`(^|[\\s,{])${key}\\s*[,:}]`, 'm').test(block);
+    };
+
+    // 收集所有 app.panels.<panel>.<method> 调用
+    const calls = new Set();
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      for (const m of src.matchAll(/app\.panels\.(\w+)\.(\w+)/g)) calls.add(`${m[1]}.${m[2]}`);
+    }
+    const missing = [];
+    for (const c of [...calls].sort()) {
+      const [panel, method] = c.split('.');
+      const file = MODULE_OF[panel];
+      if (!file) continue; // settings / wizard 结构不同，不在本断言范围
+      if (hasKey(file, method) === false) missing.push(`${panel}.${method}`);
+    }
+    check('跨面板调用的方法都在 init() 里导出', missing.length === 0, missing.join('；'));
+    check('actions.init 导出了 runTranscribe', hasKey('panel-actions.js', 'runTranscribe') === true, '');
+    check('actions.init 导出了 summarize', hasKey('panel-actions.js', 'summarize') === true, '');
+    check('actions.init 导出了 harvest/reload/seek', 
+      hasKey('panel-actions.js', 'harvest') === true && hasKey('panel-actions.js', 'reload') === true && hasKey('panel-actions.js', 'seek') === true, '');
   }
 
   report(results, errors);

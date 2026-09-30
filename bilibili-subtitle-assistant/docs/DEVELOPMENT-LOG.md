@@ -3835,3 +3835,107 @@ PASS  collectAudioCandidates 接收身份参数
 **内存问题（1.52/1.53 那两条）依旧存在** —— 你的模型要求 WAV，
 130 分钟必然解码，必然吃 5GB 级内存。这一轮修的是**内容归属**，
 不是内存。**长视频 + XingChen 这条路，在换模型之前仍不建议用。**
+
+## 第七十一轮（1.55.0）—— 撤回实验功能 + 找出两个「点了会报错」的真 bug
+
+用户说：「还是不搞了吧（指直接复用 B 站的原始 AAC 音轨），
+之前的就挺好的，换回去吧。去优化优化操作，以及检测代码相关问题。」
+
+### ① 撤回「原始音轨复用」
+
+删掉了整条实验路径：
+
+- `src/sidepanel/modules/aac.js`（整文件）
+- `transcribe.js` 里的复用分支
+- `settings.js` 里 `reuseOriginalAudio` 设置项
+- 设置页的复选框
+- `selfcheck.js` 的导入
+- `verify/default-settings.json` 的字段
+- panel-test 里约 70 行的相关断言
+
+保留的只有一处：加了一条断言**确认它不会回来**
+（`!/reuseOriginalAudio/ && !/assembleOriginalAac/`）。
+
+### ② 撤回时我差点又埋一个坑（被自己抓住）
+
+删代码时把 `const concurrency = ...` 与 `const timeoutSeconds = ...`
+**一起删掉了**，但使用点还在（`runPool(plan.slices.slice(1), concurrency, ...)`）。
+
+**`node --check` 查不出来**（语法合法 —— 引用未声明的变量是合法语法）。
+是 `asr-test.mjs` 里一条「并发上限仍是 8」的断言抓住了它。
+如果那条断言不存在，这就是一个**上传前完全看不见的运行时崩溃**。
+
+### ③ 静态体检流程（新增 `verify/static-check.mjs`）
+
+加了「所有入口必须能打包」的检查 —— 用 esbuild bundle 五个入口
+（面板 / 自检 / 后台 / 内容脚本 / 主环境桥），
+能抓出「引用了不存在的模块或导出」。
+
+**试过但放弃的**：用正则扫「未声明标识符」。噪声太大 ——
+属性名、对象键、模板串里的词全被当成标识符，出了 1758 条误报，
+**一条真问题都挑不出来**。一个没人信的检查等于没有检查，所以删掉了，
+并在文件里写清楚「为什么不做这个」。
+
+> 诚实的边界：打包检查覆盖不了「引用了未声明的变量」。
+> 这一类目前只能靠测试套件覆盖到 —— 这也是为什么要保留
+> `asr-test` 那条看起来"琐碎"的断言。
+
+### ④ 新断言立刻抓出两个真 bug（跨面板 API 契约）
+
+新增「被 `app.panels.X.Y` 调用的方法，必须在 X 的 `init()` 里导出」。
+一跑就抓出两个：
+
+**bug 1：`runTranscribe` 没挂到面板上**
+
+```js
+// panel-actions.js
+export function runTranscribe() { ... }   // ✅ 有 export
+return { render, seek, reload, harvest, ... };  // ❌ 但没放进 return
+```
+
+`panel-subtitles.js` 里 `app.panels.actions.runTranscribe()` 拿到的是
+`undefined` —— **点击「语音转录」直接抛「不是函数」**。
+这是我上一轮（1.51.0）刚加的按钮，**一直是坏的**。
+
+**bug 2：`exportDialog` 没挂到面板上**
+
+```js
+// panel-subtitles.js
+export function exportDialog() { ... }        // ✅ 有 export
+return { render, renderToolbar, scrollToLine };  // ❌ 漏了
+```
+
+`panel-actions.js` 里 `app.panels.subtitles.exportDialog()` 同样是
+`undefined` —— **操作区的「导出」按钮点击无效**。
+
+两个 bug 的共同特征：**`export` 存在，但没进 `init()` 的 return 对象**。
+语法检查、打包、之前所有测试**全都发现不了** ——
+因为它们只检查「函数存在」，不检查「函数挂上去了没有」。
+
+### 为什么之前的测试没抓到
+
+我上一轮给 `runTranscribe` 写的断言是：
+
+```js
+check('有统一的 runTranscribe 入口', /export function runTranscribe\(\)/.test(actSrc));
+check('失败提示里的转录走 runTranscribe', /button\('语音转录', \(\) => runTranscribe\(\)/.test(actSrc));
+```
+
+**两条都只验证「写了这个函数」和「调用了它」，
+没有验证「调用方能拿到它」。** 典型的"验证了错误的东西"。
+新断言改从 `init()` 的 return 块里查键名，才真正覆盖到。
+
+### 新增 4 项断言
+
+```
+PASS  跨面板调用的方法都在 init() 里导出
+PASS  actions.init 导出了 runTranscribe
+PASS  actions.init 导出了 summarize
+PASS  actions.init 导出了 harvest/reload/seek
+```
+
+### 测试
+
+```
+22 个套件 + 静态体检，共 1239 项断言，全部通过
+```

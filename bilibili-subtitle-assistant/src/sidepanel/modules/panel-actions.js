@@ -57,6 +57,11 @@ export function init(container) {
     reload,
     transcribe: contextTranscribe,
     harvest: contextHarvest,
+    // 统一的转录入口（会先关掉浮层）。字幕面板通过
+    // app.panels.actions.runTranscribe() 调用它 —— 必须在这里导出，
+    // 否则那边拿到 undefined，点击时报「不是函数」。
+    runTranscribe,
+    summarize,
     generateChapters,
     runQualityCheck,
     qualityCheck: contextQualityCheck

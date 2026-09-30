@@ -137,8 +137,7 @@
     "sliceSeconds": 300,
     "overlapSeconds": 4,
     "autoOptimizeAfter": false,
-    "autoApplyAfter": false,
-    "reuseOriginalAudio": false
+    "autoApplyAfter": false
   },
   "prompt": {
     "activeId": "default",

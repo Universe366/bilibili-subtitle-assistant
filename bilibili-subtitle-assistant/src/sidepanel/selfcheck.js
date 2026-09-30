@@ -21,7 +21,6 @@ import * as bridgeModule from './modules/bridge.js';
 import * as verifyLib from '../shared/verify.js';
 import * as ui from './modules/ui.js';
 import * as timeline from './modules/timeline.js';
-import * as aac from './modules/aac.js';
 
 const api = {
   VERSION: constants.VERSION,
@@ -48,7 +47,6 @@ const api = {
   verifyLib,
   ui,
   timeline,
-  aac,
   // 面板 API（app.panels.*）在 app.js 里挂载，这里给个便捷入口
   get panels() {
     return context.app.panels;
