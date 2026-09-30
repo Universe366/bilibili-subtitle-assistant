@@ -176,6 +176,53 @@ export async function loadVideo(opts = {}) {
       );
     }
     if (store.get().settings) await pushPageOptions();
+
+    // ---- 已经处理过的视频：直接把上次的字幕 + 总结呈现出来 ----
+    //
+    // 用户需求：「如果遇到已经读取总结过的视频，直接将总结过的内容呈现出来，
+    // 不用重新搞」。所以在读取视频后自动查一次历史，命中就直接填上，
+    // 不必再点「抓取字幕」「生成总结」。
+    //
+    // 只填**空着的**字段：如果本次会话里已经有内容（例如刚生成过），
+    // 不要被历史覆盖掉。
+    if (changed) {
+      try {
+        // key 必须与 ST.historyKey 完全一致（bvid|cid|page），
+        // 否则查不到上次的结果。
+        const key = [video.bvid || '-', video.cid || '-', video.page == null ? '-' : String(video.page)].join('|');
+        const hit = await call('history.get', { key }, { timeoutMs: 8000 });
+        const row = hit && hit.row;
+        const hasLines = Array.isArray(row && row.lines) && row.lines.length > 0;
+        const hasSummary = !!(row && row.summary);
+        if (hasLines || hasSummary) {
+          store.set({
+            video: {
+              ...store.get().video,
+              stats: row.stats || store.get().video.stats,
+              subtitleMeta: row.subtitleMeta || store.get().video.subtitleMeta,
+              chapters: row.chapters || [],
+              source: row.source || store.get().video.source
+            },
+            subtitles: hasLines ? row.lines : store.get().subtitles,
+            summary: hasSummary ? row.summary : store.get().summary
+          });
+          recordTimeline('载入历史结果', `${hasLines ? `${row.lines.length} 行字幕` : ''}${hasLines && hasSummary ? ' + ' : ''}${hasSummary ? '总结' : ''}`);
+          renderPanels();
+          toast(
+            {
+              title: '已载入上次的结果',
+              detail: `${hasLines ? `字幕 ${row.lines.length} 行` : ''}${hasLines && hasSummary ? '，' : ''}${
+                hasSummary ? '总结已就绪' : ''
+              }。想重新生成，点「重新生成总结」。`
+            },
+            'ok',
+            4000
+          );
+        }
+      } catch (err) {
+        /* 载入历史失败不影响读取视频本身 */
+      }
+    }
     return video;
   } catch (err) {
     showError(err, '读取视频信息失败');

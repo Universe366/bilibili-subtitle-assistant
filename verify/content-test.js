@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.41.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.42.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -354,6 +354,22 @@ async function main() {
       }, 80);
     });
     check('退休后的旧脚本不再处理内容请求', retired === null || retired === undefined, JSON.stringify(retired));
+  }
+
+  // ---- 嗅探字幕必须按视频归属过滤（防「字幕与视频不一样」）----
+  {
+    const bridgeSrc = fs.readFileSync(path.join(EXT, 'src/content', 'page-bridge.js'), 'utf8');
+    check('字幕签名抽成了 buildSignature', /function buildSignature\(\{ bvid, aid, epId, idx, cid \}\)/.test(bridgeSrc), '');
+    check('有 currentSignature 计算当前页签名', /function currentSignature\(\)/.test(bridgeSrc), '');
+    check('签名格式与页面信息一致（bvid@pN@cCID）', /\`p\$\{idx\}\`, \`c\$\{cid \|\| '-'\}\`\]\.join\('@'\)/.test(bridgeSrc), '');
+    check('记录嗅探结果时打上签名', /source: source \|\| 'sniff',\s*\n\s*sig: currentSignature\(\)/.test(bridgeSrc), '');
+    check('有 freshSniffed 只取当前视频的嗅探结果', /function freshSniffed\(\)/.test(bridgeSrc), '');
+    check('freshSniffed 按签名过滤', /\.filter\(\(s\) => s && s\.sig && s\.sig === curSig\)/.test(bridgeSrc), '');
+    check('等待新字幕用 freshSniffed（不会被旧残留误判）', /if \(freshSniffed\(\)\.length\) break;/.test(bridgeSrc), '');
+    // 关键：候选取的是过滤后的结果，而不是整个 Map
+    check('候选取过滤后的 sniffed', /const sniffedAll = Array\.from\(subtitleSniff\.items\.values\(\)\);\s*\n\s*const sniffed = freshSniffed\(\);/.test(bridgeSrc), '');
+    check('对外报告残留条数以便诊断', /staleSniffCount/.test(bridgeSrc), '');
+    check('没有签名的旧条目一律排除', /s && s\.sig && s\.sig === curSig/.test(bridgeSrc), '');
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');

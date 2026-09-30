@@ -2616,3 +2616,90 @@ PASS  AI 工具栏有复制总结 / 导出总结 / 重置对话
 PASS  复制/导出/重置不在菜单里（直接可见）
 PASS  格式规则要求先给结论与速览表 / 含任务列表 / 要求内容全部来自字幕
 ```
+
+## 第五十八轮（1.42.0）—— 字幕串视频的根因 / 自动载入上次结果
+
+### ① 「读取视频完后，显示的字幕与视频的字幕不一样」
+
+**根因找到了，是真实的逻辑缺陷。**
+
+`page-bridge.js` 里有一个页面级的字幕嗅探缓存：
+
+```js
+const subtitleSniff = { items: new Map(), ... };
+```
+
+它记录所有被网络嗅探到的字幕正文（这是「不点播放器也能拿到字幕」的关键机制）。
+问题是：**这个 Map 从不随换视频清空**。
+
+于是从 A 切到 B 之后：
+
+1. A 的字幕正文**仍然留在 items 里**
+2. `getSubtitles` 把它连同 B 的一起作为候选返回
+3. 某个候选被选中 → 显示的却是 A 的字幕
+
+这正是「总会出现」的原因 —— 只要你在同一个页面里换过视频/分 P，就可能命中。
+
+**改法**：给嗅探结果打上**当时的视频签名**，取出时按签名过滤。
+
+```js
+// 记录时（签名 = bvid @ pN @ cCID，与页面信息用的是同一套）
+subtitleSniff.items.set(key, { url, body, at, source, sig: currentSignature() });
+
+// 取出时
+function freshSniffed() {
+  const curSig = currentSignature();
+  return Array.from(subtitleSniff.items.values())
+    .filter((s) => s && s.sig && s.sig === curSig);
+}
+```
+
+**连带修掉一个隐蔽的误判**：那个「等待页面上出现新字幕」的循环原本写成
+
+```js
+if (subtitleSniff.items.size) break;   // ← 含旧视频残留
+```
+
+所以换视频后它会**第一轮就立刻退出**，并报告「已经拿到字幕了」，
+实际上拿到的可能是上一个视频的。现在改成 `if (freshSniffed().length) break;`。
+
+> 这里特意**把签名抽成共用的 `buildSignature()`** ——
+> 原来签名的拼法内联在 `getPageInfo` 里，如果嗅探那边另写一份，
+> 两边一旦不一致，过滤就永远不匹配（等于没过滤）。共用一份才安全。
+
+**没有签名的旧条目一律排除** —— 宁可少一条候选，也不给错内容。
+另外对外多报一个 `staleSniffCount`，方便以后诊断这类问题。
+
+### ② 已经总结过的视频，直接呈现结果
+
+用户需求：「如果遇到已经读取总结过的视频，直接将总结过的内容呈现出来，不用重新搞」。
+
+历史记录里本来就存了 `summary` 与 `lines`（每次抓字幕/生成总结都会 `saveHistory`）。
+现在 `loadVideo` 读完视频后**自动查一次历史**，命中就把字幕与总结填上，并提示：
+
+> 已载入上次的结果 —— 字幕 240 行，总结已就绪。想重新生成，点「重新生成总结」。
+
+几个细节：
+
+- **只在换视频时查**（`changed` 分支内），同一个视频反复读不会反复弹提示
+- **只填「空着的」字段** —— 如果本次会话里刚生成过，不会被历史覆盖
+- key 必须与后台 `historyKey` 完全一致（`bvid|cid|page`），否则查不到
+- 载入失败**不影响读取视频本身**（历史只是加速，不是必需品）
+
+### 新增 15 项测试
+
+```
+PASS  字幕签名抽成了 buildSignature
+PASS  有 currentSignature 计算当前页签名
+PASS  签名格式与页面信息一致（bvid@pN@cCID）
+PASS  记录嗅探结果时打上签名
+PASS  有 freshSniffed 只取当前视频的嗅探结果
+PASS  freshSniffed 按签名过滤
+PASS  等待新字幕用 freshSniffed（不会被旧残留误判）
+PASS  候选取过滤后的 sniffed
+PASS  对外报告残留条数以便诊断
+PASS  loadVideo 会查历史
+PASS  历史 key 与后台一致（bvid|cid|page）
+PASS  只填空着的字段（不与本次会话内容冲突）
+PASS  载入失败不影响读视频
+```

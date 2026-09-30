@@ -359,7 +359,7 @@
     const pageParam = parseQuery().p;
     const cid = currentCid();
     // 用「视频 ID + 分 P + cid」做签名：B 站会给 URL 挂易变参数，用整串 URL 会反复误判（稳定性 #10）
-    const signature = [bvid || aid || epId || location.pathname, `p${idx}`, `c${cid || '-'}`].join('@');
+    const signature = buildSignature({ bvid, aid, epId, idx, cid });
 
     return {
       ok: true,
@@ -434,6 +434,44 @@
     return null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 视频签名（bvid+分P+cid）
+  // ---------------------------------------------------------------------------
+
+  // 抽成函数是为了让「嗅探到的字幕」也能打上签名 —— 见 subtitleSniff。
+  function buildSignature({ bvid, aid, epId, idx, cid }) {
+    return [bvid || aid || epId || location.pathname, `p${idx}`, `c${cid || '-'}`].join('@');
+  }
+
+  // 当前页面的签名。用在「昵探到的字幕是否属于当前视频」的判断上。
+  function currentSignature() {
+    try {
+      const vd = initialVideoData();
+      const kind = pageKind();
+      const season = seasonData();
+      let bvid = (vd && vd.bvid) || null;
+      let aid = (vd && vd.aid) || null;
+      let epId = null;
+      if (kind === 'bangumi' && season && season.ep) {
+        epId = season.ep.ep_id || season.ep.id || null;
+        aid = season.ep.aid || aid;
+        bvid = season.ep.bvid || bvid;
+      }
+      const idx = currentPartIndex();
+      return buildSignature({ bvid, aid, epId, idx, cid: currentCid() });
+    } catch (err) {
+      return '';
+    }
+  }
+
+  // 属于**当前视频**的嗅探结果。所有「等新字幕 / 判断有没有」的地方
+  // 都必须用它，而不是 subtitleSniff.items.size —— 后者含上一个视频的残留，
+  // 会让等待循环第一轮就误判为「已经拿到了」。
+  function freshSniffed() {
+    const curSig = currentSignature();
+    return Array.from(subtitleSniff.items.values()).filter((s) => s && s.sig && s.sig === curSig);
+  }
+
   function recordSniffedSubtitle(url, text, source) {
     try {
       const json = typeof text === 'string' ? JSON.parse(text) : text;
@@ -442,7 +480,21 @@
       const key = subtitlePathKey(url);
       const prev = subtitleSniff.items.get(key);
       if (prev && prev.body.length >= body.length) return;
-      subtitleSniff.items.set(key, { url: String(url), body, at: Date.now(), source: source || 'sniff' });
+      // 打上**当时的视频签名**。
+      //
+      // 为什么必须记：这个 Map 是页面级的，**从不随换视频清空**。
+      // 于是从 A 切到 B 后，A 的字幕正文仍在 items 里，
+      // 并作为候选一起喂给 B —— 一旦被抓出来用上，
+      // 显示的字幕就与当前视频对不上（用户报的
+      // 「读取视频完后，显示的字幕与视频的字幕不一样」）。
+      // 有了签名，就能在取出时把不属于当前视频的过滤掉。
+      subtitleSniff.items.set(key, {
+        url: String(url),
+        body,
+        at: Date.now(),
+        source: source || 'sniff',
+        sig: currentSignature()
+      });
       subtitleSniff.count += 1;
       subtitleSniff.lastAt = Date.now();
       LOG('嗅探到字幕正文', key, body.length, '行');
@@ -570,9 +622,10 @@
     }
     for (let i = 0; i < 12; i += 1) {
       await sleep(250);
-      if (subtitleSniff.items.size) break;
+      if (freshSniffed().length) break;
     }
-    return { ok: subtitleSniff.items.size > 0, count: subtitleSniff.items.size };
+    const got = freshSniffed().length;
+    return { ok: got > 0, count: got };
   }
 
   // wbi 签名（/x/player/wbi/v2 需要；缺签名时接口会返回 -403）
@@ -818,7 +871,13 @@
     }
 
     // ⑤ 网络嗅探到的正文（只有正文，没有轨信息，但可以先给用户用上）
-    const sniffed = Array.from(subtitleSniff.items.values());
+    //
+    // 只取**属于当前视频**的嗅探结果：这个 Map 从不随换视频清空，
+    // 上一个视频的字幕若混进来，就会显示成「与当前视频不一样的字幕」。
+    // 没有签名（老条目）的一律排除 —— 宁可少一条候选，也不能给错内容。
+    const sniffedAll = Array.from(subtitleSniff.items.values());
+    const sniffed = freshSniffed();
+    const staleSniffed = sniffedAll.length - sniffed.length;
     if (sniffed.length) {
       groups.sniffed = sniffed.map((s, i) => ({
         id: `sniff-${i}`,
@@ -839,6 +898,7 @@
       errors,
       needLogin,
       sniffCount: sniffed.length,
+      staleSniffCount: staleSniffed,
       groups: Object.keys(groups),
       sniffed: groups.sniffed || []
     };
@@ -1615,7 +1675,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.41.0',
+    version: '1.42.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
