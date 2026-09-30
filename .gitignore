@@ -24,3 +24,11 @@ Thumbs.db
 .env
 .env.*
 secrets.json
+
+# 提交信息与临时探针（不应入库）
+commit-msg*.txt
+COMMIT_MSG.txt
+verify/probe-*.mjs
+verify/dbg*.mjs
+verify/calc*.mjs
+verify/*-probe*.js
