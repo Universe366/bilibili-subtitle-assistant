@@ -1,6 +1,6 @@
 # 验证套件（不属于扩展运行时）
 
-针对 `../bilibili-subtitle-assistant` 的自动化验证。**22 个套件共 1136 项断言，全部通过。**
+针对 `../bilibili-subtitle-assistant` 的自动化验证。**22 个套件共 1141 项断言，全部通过。**
 
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb
@@ -12,7 +12,7 @@ node flow2.js               # 完整业务流程（最关键）         34 项
 node harvest-test.mjs       # 字幕抓取层（5 种来源组合）     22 项
 node bili-test.js           # B 站接口与 wbi 签名           29 项
 node sniff-test.mjs         # 网络嗅探 + 音轨抓取           27 项
-node asr-test.mjs           # 语音识别传输/参数/切片/诊断   105 项
+node asr-test.mjs           # 语音识别传输/参数/切片/诊断   240 项
 node asr-e2e-test.mjs       # ASR 400 端到端复现（含文案）   16 项
 node bridge-transparency-test.mjs  # 主环境桥透明性        18 项
 node method-contract-test.mjs      # 三层方法白名单一致性   12 项

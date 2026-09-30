@@ -1,7 +1,7 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '1.44.0';
+export const VERSION = '1.45.0';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
@@ -150,7 +150,10 @@ export const ASR_LIMITS = {
   defaultSizeLimitMB: 50,
   targetRate: 16000,
   defaultTimeoutSeconds: 180,
-  defaultConcurrency: 1
+  // 并发分片数。以前是 1 —— 那等于**完全串行**，是转录慢的一大原因。
+  // 分片之间互相独立，提高并发几乎线性提速；上限 8。
+  // 默认给 4：比 1 快得多，又不容易撞到平台限流。
+  defaultConcurrency: 4
 };
 
 // 字幕时长校验分档（2.1）

@@ -476,6 +476,19 @@ function asrGroup(d) {
     body.appendChild(checkbox(d.asr.autoOptimizeAfter, (v) => { d.asr.autoOptimizeAfter = v; markDirty(); }, '转录完成后自动做 AI 优化（默认关闭，会消耗额度）'));
     body.appendChild(checkbox(d.asr.autoApplyAfter, (v) => { d.asr.autoApplyAfter = v; markDirty(); }, '转录完成后自动替换（默认关闭）'));
     body.appendChild(h('div', { class: 'note', text: '说明：分片时长会按「平台单文件上限」自动收缩；若某片仍超限，会按 0.7 系数重切，最多 3 次。终止后不会再继续消耗额度。' }));
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '提速建议：\n' +
+          '· 「并发切片数」提高到 4~8 —— 分片互相独立，提速近乎线性；\n' +
+          '  设成 1 等于完全串行，是最常见的“慢”的原因。\n' +
+          '· 「切片时长」调小到 120~300 秒 —— 分片更多、更快出结果，' +
+          '不会卡在某一长片上；代价是请求数变多。\n' +
+          '· 若平台按 M4A 上传（如硅基流动），扩展会**并行**做实时编码，' +
+          '只在开头等第一片；换成原生支持 WAV 的模型可完全省掉这段编码。'
+      })
+    );
   });
 }
 

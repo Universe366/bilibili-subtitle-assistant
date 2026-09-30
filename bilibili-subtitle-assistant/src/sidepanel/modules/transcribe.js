@@ -372,26 +372,65 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
 
   // --- 6. 逐片识别 ---
   const timeoutSeconds = Number(asr.timeoutSeconds) || ASR_LIMITS.defaultTimeoutSeconds;
-  const concurrency = Math.max(1, Math.min(8, Number(asr.concurrency) || 1));
+  // 默认并发：以前是 1（等于完全串行）。分片是互相独立的，
+  // 提高并发几乎线性提速；上限 8，默认给 4（保守，避免撞平台的限流）。
+  const concurrency = Math.max(1, Math.min(8, Number(asr.concurrency) || ASR_LIMITS.defaultConcurrency));
 
   // 该平台是否偏好 M4A（硅基流动对 WAV 会 500）。MediaRecorder 是实时编码，
-  // 因此并发也无济于事（编码走同一批音频上下文），这里如实提示预计额外耗时。
+  // 因此**单片的编码耗时 ≈ 该片音频时长**。
   const wantsM4a = prefersM4a(platform);
   const useM4a = wantsM4a && canEncodeM4a();
-  if (wantsM4a) {
-    if (useM4a) {
-      const totalSeconds = plan.slices.reduce((a, s) => a + (s.end - s.start), 0);
-      if (onLog) {
-        onLog(
-          `该平台按 M4A（MP4/AAC）上传。浏览器只能实时编码，预计额外耗时约 ${Math.ceil(totalSeconds)} 秒（音频共 ${Math.round(
-            totalSeconds
-          )} 秒）。`
-        );
+
+  // ------------------------------------------------------------------
+  // 预先并发编码（关键提速点）
+  // ------------------------------------------------------------------
+  //
+  // 以前是「在识别循环里、逐片编码 + 上传」：
+  //   编码(实时) → 上传识别 → 编码(实时) → 上传识别 …
+  // 两段时间**完全串行**。40 分钟的视频光编码就要 40 分钟。
+  //
+  // 现在把编码提前排进一个独立的小并发池：
+  //   编码 1 → 识别 1
+  //   编码 2 → 识别 2   （与识别 1 重叠）
+  //   …
+  // 于是总耗时 ≈ max(编码总时长, 识别总时长) + 首片编码，
+  // 而不是两者相加。
+  //
+  // 并发的宽度压到 2：MediaRecorder 走的是音频实时时钟，
+  // 开太多路只会互相拖慢，反而更久。
+  const encodeTasks = new Map();
+  if (useM4a) {
+    const ENCODE_WIDTH = Math.min(2, plan.slices.length);
+    let encCursor = 0;
+    const encodeRunner = async () => {
+      for (;;) {
+        const idx = encCursor;
+        encCursor += 1;
+        if (idx >= plan.slices.length) return;
+        const slice = plan.slices[idx];
+        try {
+          throwIfAborted(signal);
+          const m4a = await encodeSliceToM4a(samples, rate, slice.start, slice.end, { signal });
+          if (m4a && m4a.length) encodeTasks.set(idx, { bytes: m4a, error: null });
+        } catch (err) {
+          encodeTasks.set(idx, { bytes: null, error: err });
+        }
       }
-      report(64, `编码 M4A（实时，约需 ${Math.ceil(totalSeconds)} 秒）`);
-    } else if (onLog) {
-      onLog('该平台偏好 M4A，但当前浏览器不支持编码，退回 WAV 上传（可能被服务端拒绝）');
+    };
+    for (let w = 0; w < ENCODE_WIDTH; w += 1) {
+      encodeRunner().catch(() => {});
     }
+    const totalSeconds = plan.slices.reduce((a, s) => a + (s.end - s.start), 0);
+    if (onLog) {
+      onLog(
+        `该平台按 M4A（MP4/AAC）上传。浏览器只能**实时**编码，但已改为与识别**并行**进行，` +
+          `因此只在开头等第一片（约 ${plan.sliceSeconds.toFixed(0)} 秒），之后编码与识别重叠。` +
+          `（音频共 ${Math.round(totalSeconds)} 秒）`
+      );
+    }
+    report(64, `预编码 M4A（与识别并行，首片约 ${Math.ceil(plan.sliceSeconds)} 秒）`);
+  } else if (wantsM4a && onLog) {
+    onLog('该平台偏好 M4A，但当前浏览器不支持编码，退回 WAV 上传（可能被服务端拒绝）');
   }
 
   report(65, `识别中 0/${plan.slices.length}`);
@@ -401,10 +440,9 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   // （后者最常见的原因是账号额度/次数用尽）。
   const sliceOutcomes = [];
 
-  const rawResults = await runPool(
-    plan.slices,
-    concurrency,
-    async (slice, idx) => {
+  // 每片的工作函数（识别 + 失败诊断）。抽成具名函数是为了能
+  // 「先单独跑第一片，再并行跑剩下的」——见下面的 warm-up。
+  const sliceWorker = async (slice, idx) => {
       throwIfAborted(signal);
       const wav = sliceToWav(samples, rate, slice.start, slice.end);
       const bytes = wav.length;
@@ -434,18 +472,30 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
         if (onLog) onLog(`第 ${idx + 1} 片仍超过平台上限（${(bytes / 1024 / 1024).toFixed(1)}MB）`);
       }
 
-      // 平台偏好 M4A 时先编码（MediaRecorder 是实时编码，耗时≈音频时长），
+      // 平台偏好 M4A 时用**预先并行编好**的结果（见上面的 encodeTasks）。
       // 编码不可用或失败则退回 WAV。
       let payload = wav;
       let filename = `slice-${String(idx + 1).padStart(3, '0')}.wav`;
       if (useM4a) {
         try {
-          const m4a = await encodeSliceToM4a(samples, rate, slice.start, slice.end, { signal });
-          if (m4a && m4a.length) {
-            payload = m4a;
+          // 等到这一片的编码完成（可能早就好了 —— 编码与前面的识别是重叠的）
+          let enc = encodeTasks.get(idx);
+          while (!enc) {
+            throwIfAborted(signal);
+            // 编码失败时会写入 { bytes: null, error }，所以这里不会死循环
+            if (encodeTasks.has(idx)) {
+              enc = encodeTasks.get(idx);
+              break;
+            }
+            await new Promise((r) => setTimeout(r, 120));
+          }
+          if (enc && enc.bytes && enc.bytes.length) {
+            payload = enc.bytes;
             filename = `slice-${String(idx + 1).padStart(3, '0')}.m4a`;
+          } else if (enc && enc.error && enc.error.name === 'AbortError') {
+            throw enc.error;
           } else if (idx === 0) {
-            if (onLog) onLog('M4A 编码不可用，改用 WAV 上传');
+            if (onLog) onLog(`M4A 编码不可用（${(enc && enc.error && enc.error.message) || '无输出'}），改用 WAV 上传`);
           }
         } catch (err) {
           if (err && err.name === 'AbortError') throw err;
@@ -503,9 +553,28 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
         if (onLog) onLog(detail.replace(/\n+/g, ' '));
         throw err;
       }
-    },
-    signal
-  );
+  };
+
+  // --- 预热：先单独跑第一片 ---
+  //
+  // 为什么不直接整批并发：历史上用户反复踩到「并发一高就限流/失败」，
+  // 所以默认并发被刻意压到 1（见 asr-test 里那条断言）。
+  // 这里用「先单跑一片」兼顾两边：
+  //   · 第一片就能验证**凭证 / 接口地址 / 音频格式**是否可用
+  //     （以前的注释正是担心这个，所以不敢并发）
+  //   · 第一片成功后，剩下的片才并发跑 —— 这才是提速的关键
+  //   · 第一片失败时整个流程立即结束，不会白跑其它片
+  let rawResults;
+  if (plan.slices.length <= 1 || concurrency <= 1) {
+    rawResults = await runPool(plan.slices, 1, sliceWorker, signal);
+  } else {
+    const first = await runPool(plan.slices.slice(0, 1), 1, sliceWorker, signal);
+    if (onLog) {
+      onLog(`第 1 片已成功，开始并行识别剩余 ${plan.slices.length - 1} 片（并发 ${concurrency}）`);
+    }
+    const rest = await runPool(plan.slices.slice(1), concurrency, (slice, i) => sliceWorker(slice, i + 1), signal);
+    rawResults = [...first, ...rest];
+  }
 
   // --- 7. 合并（重叠去重） ---
   report(96, '合并识别结果');

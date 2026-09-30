@@ -648,7 +648,22 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('默认分片时长对齐 Bilitato 的 600s', ASR_LIMITS.defaultSliceSeconds === 600, String(ASR_LIMITS.defaultSliceSeconds));
   check('最小分片时长 45s', ASR_LIMITS.minSliceSeconds === 45, String(ASR_LIMITS.minSliceSeconds));
   check('体积安全系数 0.72', Number(ASR_LIMITS.sizeSafetyRatio) === 0.72, String(ASR_LIMITS.sizeSafetyRatio));
-  check('默认并发为 1（少一次失败机会）', ASR_LIMITS.defaultConcurrency === 1, String(ASR_LIMITS.defaultConcurrency));
+  // 并发默认值的历史：原本刻意设为 1（「少一次失败机会」，防限流）。
+  // 但 1 等于**完全串行**，是转录慢的主因。现在改为默认 4，
+  // 并用「先单独跑第一片、成功后再并行」的预热策略保住原来的安全性
+  // —— 第一片仍先验证凭证/地址/格式，失败就立即结束，不会白跑。
+  check('默认并发为 4（预热后并行）', ASR_LIMITS.defaultConcurrency === 4, String(ASR_LIMITS.defaultConcurrency));
+  {
+    const txSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
+      'utf8'
+    );
+    check('存在「先单跑第一片」的预热逻辑', /预热：先单独跑第一片/.test(txSrc), '');
+    check('预热成功后并行剩余片', /runPool\(plan\.slices\.slice\(1\), concurrency/.test(txSrc), '');
+    check('只有一片或并发为 1 时不预热', /plan\.slices\.length <= 1 \|\| concurrency <= 1/.test(txSrc), '');
+    check('M4A 编码改为与识别并行（不再串行等待）', /encodeTasks/.test(txSrc) && /预编码 M4A/.test(txSrc), '');
+    check('并发上限仍是 8', /Math\.min\(8, Number\(asr\.concurrency\)/.test(txSrc), '');
+  }
 
   const rate = 16000;
   const samples = new Float32Array(Math.floor(rate * 415.6));
