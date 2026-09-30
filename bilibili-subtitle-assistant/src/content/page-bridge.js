@@ -128,6 +128,70 @@
     return out;
   }
 
+  // ---------------------------------------------------------------------------
+  // 页面身份（唯一权威来源）
+  // ---------------------------------------------------------------------------
+  //
+  // 用户反复报的核心问题：「读取的视频显示是对的，但提取的字幕/转录
+  // 却不是当前视频」。
+  //
+  // 根因是**身份没有绑定**：标题/时长走一条路径取，字幕轨走另一条、
+  // 音轨再走一条，每条都在各自时刻**重新**调用 `currentCid()` /
+  // `initialVideoData()`。单页应用切换视频时页面状态是渐变的，
+  // 于是「标题是新的、cid 还是旧的」会同时成立 ——
+  // 界面看着对，内容却来自别的视频。
+  //
+  // 这里把身份收敛成**一个函数**，并让所有取内容的路径
+  // 用它做「取之前 / 取之后」的一致性校验。
+  function pageIdentity() {
+    try {
+      const vd = initialVideoData();
+      const kind = pageKind();
+      const season = seasonData();
+      let bvid = (vd && vd.bvid) || null;
+      let aid = (vd && vd.aid) || null;
+      let epId = null;
+      if (kind === 'bangumi' && season && season.ep) {
+        epId = season.ep.ep_id || season.ep.id || null;
+        aid = season.ep.aid || aid;
+        bvid = season.ep.bvid || bvid;
+      }
+      const idx = currentPartIndex();
+      const cid = currentCid();
+      return {
+        bvid,
+        aid,
+        cid,
+        epId,
+        page: idx,
+        signature: buildSignature({ bvid, aid, epId, idx, cid })
+      };
+    } catch (err) {
+      return { bvid: null, aid: null, cid: null, epId: null, page: 1, signature: '' };
+    }
+  }
+
+  // 采集一个「与视频身份有关」的结果，并保证它在采集期间没有变化。
+  //
+  // 返回 { ok, value, identity, reason }：
+  //   · 前后身份一致 → ok:true，附带采集时用的身份
+  //   · 期间被切换   → ok:false, reason:'identity-changed'
+  // 这样调用方就有**确定性**依据决定「这批内容可信吗」，
+  // 而不是只看内容长得对不对。
+  async function withIdentityGuard(collect, expectSignature) {
+    const before = pageIdentity();
+    // 调用方指定了期望签名时，先确认页面确实已经是那个视频
+    if (expectSignature && before.signature && before.signature !== expectSignature) {
+      return { ok: false, value: null, identity: before, reason: 'identity-mismatch' };
+    }
+    const value = await collect(before);
+    const after = pageIdentity();
+    if (after.signature !== before.signature) {
+      return { ok: false, value, identity: after, reason: 'identity-changed', from: before.signature, to: after.signature };
+    }
+    return { ok: true, value, identity: before, reason: '' };
+  }
+
   // 分 P：用 p 参数定位；用「视频 ID + 分 P」做签名（稳定性 #10）
   function currentPartIndex() {
     const n = Number(parseQuery().p);
@@ -357,9 +421,11 @@
     }
 
     const pageParam = parseQuery().p;
-    const cid = currentCid();
-    // 用「视频 ID + 分 P + cid」做签名：B 站会给 URL 挂易变参数，用整串 URL 会反复误判（稳定性 #10）
-    const signature = buildSignature({ bvid, aid, epId, idx, cid });
+    // 身份统一从 pageIdentity() 取 —— 保证「标题用的 cid」与
+    // 「字幕/音轨用的 cid」永远是同一个（见 pageIdentity 的注释）。
+    const ident = pageIdentity();
+    const cid = ident.cid;
+    const signature = ident.signature;
 
     return {
       ok: true,
@@ -443,25 +509,10 @@
     return [bvid || aid || epId || location.pathname, `p${idx}`, `c${cid || '-'}`].join('@');
   }
 
-  // 当前页面的签名。用在「昵探到的字幕是否属于当前视频」的判断上。
+  // 当前页面的签名。用在「嗅探到的字幕是否属于当前视频」的判断上。
+  // 直接复用 pageIdentity()，保证全链路只有一套身份计算。
   function currentSignature() {
-    try {
-      const vd = initialVideoData();
-      const kind = pageKind();
-      const season = seasonData();
-      let bvid = (vd && vd.bvid) || null;
-      let aid = (vd && vd.aid) || null;
-      let epId = null;
-      if (kind === 'bangumi' && season && season.ep) {
-        epId = season.ep.ep_id || season.ep.id || null;
-        aid = season.ep.aid || aid;
-        bvid = season.ep.bvid || bvid;
-      }
-      const idx = currentPartIndex();
-      return buildSignature({ bvid, aid, epId, idx, cid: currentCid() });
-    } catch (err) {
-      return '';
-    }
+    return pageIdentity().signature;
   }
 
   // 属于**当前视频**的嗅探结果。所有「等新字幕 / 判断有没有」的地方
@@ -1684,10 +1735,39 @@
     getInfo: () => getInfo(),
     getSubtitles: () => getSubtitles(),
     // 多来源汇总：网络嗅探 + 播放器实例 + player/v2 + wbi/v2 + initialState
-    getSubtitleBundle: async () => {
-      const info = getInfo();
-      const out = await collectSubtitleTracks(info.aid, info.bvid, info.cid);
-      return { ok: true, ...out };
+    //
+    // `p.expectSignature` 由面板传入（就是它当前展示的那个视频的签名）。
+    // 带上它之后，这里能**确定性地**判断「采到的内容是不是那个视频的」，
+    // 而不是只看内容长得对不对 —— 这是「标题对、内容错」的根治办法。
+    getSubtitleBundle: async (p) => {
+      const guard = await withIdentityGuard(
+        async (ident) => collectSubtitleTracks(ident.aid, ident.bvid, ident.cid),
+        p && p.expectSignature
+      );
+      if (!guard.ok && guard.reason === 'identity-mismatch') {
+        return {
+          ok: false,
+          identityMismatch: true,
+          reason: `页面当前是 ${guard.identity.signature}，与请求的 ${p.expectSignature} 不一致`,
+          identity: guard.identity,
+          tracks: [],
+          sources: [],
+          errors: [],
+          groups: [],
+          sniffed: []
+        };
+      }
+      const out = guard.value || {};
+      return {
+        ok: true,
+        ...out,
+        signature: guard.identity.signature,
+        identity: guard.identity,
+        // 采集期间页面被切换 → 面板据此重采
+        signatureChanged: !guard.ok && guard.reason === 'identity-changed',
+        fromSignature: guard.from || '',
+        toSignature: guard.to || ''
+      };
     },
     // 兜底：主动点开播放器字幕菜单，逼播放器发一次字幕请求
     triggerSubtitleMenu: async () => triggerSubtitleMenu(),
@@ -1713,7 +1793,29 @@
     // ---- 音轨：全部在页面主环境完成，Referer 由浏览器自动带 ----
     // 音轨候选（按「鲜度」排序：嗅探到的最新 playurl 响应 > __playinfo__ > initialState > 播放器 API）
     getAudioCandidates: async (p) => {
-      const { list, diag } = await collectAudioCandidatesWithRefresh(p || {});
+      const params = p || {};
+      const { list, diag } = await collectAudioCandidatesWithRefresh(params);
+      // ---- 归属绑定：只保留**属于被请求那个视频**的音轨 ----
+      //
+      // 与字幕同样的毛病：音轨候选来自页面各处（嗅探到的 playurl、
+      // __playinfo__、initialState、播放器 API），而这些地方在单页应用
+      // 切视频时都可能是**上一个视频**的。用户报的
+      // 「视频显示是对的，但转录出来不是当前视频」正是这条路径。
+      //
+      // 每个候选在采集时都记了它来自哪个 cid（push 的第三个参数），
+      // 所以这里能确定性过滤，不需要猜。
+      const wantCid = params.cid == null ? null : String(params.cid);
+      let owned = list;
+      const foreign = [];
+      if (wantCid) {
+        owned = [];
+        for (const c of list) {
+          const cid = c && c.cid != null ? String(c.cid) : '';
+          // 没记 cid 的无法判断 → 放行（宁可放过不可误杀）
+          if (!cid || cid === wantCid) owned.push(c);
+          else foreign.push({ cid, source: c.source, url: String(c.url || '').slice(0, 100) });
+        }
+      }
       // 优先非 mirrorcos 节点（该节点最容易 403），其次带宽低的（体积小）
       const hostRank = (u) => {
         if (/mirrorcos/i.test(u)) return 2;
@@ -1722,14 +1824,38 @@
         if (/mirrorali|mirroraliov/i.test(u)) return 1;
         return 1;
       };
-      list.sort((a, b) => hostRank(a.url) - hostRank(b.url) || (a.bandwidth || 1e12) - (b.bandwidth || 1e12));
-      return { ok: list.length > 0, candidates: list, sniffed: audioSniff.items.size, diag };
+      owned.sort((a, b) => hostRank(a.url) - hostRank(b.url) || (a.bandwidth || 1e12) - (b.bandwidth || 1e12));
+      const after = pageIdentity();
+      return {
+        ok: owned.length > 0,
+        candidates: owned,
+        // 被判定为其它视频的候选，供诊断
+        foreignCandidates: foreign,
+        sniffed: audioSniff.items.size,
+        identity: after,
+        diag
+      };
     },
     // 重新解析一份新鲜音轨地址（403 时用）
     refreshAudio: async (p) => refreshAudioUrl(p && p.aid, p && p.bvid, p && p.cid),
     // 页面上下文取字节
     fetchAudioRange: async (p) => fetchAudioRange(p && p.url, p && p.start, p && p.end, { withCredentials: p && p.withCredentials }),
-    audioSniffStatus: () => ({ count: audioSniff.items.size, lastAt: audioSniff.lastAt })
+    audioSniffStatus: () => ({ count: audioSniff.items.size, lastAt: audioSniff.lastAt }),
+    // 诊断：把「页面当前认为是哪个视频」暴露出来，
+    // 便于排查「标题对、内容错」——面板可以把它与自己展示的视频比对。
+    identity: () => {
+      const a = getInfo();
+      const b = pageIdentity();
+      return {
+        ok: true,
+        identity: b,
+        infoSignature: a.signature,
+        infoCid: a.cid,
+        title: a.title,
+        // 这条为 true 才说明「标题用的身份」与「内容用的身份」一致
+        consistent: a.signature === b.signature && String(a.cid) === String(b.cid)
+      };
+    }
   };
 
   function handleRequest(msg) {
@@ -1788,7 +1914,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.47.0',
+    version: '1.48.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

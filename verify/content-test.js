@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.47.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.48.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -398,6 +398,37 @@ async function main() {
     check('采集开始/结束时各取一次签名', /const sigAtStart = currentSignature\(\);/.test(bridgeSrc) && /const sigAtEnd = currentSignature\(\);/.test(bridgeSrc), '');
     check('签名不一致时整批作废', /sigAtStart !== sigAtEnd[\s\S]{0,500}signatureChanged: true/.test(bridgeSrc), '');
     check('对外报告 foreignTracks 供诊断', /foreignTracks: foreign/.test(bridgeSrc), '');
+
+    // ---- 身份绑定：「标题对、内容错」的根治 ----
+    //
+    // 用户报的核心问题：读取的视频显示是对的，但提取的字幕/转录不是当前视频。
+    // 根因：标题走一条路径取、字幕轨另一条、音轨再一条，
+    // 每条都在各自时刻**重新**算 currentCid()；单页应用切换时页面状态是渐变的，
+    // 于是「标题是新的、cid 还是旧的」会同时成立。
+    check('有唯一权威的 pageIdentity', /function pageIdentity\(\)/.test(bridgeSrc), '');
+    check(
+      'currentSignature 复用 pageIdentity（全链路一套身份）',
+      /function currentSignature\(\) \{\s*\n\s*return pageIdentity\(\)\.signature;/.test(bridgeSrc),
+      ''
+    );
+    check(
+      'getInfo 用 pageIdentity 的身份',
+      /const ident = pageIdentity\(\);\s*\n\s*const cid = ident\.cid;\s*\n\s*const signature = ident\.signature;/.test(bridgeSrc),
+      ''
+    );
+    check('有 withIdentityGuard 做前后一致性校验', /async function withIdentityGuard\(/.test(bridgeSrc), '');
+    check('身份不一致时判定 identity-mismatch', /reason: 'identity-mismatch'/.test(bridgeSrc), '');
+    check('采集期间被切换判定 identity-changed', /reason: 'identity-changed'/.test(bridgeSrc), '');
+    check(
+      'getSubtitleBundle 接受 expectSignature',
+      /getSubtitleBundle: async \(p\) =>/.test(bridgeSrc) && /p && p\.expectSignature/.test(bridgeSrc),
+      ''
+    );
+    check('字幕在身份不符时明确返回 identityMismatch', /identityMismatch: true/.test(bridgeSrc), '');
+    check('音轨候选按 cid 过滤', /const wantCid = params\.cid == null \? null : String\(params\.cid\);/.test(bridgeSrc), '');
+    check('音轨候选报告被排除的条目', /foreignCandidates: foreign/.test(bridgeSrc), '');
+    check('每个音轨候选都记了来源 cid', /cid: cid \|\| null/.test(bridgeSrc), '');
+    check('暴露 identity 诊断方法', /identity: \(\) => \{/.test(bridgeSrc) && /consistent: a\.signature === b\.signature/.test(bridgeSrc), '');
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');

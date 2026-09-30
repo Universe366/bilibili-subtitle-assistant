@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '1.47.0';
+  const CONTENT_VERSION = '1.48.0';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -397,6 +397,9 @@
     // 其它页面能力
     getInitAudio: 8000,
     sniffStatus: 6000,
+    // 身份诊断：把「页面当前认为是哪个视频」报给面板，
+    // 用于排查「标题对、内容错」
+    identity: 6000,
     audioSniffStatus: 6000,
     ping: 6000
   };

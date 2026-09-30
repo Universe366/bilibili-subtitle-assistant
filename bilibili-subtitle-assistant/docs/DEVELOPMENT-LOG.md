@@ -3206,3 +3206,102 @@ PASS  抽不到标识时放行（避免误杀）
 PASS  采集开始/结束时各取一次签名 / 签名不一致时整批作废
 PASS  对外报告 foreignTracks 供诊断
 ```
+
+## 第六十四轮（1.48.0）—— 身份绑定：「标题对、内容错」的根治
+
+### 用户报的现象（这一轮的核心）
+
+> 总是会出现读取的视频显示是正确的，但是提取字幕或者转录后却不是我当前的视频。
+
+这句话把问题定性得很准：**不是"内容看起来不对"，而是"内容与身份没绑在一起"。**
+
+### 根因：身份是**分散计算**的
+
+之前的代码里，视频的「身份」不是一个值，而是一个**每次现算的过程**：
+
+| 用途 | 取身份的方式 |
+|---|---|
+| 标题 / 时长 | `getInfo()` 里现算 `currentCid()`、`initialVideoData()` |
+| 字幕轨 | `getSubtitleBundle` 里**又**现算一次 |
+| 音轨 | `getAudioCandidates` 里**再**现算一次 |
+| 嗅探过滤 | `currentSignature()` 里**第四个地方**现算 |
+
+平时这些当然算出来一样。但 B 站是单页应用，切视频时页面状态是**渐变**的：
+
+- `__INITIAL_STATE__`（标题、bvid）先更新
+- `?p=` 参数、`pages[]`、播放器实例**晚一拍**
+- 于是存在一个窗口：**标题已经是新的，而 `currentCid()` 还是旧的**
+
+在这个窗口里读到的「标题」是对的、「cid」是旧的 → 后面所有按 cid 取的内容
+（字幕轨、音轨）都来自**上一个视频**。界面看着完全正常。
+
+**这解释了为什么它「总是会出现」而且飘忽不定** —— 取决于你点多快、
+页面切换得多快，命中窗口的概率不同。
+
+### 修法：把身份收敛成**一个**，并做前后一致性校验
+
+**① `pageIdentity()` —— 唯一权威来源**
+
+```js
+function pageIdentity() {
+  // bvid / aid / epId / page / cid 只在这里算一次
+  return { bvid, aid, cid, epId, page, signature };
+}
+```
+
+- `currentSignature()` 改为 `return pageIdentity().signature`
+  （以前它是**第四份**独立实现）
+- `getInfo()` 里的 cid 与 signature 也改成从 `pageIdentity()` 取
+
+**全链路只有一套身份计算** —— 从结构上消掉「两处算出不同结果」的可能。
+
+**② `withIdentityGuard()` —— 取内容前后各校验一次**
+
+```js
+const before = pageIdentity();
+// 面板指定了期望签名时，先确认页面确实已经是那个视频
+if (expectSignature && before.signature !== expectSignature) return { ok:false, reason:'identity-mismatch' };
+const value = await collect(before);
+const after = pageIdentity();
+if (after.signature !== before.signature) return { ok:false, reason:'identity-changed' };
+return { ok:true, value, identity: before };
+```
+
+这样调用方拿到的不是「一堆看起来像字幕的东西」，而是
+**「明确属于某个签名的一堆东西」** —— 有确定性依据判断能不能用。
+
+**③ 面板主动声明它展示的是哪个视频**
+
+- 字幕请求带上 `expectSignature`（面板当前展示的视频签名）
+- 音轨请求带上 `cid`，页面侧据此**按 cid 过滤候选** ——
+  每个音轨候选在采集时都记了它来自哪个 cid，所以这是确定性过滤，不是猜
+- 身份不符时面板**自动等 900ms 重采一次**，用户不必再手动「重新读取」
+
+**④ 新增 `identity` 诊断方法**
+
+把「页面当前认为是哪个视频」暴露出来，还带一个 `consistent` 字段
+（`getInfo` 的签名与 `pageIdentity` 的是否一致）。
+以后排查这类问题可以直接看这个值，而不是靠猜。
+
+### 为什么这一轮和上一轮不同
+
+上一轮我修的是「嗅探到的字幕被贴上错误签名」（**时刻**错了）。
+这一轮修的是「**根本没有一个统一的身份**，各处各算一次」（**来源**错了）。
+
+两者是同一条线索上的两层：先有统一的身份，才有可靠的时刻。
+
+### 新增 17 项测试
+
+```
+PASS  有唯一权威的 pageIdentity
+PASS  currentSignature 复用 pageIdentity（全链路一套身份）
+PASS  getInfo 用 pageIdentity 的身份
+PASS  有 withIdentityGuard 做前后一致性校验
+PASS  身份不一致时判定 identity-mismatch / 采集期间被切换判定 identity-changed
+PASS  getSubtitleBundle 接受 expectSignature
+PASS  字幕在身份不符时明确返回 identityMismatch
+PASS  音轨候选按 cid 过滤 / 报告被排除的条目 / 每个候选都记了来源 cid
+PASS  暴露 identity 诊断方法
+PASS  字幕请求带上期望签名 / 身份不符时放弃这批字幕 / 也自动重采一次
+PASS  音轨请求带上 cid 与签名 / 日志报告被排除的音轨数
+```

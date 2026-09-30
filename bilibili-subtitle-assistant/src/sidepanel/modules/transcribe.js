@@ -130,10 +130,24 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
   let audioDiag = null;
   let audioError = null;
   try {
-    const out = await call('audio.candidates', { aid: video.aid, bvid: video.bvid, cid: video.cid }, { timeoutMs: 40000 });
+    // 传 cid 与 signature：页面侧据此**只返回属于这个视频**的音轨候选。
+    // 音轨候选来自页面各处（嗅探的 playurl / __playinfo__ / initialState /
+    // 播放器 API），单页应用切视频时这些都可能是上一个视频的 ——
+    // 用户报的「视频显示是对的，但转录出来不是当前视频」正是这条路径。
+    const out = await call(
+      'audio.candidates',
+      { aid: video.aid, bvid: video.bvid, cid: video.cid, signature: video.signature },
+      { timeoutMs: 40000 }
+    );
     candidates = (out && out.candidates) || [];
     audioDiag = (out && out.diag) || null;
     audioError = (out && out.diag && out.diag.bridgeError) || null;
+    if (onLog && out && out.foreignCandidates && out.foreignCandidates.length) {
+      onLog(
+        `已排除 ${out.foreignCandidates.length} 条不属于当前视频的音轨候选` +
+          `（cid ${out.foreignCandidates.map((c) => c.cid).join('/')}，当前 ${video.cid}）`
+      );
+    }
     if (onLog) {
       onLog(
         `音轨候选 ${candidates.length} 条${out && out.sniffed ? `（其中 ${out.sniffed} 份来自页面 playurl 嗅探）` : ''}`

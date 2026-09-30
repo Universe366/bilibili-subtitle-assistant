@@ -372,11 +372,28 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
 
   // 上一次采集是否因为「采集期间视频被切换」而作废
   let lastSignatureChanged = false;
+  // 上一次采集是否因为「页面当前视频 ≠ 面板展示的视频」而作废
+  let lastIdentityMismatch = false;
 
   const collectFromPage = async () => {
     try {
-      const res = await call('page.call', { name: 'getSubtitleBundle', params: {} }, { timeoutMs: 45000 });
+      // 带上「面板当前展示的那个视频」的签名。
+      // 页面侧据此确定性判断采到的内容是不是这个视频的 ——
+      // 这是「标题对、内容错」的根治办法（见 page-bridge.js 的 pageIdentity）。
+      const expected = video && video.signature;
+      const res = await call(
+        'page.call',
+        { name: 'getSubtitleBundle', params: expected ? { expectSignature: expected } : {} },
+        { timeoutMs: 45000 }
+      );
       const bundle = unwrap(res);
+      // 页面当前视频与面板展示的视频不是同一个 → 这批内容根本不能要
+      if (bundle && bundle.identityMismatch) {
+        lastIdentityMismatch = true;
+        diagnostic.identityMismatch = { reason: bundle.reason || '', identity: bundle.identity || null };
+        return [];
+      }
+      lastIdentityMismatch = false;
       lastSignatureChanged = !!bundle.signatureChanged;
       diagnostic.pageBundle = {
         sources: bundle.sources || [],
@@ -403,11 +420,17 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
 
   let pageTracks = await collectFromPage();
 
-  // 采集期间用户切了视频 → 那批轨已作废。等页面稳一下再采一次，
-  // 免得出现「切视频后拿到别的视频的字幕，要手动再点一次才换回来」。
-  if (!pageTracks.length && lastSignatureChanged && !(signal && signal.aborted)) {
+  // 采集失败（页面已切走 / 采集期间被切换）→ 等页面稳一下再采一次。
+  // 这样用户不用手动「再点一次重新读取」。
+  if (!pageTracks.length && (lastSignatureChanged || lastIdentityMismatch) && !(signal && signal.aborted)) {
     if (onProgress) {
-      onProgress({ name: '字幕抓取', percent: 8, detail: '采集期间视频已切换，正在重新读取当前视频的字幕…' });
+      onProgress({
+        name: '字幕抓取',
+        percent: 8,
+        detail: lastIdentityMismatch
+          ? '页面当前视频与面板不一致，正在重新读取当前视频的字幕…'
+          : '采集期间视频已切换，正在重新读取当前视频的字幕…'
+      });
     }
     await new Promise((r) => setTimeout(r, 900));
     pageTracks = await collectFromPage();
