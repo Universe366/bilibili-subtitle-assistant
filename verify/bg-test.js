@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '1.56.0', manifest_version: 3 }),
+    getManifest: () => ({ version: '1.57.0', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.56.0' };
+      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.57.0' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -622,7 +622,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.56.0' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.57.0' && !!res.data.platformSummary && !!res.data.permissions);
   check('诊断信息不回传明文密钥', JSON.stringify(res.data).indexOf('sk-test-1234567890abcd') === -1);
   res = await rpc('history.put', { video: { bvid: 'BV1', cid: 1, page: 1, title: 'T' }, entry: { lines: [{ from: 0, to: 1, text: 'x' }] } });
   check('历史写入成功', res.ok);

@@ -9,6 +9,7 @@ import * as markdown from './modules/markdown.js';
 import * as exporter from './modules/exporter.js';
 import * as subtitles from './modules/subtitles.js';
 import * as audio from './modules/audio.js';
+import * as originalAudio from './modules/original-audio.js';
 import * as optimize from './modules/optimize.js';
 import * as searchLib from './modules/search.js';
 import * as dom from './modules/dom.js';
@@ -34,6 +35,7 @@ const api = {
   exporter,
   subtitles,
   audio,
+  originalAudio,
   optimize,
   search: searchLib,
   dom,

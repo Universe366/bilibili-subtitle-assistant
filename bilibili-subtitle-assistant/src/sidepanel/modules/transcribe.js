@@ -92,6 +92,15 @@ export async function runPool(items, limit, worker, signal) {
 // 主流程
 // ---------------------------------------------------------------------------
 
+// 整条音轨一次上传时，识别耗时随时长增长 —— 单片用的 timeoutSeconds
+// 不够。按「音频秒数的一半 + 5 分钟」估算，并有 10 分钟下限。
+function timeoutsForWholeAudio(asr, durationSeconds) {
+  const base = Number(asr.timeoutSeconds) || ASR_LIMITS.defaultTimeoutSeconds;
+  const sec = Number(durationSeconds) || 0;
+  const scaled = Math.round(sec / 2) + 300;
+  return Math.max(base * 1000, 600 * 1000, scaled * 1000);
+}
+
 export async function transcribeVideo({ video, settings, hooks = {} }) {
   const { onProgress, onLog, signal } = hooks;
   const asr = settings.asr;
@@ -240,6 +249,91 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
     })();
     onLog(`音轨：${audio.mimeType || '未知类型'} 带宽 ${audio.bandwidth || '?'} 来源 ${audio.source} host ${host}`);
   }
+
+  // ==================================================================
+  // 【最快路径】整条原始音轨直传 —— 不解码、不重编码
+  // ==================================================================
+  //
+  // 用户问「视频一长为什么转录就急转直下」。
+  // 根因：MediaRecorder **只能实时编码**（编 600 秒的音频要等 600 秒），
+  // 且编码池宽度只有 2 → 整条音轨编码墙钟 ≈ 时长 ÷ 2。
+  // 130 分钟要 **65 分钟**，84 分钟要 42 分钟；识别本身只要几分钟。
+  // 所以时长越长越离谱。
+  //
+  // B 站给的 dash 音轨**本身就是一个完整 MP4/AAC**
+  // （ftyp + moov + moof/mdat，约 41kbps × 时长）：
+  //   130 分钟 ≈ 10MB，974 秒 ≈ 4.77MB。
+  // 对「接受 M4A 的模型」而言，它可以直接上传 —— 编解码全部省掉。
+  //
+  // 与上一轮撤回的「sidx 切片」不同：这条路**不做任何字节范围推导**，
+  // 就是「从头取到尾」，取回来的与浏览器播的是同一份，天然正确。
+  //
+  // 放在下载之前：条整取这一份就够了，不必再走「下载→解码→重编码」。
+  // 任何环节不满足都**静默回退**到原来的路径。
+  if (audioFormatFor(platform) !== 'wav') {
+    try {
+      const oa = await import('./original-audio.js');
+      const estimatedMB = oa.estimateWholeAudioBytes(audio, video.duration) / 1024 / 1024;
+      const limitMB = Number(asr.sizeLimitMB) || ASR_LIMITS.defaultSizeLimitMB;
+      if (estimatedMB && estimatedMB > limitMB) {
+        if (onLog) {
+          onLog(
+            `跳过整条音轨直传：预估 ${estimatedMB.toFixed(1)}MB 超过上限 ${limitMB}MB`
+          );
+        }
+      } else {
+        report(6, '尝试直接上传整条原始音轨（不解码、不重编码）');
+        const fetched = await oa.fetchWholeAudio(audio, {
+          signal,
+          durationSeconds: video.duration,
+          maxBytesMB: limitMB,
+          onLog,
+          fetcher: (u, start, end) =>
+            call('page.call', { name: 'fetchAudioRange', params: { url: u, start, end } }, { timeoutMs: 300000 }),
+          onProgress: (pct, detail) => report(6 + (pct / 100) * 40, detail || '下载整条原始音轨')
+        });
+        if (fetched && fetched.ok) {
+          if (onLog) {
+            onLog(
+              `整条原始音轨直传（${fetched.meta.codecs}）：${(fetched.meta.bytes / 1024 / 1024).toFixed(2)}MB，` +
+                `不解码、不重编码，内存占用极小。`
+            );
+          }
+          report(48, '识别中（整条音轨）');
+          const res = await callAsr(platform, fetched.bytes, {
+            timeoutMs: timeoutsForWholeAudio(asr, video.duration),
+            signal,
+            filename: 'audio.mp4'
+          });
+          const out = assembleRemuxOutcome({
+            rawResults: [{ idx: 0, slice: { start: 0, end: video.duration || 0 }, result: res }],
+            base: { slices: 1, sliceSeconds: video.duration || 0 },
+            platform,
+            durationSeconds: video.duration || 0,
+            bytes: fetched.meta.bytes
+          });
+          if (out.lines && out.lines.length) {
+            report(100, '转录完成');
+            out.meta.transport = fetched.meta.transport;
+            if (onLog && out.meta.missingTimestamps) {
+              onLog(
+                `⚠ 模型「${platform ? platform.model : ''}」不返回时间戳，字幕时间按字数估算（可能对不齐）。` +
+                  `需要精确时间轴请改用 XingChenAGI/XingChenASR-Diarize-V3.0。`
+              );
+            }
+            return out;
+          }
+          if (onLog) onLog('整条音轨识别结果为空，回退到解码路径');
+        } else if (onLog) {
+          onLog(`整条音轨直传不可用（${(fetched && fetched.reason) || '未知原因'}），回退到「下载 + 解码」路径`);
+        }
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw err;
+      if (onLog) onLog(`整条音轨直传失败（${(err && err.message) || err}），回退到「下载 + 解码」路径`);
+    }
+  }
+
   // --- 2. 分块下载（403 时刷新地址 / 换候选重试） ---
   const downloadStart = Date.now();
   let dl = null;

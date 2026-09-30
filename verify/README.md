@@ -1,11 +1,11 @@
 # 验证套件（不属于扩展运行时）
 
-针对 `../bilibili-subtitle-assistant` 的自动化验证。**23 个套件（含静态体检 + 布局体检），共 1247 项断言，全部通过。**
+针对 `../bilibili-subtitle-assistant` 的自动化验证。**23 个套件（含静态体检 + 布局体检），共 1259 项断言，全部通过。**
 
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb
 node bundle.js              # 把面板打包成 IIFE（jsdom 不执行 type=module 脚本）
-node panel-test.js          # 侧边栏渲染与纯逻辑          367 项
+node panel-test.js          # 侧边栏渲染与纯逻辑          379 项
 node bg-test.js             # 后台 service worker 端到端    64 项
 node content-test.js        # 内容脚本 + 主环境桥           38 项
 node flow2.js               # 完整业务流程（最关键）         34 项
