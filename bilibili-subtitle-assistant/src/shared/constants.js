@@ -1,7 +1,7 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '1.60.0';
+export const VERSION = '1.61.0';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
@@ -72,7 +72,54 @@ export const METHOD_TIMEOUT = {
   'history.clear': 8000,
   'cache.stats': 8000,
   'cache.clear': 15000,
-  'diagnostics': 15000
+  'diagnostics': 15000,
+
+  // ------------------------------------------------------------------
+  // ⚠ 下面这些是第七十七轮补登记的。**全都踩过同一个坑**：
+  //
+  //   服务端 `service-worker.js` 的超时**只认这张表**：
+  //       function methodTimeout(method) {
+  //         return METHOD_TIMEOUT[method] || DEFAULT_RPC_TIMEOUT;   // 30000
+  //       }
+  //   它**完全忽略**调用方传的 `opts.timeoutMs`。
+  //   于是「客户端传 300 秒、服务端 30 秒掐断」——
+  //   表现为「操作超时 / ai.chat 超时（30000ms）」，
+  //   而调用处的代码看起来明明给足了时间，极易误判成"模型太慢"。
+  //
+  //   所以：**任何可能超过 30 秒的方法都必须登记到这里**，
+  //   光在调用处传 timeoutMs 是不够的。
+  //   回归由 asr-test.mjs / method-contract-test.mjs 的
+  //   「所有被调用的方法都已登记超时」断言守住。
+  // ------------------------------------------------------------------
+
+  // 总结/校对/章节/提问：一次要读完整个上下文并生成很长的输出，
+  // 长视频（分段总结）会连着调用多次，必须给足。
+  'ai.chat': 600000,
+  // 刷新音轨地址（带 wbi 签名的一次接口请求）
+  'audio.refresh': 30000,
+  // 列出音轨候选（可能要点等待页面把 dash 信息准备好）
+  'audio.candidates': 40000,
+  // 取音轨字节：整条原始音轨直传时会一次拉十几 MB
+  'audio.range': 180000,
+  // 按时间解析一批视频（可能几十条，逐条请求）
+  'batch.resolve': 90000,
+  'batch.release': 15000,
+  // 热门评论
+  'bili.comments': 20000,
+  // 构建信息（本地，极快）
+  'build.info': 8000,
+  // 让 content script 重新注入 / 刷新
+  'page.refresh': 20000,
+  'page.reinject': 20000,
+  // 探测平台连通性（要真的打一次 API）
+  'platform.probe': 120000,
+  // 设置补丁（写 storage）
+  'settings.patch': 8000,
+  // 字幕接口 / 触发字幕菜单
+  'subtitle.api': 40000,
+  'subtitle.trigger': 30000,
+  // 打开标签页（浏览器级操作）
+  'tab.open': 15000
 };
 
 export const DEFAULT_RPC_TIMEOUT = 30000;

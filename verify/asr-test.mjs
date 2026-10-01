@@ -974,6 +974,53 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   // 这些方法的超时必须大于默认值，否则登记没意义
   const tooSmall = mustRegister.filter((m) => (METHOD_TIMEOUT[m] || 0) <= DEFAULT_RPC_TIMEOUT && m !== 'platform.models');
   check('重方法的超时都大于默认 RPC 超时', tooSmall.length === 0, tooSmall.map((m) => `${m}=${METHOD_TIMEOUT[m]}`).join(', '));
+
+  // ---- 自动版：**所有被调用且服务端存在的方法都必须登记** ----
+  //
+  // 为什么要有这一条：上面那个 `mustRegister` 是**手工维护**的清单，
+  // 于是 `ai.chat` 一直没被登记 —— 而服务端的超时**只认 METHOD_TIMEOUT**：
+  //
+  //     function methodTimeout(method) {
+  //       return METHOD_TIMEOUT[method] || DEFAULT_RPC_TIMEOUT;   // 30000
+  //     }
+  //
+  // 它**忽略调用方传的 opts.timeoutMs**。所以「客户端传 300 秒、
+  // 服务端 30 秒掐断」，用户看到的是
+  //     ai.chat 超时（30000ms）
+  // 而调用处代码看起来明明给足了时间 —— 极易误判成「模型太慢」。
+  //
+  // 手工清单必然漏，所以这里改成从源码里**自动提取**调用点。
+  {
+    const fs2 = await import('node:fs');
+    const path2 = await import('node:path');
+    const url2 = await import('node:url');
+    const HERE = path2.dirname(url2.fileURLToPath(import.meta.url));
+    const SRC = path2.join(HERE, '..', 'bilibili-subtitle-assistant', 'src');
+    const walk = (d, out = []) => {
+      for (const e of fs2.readdirSync(d, { withFileTypes: true })) {
+        const p = path2.join(d, e.name);
+        if (e.isDirectory()) walk(p, out);
+        else if (e.name.endsWith('.js')) out.push(p);
+      }
+      return out;
+    };
+    const sw = fs2.readFileSync(path2.join(SRC, 'background', 'service-worker.js'), 'utf8');
+    const serverMethods = new Set();
+    const mBlock = /const methods = \{([\s\S]*?)\n\};/.exec(sw);
+    if (mBlock) for (const x of mBlock[1].matchAll(/^\s{2}'?([\w.]+)'?\s*:/gm)) serverMethods.add(x[1]);
+
+    const called = new Set();
+    for (const f of walk(SRC)) {
+      if (f.includes('vendor')) continue;
+      for (const m of fs2.readFileSync(f, 'utf8').matchAll(/call\(\s*'([a-z][\w.]*)'/g)) called.add(m[1]);
+    }
+    const unregistered = [...called].filter((x) => serverMethods.has(x) && typeof METHOD_TIMEOUT[x] !== 'number').sort();
+    check(
+      '所有被调用的服务端方法都已登记超时（自动扫描）',
+      unregistered.length === 0,
+      unregistered.length ? `${unregistered.length} 个未登记：${unregistered.join(', ')}` : ''
+    );
+  }
 }
 
 // ---------------- 30. API Key 含非 ISO-8859-1 字符时必须给出可照做的提示 ----------------

@@ -4465,3 +4465,97 @@ PASS  诊断里的时间改成时:分:秒可读形式
 ```
 24 个套件，共 1297 项断言，全部通过
 ```
+
+## 第七十七轮（1.61.0）—— 「操作超时 / ai.chat 超时（30000ms）」
+
+用户报：
+
+```
+操作超时
+ai.chat 超时（30000ms）
+请刷新该 B 站页面后重试。
+```
+
+### 根因：服务端超时**只认 METHOD_TIMEOUT，忽略调用方传的值**
+
+```js
+// service-worker.js
+function methodTimeout(method) {
+  return METHOD_TIMEOUT[method] || DEFAULT_RPC_TIMEOUT;   // 30000
+}
+const result = await withTimeout(fn(...), timeout, `${method} 超时`);
+```
+
+而 `METHOD_TIMEOUT` 里**只有 `'ai.model'`，没有 `'ai.chat'`**。
+
+于是出现了一个非常难查的组合：
+
+| 位置 | 看到的东西 |
+|---|---|
+| 调用处代码 | `call('ai.chat', {...}, { timeoutMs: 300000 })` —— **看起来给足了 300 秒** |
+| 客户端 bridge | `opts.timeoutMs || METHOD_TIMEOUT[method] || DEFAULT` → 用 300 秒 |
+| **服务端** | `METHOD_TIMEOUT['ai.chat'] || 30000` → **30 秒掐断** |
+
+**客户端设了 300 秒，服务端 30 秒就把请求掐了。**
+用户看到「ai.chat 超时（30000ms）」，而代码里根本找不到那个 30000 ——
+因为它来自一个**默认值**。很容易误判成「模型太慢」。
+
+**这和老早就记录过的 `asr.transcribe` 事故是同一个坑**
+（`AGENTS.md` §3.2 写得很清楚：「新增任何耗时 RPC 方法，必须登记到
+METHOD_TIMEOUT」）。`ai.chat` 一直漏登记，直到这一轮才暴露。
+
+### 修法
+
+**① 补登记 15 个方法**（全量扫描出来的、被调用却未登记的服务端方法）
+
+```
+ai.chat            600000   ← 总结/校对/章节/提问，长视频分段会连调多次
+audio.range        180000   ← 整条音轨直传会一次拉十几 MB
+platform.probe     120000
+batch.resolve       90000
+audio.candidates    40000
+subtitle.api        40000
+audio.refresh       30000
+subtitle.trigger    30000
+bili.comments       20000
+page.refresh        20000
+page.reinject       20000
+tab.open            15000
+batch.release       15000
+build.info           8000
+settings.patch       8000
+```
+
+并在表里写清楚**为什么必须登记**（服务端忽略调用方的 timeoutMs），
+免得下一个人又踩。
+
+**② 把回归测试从「手工清单」改成「自动扫描」**
+
+原来的断言是：
+
+```js
+const mustRegister = ['asr.transcribe', 'asr.probe', 'platform.test', ...];
+check('所有重方法都已显式登记超时', missing.length === 0);
+```
+
+**这份清单是手工维护的 —— 这正是 `ai.chat` 漏掉的原因。**
+现在改成从源码里自动提取：
+
+- 从 `service-worker.js` 解析出**服务端注册的全部方法**
+- 从所有 `call('xxx'` 调用点提取**被调用的方法**
+- 断言「被调用 ∧ 服务端存在」的方法**全部**已登记
+
+**并验证了这条自动检查真的有效**：临时把 `ai.chat` 的登记去掉，
+它立刻报 `FAIL 1 个未登记：ai.chat`；恢复后 PASS。
+
+### 新增 1 项断言（但覆盖了整类问题）
+
+```
+PASS  所有被调用的服务端方法都已登记超时（自动扫描）
+```
+
+### 测试
+
+```
+24 个套件，共 1298 项断言，全部通过
+```

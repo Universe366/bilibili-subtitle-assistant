@@ -2119,7 +2119,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.60.0',
+    version: '1.61.0',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
