@@ -5,7 +5,7 @@ import { h, clear, button, fmtTime, toast, copyText, setBoolAttr } from './dom.j
 import { store } from './store.js';
 import { app, showError, saveHistory, doProviderSearch, doEngineSearch, recountCitations, activePromptText, setLines } from './context.js';
 import { renderMarkdownInto, renderInline } from './markdown.js';
-import { selectContext, linesToTranscript } from './subtitles.js';
+import { selectContext, linesToTranscript, fmtClock } from './subtitles.js';
 import { searchContextBlockGuarded, engineLabel } from './search.js';
 import * as OPT from './optimize.js';
 import { extractVerifyItems, verifyItems, verifyContextBlock } from '../../shared/verify.js';
@@ -1236,6 +1236,199 @@ export function sendPending() {
 // opts.skipProofread：跳过阶段 1 的联网校对，直接用现有字幕生成。
 //   为什么要有这个开关：联网核对要逐条搜索，是最耗时的一段（可能几十秒）。
 //   用户要求加一个「快速总结」按钮来跳过它。
+// ---------------------------------------------------------------------------
+// 长视频的分段总结（map-reduce）
+// ---------------------------------------------------------------------------
+//
+// 用户报：「2 小时的视频官方字幕是全的，但总结到某个时间点后就没有了。」
+//
+// 根因就在下面这行（曾经写的）：
+//     const ctx = selectContext(correctedLines, '', 40000);
+// 传空问题时 `selectContext` 会走
+//     return { text: full.slice(0, maxChars), truncated: true }
+// 也就是**只取前 40000 字符**。
+// 2 小时视频的字幕转写约 6.6 万字符 → 只喂进去约 61%，
+// 于是总结自然只覆盖到大约 73 分钟处。
+//
+// 字幕本身是**完整的**（validateLines 只校验覆盖率，从不截断），
+// 截断完全发生在「喂给 AI」这一步。
+//
+// 修法：超过上限就**分段总结再合并**（map-reduce），
+// 而不是把剩下的部分丢掉。
+
+// 按行分段，每段不超过 maxChars，尽量在行边界切
+export function chunkTranscript(lines, maxChars = 40000, onProgress) {
+  const chunks = [];
+  let cur = [];
+  let size = 0;
+  for (const l of lines) {
+    const row = `[${fmtClock(l.from)}] ${String(l.text || '')}`;
+    // 单行超长（罕见）：独占一段，硬切
+    if (row.length > maxChars) {
+      if (cur.length) {
+        chunks.push({ text: cur.join('\n'), lines: cur });
+        cur = [];
+        size = 0;
+      }
+      chunks.push({ text: row.slice(0, maxChars), lines: [l] });
+      continue;
+    }
+    if (size + row.length + 1 > maxChars && cur.length) {
+      chunks.push({ text: cur.join('\n') });
+      cur = [];
+      size = 0;
+    }
+    cur.push(row);
+    size += row.length + 1;
+    if (onProgress) onProgress(chunks.length);
+  }
+  if (cur.length) chunks.push({ text: cur.join('\n') });
+  return chunks;
+}
+
+// 每段的提取指令：保留要点与时间线索，供最终合并使用
+const CHUNK_SYSTEM = '你是视频字幕整理助手。用户会给你**一部长视频中的一段**字幕。' +
+  '请只针对这一段做结构化提取，不要臆测其它段落的内容，也不要写“本段/接下来”这类过渡语。';
+
+function chunkUserPrompt({ title, part, index, total, fromLabel, toLabel, text }) {
+  return [
+    title ? `视频：${title}${part ? ` · ${part}` : ''}` : '',
+    `这是第 ${index}/${total} 段字幕，时间范围约 ${fromLabel} ~ ${toLabel}。`,
+    '请按下面的格式提取这一段的内容（Markdown，用中文）：',
+    '- `### <小标题>`：这一段的主题',
+    '- 要点列表（尽量具体：数字、结论、步骤、例子、人物）',
+    '- 若出现值得原样保留的说法，用 `> 引用` 格式直接摘录',
+    '- 关键处保留时间，写成 `[mm:ss]`',
+    '不要写总结性的收尾语，直接给提取结果。',
+    '下面是这一段字幕原文：',
+    text
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+// 把各段摘要合并成最终总结
+function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fixReport, extraContext }) {
+  return [
+    title ? `视频：${title}${part ? ` · ${part}` : ''}` : '',
+    duration ? `时长：${duration}` : '',
+    extraContext,
+    `下面是这部视频**分成 ${chunkCount} 段**分别提取的内容，请把它们**合并成一篇完整、连贯的总结**。`,
+    '要求：',
+    '- 按时间顺序组织，覆盖**全片**（不要只写开头，也不要遗漏后面的段落）',
+    '- 合并重复内容，保持逻辑连贯；同一主题分散在多段的要归并到一起',
+    '- 保留具体数字、结论、步骤与例子',
+    '- 保留关键时间点，写成 `[mm:ss]`，方便用户跳转',
+    fixReport ? `- 字幕本轮已校对更正 ${(fixReport.match(/^- /gm) || []).length} 处` : '',
+    '各段提取结果如下：',
+    chunkSummaries
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+// 分段总结（map）→ 合并（reduce）。
+//
+// 为什么不用流式：分段时每一段都要单独拿到完整结果才能进入下一段，
+// 所以这里用普通 `ai.chat` 调用。合并那一步也用普通调用 ——
+// 它可能很长，但比"丢内容"要好。
+async function summarizeInChunks({ lines, systemBase, video, extraContext, fixReport, settings, task, totalSteps, onChunkSummary }) {
+  const CHUNK_CHARS = 40000;
+  const chunks = chunkTranscript(lines, CHUNK_CHARS);
+  const totalCount = chunks.length;
+  const title = (video && video.title) || '';
+  const part = (video && video.partTitle) || '';
+  const durationText = video && video.duration ? fmtTime(video.duration) : '';
+  const maxTokens = Number(settings.ai.maxTokens) || 8192;
+
+  const summaries = [];
+  const durSec = (video && video.duration) || 0;
+  for (let i = 0; i < totalCount; i += 1) {
+    const c = chunks[i];
+    // 该段首末时间（用于提示模型"这是哪一段"）
+    const fromT = chunkStartSeconds(c, i, lines, durSec);
+    const toT = i + 1 < totalCount ? chunkStartSeconds(chunks[i + 1], i + 1, lines, durSec) : durSec;
+    task.set(
+      60 + (i / (totalCount + 1)) * 25,
+      `第 ${totalSteps}/${totalSteps} 步：分段总结 ${i + 1}/${totalCount}（全片 ${Math.round((fromT / 60) * 10) / 10} 分钟起）`
+    );
+    const res = await call(
+      'ai.chat',
+      {
+        messages: [
+          { role: 'system', content: systemBase ? `${systemBase}\n\n${CHUNK_SYSTEM}` : CHUNK_SYSTEM },
+          {
+            role: 'user',
+            content: chunkUserPrompt({
+              title,
+              part,
+              index: i + 1,
+              total: totalCount,
+              fromLabel: fmtClock(fromT),
+              toLabel: fmtClock(toT),
+              text: c.text
+            })
+          }
+        ],
+        platformId: settings.ai.activeId,
+        temperature: settings.ai.temperature,
+        maxTokens
+      },
+      { timeoutMs: 600000 }
+    );
+    const text = String((res && res.text) || '').trim();
+    if (!text) throw new Error(`第 ${i + 1}/${totalCount} 段总结为空`);
+    summaries.push({ index: i + 1, from: fromT, text });
+    if (onChunkSummary) {
+      onChunkSummary(`（分段总结进行中 ${summaries.length}/${totalCount}）\n\n` + summaries.map((s) => s.text).join('\n\n---\n\n'));
+    }
+  }
+
+  task.set(88, `第 ${totalSteps}/${totalSteps} 步：合并 ${totalCount} 段为完整总结…`);
+  const chunkSummaries = summaries
+    .map((s) => `【第 ${s.index}/${totalCount} 段 · 起于 ${fmtClock(s.from)}】\n${s.text}`)
+    .join('\n\n---\n\n');
+  const res2 = await call(
+    'ai.chat',
+    {
+      messages: [
+        { role: 'system', content: systemBase },
+        {
+          role: 'user',
+          content: mergeUserPrompt({
+            title,
+            part,
+            duration: durationText,
+            chunkCount: totalCount,
+            chunkSummaries,
+            fixReport,
+            extraContext
+          })
+        }
+      ],
+      platformId: settings.ai.activeId,
+      temperature: settings.ai.temperature,
+      maxTokens
+    },
+    { timeoutMs: 600000 }
+  );
+  const text = String((res2 && res2.text) || '').trim();
+  if (!text) throw new Error('合并总结为空');
+  return { text, chunks: totalCount };
+}
+
+// 取某一段的起始秒数：优先解析该段第一行的时间戳（形如 "[12:34] 文本"）。
+// 解析不到就按「第几段 / 总段数 × 时长」估算，绝不用 0 ——
+// 全返回 0 会让进度提示全部显示「0.0 分钟起」，等于没有信息。
+function chunkStartSeconds(chunk, index, allLines, durationSeconds) {
+  const m = /^\[(\d+):(\d{2})\]\s?/.exec((chunk && chunk.text) || '');
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  const n = Array.isArray(allLines) ? allLines.length : 0;
+  const dur = Number(durationSeconds) || 0;
+  if (!n || !dur) return 0;
+  return Math.round((index / n) * dur);
+}
+
 export async function generateSummary(opts = {}) {
   const skipProofread = opts.skipProofread === true;
   const st = store.get();
@@ -1301,7 +1494,7 @@ export async function generateSummary(opts = {}) {
     task.set(58, `第 1/${totalSteps} 步：跳过校对（未开启联网核实）`);
   }
 
-  const ctx = selectContext(correctedLines, '', 40000);
+  let ctx = selectContext(correctedLines, '', 40000);
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);
   // 总结也带上能力自述：用户可能在总结里问「这个结果是联网查的吗」
@@ -1380,6 +1573,68 @@ export async function generateSummary(opts = {}) {
   state.streaming = true;
   store.set({ summaryStream: '' });
   render();
+
+  // ---- 长视频：分段总结再合并（不能只取前 40000 字符）----
+  //
+  // 这是用户报的「2 小时视频总结到某个时间点就没有了」的修复点。
+  // 字幕是完整的，但之前只把前 40000 字符喂给 AI。
+  if (ctx.truncated) {
+    try {
+      const result = await summarizeInChunks({
+        lines: correctedLines,
+        systemBase: [activeSkill ? `${promptText}\n\n【当前技能：${activeSkill.name}】\n${activeSkill.body}` : promptText, capBlock, FEISHU_FORMAT_RULES]
+          .filter(Boolean)
+          .join('\n\n'),
+        video: st.video,
+        extraContext,
+        fixReport,
+        settings,
+        task,
+        totalSteps,
+        onChunkSummary: (text) => {
+          // 让用户看得见进度：把各段中间结果先落进 summaryStream
+          store.set({ summaryStream: text });
+          renderSummary();
+        }
+      });
+      const finalText = result && result.text ? result.text : '';
+      if (!finalText) throw new Error('分段总结没有返回内容');
+      state.summaryStreaming = false;
+      state.streaming = false;
+      state.stream = null;
+      store.set({ summary: finalText, summaryStream: '' });
+      recountCitations(finalText);
+      await saveHistory();
+      task.set(100, `完成（${finalText.length} 字，覆盖全片 ${result.chunks} 段）`);
+      task.end();
+      render();
+      toast(
+        {
+          title: '总结完成',
+          detail: `视频较长，已分段总结并合并（共 ${result.chunks} 段），覆盖全片。`
+        },
+        'ok',
+        5000
+      );
+      return;
+    } catch (err) {
+      state.summaryStreaming = false;
+      state.streaming = false;
+      state.stream = null;
+      task.end();
+      const payload = (err && err.payload) || {};
+      const partial = store.get().summaryStream || '';
+      if (partial) {
+        store.set({ summary: partial, summaryStream: '' });
+        toast({ title: '分段总结中断，已保留已生成的部分', detail: payload.detail || String(err.message || err) }, 'warn', 6000);
+      } else {
+        showError(Object.assign(new Error(payload.title || String((err && err.message) || err)), { payload }));
+      }
+      render();
+      return;
+    }
+  }
+
   task.set(60, `第 ${totalSteps}/${totalSteps} 步：正在生成总结…`);
   const stream = new Stream();
   state.stream = stream;

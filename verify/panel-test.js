@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.58.0', contentVersion: '1.58.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.59.0', contentVersion: '1.59.0', modules: 8, buildTime: '2025-06-01T00:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.58.0', stale: false }],
-    contentVersion: '1.58.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.59.0', stale: false }],
+    contentVersion: '1.59.0'
   },
   diagnostics: {
-    extensionVersion: '1.58.0',
-    contentVersion: '1.58.0',
+    extensionVersion: '1.59.0',
+    contentVersion: '1.59.0',
     modules: 8,
     buildTime: '2025-06-01T00:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.58.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.59.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.58\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.59\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1375,6 +1375,44 @@ async function main() {
     );
     check('页面桥支持 Range 串写法', /typeof start === 'string' && start/.test(bSrc4), '');
     check('页面桥分发时透传 range', /p && p\.range \? p\.range : p && p\.start/.test(bSrc4), '');
+
+    // ---- 长视频总结不能只取前 40000 字符 ----
+    //
+    // 用户报：「2 小时视频官方字幕是全的，但总结到某个时间点后就没有了。」
+    // 根因：selectContext(lines, '', 40000) 传空问题时走
+    //       full.slice(0, maxChars) —— 只取前 40000 字符。
+    // 2 小时字幕约 6.6 万字符 → 只喂 61%，总结覆盖到约 73 分钟处。
+    {
+      const fake = [];
+      for (let i = 0; i < 2057; i += 1) {
+        fake.push({ from: i * 3.5, to: i * 3.5 + 3.4, text: '这是一条示例字幕内容大约二十来个字用于估算体量' });
+      }
+      const full = api.subtitles.linesToTranscript(fake, { withTime: true });
+      const ctx = api.subtitles.selectContext(fake, '', 40000);
+      check(
+        '长字幕会被 selectContext 截断（旧行为的证据）',
+        ctx.truncated === true && ctx.text.length < full.length,
+        `${ctx.text.length}/${full.length}`
+      );
+      check('subtitles 导出了 fmtClock', typeof api.subtitles.fmtClock === 'function', typeof api.subtitles.fmtClock);
+      check('fmtClock 格式正确', api.subtitles.fmtClock(3671) === '61:11', api.subtitles.fmtClock(3671));
+      const chunks = api.panelAi.chunkTranscript(fake, 40000);
+      check('长字幕被切成多段', chunks.length >= 2, `${chunks.length} 段`);
+      check('每段都不超过上限', chunks.every((c) => c.text.length <= 40000), chunks.map((c) => c.text.length).join(','));
+      const joined = chunks.map((c) => c.text).join('\n');
+      const got = joined.split('\n').filter(Boolean).length;
+      check('所有行都被覆盖（不丢内容）', got === fake.length, `${got} / ${fake.length}`);
+      const lastChunk = chunks[chunks.length - 1].text;
+      const lastLabel = api.subtitles.fmtClock(fake[fake.length - 1].from);
+      check('最后一段包含视频结尾', lastChunk.includes(lastLabel), `期望含 ${lastLabel}`);
+    }
+    const aiSrc2 = fs.readFileSync(
+      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-ai.js'),
+      'utf8'
+    );
+    check('总结在截断时走分段合并', /if \(ctx\.truncated\)/.test(aiSrc2) && /summarizeInChunks/.test(aiSrc2), '');
+    check('有分段提取与合并两段提示词', /const CHUNK_SYSTEM/.test(aiSrc2) && /function mergeUserPrompt/.test(aiSrc2), '');
+    check('合并提示词明确要求覆盖全片', /覆盖\*\*全片\*\*/.test(aiSrc2), '');
 
     // ---- 清空字幕（用户报「读取出来的字幕为什么不能清除」）----
     const ctxSrc3 = fs.readFileSync(

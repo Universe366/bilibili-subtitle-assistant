@@ -857,7 +857,9 @@ export function linesToTranscript(lines, opts = {}) {
   return parts.join(withTime ? '\n' : ' ');
 }
 
-function fmtClock(s) {
+// 导出给其它模块用（panel-ai 的分段总结需要构造同样的 [mm:ss] 前缀）。
+// 以前它只是本文件内的 `function`，外部引用会直接 ReferenceError。
+export function fmtClock(s) {
   const v = Math.max(0, Math.floor(Number(s) || 0));
   const mm = String(Math.floor(v / 60)).padStart(2, '0');
   const ss = String(v % 60).padStart(2, '0');
