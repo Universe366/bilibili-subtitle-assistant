@@ -1307,11 +1307,60 @@ function chunkUserPrompt({ title, part, index, total, fromLabel, toLabel, text }
     .join('\n\n');
 }
 
+// 计算「这份字幕实际覆盖的时间范围」。
+//
+// 为什么必须把它显式告诉模型：合并提示词里给了视频总时长，
+// 而各段的时间标签只到最后一句字幕 —— 模型会**自己推断**
+// 「后面那段没有字幕」，于是写出
+//    「字幕覆盖 00:00–1:43:39，之后约 14 分钟字幕未提供」
+// 这种**看起来有据可依、实际是它自己脑补**的句子（我们的代码里
+// 没有任何地方产生这行字）。把真实范围直接给它，并禁止它发表
+// 关于字幕完整性的议论，才能从源头堵住这种编造。
+export function subtitleSpan(lines) {
+  const arr = Array.isArray(lines) ? lines : [];
+  if (!arr.length) return null;
+  let first = Infinity;
+  let last = 0;
+  let count = 0;
+  for (const l of arr) {
+    const from = Number(l && l.from);
+    if (Number.isFinite(from)) {
+      if (from < first) first = from;
+      if (from > last) last = from;
+      count += 1;
+    }
+    const to = Number(l && l.to);
+    if (Number.isFinite(to) && to > last) last = to;
+  }
+  if (!count) return null;
+  return { first: first === Infinity ? 0 : first, last, count };
+}
+
+// 时长为 [时:分:秒]（超过 1 小时时带小时）。
+// 不能直接用 fmtClock —— 它输出 [分:秒]，2 小时视频会变成「103:43」，
+// 读起来不像时间点。
+export function hmsClock(s) {
+  const v = Math.max(0, Math.floor(Number(s) || 0));
+  const h = Math.floor(v / 3600);
+  const mm = String(Math.floor((v % 3600) / 60)).padStart(2, '0');
+  const ss = String(v % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+export function describeSpan(span, durationSeconds) {
+  if (!span) return '';
+  const dur = Number(durationSeconds) || 0;
+  const head = `本视频**已获取到**的字幕时间范围：${hmsClock(span.first)} ~ ${hmsClock(span.last)}（共 ${span.count} 行）`;
+  const tail = dur ? `；视频总时长 ${hmsClock(dur)}` : '';
+  return head + tail;
+}
+
 // 把各段摘要合并成最终总结
-function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fixReport, extraContext }) {
+function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fixReport, extraContext, spanText }) {
   return [
     title ? `视频：${title}${part ? ` · ${part}` : ''}` : '',
     duration ? `时长：${duration}` : '',
+    spanText,
     extraContext,
     `下面是这部视频**分成 ${chunkCount} 段**分别提取的内容，请把它们**合并成一篇完整、连贯的总结**。`,
     '要求：',
@@ -1320,6 +1369,11 @@ function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fi
     '- 保留具体数字、结论、步骤与例子',
     '- 保留关键时间点，写成 `[mm:ss]`，方便用户跳转',
     fixReport ? `- 字幕本轮已校对更正 ${(fixReport.match(/^- /gm) || []).length} 处` : '',
+    // 禁止模型自作主张议论「字幕缺失」——
+    // 它只能看到我们给的文本，看不到字幕源文件，任何关于
+    // 「某段没有字幕 / 字幕未提供」的说法都是它的**推测**，不是事实。
+    '- **不要**写任何关于「字幕是否完整 / 某段字幕未提供 / 字幕只覆盖到某处」的说明。' +
+      '你无法判断字幕来源的完整性，这类结论只会误导用户。',
     '各段提取结果如下：',
     chunkSummaries
   ]
@@ -1340,6 +1394,7 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, fixRe
   const part = (video && video.partTitle) || '';
   const durationText = video && video.duration ? fmtTime(video.duration) : '';
   const maxTokens = Number(settings.ai.maxTokens) || 8192;
+  const spanText = describeSpan(subtitleSpan(lines), (video && video.duration) || 0);
 
   const summaries = [];
   const durSec = (video && video.duration) || 0;
@@ -1402,7 +1457,8 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, fixRe
             chunkCount: totalCount,
             chunkSummaries,
             fixReport,
-            extraContext
+            extraContext,
+            spanText
           })
         }
       ],
@@ -1560,8 +1616,12 @@ export async function generateSummary(opts = {}) {
         st.video ? `视频：${st.video.title || ''}${st.video.partTitle ? ` · ${st.video.partTitle}` : ''}` : '',
         st.video && st.video.owner ? `UP：${st.video.owner}` : '',
         st.video && st.video.duration ? `时长：${fmtTime(st.video.duration)}` : '',
+        // 把字幕的**真实**覆盖范围交给模型，并禁止它议论字幕完整性 ——
+        // 否则它会拿「视频总时长」与「最后一句字幕的时间」作差，
+        // 自己脑补出「之后 N 分钟字幕未提供」这种不存在的结论。
+        describeSpan(subtitleSpan(correctedLines), st.video && st.video.duration),
         extraContext,
-        '下面是这期视频的字幕原文：',
+        '下面是这期视频的字幕原文（**已提供的全部**，请据此整理，不要推测缺失部分）：',
         ctx.text
       ]
         .filter(Boolean)

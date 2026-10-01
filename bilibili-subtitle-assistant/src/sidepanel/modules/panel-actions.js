@@ -23,6 +23,7 @@ import {
 import { call } from './bridge.js';
 import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
 import { engineLabel } from './search.js';
+import { subtitleSpan } from './panel-ai.js';
 import * as TIMELINE from './timeline.js';
 
 let host = null;
@@ -105,6 +106,16 @@ export function runQualityCheck() {
 export function runTranscribe() {
   closeOverlays();
   return contextTranscribe();
+}
+
+// 秒 → [时:分:秒]。诊断里用裸秒数（如「末句 6220.3s」）用户要在脑子里
+// 换算才知道字幕覆盖到哪；直接给 [1:43:40] 一眼就能和视频时长对比。
+function fmtClockFull(s) {
+  const v = Math.max(0, Math.floor(Number(s) || 0));
+  const h = Math.floor(v / 3600);
+  const mm = String(Math.floor((v % 3600) / 60)).padStart(2, '0');
+  const ss = String(v % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 export function render() {
@@ -243,6 +254,31 @@ export function render() {
     }
     if (hasLines) {
       host.appendChild(h('span', { class: 'pill pill-brand', text: `${(st.subtitles || []).length} 行` }));
+      // 字幕实际覆盖到哪 —— 直接把范围摆出来。
+      //
+      // 为什么值得占一个胶囊：用户曾看到总结里写着
+      // 「字幕覆盖 00:00–1:43:39，之后约 14 分钟字幕未提供」而困惑 ——
+      // 那其实是 AI 自己推断的（它拿视频总时长与最后一句字幕作差），
+      // 我们代码里从没产生过这行字。把真实范围显示出来，
+      // 用户自己就能判断到底有没有缺、缺多少，不必听 AI 的推测。
+      const span = subtitleSpan(st.subtitles);
+      if (span) {
+        const dur = Number(st.video && st.video.duration) || 0;
+        const gap = dur > 0 ? dur - span.last : 0;
+        // 末尾缺口超过 60 秒才提示，避免正常收尾（片尾留白）误报
+        const missing = gap > 60;
+        host.appendChild(
+          h('span', {
+            class: `pill${missing ? ' pill-warn' : ''}`,
+            title: missing
+              ? `字幕最后一句在 ${fmtClockFull(span.last)}，视频总长 ${fmtClockFull(dur)}，末尾约 ${Math.round(gap / 60)} 分钟没有字幕行`
+              : `字幕覆盖 ${fmtClockFull(span.first)} ~ ${fmtClockFull(span.last)}`,
+            text: missing
+              ? `字幕至 ${fmtClockFull(span.last)}（末尾缺约 ${Math.round(gap / 60)} 分钟）`
+              : `字幕 ${fmtClockFull(span.first)}–${fmtClockFull(span.last)}`
+          })
+        );
+      }
       const meta = st.video.subtitleMeta;
       if (meta) {
         host.appendChild(
@@ -299,7 +335,14 @@ function showSubtitleDiagnostic() {
         a.validation && a.validation.stats
           ? h('div', {
               class: 'muted',
-              text: `行数 ${a.validation.stats.count} · 末句 ${Number(a.validation.stats.last || 0).toFixed(1)}s · 覆盖 ${Number(a.validation.stats.coverage || 0).toFixed(1)}s`
+              // 用 [时:分:秒] 而不是裸秒数：用户看到的是「末句 6220.3s」，
+              // 需要在脑子里换算才知道字幕到底覆盖到哪。
+              text:
+                `行数 ${a.validation.stats.count} · ` +
+                `时间范围 ${fmtClockFull(a.validation.stats.first)} ~ ${fmtClockFull(a.validation.stats.last)}` +
+                (a.validation.stats.duration
+                  ? ` · 视频 ${fmtClockFull(a.validation.stats.duration)}`
+                  : '')
             })
           : null
       ])

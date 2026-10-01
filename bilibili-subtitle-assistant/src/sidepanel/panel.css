@@ -1483,6 +1483,14 @@ mark.hit {
   background: var(--brand-soft);
 }
 
+/* 字幕覆盖不全时的提醒胶囊（末尾有明显缺口） */
+.pill-warn {
+  border-color: #d48806;
+  color: #b57400;
+  background: rgba(212, 136, 6, 0.1);
+  font-weight: 600;
+}
+
 .search-hits {
   color: var(--fg-soft);
   font-size: calc(var(--fs) * 0.88);
