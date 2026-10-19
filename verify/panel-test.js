@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.63.2', contentVersion: '1.63.2', modules: 17, buildTime: '2026-10-19T09:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.63.3', contentVersion: '1.63.3', modules: 17, buildTime: '2026-10-19T10:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.2', stale: false }],
-    contentVersion: '1.63.2'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.3', stale: false }],
+    contentVersion: '1.63.3'
   },
   diagnostics: {
-    extensionVersion: '1.63.2',
-    contentVersion: '1.63.2',
+    extensionVersion: '1.63.3',
+    contentVersion: '1.63.3',
     modules: 17,
-    buildTime: '2026-10-19T09:00:00Z',
+    buildTime: '2026-10-19T10:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.63.2', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.63.3', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.2 · 17 模块 · 2026-10-19/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.3 · 17 模块 · 2026-10-19/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -900,8 +900,22 @@ async function main() {
     check('总结流程创建了任务', /jobs\.beginTask\(TASK_LABEL\.summarize/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('校对阶段报告核对进度', /步：联网核对/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('生成阶段报告已输出字数', /步：生成中（已 \$\{streamedChars\} 字）/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
-    // 步骤总数随「是否跳过校对」而变（快速总结只有两步）
-    check('步骤总数支持跳过校对', /const totalSteps = skipProofread \? 2 : 3;/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    // 步骤总数按「本次是否真的校对」计算：快速总结、设置里关闭校对、
+    // 或检索不可用时都只有两步。
+    check(
+      '步骤总数按「是否真的校对」计算',
+      /const willProofread =[\s\S]{0,300}verifyOnSummary !== false/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /const totalSteps = willProofread \? 3 : 2;/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      ''
+    );
+    check(
+      '总结校对不再误用「对话自动联网」开关',
+      !/verifyOnSummary !== false\)\s*&&\s*capSearch\.webCapable\s*&&\s*capSearch\.searchOn/.test(
+        srcOf('sidepanel/modules/panel-ai.js')
+      ),
+      ''
+    );
+    check('主按钮如实标出「先校对」', /生成总结（先校对）/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('快速总结跳过联网校对', /opts\.skipProofread === true/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('快速总结提示跳过校对', /快速总结：跳过联网校对/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('AI 工具栏有快速总结按钮', /⚡ 快速总结/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
@@ -1366,8 +1380,13 @@ async function main() {
     // 取整条走显式 Range（不带 Range 的那次实测失败过）
     check('取整条用显式 Range', /range: 'bytes=0-'/.test(oaSrc), '');
     check('能从 Content-Range 解析总长度', /function parseTotalFromContentRange/.test(oaSrc), '');
-    // page.call 的 fetchAudioRange 回的是 base64（不是 bytes）——
-    // 面板层必须自己解码，否则「成功」会被当成失败（用户日志里的 reason=network）
+    // 整条音轨与分块下载共用 audio.range：页面优先、后台兜底、错误统一分类；
+    // 回的是 base64（不是 bytes），面板层必须自己解码。
+    check(
+      '整条音轨走统一的 audio.range 代理',
+      /'audio\.range'/.test(txSrc3) && /range \? \{ url: u, range \}/.test(txSrc3),
+      ''
+    );
     check('面板层把 base64 解成 bytes', /base64ToBytes\(res\.base64\)/.test(txSrc3), '');
     const bSrc4 = fs.readFileSync(
       path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'content', 'page-bridge.js'),

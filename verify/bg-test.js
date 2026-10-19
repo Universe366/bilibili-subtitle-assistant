@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '1.63.2', manifest_version: 3 }),
+    getManifest: () => ({ version: '1.63.3', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.2' };
+      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.3' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -553,6 +553,13 @@ async function main() {
   check('音轨分块下载返回 base64 与长度', res.ok && res.data.byteLength === 512 && typeof res.data.base64 === 'string' && String(res.data.contentRange).includes('/2048'), JSON.stringify(res.data || res.error).slice(0, 220));
   const decoded = Buffer.from(res.data.base64, 'base64');
   check('音轨 base64 可还原为正确字节', decoded.length === 512 && decoded[0] === 0x41);
+  // 整条音轨直传也走同一入口：传 range 串，而不是绕回 page.call
+  res = await rpc('audio.range', { url: 'https://upos.bilivideo.com/audio/x.m4s', range: 'bytes=0-' });
+  check(
+    '整条下载走 audio.range（range 串透传到页面）',
+    res.ok && lastTabMessage && lastTabMessage.params.range === 'bytes=0-' && res.data.ok === true,
+    JSON.stringify(lastTabMessage && lastTabMessage.params)
+  );
   res = await rpc('audio.range', { url: 'https://upos.bilivideo.com/expired/x.m4s', pageUrl: 'https://www.bilibili.com/video/BV1', start: 0, end: 511 });
   check('音轨 403 归类为防盗链并提示刷新', res.ok === false && res.error.kind === 'audio-forbidden' && /刷新|重试/.test(res.error.action), JSON.stringify(res.error));
 
@@ -641,7 +648,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.2' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.3' && !!res.data.platformSummary && !!res.data.permissions);
   check('诊断信息不回传明文密钥', JSON.stringify(res.data).indexOf('sk-test-1234567890abcd') === -1);
   res = await rpc('history.put', { video: { bvid: 'BV1', cid: 1, page: 1, title: 'T' }, entry: { lines: [{ from: 0, to: 1, text: 'x' }] } });
   check('历史写入成功', res.ok);

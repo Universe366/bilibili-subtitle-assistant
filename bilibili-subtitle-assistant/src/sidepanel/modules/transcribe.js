@@ -289,15 +289,28 @@ export async function transcribeVideo({ video, settings, hooks = {} }) {
           durationSeconds: video.duration,
           maxBytesMB: limitMB,
           onLog,
-          // page.call 的 fetchAudioRange 回的是 **base64**（不是 bytes）——
-          // 我第一版按 res.bytes 判定，于是「成功」也被当成失败
-          // （用户日志里那句 reason=network 就是这么来的）。
+          // 统一走 `audio.range`：它优先代理到页面主环境（浏览器自动带 Referer），
+          // 页面不可用时再退回后台，并统一把 403 / 200+HTML 归类成 audio-forbidden。
+          // 以前这里直接 `page.call fetchAudioRange`，绕过了这层兜底与错误分类，
+          // 于是同一个「整条下载」在两条路径上的失败语义并不一致。
           fetcher: async (u, range) => {
-            const res = await call(
-              'page.call',
-              { name: 'fetchAudioRange', params: range ? { url: u, range } : { url: u } },
-              { timeoutMs: 300000 }
-            );
+            let res;
+            try {
+              res = await call(
+                'audio.range',
+                range ? { url: u, range } : { url: u },
+                { timeoutMs: 300000 }
+              );
+            } catch (err) {
+              const payload = (err && err.payload) || {};
+              return {
+                ok: false,
+                reason: payload.kind || 'network',
+                status: payload.status,
+                contentType: payload.contentType,
+                message: payload.detail || (err && err.message)
+              };
+            }
             if (!res || res.ok === false) {
               return {
                 ok: false,

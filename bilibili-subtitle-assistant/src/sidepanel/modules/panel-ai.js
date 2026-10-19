@@ -205,13 +205,22 @@ function renderToolbar() {
 
   // 主操作 + 常用操作直接摆出来（用户要求：复制/导出/重置从 ⋯ 里拿出来）。
   // ⋯ 里只留低频的「回退字幕」（它需要先校对过才有意义）。
+  //
+  // 主按钮要**如实标出这次会不会先校对**：
+  // 以前它永远叫「生成总结」，用户点下去才发现还要先联网核对、
+  // 多花一轮 AI + 若干次检索。现在按当前设置直接写在按钮上。
+  const searchCfg = (st.settings && st.settings.search) || {};
+  const proofreadReady = searchCfg.verifyOnSummary !== false && searchCapabilityOf(st.settings || {}).webCapable;
+  const willProofread = hasLines && proofreadReady;
   bar.appendChild(
-    button(state.summaryStreaming ? '生成中…' : '生成总结', () => generateSummary(), {
+    button(state.summaryStreaming ? '生成中…' : willProofread ? '生成总结（先校对）' : '生成总结', () => generateSummary(), {
       small: true,
       primary: true,
       disabled: !hasLines || state.streaming,
       title: hasLines
-        ? '先联网校对字幕（术语/逻辑/时间/事实），再用更正后的字幕生成总结'
+        ? willProofread
+          ? '先联网校对字幕（术语/逻辑/时间/事实），再用更正后的字幕生成总结；想跳过请点「⚡ 快速总结」'
+          : '直接用现有字幕生成总结（未开启联网校对，或检索不可用）'
         : '需要先有字幕'
     })
   );
@@ -1521,12 +1530,20 @@ export async function generateSummary(opts = {}) {
   // 那样校正和总结混在一起，用户既看不清改了什么，也没法回退。
   // 现在拆成两个阶段，并真的把修正写回字幕。
   const capSearch = searchCapabilityOf(settings);
+  // 是否真的执行阶段 1：只由「总结校对开关 + 检索是否可用」决定。
+  // 以前这里还要求 capSearch.searchOn（即「对话时自动联网」），
+  // 于是用户一关对话自动联网，总结的校对也跟着停了 —— 两个无关的开关被串在一起。
+  const willProofread =
+    !skipProofread &&
+    settings.search.verifyOnSummary !== false &&
+    capSearch.webCapable &&
+    st.subtitles.length > 0;
   let correctedLines = st.subtitles;
   let fixReport = '';
-  const totalSteps = skipProofread ? 2 : 3;
+  const totalSteps = willProofread ? 3 : 2;
   if (skipProofread) {
     task.set(5, '快速总结：跳过联网校对');
-  } else if ((settings.search.verifyOnSummary !== false) && capSearch.webCapable && capSearch.searchOn && st.subtitles.length) {
+  } else if (willProofread) {
     try {
       task.set(2, `第 1/${totalSteps} 步：准备校对字幕`);
       const out = await proofreadSubtitles(st.subtitles, settings, {
@@ -1552,8 +1569,9 @@ export async function generateSummary(opts = {}) {
       const detail = (err && err.payload && err.payload.title) || (err && err.message) || '校对失败';
       toast({ title: '字幕校对失败，将用原字幕生成总结', detail }, 'warn', 4000);
     }
-  } else if (!skipProofread) {
-    task.set(58, `第 1/${totalSteps} 步：跳过校对（未开启联网核实）`);
+  } else {
+    const why = settings.search.verifyOnSummary === false ? '设置里已关闭「总结前联网核对」' : '检索能力未就绪';
+    task.set(5, `第 1/${totalSteps} 步：跳过联网校对（${why}）`);
   }
 
   let ctx = selectContext(correctedLines, '', 40000);

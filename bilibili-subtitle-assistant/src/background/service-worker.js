@@ -87,7 +87,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-19T09:00:00Z';
+const BUILD_TIME = '2026-10-19T10:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -256,10 +256,10 @@ async function fetchSubtitleBody(url, pageUrl) {
 // 这是**页面不可用时的兜底**（audio.range 会优先走页面主环境）。
 // Referer 由 rules.json 的 DNR 规则补；这里直接设会被静默丢弃。
 async function fetchAudioChunk(params) {
-  const { url, start, end } = params;
+  const { url, start, end, range } = params;
   if (!url) throw new AppError('badurl', '音轨地址为空', '', '请刷新页面重新解析音轨地址。');
   const headers = {
-    range: `bytes=${start}-${end}`
+    range: range || `bytes=${start}-${end}`
   };
   let res;
   try {
@@ -286,6 +286,7 @@ async function fetchAudioChunk(params) {
     base64 += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
   }
   return {
+    ok: true,
     base64: btoa(base64),
     byteLength: bytes.length,
     contentRange: res.headers.get('content-range') || null,
@@ -645,8 +646,19 @@ const methods = {
   },
 
   // 取一段字节：页面优先，失败再退后台（后台可能因 Referer 缺失而 403）
+  //
+  // 支持两种入参：
+  //   { start, end }  —— 明确的起止字节（分块下载）
+  //   { range }       —— 直接给 Range 串，如 'bytes=0-'（整条下载）
   'audio.range': async (params, sender) => {
-    const page = async () => rpcPage('fetchAudioRange', { url: params.url, start: params.start, end: params.end }, sender);
+    const page = async () =>
+      rpcPage(
+        'fetchAudioRange',
+        params.range
+          ? { url: params.url, range: params.range }
+          : { url: params.url, start: params.start, end: params.end },
+        sender
+      );
     try {
       const out = await page();
       if (out && out.ok) return out;
