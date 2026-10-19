@@ -880,10 +880,14 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
   const cap = searchCapabilityOf(settings);
   // 阶段回调：让调用方能把进度显示到进度条上
   const onStage = typeof opts.onStage === 'function' ? opts.onStage : null;
+  // 终止信号：用户点「停止」时，逐条核对与最后的 AI 校正都要能中断
+  const shouldAbort = () => state.summaryAbortRequested === true;
+  const abortError = () => Object.assign(new Error('已终止'), { name: 'AbortError' });
 
   // 联网核对（可选）
   let verify = [];
   if (cap.webCapable && cap.searchOn) {
+    if (shouldAbort()) throw abortError();
     const items = extractVerifyItems(lines, settings.search?.verifyItemCount || settings.optimize?.verifyItemCount || 8);
     if (items.length) {
       try {
@@ -894,15 +898,18 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
           {
             maxItems: settings.search?.verifyItemCount || 8,
             perItem: 3,
+            shouldAbort,
             // 逐条报告进度，界面能显示「正在核对 3/6：DeepSeek」
             onProgress: (i, total, item) => onStage && onStage('verify', i, total, item)
           }
         );
       } catch (err) {
+        if (err && err.name === 'AbortError') throw err;
         /* 核对失败仍可做纯文本校对 */
       }
     }
   }
+  if (shouldAbort()) throw abortError();
   if (onStage) onStage('correct', 0, 1, null);
 
   const messages = OPT.buildOptimizeMessages({
@@ -912,7 +919,14 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
     useSearch: false,
     videoTitle: (st.video && st.video.title) || ''
   });
-  const res = await call('ai.chat', { messages, temperature: 0.1, maxTokens: 4000 }, { timeoutMs: 300000 });
+  // 与分段总结一样：给这次校正一个 rid，停止时后台能按 rid abort
+  const proofRid = `proof_${Date.now().toString(36)}`;
+  state.summaryRid = proofRid;
+  const res = await call(
+    'ai.chat',
+    { rid: proofRid, messages, temperature: 0.1, maxTokens: 4000 },
+    { timeoutMs: 300000 }
+  );
   const corrections = OPT.parseOptimizeResult(res.text);
   if (!corrections.length) return { corrections: [], applied: { changed: 0 }, lines, report: '' };
 
@@ -1533,6 +1547,10 @@ function chunkStartSeconds(chunk, index, allLines, durationSeconds) {
 export async function generateSummary(opts = {}) {
   const skipProofread = opts.skipProofread === true;
   const st = store.get();
+  if (state.streaming) {
+    toast({ title: '正在生成中，请先停止或等待完成' }, 'warn', 2500);
+    return;
+  }
   if (!(st.subtitles || []).length) {
     toast(
       {
@@ -1550,6 +1568,14 @@ export async function generateSummary(opts = {}) {
   // 整个总结流程挂一个可取消的任务，进度显示在全局进度条上。
   // 之前总结时界面只有「生成中…」，用户不知道卡在哪一步、还剩多久。
   const task = jobs.beginTask(TASK_LABEL.summarize, { detail: '准备中…' });
+  // 从「校对」阶段就进入可终止状态：这段时间可能连着跑 8 次检索 + 1 次 AI，
+  // 用户不应该只能干等。停止按钮据此出现，stopStream 会设置 abortRequested。
+  state.summaryAbortRequested = false;
+  state.summaryRid = '';
+  state.summaryStreaming = true;
+  state.streaming = true;
+  store.set({ summaryStream: '' });
+  render();
 
   // ---- 阶段 1：校对字幕（联网核对术语/逻辑/时间/事实），并**实际更正字幕** ----
   //
@@ -1596,12 +1622,34 @@ export async function generateSummary(opts = {}) {
         ? `第 2/${totalSteps} 步：已更正 ${out.applied.changed} 处`
         : `第 2/${totalSteps} 步：字幕未发现需要更正的地方`);
     } catch (err) {
+      if (state.summaryAbortRequested || (err && err.name === 'AbortError')) {
+        state.summaryStreaming = false;
+        state.streaming = false;
+        state.summaryRid = '';
+        state.summaryAbortRequested = false;
+        task.end();
+        render();
+        toast({ title: '已终止生成总结', detail: '校对/生成已停止，不会继续消耗额度。' }, 'warn', 3500);
+        return;
+      }
       const detail = (err && err.payload && err.payload.title) || (err && err.message) || '校对失败';
       toast({ title: '字幕校对失败，将用原字幕生成总结', detail }, 'warn', 4000);
     }
   } else {
     const why = settings.search.verifyOnSummary === false ? '设置里已关闭「总结前联网核对」' : '检索能力未就绪';
     task.set(5, `第 1/${totalSteps} 步：跳过联网校对（${why}）`);
+  }
+
+  // 校对刚结束时用户可能已点停止：不要继续进入生成阶段
+  if (state.summaryAbortRequested) {
+    state.summaryStreaming = false;
+    state.streaming = false;
+    state.summaryRid = '';
+    state.summaryAbortRequested = false;
+    task.end();
+    render();
+    toast({ title: '已终止生成总结', detail: '不会继续消耗额度。' }, 'warn', 3000);
+    return;
   }
 
   let ctx = selectContext(correctedLines, '', 40000);
@@ -1682,13 +1730,6 @@ export async function generateSummary(opts = {}) {
         .join('\n\n')
     }
   ];
-
-  state.summaryAbortRequested = false;
-  state.summaryRid = '';
-  state.summaryStreaming = true;
-  state.streaming = true;
-  store.set({ summaryStream: '' });
-  render();
 
   // ---- 长视频：分段总结再合并（不能只取前 40000 字符）----
   //
@@ -1817,12 +1858,13 @@ export async function generateSummary(opts = {}) {
 }
 
 function stopStream() {
-  // 长视频分段总结没有流式对象，靠 rid 让后台 abort 当前那段 ai.chat。
-  // 以前的「停止」在这种情况下完全没反应 —— 按钮在、点了什么都不发生。
-  if (state.summaryStreaming && !state.stream && state.summaryRid) {
+  // 生成总结的「校对 / 分段」阶段没有流式对象，靠 summaryAbortRequested +
+  // rid（如已有在跑的单次 ai.chat）来终止。
+  // 以前这里要求 summaryRid 非空，校对阶段按了完全没反应。
+  if (state.summaryStreaming && !state.stream) {
     state.summaryAbortRequested = true;
-    call('cancel', { rid: state.summaryRid }, { timeoutMs: 8000 }).catch(() => {});
-    toast({ title: '正在终止分段总结…' }, 'warn', 1500);
+    if (state.summaryRid) call('cancel', { rid: state.summaryRid }, { timeoutMs: 8000 }).catch(() => {});
+    toast({ title: '正在终止生成总结…' }, 'warn', 1500);
     return;
   }
   if (state.stream) {

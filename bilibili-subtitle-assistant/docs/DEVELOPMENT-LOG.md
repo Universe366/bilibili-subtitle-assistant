@@ -5110,3 +5110,32 @@ keyless-search-test 新增查询清理与 after 映射；asr-test 补充 summary
 
 1.63.6 → 1.63.7。panel-test 新增/更新：向导不可 Esc 关闭、清除 Key 语义、
   sendOnEnter 入口、tab.reload、长视频分段总结可终止；共 425 项。
+
+---
+
+## 第八十七轮（1.63.8）—— 校对阶段可终止；清空字幕加确认
+
+### 1. 「生成总结」的校对阶段现在也能停止
+
+以前只有进入「生成」阶段、创建了 stream 之后停止按钮才有意义；
+而校对阶段可能连着跑 8 次检索 + 1 次 AI 校正，用户只能干等。
+
+* `generateSummary` 一开始就置 `summaryStreaming/streaming`，停止按钮提前出现；
+* `verifyItems` 支持 `shouldAbort`：每条核对前后检查，AbortError 不再被
+  「单条失败不影响其它」的 catch 吞掉；
+* `proofreadSubtitles` 在核对前、AI 校正前后都检查终止标记；
+  AI 校正也带 `rid`，停止时后台能 abort 当前请求；
+* `stopStream` 不再要求 `summaryRid` 非空（校对早期还没有 rid）；
+* 终止后统一复位状态、结束任务、保留已生成内容。
+
+同时加了并发保护：`generateSummary` 在 `state.streaming` 时直接提示，
+避免快捷键或按钮重复触发两次总结。
+
+### 2. 「清空字幕」加二次确认
+
+顶部操作区菜单与字幕面板菜单都改为先弹确认框，文案说明会清掉
+字幕 / 校对备份 / 章节 / 统计，并提示可在「历史记录与操作留痕」回退。
+
+### 版本与测试
+
+1.63.7 → 1.63.8。panel-test 新增「校对阶段支持终止」「清空字幕有二次确认」断言，共 428 项。

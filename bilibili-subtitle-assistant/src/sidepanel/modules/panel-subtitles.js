@@ -8,7 +8,7 @@ import { call } from './bridge.js';
 import { lineStats, overallStats, langLabel } from './subtitles.js';
 import { FORMATTERS } from './exporter.js';
 import { EXPORT_FORMATS, EXPORT_TEMPLATES } from '../../shared/constants.js';
-import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
+import { openOverlay, closeOverlays, popoverMenu, confirmDialog } from './ui.js';
 
 const OVERSCAN = 6;
 const state = {
@@ -470,7 +470,12 @@ function renderToolbar() {
           label: '清空字幕',
           title: '清掉当前字幕（含校对备份、章节与统计）。抓到可疑内容时用它重置，再重新获取',
           disabled: !hasLinesNow,
-          onClick: () => clearSubtitles()
+          onClick: () =>
+            confirmDialog(
+              '清空字幕',
+              '会清掉当前字幕、AI 校对备份、章节与统计。操作会记入留痕，可在「历史记录与操作留痕」里回退。确定继续？',
+              () => clearSubtitles()
+            )
         }
       ],
       { label: '⋯', title: '更多操作' }

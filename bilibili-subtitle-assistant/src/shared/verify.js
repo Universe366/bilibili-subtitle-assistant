@@ -104,14 +104,18 @@ export async function verifyItems(items, searchFn, opts = {}) {
   const maxItems = Math.max(1, Math.min(8, opts.maxItems || 5));
   const perItem = Math.max(1, Math.min(5, opts.perItem || 3));
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+  const shouldAbort = typeof opts.shouldAbort === 'function' ? opts.shouldAbort : null;
+  const abortError = () => Object.assign(new Error('已终止'), { name: 'AbortError' });
   const list = items.slice(0, maxItems);
   const out = [];
   for (let i = 0; i < list.length; i += 1) {
+    if (shouldAbort && shouldAbort()) throw abortError();
     const item = list[i];
     // 报告进度，让界面能显示「正在核对 3/6」
     if (onProgress) onProgress(i, list.length, item);
     try {
       const res = await searchFn(item, { maxResults: perItem, fetchPageContent: false });
+      if (shouldAbort && shouldAbort()) throw abortError();
       const results = (res && res.results) || [];
       // 相关性过滤 —— 这是防污染的关键一步
       const relevant = results.filter((r) => isRelevantToQuery(r, item));
@@ -126,6 +130,8 @@ export async function verifyItems(items, searchFn, opts = {}) {
         }))
       });
     } catch (err) {
+      // 终止信号必须向上抛：吞掉的话「停止」会被当成单条检索失败继续跑
+      if (err && err.name === 'AbortError') throw err;
       /* 单条失败不影响其它 */
     }
   }

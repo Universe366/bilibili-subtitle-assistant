@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.63.7', contentVersion: '1.63.7', modules: 17, buildTime: '2026-10-19T14:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.63.8', contentVersion: '1.63.8', modules: 17, buildTime: '2026-10-19T15:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.7', stale: false }],
-    contentVersion: '1.63.7'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.8', stale: false }],
+    contentVersion: '1.63.8'
   },
   diagnostics: {
-    extensionVersion: '1.63.7',
-    contentVersion: '1.63.7',
+    extensionVersion: '1.63.8',
+    contentVersion: '1.63.8',
     modules: 17,
-    buildTime: '2026-10-19T14:00:00Z',
+    buildTime: '2026-10-19T15:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.63.7', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.63.8', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.7 · 17 模块 · 2026-10-19/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.8 · 17 模块 · 2026-10-19/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -944,6 +944,32 @@ async function main() {
       /state\.summaryRid = rid/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
         /call\('cancel', \{ rid: state\.summaryRid \}/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
         /summaryAbortRequested/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      ''
+    );
+    check(
+      '校对阶段也能终止（verifyItems 支持 shouldAbort）',
+      /shouldAbort/.test(
+        fs.readFileSync(
+          path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'shared', 'verify.js'),
+          'utf8'
+        )
+      ) && /shouldAbort/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      ''
+    );
+    check(
+      '清空字幕有二次确认',
+      /confirmDialog\([\s\S]{0,160}清空字幕/.test(
+        fs.readFileSync(
+          path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
+          'utf8'
+        )
+      ) &&
+        /confirmDialog\([\s\S]{0,160}清空字幕/.test(
+          fs.readFileSync(
+            path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-subtitles.js'),
+            'utf8'
+          )
+        ),
       ''
     );
     check('快速总结跳过联网校对', /opts\.skipProofread === true/.test(srcOf('sidepanel/modules/panel-ai.js')), '');

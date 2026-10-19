@@ -21,7 +21,7 @@ import {
   copyAllSubtitles
 } from './context.js';
 import { call } from './bridge.js';
-import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
+import { openOverlay, closeOverlays, popoverMenu, confirmDialog } from './ui.js';
 import { engineLabel } from './search.js';
 import { subtitleSpan, searchCapabilityOf } from './panel-ai.js';
 import * as TIMELINE from './timeline.js';
@@ -222,7 +222,12 @@ export function render() {
       label: '清空字幕',
       title: '清掉当前字幕（含校对备份、章节与统计），方便重新获取',
       disabled: !hasLines,
-      onClick: () => clearSubtitles()
+      onClick: () =>
+        confirmDialog(
+          '清空字幕',
+          '会清掉当前字幕、AI 校对备份、章节与统计。操作会记入留痕，可在「历史记录与操作留痕」里回退。确定继续？',
+          () => clearSubtitles()
+        )
     }
   ];
   host.appendChild(popoverMenu(moreItems, { label: '⋯', title: '更多操作' }));
