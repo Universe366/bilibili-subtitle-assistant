@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '1.63.1';
+  const CONTENT_VERSION = '1.63.2';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -106,7 +106,9 @@
         injectPageBridgeFallback();
       }
     };
-    setInterval(check, 90);
+    // 事件驱动是主路径（document 上的 EVT）；这里只是**兜底**。
+    // 以前是 90ms（约 11 次/秒）的 DOM 查询，对每个 B 站页面都是无谓开销。
+    setInterval(check, 250);
     document.addEventListener(EVT, () => check(), false);
   }
 
@@ -238,19 +240,8 @@
   // 尝试直接打开侧边栏。
   //
   // 说明：`chrome.sidePanel` **只在扩展页面里可用**，内容脚本拿不到
-  // （内容脚本只有 runtime / i18n 等少数 API）。所以这里实际做的是
-  // 「确认不可用就返回 false」，让调用方走后台路径。
-  // 保留这个探测是为了未来浏览器放开权限时能自动受益。
-  function tryOpenSidePanelDirect() {
-    try {
-      if (chrome.sidePanel && typeof chrome.sidePanel.open === 'function') {
-        return true; // 未来若放开，调用方会直接用
-      }
-    } catch (err) {
-      /* ignore */
-    }
-    return false;
-  }
+  // （内容脚本只有 runtime / i18n 等少数 API）。所以打开侧边栏只能由后台做
+  // （见下面按钮的 `bsub:open-side-panel` 消息）。
 
   function removePlayerButton() {
     const el = document.getElementById(BTN_ID);
@@ -354,6 +345,8 @@
     followTimer = setInterval(async () => {
       if (!state.options.followPlayback) return;
       if (!chrome.runtime || !chrome.runtime.id) return;
+      // 页面在后台时没人看，不必每秒唤醒 service worker（MV3 下这是实打实的开销）
+      if (document.hidden) return;
       try {
         const t = await callPage('getTime', {}, 2500);
         const cur = Math.round((t && t.currentTime) || 0);
@@ -559,16 +552,6 @@
 
     // 周期性确保播放器按钮存在（播放器会被动态重建）
     setInterval(ensurePlayerButton, 1500);
-
-    // 拉取界面选项
-    try {
-      const res = await chrome.runtime.sendMessage({ kind: 'rpc', id: 'opt0', method: 'page.options', params: {} });
-      if (res && res.ok && res.data && res.data.pushed >= 0) {
-        /* 选项经由 applyOptions 推回本脚本 */
-      }
-    } catch (err) {
-      /* ignore */
-    }
   }
 
   if (document.readyState === 'loading') {

@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.63.1', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.63.2', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -465,7 +465,20 @@ async function main() {
         /push\(dash\.audio, '__INITIAL_STATE__', stCid, false\)/.test(bridgeSrc),
       ''
     );
-    check('播放器 API 候选不作验证', /push\(player\.getAudioTracks\(\), 'player\.getAudioTracks', currentCid\(\), false\)/.test(bridgeSrc), '');
+    check(
+      '播放器 API 候选只信播放器自报的 cid（不贴 currentCid）',
+      /const msg = typeof player\.getVideoMessage === 'function'/.test(bridgeSrc) &&
+        /push\(player\.getAudioTracks\(\), 'player\.getAudioTracks', playerCid, false\)/.test(bridgeSrc) &&
+        !/getAudioTracks\(\), 'player\.getAudioTracks', currentCid\(\)/.test(bridgeSrc),
+      ''
+    );
+    check(
+      '触发字幕菜单只认当前视频的嗅探结果（不用跨视频的 items.size）',
+      /const fresh = freshSniffed\(\);/.test(bridgeSrc) &&
+        /if \(fresh\.length\) return \{ ok: true, already: true, count: fresh\.length \}/.test(bridgeSrc) &&
+        /if \(curSig !== subtitleMenuSig\)/.test(bridgeSrc),
+      ''
+    );
     check('有可信来源时只用可信来源', /owned\.push\(\.\.\.verifiedCands\);/.test(bridgeSrc), '');
     check('无 cid 的候选不再宽松放行（有 wantCid 时）', /if \(cid && cid === wantCid\) unverifiedCands\.push\(c\);/.test(bridgeSrc), '');
     check('对外报告是否用了可信来源', /usingVerifiedSource: usingVerified/.test(bridgeSrc), '');

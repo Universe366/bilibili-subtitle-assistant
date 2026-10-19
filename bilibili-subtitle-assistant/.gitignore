@@ -2,6 +2,9 @@
 node_modules/
 build/
 
+# Chrome 加载「已解压扩展」时自动生成的规则集缓存，不属于源码
+_metadata/
+
 # 扩展自带的 FFmpeg 内核（31MB）—— 按约定提交进仓库，克隆即可用。
 # 如需改为「不提交 + 下载」，把下面两行取消注释，并运行 verify/fetch-ffmpeg.mjs。
 # vendor/ffmpeg/ffmpeg-core.wasm

@@ -60,19 +60,34 @@ async function collectMcpTools(mcpCfg, opts = {}) {
 
 
 const inflight = new Map(); // rid -> { controller, label }
-// 构建指纹：版本号 + 模块数 + 构建时间（第十一章）。改代码后请同步 BUILD_TIME 与模块表。
+// 构建指纹：版本号 + 模块数 + 构建时间（第十一章）。
+//
+// 这三项是给用户**确认自己真的加载了新代码**用的（README 第一节），
+// 所以必须跟着代码走：改完后台代码请同时更新 BUILD_TIME。
+// 模块表 = service worker 实际加载的模块图（含间接依赖），
+// 以前只列了 8 个、漏掉 mcp/tools/bili/keyless-search 等，
+// 于是「模块数」恒定不变，失去了指纹的意义。
 const BUILD_MODULES = [
   '../shared/constants.js',
   '../shared/settings.js',
   '../shared/storage.js',
+  '../shared/untrusted.js',
+  '../shared/time-range.js',
+  '../shared/search-router.js',
   './errors.js',
   './net.js',
+  './header-rules.js',
   './providers.js',
+  './bili.js',
+  './mcp.js',
+  './tools.js',
+  './keyless-search.js',
+  './search-cache.js',
   './tabs.js',
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2025-06-01T00:00:00Z';
+const BUILD_TIME = '2026-10-19T09:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -121,11 +136,32 @@ async function settingsForUi() {
 // 与内容脚本 / 页面通信（RPC 代理）
 // ---------------------------------------------------------------------------
 
+// 页面方法名 → 超时（毫秒）。
+//
+// 以前这里写的是 `METHOD_TIMEOUT['page.' + method]`，而 method 是桥的方法名
+// （getInfo / getAudioCandidates / fetchAudioRange…），表里存的却是 RPC 名
+// （page.info / audio.candidates…）—— 两边**永远对不上**，
+// 于是所有页面调用都被静默压到 15000ms。最典型的后果：
+// 整条音轨（十几 MB）走 fetchAudioRange 时，桥允许 180s、后台 15s 就掐断，
+// 表现为「大文件转录偶发失败」。这里显式映射，并复用同一张常量表。
+const PAGE_METHOD_TIMEOUT = {
+  getInfo: METHOD_TIMEOUT['page.info'],
+  getSubtitles: METHOD_TIMEOUT['page.subtitles'],
+  getTime: METHOD_TIMEOUT['page.time'],
+  seek: METHOD_TIMEOUT['page.seek'],
+  getAudio: 20000,
+  getAudioCandidates: METHOD_TIMEOUT['audio.candidates'],
+  getSubtitleBundle: METHOD_TIMEOUT['subtitle.api'],
+  triggerSubtitleMenu: METHOD_TIMEOUT['subtitle.trigger'],
+  refreshAudio: METHOD_TIMEOUT['audio.refresh'],
+  fetchAudioRange: METHOD_TIMEOUT['audio.range']
+};
+
 async function rpcPage(method, params, sender) {
   const opts = {
     tabId: params && params.tabId,
     senderTabId: sender && sender.tab ? sender.tab.id : null,
-    timeoutMs: METHOD_TIMEOUT[`page.${method}`] || 15000
+    timeoutMs: PAGE_METHOD_TIMEOUT[method] || 15000
   };
   const out = await callOnBestTab(method, params || {}, opts);
   // 统一契约：把内容脚本的 {ok,data} 信封拆开，调用方直接拿载荷
@@ -156,19 +192,15 @@ function normalizeSubtitleUrl(rawUrl, pageUrl) {
 
 async function fetchSubtitleBody(url, pageUrl) {
   const target = normalizeSubtitleUrl(url, pageUrl);
-  let referer = 'https://www.bilibili.com/';
-  try {
-    const u = new URL(pageUrl || referer);
-    referer = `${u.protocol}//${u.host}/`;
-  } catch (err) {
-    /* ignore */
-  }
+  // 不要在这里设 Referer / Origin：它们属于 Fetch 的 forbidden header，
+  // 在 service worker 里设置会被浏览器**静默丢弃**（见 AGENTS.md 2.1）。
+  // 需要 Referer 的请求请走页面主环境，或由 rules.json 的 DNR 规则补。
   let res;
   try {
     res = await fetch(target, {
       method: 'GET',
       credentials: 'include',
-      headers: { accept: 'application/json, text/plain, */*', referer, origin: referer.replace(/\/$/, '') },
+      headers: { accept: 'application/json, text/plain, */*' },
       redirect: 'follow'
     });
   } catch (err) {
@@ -220,19 +252,13 @@ async function fetchSubtitleBody(url, pageUrl) {
 }
 
 // 音轨分块（Range 请求，带 cookie）
+//
+// 这是**页面不可用时的兜底**（audio.range 会优先走页面主环境）。
+// Referer 由 rules.json 的 DNR 规则补；这里直接设会被静默丢弃。
 async function fetchAudioChunk(params) {
-  const { url, start, end, pageUrl } = params;
+  const { url, start, end } = params;
   if (!url) throw new AppError('badurl', '音轨地址为空', '', '请刷新页面重新解析音轨地址。');
-  let referer = 'https://www.bilibili.com/';
-  try {
-    const u = new URL(pageUrl || referer);
-    referer = `${u.protocol}//${u.host}/`;
-  } catch (err) {
-    /* ignore */
-  }
   const headers = {
-    referer,
-    origin: referer.replace(/\/$/, ''),
     range: `bytes=${start}-${end}`
   };
   let res;
@@ -268,17 +294,12 @@ async function fetchAudioChunk(params) {
 }
 
 // 音轨 HEAD：拿总长度与类型，用于按平台上限自适应分块（2.2）
+//
+// 同样是兜底路径：audio.head 会优先用页面侧 1 字节 Range 探测。
 async function headAudio(params) {
-  const { url, pageUrl } = params;
+  const { url } = params;
   if (!url) throw new AppError('badurl', '音轨地址为空', '', '请刷新页面重新解析音轨地址。');
-  let referer = 'https://www.bilibili.com/';
-  try {
-    const u = new URL(pageUrl || referer);
-    referer = `${u.protocol}//${u.host}/`;
-  } catch (err) {
-    /* ignore */
-  }
-  const headers = { referer, origin: referer.replace(/\/$/, '') };
+  const headers = {};
   try {
     let res = await fetch(url, { method: 'HEAD', credentials: 'include', headers, redirect: 'follow' });
     if (!res.ok) {
@@ -558,9 +579,18 @@ const methods = {
   // 页面主环境 fetch 时浏览器自动带 Referer: https://www.bilibili.com/，才能拿到 206。
 
   // 音轨候选列表（页面侧按鲜度与 host 排序，含 backupUrl）
+  //
+  // `signature` 必须原样转发：页面桥用它做「采集前 / 采集后」的身份校验
+  // （page-bridge.js 的 getAudioCandidates）。以前这里只透传了 aid/bvid/cid，
+  // 于是桥拿到的 expectSignature 是空的，身份校验被**静默跳过** ——
+  // 「视频标题是对的、转录出来却是别的视频」就会从这里漏进来。
   'audio.candidates': async (params, sender) => {
     try {
-      const out = await rpcPage('getAudioCandidates', { aid: params.aid, bvid: params.bvid, cid: params.cid }, sender);
+      const out = await rpcPage(
+        'getAudioCandidates',
+        { aid: params.aid, bvid: params.bvid, cid: params.cid, signature: params.signature },
+        sender
+      );
       return out || { ok: false, candidates: [] };
     } catch (err) {
       // 不要吞掉错误：主环境桥若是旧版本（扩展更新后页面没刷新），
@@ -604,7 +634,7 @@ const methods = {
     const head = await headAudio(params);
     if ((head.totalBytes == null || !Number.isFinite(head.totalBytes)) && params.url) {
       try {
-        const probe = await fetchAudioChunk({ url: params.url, pageUrl: params.pageUrl, start: 0, end: 1 });
+        const probe = await fetchAudioChunk({ url: params.url, start: 0, end: 1 });
         if (probe.contentRange && /\/(\d+)$/.test(probe.contentRange)) head.totalBytes = Number(RegExp.$1);
         head.probed = true;
       } catch (err) {

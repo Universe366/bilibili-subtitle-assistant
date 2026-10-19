@@ -723,8 +723,21 @@
 
   // 让播放器主动去拉一次字幕：点开字幕菜单并选一条语言
   let subtitleMenuAttempts = 0;
+  let subtitleMenuSig = '';
   async function triggerSubtitleMenu() {
-    if (subtitleSniff.items.size) return { ok: true, already: true, count: subtitleSniff.items.size };
+    // 尝试次数必须**按视频**计数：桥上这个计数器是页面级的，
+    // 跨越多个视频累积到 6 次后就会永久返回 too-many-attempts，
+    // 表现是「换了个视频，点抓取字幕再也不会去点播放器菜单」。
+    const curSig = currentSignature();
+    if (curSig !== subtitleMenuSig) {
+      subtitleMenuSig = curSig;
+      subtitleMenuAttempts = 0;
+    }
+    // ⚠ 必须按**当前视频**过滤：subtitleSniff.items 是页面级的、跨视频从不清空，
+    // 用 items.size 判断「已经有字幕了」会让换视频后的第一次抓取直接跳过触发，
+    // 表现为「抓不到字幕，但其实根本没去点播放器菜单」。理由同 freshSniffed()。
+    const fresh = freshSniffed();
+    if (fresh.length) return { ok: true, already: true, count: fresh.length };
     if (subtitleMenuAttempts > 6) return { ok: false, reason: 'too-many-attempts' };
     subtitleMenuAttempts += 1;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1480,7 +1493,9 @@
         // blob:/data: 是 MSE 或内联数据，不是可下载的音轨地址
         if (!src || /^(blob:|data:|mediasource:)/i.test(src)) continue;
         if (!/bilivideo|akamaized|hdslb|\.m4s|\.mp3|\.m4a|audio/i.test(src)) continue;
-        push([{ base_url: src, bandwidth: 0, mime_type: '' }], 'media-element', currentCid(), false);
+        // media 元素没有自报 cid，标 null（下游会按 wantCid 过滤），
+        // 不能再贴 currentCid() —— 页面里可能还留着上一个视频的元素。
+        push([{ base_url: src, bandwidth: 0, mime_type: '' }], 'media-element', null, false);
         n += 1;
       }
     } catch (err) {
@@ -1579,7 +1594,17 @@
     const player = getPlayer();
     try {
       if (player && typeof player.getAudioTracks === 'function') {
-        push(player.getAudioTracks(), 'player.getAudioTracks', currentCid(), false);
+        // 只信播放器**自报**的 cid；拿不到就标 null（下游会按 wantCid 过滤掉）。
+        // 绝不能贴 currentCid()：SPA 切换后播放器实例可能还停在上一个视频，
+        // 贴上当前 cid 就变成"假匹配"，正是「识别成推荐视频」的入口。
+        let playerCid = null;
+        try {
+          const msg = typeof player.getVideoMessage === 'function' ? player.getVideoMessage() : null;
+          playerCid = (msg && (msg.cid || (msg.videoData && msg.videoData.cid))) || null;
+        } catch (err) {
+          playerCid = null;
+        }
+        push(player.getAudioTracks(), 'player.getAudioTracks', playerCid, false);
       }
     } catch (err) {
       /* ignore */
@@ -2119,7 +2144,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.63.1',
+    version: '1.63.2',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

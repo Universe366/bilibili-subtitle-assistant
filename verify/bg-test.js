@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '1.63.1', manifest_version: 3 }),
+    getManifest: () => ({ version: '1.63.2', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.1' };
+      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.2' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -147,7 +147,7 @@ const AUTO_REPLY = '整理好的内容';
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   const method = (init.method || 'GET').toUpperCase();
-  const entry = { url: u, method, headers: init.headers || {}, body: init.body, formData: null, formFields: null, isJson: false };
+  const entry = { url: u, method, headers: init.headers || {}, credentials: init.credentials || 'same-origin', body: init.body, formData: null, formFields: null, isJson: false };
   // 记录 multipart 表单字段，便于断言「到底发了哪些参数」
   if (init.body && typeof init.body.append === 'function' && typeof init.body.entries === 'function') {
     entry.formData = init.body;
@@ -429,7 +429,18 @@ async function main() {
   res = await rpc('subtitle.fetch', { url: '//aisubtitle.hdslb.com/bfs/subtitle/normal.json?deadline=1&sign=abc', pageUrl: 'https://www.bilibili.com/video/BV1xx411c7mD' });
   check('协议相对字幕地址补全为页面协议', res.ok && fetchLog.some((f) => f.url.startsWith('https://aisubtitle.hdslb.com/')), JSON.stringify(res.error));
   check('字幕 JSON 解析出行', res.ok && res.data.format === 'json-array' && res.data.lines.length === 120);
-  check('字幕请求带 Referer 与 Cookie 凭证', fetchLog.some((f) => f.url.includes('aisubtitle') && f.headers.referer && f.headers.origin));
+  // Referer / Origin 是 Fetch 的 forbidden header，在 service worker 里设置会被静默丢弃
+  // （见 AGENTS.md 2.1）。这里断言**不再发送无效头**，但 Cookie 凭证必须带上。
+  check(
+    '字幕请求带 Cookie 凭证、不设 forbidden 头',
+    fetchLog.some(
+      (f) =>
+        f.url.includes('aisubtitle') &&
+        f.credentials === 'include' &&
+        !f.headers.referer &&
+        !f.headers.origin
+    )
+  );
 
   res = await rpc('subtitle.fetch', { url: '//aisubtitle.hdslb.com/srt/subtitle.srt', pageUrl: 'https://www.bilibili.com/video/BV1' });
   check('SRT 文本字幕也能解析', res.ok && res.data.format === 'text' && /00:00:00,500/.test(res.data.body));
@@ -485,7 +496,9 @@ async function main() {
     return arr;
   };
   const toBase64 = (u8) => Buffer.from(u8).toString('base64');
+  let lastTabMessage = null;
   tabMessageHandler = (msg) => {
+    lastTabMessage = msg;
     if (msg.method === 'getAudioCandidates') {
       return {
         ok: true,
@@ -523,8 +536,14 @@ async function main() {
     return { ok: true, data: { ok: true } };
   };
 
-  res = await rpc('audio.candidates', { aid: 123, bvid: 'BV1', cid: 1 });
+  res = await rpc('audio.candidates', { aid: 123, bvid: 'BV1', cid: 1, signature: 'BV1@p1@c1' });
   check('音轨候选：返回多条并标注来源', res.ok && res.data.candidates.length === 2 && res.data.candidates.every((c) => !!c.source), JSON.stringify(res.error || res.data).slice(0, 200));
+  // 身份签名必须原样到桥：丢了它，页面的「采集前/后一致性」校验会被静默跳过
+  check(
+    '音轨候选把 signature 透传给页面桥',
+    lastTabMessage && lastTabMessage.method === 'getAudioCandidates' && lastTabMessage.params.signature === 'BV1@p1@c1',
+    JSON.stringify(lastTabMessage && lastTabMessage.params)
+  );
   check('音轨候选：带上 backupUrl', res.ok && Array.isArray(res.data.candidates[0].backupUrl));
   res = await rpc('audio.refresh', { aid: 123, bvid: 'BV1', cid: 1 });
   check('音轨地址可刷新（403 后重取新鲜地址）', res.ok && res.data.ok === true && res.data.audio.length === 1, JSON.stringify(res.error || res.data).slice(0, 200));
@@ -622,7 +641,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.1' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.2' && !!res.data.platformSummary && !!res.data.permissions);
   check('诊断信息不回传明文密钥', JSON.stringify(res.data).indexOf('sk-test-1234567890abcd') === -1);
   res = await rpc('history.put', { video: { bvid: 'BV1', cid: 1, page: 1, title: 'T' }, entry: { lines: [{ from: 0, to: 1, text: 'x' }] } });
   check('历史写入成功', res.ok);

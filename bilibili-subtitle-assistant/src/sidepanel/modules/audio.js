@@ -1,6 +1,7 @@
 // 音轨下载 / 解码 / 重采样 / 切片 / WAV 编码（2.2）
 // 解码在主页面（侧边栏）完成：这里能用 WebAudio 与 MediaSource。
-// 下载在后台 service worker 完成（带 cookie 与 Referer），这里只做编排。
+// 下载经后台 `audio.range` 代理到**页面主环境**（Referer 由浏览器自动带）；
+// 只有页面不可用（没有 B 站标签页）时才退回后台请求。这里只做编排。
 
 import { call } from './bridge.js';
 import { ASR_LIMITS } from '../../shared/constants.js';

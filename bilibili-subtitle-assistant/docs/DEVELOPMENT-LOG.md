@@ -4860,3 +4860,64 @@ Key 长度 49 说明不是空值也不是掩码，是**真 Key**。同一把 Key
 ```
 24 个套件，共 1324 项断言，全部通过
 ```
+
+---
+
+## 第八十一轮（1.63.2）—— 身份签名被后台吞掉，以及一批「看起来在生效」的死代码
+
+### 起因
+
+`audio.candidates` 在 service worker 里只透传 `aid/bvid/cid`，把面板传的 `signature` 丢了。
+页面桥的 `getAudioCandidates` 用 `wantSig` 做「采集前 / 采集后」一致性校验；
+`wantSig` 为空时 `if (wantSig && ...)` 直接跳过 —— 于是「页面切到别的视频」这道防线
+在**最常见的路径上根本没生效**。这类 bug 不会报错，只会在切视频时偶尔转录出别的内容。
+
+### 同批修掉的问题
+
+1. **页面调用超时永远 15s**：`rpcPage` 用 `METHOD_TIMEOUT['page.' + method]` 查表，
+   而 method 是 `getInfo` / `getAudioCandidates` / `fetchAudioRange`，
+   表里却是 `page.info` / `audio.candidates` / `audio.range` —— 两边永远对不上。
+   改为显式 `PAGE_METHOD_TIMEOUT` 映射；`fetchAudioRange` 恢复到 180s
+   （整条音轨十几 MB，以前后台 15s 就掐断，表现为「大文件偶发失败」）。
+2. **`triggerSubtitleMenu` 用 `subtitleSniff.items.size`** 判断「已有字幕」——
+   这个 Map 跨视频从不清空，换视频后的第一次抓取会直接返回 already，
+   根本没去点播放器字幕菜单。改用 `freshSniffed()`；同时把尝试次数改为**按视频**计数，
+   否则页面里累积 6 次后会对所有后续视频永久返回 `too-many-attempts`。
+3. **给不可信来源贴 `currentCid()`**：`player.getAudioTracks()` 与 `<audio>/<video>`
+   元素都被贴上当前 cid。前者改为只认播放器 `getVideoMessage().cid`，后者标 `null`。
+   这正是「识别成推荐视频」的入口。
+4. **后台设 Referer / Origin 是死代码**：`fetchSubtitleBody` / `fetchAudioChunk` /
+   `headAudio` 里设置的 forbidden header 会被浏览器静默丢弃，真正生效的是
+   `rules.json` 的 DNR。删掉无效头并写明原因；测试改为断言「不设 forbidden 头 + 带 Cookie」。
+5. **构建指纹失真**：`BUILD_TIME` 固定为 `2025-06-01`，`BUILD_MODULES` 只列 8 个模块
+   （漏 `mcp` / `tools` / `bili` / `keyless-search` 等），但 README 让用户用它判断
+   是否加载了新版本。补全为 17 个模块并更新构建时间。
+6. **前台空转**：内容脚本 90ms 轮询 DOM（约 11 次/秒）、页面在后台时仍每秒发一次
+   time 事件唤醒 SW。轮询降到 250ms；`document.hidden` 时跳过 follow 上报。
+7. **死代码**：删除内容脚本里永远返回 false 的 `tryOpenSidePanelDirect()`，
+   以及初始化时发出却完全忽略返回值的 `page.options` RPC。
+8. **仓库卫生**：删掉根目录两个 0 字节文件与 Chrome 生成的 `_metadata/`，
+   `.gitignore` 增加 `_metadata/`。
+9. **README 漂移**：平台数量写成 5/3/3（实际 28/3/11）、默认并发写 1（实际 4）、
+   测试数量 727（实际 1300+）、重复段落与断裂表格，逐项修正。
+
+### 没改的（记录在案）
+
+- 音频下载仍有两条入口：`AudioDownloader` 走 `audio.range`（页面优先、后台兜底），
+  整条音轨重封装走 `page.call fetchAudioRange`。两条最终都到页面，
+  但错误分类与凭证语义不同，后续可合并。
+- `collectAudioCandidatesWithRefresh` 在候选为空时会再刷新一次 playurl
+  （`collectAudioCandidates` 内部已经刷过一次），属于同请求重试；暂保留。
+- `bili.js` 的 `headerFor()` 仍设置 `Referer` / `User-Agent`。官方接口能工作
+  说明它不依赖这些头（或由 DNR 补），本轮未改动。
+
+### 版本
+
+1.63.1 → 1.63.2（manifest / constants / content.js / page-bridge / 测试夹具同步）。
+
+### 测试
+
+```
+已跑通的 20 个套件（含 bili-test）共 1296 项断言全部通过
+浏览器相关套件（CSP / FFmpeg / M4A / MP4）未在本机跑
+```

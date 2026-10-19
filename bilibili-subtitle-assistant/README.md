@@ -115,7 +115,7 @@
 **设置页**
 - 视觉：主题（跟随系统 / 浅色 / 深色）、**字号缩放**（0.85~1.4，全部字号按比例缩放，不会出现小到看不清的 10px 字）
 - **布局默认单列堆叠**（侧边栏很窄，单列最好读）；想并排看字幕和总结可切「双列」，或选「自动（宽度 <420px 才单列）」
-- **平台用下拉框选**：AI 平台 5 家、语音识别 3 家、检索 3 家，下拉框里只显示选中这一家的配置，不用来回翻；选「➕ 添加自定义平台…」即可新增。高级项（请求方式 / 音频字段名 / 官网、Key 链接）收在「高级设置」里
+- **平台用下拉框选**：AI / 语音识别 / 检索都有多家内置平台（AI 还内置了 Cherry Studio 对齐的一批国内外服务商），下拉框里只显示选中这一家的配置，不用来回翻；选「➕ 添加自定义平台…」即可新增。高级项（请求方式 / 音频字段名 / 官网、Key 链接）收在「高级设置」里
 - 12 个分组：通用 / AI / 语音识别 / 提示词 / 优化替换 / 检索 / 导出 / 页面内 / 行为 / 批量 / 缓存 / 诊断，显式「保存设置」
 
 **页面内**
@@ -226,7 +226,7 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 | 最小分片 | 45s | Bilitato `MIN_ASR_CHUNK_SECONDS` |
 | 重叠 | 4s | 用于跨片去重 |
 | 体积安全系数 | **0.72** | Bilitato `ASR_CHUNK_SIZE_SAFETY_RATIO`；按上限的 72% 估算单片时长，避免踩到大小限制 |
-| 默认并发 | **1** | 串行请求，减少触发限流的机会 |
+| 默认并发 | **4** | 先单独跑第 1 片（探路），成功后其余分片按 4 路并发；可在设置里调 1~8 |
 | 平台单文件上限 | 50MB | 硅基流动官方上限 |
 
 > 旧配置里「切片时长 = 300」和「上限 = 24MB」会在升级时**自动迁移**到新默认值（仅当值恰好等于旧默认值时才迁移，手动改过的其它值不动）。
@@ -247,11 +247,10 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 设置 → 语音识别 → 高级设置里可手动指定「上传音频格式」（自动 / WAV / M4A）。
 
 
+| 现象 | 原因 | 处理 |
+|---|---|---|
 | 转录返回 400 `Model does not exist` | 该模型名不被**转录接口**接受（能出现在 `/models` 里 ≠ 能用于转录） | 换成确定的语音识别模型：`FunAudioLLM/SenseVoiceSmall`、`TeleAI/TeleSpeechASR` |
-
-**音轨候选的来源顺序**（任一成功即可）：① 网络嗅探到的 playurl 响应 → ② `__playinfo__` → ③ `__INITIAL_STATE__` → ④ 播放器 `getAudioTracks()` → ⑤ 页面里直连的 `<audio>/<video>` 元素 → ⑥ 主动带 wbi 签名请求 `/x/player/wbi/playurl?fnval=16`
-
- **接口地址与 Key 不属于同一个站**（最常见），或 Key 拼错/被截断/已删除 | 错误提示会显示当前 Key 的**长度与末四位**、**当前配置的接口地址**，并**用同一个 Key 打一次 `/models` 做对照**，点名「这个 Key 在 `xxx` 这个站上无效」。设置页的「接口地址」旁边有**一键切换**按钮（`改用 api.siliconflow.cn` / `改用 api.siliconflow.com`）。国内站与国际站的**账号与 Key 互不通用**：`cloud.siliconflow.cn` 的 Key 必须配 `https://api.siliconflow.cn/v1`，`cloud.siliconflow.com` 的 Key 必须配 `https://api.siliconflow.com/v1` |
+| 接口地址与 Key 不属于同一个站（最常见），或 Key 拼错/被截断/已删除 | 错误提示会显示当前 Key 的**长度与末四位**、**当前配置的接口地址**，并**用同一个 Key 打一次 `/models` 做对照**，点名「这个 Key 在 `xxx` 这个站上无效」 | 在设置 → 语音识别里核对「接口地址」：国内站 `cloud.siliconflow.cn` 的 Key 必须配 `https://api.siliconflow.cn/v1`，国际站 `cloud.siliconflow.com` 的 Key 必须配 `https://api.siliconflow.com/v1`（两站账号与 Key 互不通用）；也可用旁边的「一键切换」 |
 | 「语音识别接口拒绝了请求（HTTP 400）」 | 参数风格不匹配。**硅基流动只接受 `file` + `model` 两个字段**，且必须是 `multipart/form-data`；多传 `response_format` / `language` 会 400 | 已内置：硅基流动标记为「最小参数（file+model）」，400 时自动按阶梯降级重试。设置里「请求方式」应保持 multipart、「音频字段名」应为 `file` |
 | 提示里 `model=xxx` 但**响应体是空的** | 请求形态不对，或模型名有细微差异 | 1.4.0 起会自动按阶梯尝试**三种传输方式**（multipart → base64 JSON → 对话接口 `/chat/completions` + `input_audio`）。仍失败时会去查平台的 `/models`，区分两种情况：**模型不在列表里**（附名称最接近的候选 + 可复制的准确 ID）／**模型在列表里但语音识别接口说「Model does not exist」**（说明它不是语音识别模型，附该平台可用于转录的模型） |
 | 服务端返回 `{"code":20012,"message":"Model does not exist..."}` | 该模型不能用于语音识别，或 ID 与平台里的写法不完全一致（大小写、版本后缀），或**它在另一个域名下** | 1.6.0 起会自动**换域名再试**：硅基流动有 `.cn`（国内）与 `.com`（国际）两套模型目录，如果模型只在其中一个域名下存在，会自动切过去。设置 → 语音识别 → **「选择模型」** 可直接从平台返回的列表里点选；**「核对模型」** 会同时报告两个域名下是否找到该模型 |
@@ -282,7 +281,7 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | **给后续 AI / 贡献者**：环境硬约束（CSP、沙箱边界、service worker 生命周期）、已踩过的坑、排查方法论 |
 | [`docs/DEVELOPMENT-LOG.md`](docs/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
-| [`../verify/README.md`](../verify/README.md) | 自动化测试套件：20 个套件、727 项断言，以及每个套件覆盖什么 |
+| [`../verify/README.md`](../verify/README.md) | 自动化测试套件：24 个套件（含静态体检 / 布局体检 / 导入体检），以及每个套件覆盖什么 |
 
 ---
 
