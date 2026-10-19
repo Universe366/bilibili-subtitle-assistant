@@ -527,6 +527,22 @@
   //   ⑤ 兜底：主动点开播放器字幕菜单，逼播放器发一次字幕请求
   // ---------------------------------------------------------------------------
 
+  // 嗅探缓存的上限。
+  //
+  // 这两个 Map 是**页面级**的：用户可以在同一个 B 站标签页里连刷几十个视频，
+  // 而每条字幕正文（几百 KB）都会留在内存里。以前只增不减，长会话会慢性泄漏。
+  // 只保留最近 N 条；按 at 淘汰最旧的即可 —— 旧视频的正文本来也不会再被采用
+  // （采用前会按当前签名过滤）。
+  const SUBTITLE_SNIFF_MAX = 32;
+  const AUDIO_SNIFF_MAX = 16;
+  const SNIFF_TEXT_MAX_BYTES = 4 * 1024 * 1024;
+
+  function trimSniffMap(map, max) {
+    if (!map || map.size <= max) return;
+    const oldest = Array.from(map.entries()).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+    for (let i = 0; i < oldest.length - max; i += 1) map.delete(oldest[i][0]);
+  }
+
   const subtitleSniff = { items: new Map(), count: 0, lastAt: 0, installed: false };
 
   function subtitlePathKey(url) {
@@ -605,6 +621,9 @@
   // 把签名固定在请求发出时取，问题就消失了。
   function recordSniffedSubtitle(url, text, source, sigAtRequest) {
     try {
+      // 单条正文过大时直接忽略：B 站正常字幕几 MB 已经是上限，
+      // 再大就更可能是误命中的接口/页面，不值得常驻内存。
+      if (typeof text === 'string' && text.length > SNIFF_TEXT_MAX_BYTES) return;
       const json = typeof text === 'string' ? JSON.parse(text) : text;
       const body = extractSubtitleBody(json);
       if (!Array.isArray(body) || !body.length) return;
@@ -620,6 +639,7 @@
         source: source || 'sniff',
         sig: sigAtRequest || currentSignature()
       });
+      trimSniffMap(subtitleSniff.items, SUBTITLE_SNIFF_MAX);
       subtitleSniff.count += 1;
       subtitleSniff.lastAt = Date.now();
       LOG('嗅探到字幕正文', key, body.length, '行');
@@ -1402,6 +1422,7 @@
       const cid = data && data.cid;
       const key = String(cid || 'current');
       audioSniff.items.set(key, { cid, audio: dash.audio, at: Date.now(), url: String(url) });
+      trimSniffMap(audioSniff.items, AUDIO_SNIFF_MAX);
       audioSniff.lastAt = Date.now();
       LOG('嗅探到 DASH 音轨', key, dash.audio.length, '条');
     } catch (err) {
@@ -1745,6 +1766,7 @@
       return { ok: false, code: json && json.code, message: json && json.message, audio: [] };
     }
     audioSniff.items.set(String(pageCid || 'current'), { cid: pageCid, audio: dash.audio, at: Date.now(), url });
+    trimSniffMap(audioSniff.items, AUDIO_SNIFF_MAX);
     return { ok: true, audio: dash.audio, url, code: json.code, message: json.message, cid: pageCid };
   }
 
@@ -2189,7 +2211,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.63.4',
+    version: '1.63.5',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

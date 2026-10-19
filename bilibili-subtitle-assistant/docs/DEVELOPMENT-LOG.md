@@ -4994,3 +4994,22 @@ fetch 里要么被静默丢弃（Referer 是 forbidden header），要么交给�
 content/harvest/sniff/bili/bg/panel/asr 全部通过
 panel 418、bg 66、content 97、flow2 39、asr 263
 ```
+
+---
+
+## 第八十四轮（1.63.5）—— 嗅探缓存不再无限增长
+
+`subtitleSniff.items` / `audioSniff.items` 是**页面级**的 Map，
+用户可以在同一个 B 站标签页里连刷几十个视频，而每条字幕正文（几百 KB）
+都会留在内存里。以前只增不减，属于典型的慢性泄漏。
+
+* `trimSniffMap(map, max)`：超过上限时按 `at` 淘汰最旧的条目；
+  字幕保留 32 条、音轨保留 16 条 —— 旧视频的正文本来也不会再被采用
+  （采用前会按当前签名过滤），淘汰它们是安全的。
+* 单条字幕正文超过 4MB 时直接忽略：正常字幕远小于这个量级，
+  更大的更可能是误命中的接口/页面，不值得常驻内存。
+* 测试断言：两个 Map 的写入路径都必须调用 `trimSniffMap`。
+
+### 版本与测试
+
+1.63.4 → 1.63.5。content-test 98 项，其余套件同上轮。
