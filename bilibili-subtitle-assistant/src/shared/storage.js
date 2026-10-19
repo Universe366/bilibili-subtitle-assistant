@@ -196,18 +196,8 @@ export async function cacheStats() {
 }
 
 // ---------------------------------------------------------------------------
-// 音轨分块（ASR 用）
+// 音轨分块（历史遗留：音频缓存功能未启用，只保留清理入口供「清空缓存」使用）
 // ---------------------------------------------------------------------------
-
-export async function putAudioChunk(key, bytes) {
-  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  await db.put(STORE_AUDIO, { key, savedAt: Date.now(), bytes: arr });
-}
-
-export async function getAudioChunk(key) {
-  const row = await db.get(STORE_AUDIO, key);
-  return row ? row.bytes : null;
-}
 
 export async function clearAudioChunks() {
   await db.clear(STORE_AUDIO);

@@ -2,7 +2,7 @@
 // 默认 AI 平台 DeepSeek，默认语音识别平台 硅基流动（3.1）。
 
 import { AppError, classifyHttp, classifyNetwork, httpError } from './errors.js';
-import { readLines, timedFetch, fetchJson, joinUrl, sleep } from './net.js';
+import { readLines, timedFetch, fetchJson, joinUrl } from './net.js';
 import { ensureHeaderRules } from './header-rules.js';
 import * as TP from '../shared/time-range.js';
 
@@ -1512,8 +1512,4 @@ export async function ensureOriginPermission(url) {
     );
   }
   return { granted: true, pattern, already: false };
-}
-
-export async function waitFor(ms) {
-  await sleep(ms);
 }

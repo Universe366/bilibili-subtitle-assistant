@@ -5164,4 +5164,48 @@ keyless-search-test 新增查询清理与 after 映射；asr-test 补充 summary
 
 ### 版本与测试
 
-1.63.8 → 1.63.9。panel-test 新增批量按钮禁用与来源面板字段断言，共 430 项。
+1.63.8 → 1.63.9。panel-test 新增批量按钮禁用、批量输入保留与来源面板字段断言，共 431 项。
+
+---
+
+## 第八十九轮（1.63.10）—— 静态审计：死代码、死配置与两个真 bug
+
+### 审计方式
+
+写了一个临时脚本扫描 `src/**/*.js`：跨文件引用计数、同名函数、`defaultSettings` 键引用、
+常量导出引用、空 catch、`setInterval`、调试残留。以下结论都经过人工复核。
+
+### 真 bug（已修）
+
+1. **检索缓存键漏了 `oriQuestion`**：`search.provider` 已经把原问题传给 DeepSeek 的
+   `ori_question`，但 `ResultCache.keyOf` 没有把它算进 key —— 同一个 query、不同原问题
+   会命中同一条缓存。已在 key 里补上。
+2. **外部 storage 变更不会让 SW 的设置缓存失效**：`invalidateSettingsCache()` 从来没被调用。
+   现在监听 `chrome.storage.onChanged`，设置键变化时清缓存。
+3. **检索结果的 URL 没有限制协议**：外部结果若返回 `javascript:` / `data:`，会被原样放进
+   来源面板的 `href`。`sanitizeResult` 现在只保留 `http(s)`。
+
+### 死配置（已删）
+
+* `cache.keepAudio`：UI 有开关、storage 有 `putAudioChunk/getAudioChunk`，但**从未被调用**，
+  音频分块缓存功能实际不存在。删除开关、默认值与读写函数（保留 `clearAudioChunks` 供清缓存）。
+* `prompt.useSystemForSummary`、`optimize.lastAutoApplied`、`search.alwaysVisible`：
+  全项目无任何引用，删除。
+
+### 死代码（已删）
+
+`NOOP`、`waitFor`、`pageTypeLabel`、`isVideoLikePage`、`buildToolDescription`、
+`activeRuleGroup`、`pickSkillFiles`、`onRuntimeMessage`、`isTwoColumn`、`alertBox`、
+`refreshSettings`、`renderActions`、`clamp`、`cancelAll`、`activeLabel`、`inlineToText`、
+`resetHeaderRuleCache`，以及只被它们使用的 import。
+
+### 保留的重复（有意为之）
+
+* `page-bridge.js` 里的 MD5 / wbi 实现：MAIN world 是 classic script，不能 import ES module；
+* 跨上下文的 base64 编解码：侧边栏 / service worker / 页面桥各有模块边界；
+* `original-audio.js` 自带的 `throwIfAborted`：该模块刻意不依赖 `audio.js`（有测试锁定）。
+
+### 版本与测试
+
+1.63.9 → 1.63.10。20 个套件 1331 项断言全部通过；keyless-search-test 增加
+「oriQuestion 进缓存键」「非 http(s) URL 被清空」两项。

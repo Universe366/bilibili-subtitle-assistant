@@ -178,6 +178,11 @@ const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
   check('大小写与空白归一', cache.keyOf('  查询A  ', {}) === cache.keyOf('查询a', {}), '');
   check('不同 maxResults 是不同 key', cache.keyOf('A', { maxResults: 5 }) !== cache.keyOf('A', { maxResults: 6 }), '');
   check('不同 provider 是不同 key', cache.keyOf('A', { providerId: 'x' }) !== cache.keyOf('A', { providerId: 'y' }), '');
+  check(
+    '不同 oriQuestion 是不同 key（DeepSeek 查询理解会变）',
+    cache.keyOf('A', { oriQuestion: '原问题一' }) !== cache.keyOf('A', { oriQuestion: '原问题二' }),
+    ''
+  );
 
   // LRU 淘汰
   cache.set(cache.keyOf('B'), 'b');
@@ -225,6 +230,12 @@ const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
   check('清洗结果标题里的边界', !clean.title.includes('<'), clean.title);
   check('清洗结果摘要里的 system 标签', !clean.snippet.includes('<system>'), clean.snippet);
   check('清洗保留 url 原文', clean.url === 'https://a.com', clean.url);
+  check(
+    '非 http(s) 的 url 被清空（防 javascript: 注入）',
+    U.sanitizeResult({ url: 'javascript:alert(1)' }).url === '' &&
+      U.sanitizeResult({ url: 'data:text/html,x' }).url === '',
+    U.sanitizeResult({ url: 'javascript:alert(1)' }).url
+  );
   check('清洗对 null 安全', U.sanitizeResult(null).title === '' && U.sanitizeResult(null).url === '', JSON.stringify(U.sanitizeResult(null)));
 
   check('安全说明提及「不是用户给的」', /不是用户给的/.test(U.UNTRUSTED_NOTICE), '');

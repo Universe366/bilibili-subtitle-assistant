@@ -86,7 +86,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-19T16:00:00Z';
+const BUILD_TIME = '2026-10-19T17:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -109,6 +109,19 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup?.addListener?.(() => {
   /* 保持 service worker 注册 */
+});
+
+// 外部写入（或本 SW 保存后触发的变更）都要让内存里的设置缓存失效，
+// 否则 SW 会一直用旧配置 —— 尤其是在开发者工具/其它上下文直接改 storage 时。
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (Object.keys(changes || {}).some((k) => k.startsWith('bsub.settings'))) {
+    try {
+      ST.invalidateSettingsCache();
+    } catch (err) {
+      /* ignore */
+    }
+  }
 });
 
 async function initPanelBehavior() {

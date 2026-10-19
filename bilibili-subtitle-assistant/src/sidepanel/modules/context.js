@@ -1,7 +1,7 @@
 // 应用上下文：所有动作（抓取 / 转录 / 优化 / 检索 / 历史 / 批量）在此集中编排，
 // 面板只调用这里的接口，避免互相依赖。
 
-import { store, loadSettings, saveSettings } from './store.js';
+import { store, saveSettings } from './store.js';
 import { call, errorPayload } from './bridge.js';
 import { toast, downloadFile, copyText, h, button, fmtTime, clear } from './dom.js';
 import * as jobs from './jobs.js';
@@ -28,14 +28,6 @@ export function usePanel(name, api) {
   app.panels[name] = api;
 }
 
-export function isTwoColumn() {
-  const s = store.get().settings;
-  if (!s) return true;
-  if (s.general.layout === 'two') return true;
-  if (s.general.layout === 'one') return false;
-  return window.innerWidth >= 420;
-}
-
 // ---------------------------------------------------------------------------
 // 提示与错误
 // ---------------------------------------------------------------------------
@@ -48,41 +40,9 @@ export function showError(err, fallbackTitle = '操作失败') {
   return payload;
 }
 
-export function alertBox(payload, kind = 'info') {
-  const el = h('div', { class: `alert ${kind}` });
-  const close = h('button', { class: 'alert-close', type: 'button', text: '×', onclick: () => el.remove() });
-  el.appendChild(close);
-  el.appendChild(h('div', { class: 'alert-title', text: payload.title || '提示' }));
-  if (payload.detail) el.appendChild(h('div', { class: 'alert-detail', text: payload.detail }));
-  if (payload.action) {
-    el.appendChild(
-      h('div', {
-        class: 'alert-action',
-        text: payload.action,
-        onclick: () => {
-          store.set({ activeTab: 'settings' });
-          renderPanels();
-        }
-      })
-    );
-  }
-  const host = document.getElementById('alerts');
-  if (host) {
-    host.appendChild(el);
-    setTimeout(() => el.remove(), 20000);
-  }
-  return el;
-}
-
 // ---------------------------------------------------------------------------
 // 设置
 // ---------------------------------------------------------------------------
-
-export async function refreshSettings() {
-  const s = await loadSettings();
-  applyTheme(s);
-  return s;
-}
 
 export function applyTheme(s) {
   const theme = (s && s.general && s.general.theme) || 'system';
@@ -1062,11 +1022,6 @@ export function renderPanels() {
       }
     }
   }
-}
-
-export function renderActions() {
-  const api = app.panels.actions;
-  if (api && typeof api.render === 'function') api.render();
 }
 
 // 供 AI 面板构造系统提示词（默认值必须一字不差）

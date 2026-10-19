@@ -68,10 +68,6 @@ export function beginTask(name, opts = {}) {
   };
 }
 
-export function cancelAll() {
-  for (const [, t] of tasks) t.controller.abort();
-}
-
 export function cancelTask(id) {
   const t = tasks.get(id);
   if (t) {
@@ -86,13 +82,6 @@ export function cancelTask(id) {
     tasks.delete(id);
     render();
   }
-}
-
-export function activeLabel() {
-  if (!tasks.size) return '';
-  const list = Array.from(tasks.values());
-  const t = list[list.length - 1];
-  return `${t.name}${t.detail ? ` · ${t.detail}` : ''}　${Math.round(t.percent)}%`;
 }
 
 function render() {

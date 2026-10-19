@@ -604,7 +604,6 @@ export function defaultSettings() {
     prompt: {
       activeId: 'default',
       templates: defaultPrompts(),
-      useSystemForSummary: true,
       chatPrefix: '只依据下面的字幕内容回答，不要编造。'
     },
     optimize: {
@@ -615,8 +614,7 @@ export function defaultSettings() {
         { term: 'Bilibili', note: '哔哩哔哩' }
       ],
       useSearch: false,
-      searchMaxResults: 3,
-      lastAutoApplied: false
+      searchMaxResults: 3
     },
     search: {
       // 默认用 DeepSeek 官方搜索：它复用 AI 平台的 DeepSeek Key，
@@ -647,8 +645,7 @@ export function defaultSettings() {
       cacheMinutes: 5,
       // 生成总结前**主动联网核实**：用视频标题+字幕关键句检索一次，
       // 把网页资料交给模型去校正字幕里的事实性错误（用户明确要的「多方求证」）。
-      verifyOnSummary: true,
-      alwaysVisible: true
+      verifyOnSummary: true
     },
     // 总结的附加上下文：视频简介、热门评论
     summary: {
@@ -681,8 +678,7 @@ export function defaultSettings() {
       pauseBetween: 800
     },
     cache: {
-      subtitleTtlDays: 30,
-      keepAudio: false
+      subtitleTtlDays: 30
     },
     diagnostics: {
       verbose: false
@@ -915,12 +911,6 @@ export function activePrompt(settings) {
     (settings.prompt.templates || []).find((t) => t.id === settings.prompt.activeId) ||
     (settings.prompt.templates || [])[0] ||
     null
-  );
-}
-
-export function activeRuleGroup(settings) {
-  return (
-    (settings.optimize.groups || []).find((g) => g.id === settings.optimize.activeGroupId) || null
   );
 }
 

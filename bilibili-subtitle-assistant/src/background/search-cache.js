@@ -21,7 +21,9 @@ export class ResultCache {
       opts.providerId || '',
       opts.engineId || '',
       opts.timeRange || '',
-      !!opts.fetchPageContent
+      !!opts.fetchPageContent,
+      // DeepSeek 的 ori_question 会影响检索理解，不同原问题不能共用同一条缓存
+      String(opts.oriQuestion || '').trim()
     ]);
   }
 

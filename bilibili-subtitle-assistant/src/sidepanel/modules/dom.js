@@ -291,7 +291,3 @@ export function toast(message, kind = 'info', ms = 2600) {
   }, ms);
   return el;
 }
-
-export function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(hi, v));
-}

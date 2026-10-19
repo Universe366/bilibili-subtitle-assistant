@@ -301,17 +301,6 @@ export class Stream {
   }
 }
 
-export function onRuntimeMessage(cb) {
-  const listener = (msg, sender, sendResponse) => {
-    const r = cb(msg, sender);
-    if (r === true) return true;
-    sendResponse({ ok: true });
-    return undefined;
-  };
-  chrome.runtime.onMessage.addListener(listener);
-  return () => chrome.runtime.onMessage.removeListener(listener);
-}
-
 // 错误对象 -> 可操作提示（稳定性 #11）
 export function errorPayload(err) {
   if (err && err.payload) return err.payload;

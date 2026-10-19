@@ -1,7 +1,7 @@
 // 标签页候选收集 + 内容脚本注入 + 版本握手（稳定性 #6、#7、#9）。
 // 不解析单一目标标签页；收集多个候选逐个尝试，任一失效自动降级。
 
-import { CHANNEL, CONTENT_VERSION, VIDEO_PAGE_TYPES } from '../shared/constants.js';
+import { CHANNEL, CONTENT_VERSION } from '../shared/constants.js';
 import { AppError } from './errors.js';
 
 const BILI_RE = /^https?:\/\/([^/]*\.)?bilibili\.com(\/|$)/i;
@@ -29,14 +29,6 @@ export function pageTypeOf(url) {
   if (/^\/cheese\/play\//i.test(p)) return 'bangumi';
   if (/^\/space\//i.test(p)) return 'list';
   return null;
-}
-
-export function pageTypeLabel(t) {
-  return VIDEO_PAGE_TYPES[t] || '未知页面';
-}
-
-export function isVideoLikePage(url) {
-  return isBilibili(url) && pageTypeOf(url) !== null;
 }
 
 // 收集候选标签页：调用方指定 → 消息来源 → 已登记的 → 当前活动的 B 站视频页 → 所有打开的 B 站视频页

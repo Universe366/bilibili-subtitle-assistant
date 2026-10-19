@@ -2,8 +2,6 @@
 
 import { AppError, classifyNetwork, httpError } from './errors.js';
 
-export const NOOP = () => {};
-
 export function joinUrl(base, path) {
   const b = String(base || '').replace(/\/+$/, '');
   const p = String(path || '').replace(/^\/+/, '');

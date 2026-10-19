@@ -29,9 +29,11 @@ export function sanitizeResult(r) {
   const authRaw = r ? r.authority : null;
   const authority =
     authRaw === null || authRaw === undefined || !Number.isFinite(Number(authRaw)) ? -1 : Number(authRaw);
+  const rawUrl = String((r && r.url) || '').trim();
   return {
     title: neutralizeBoundary(String((r && r.title) || '')).slice(0, 200),
-    url: String((r && r.url) || ''),
+    // 只保留 http(s)：检索结果来自外部，别让 javascript:/data: 之类进入 href
+    url: /^https?:\/\//i.test(rawUrl) ? rawUrl : '',
     snippet: neutralizeBoundary(String((r && r.snippet) || '')).slice(0, 800),
     content: neutralizeBoundary(String((r && r.content) || '')).slice(0, 4000),
     // DeepSeek 官方搜索等平台会带这些元信息；保留它们用于排序与展示，

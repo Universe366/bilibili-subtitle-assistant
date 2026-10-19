@@ -100,9 +100,3 @@ export async function ensureHeaderRules(platform, url) {
   inflight.set(host, task);
   return task;
 }
-
-// 给测试/诊断用：清掉缓存（不卸规则）
-export function resetHeaderRuleCache() {
-  registered.clear();
-  inflight.clear();
-}

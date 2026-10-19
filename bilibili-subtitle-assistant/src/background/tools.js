@@ -77,12 +77,6 @@ function resolveTool(tools, qualifiedName) {
     null;
 }
 
-export function buildToolDescription(tools) {
-  if (!tools.length) return '';
-  const lines = tools.map((t) => `- ${t.qualifiedName}（${t.serverName}）：${(t.description || '无说明').split('\n')[0]}`);
-  return `\n\n【可用工具（MCP）】\n你可以在需要时调用下列工具获取外部信息或执行操作：\n${lines.join('\n')}`;
-}
-
 // 带工具的多轮对话。
 // 返回 { text, toolEvents }，toolEvents 记录每次调用于结果，便于界面展示。
 // opts.chatFn 可注入（测试用），默认为 providers.chatOnce。

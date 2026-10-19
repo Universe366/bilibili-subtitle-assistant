@@ -1805,7 +1805,6 @@ function advancedGroup(d) {
       ])
     );
     body.appendChild(field('字幕缓存保留天数', numberInput(store.get().settings.cache.subtitleTtlDays, (v) => { d.cache.subtitleTtlDays = Math.max(0, v); markDirty(); }, { min: 0, max: 999 })));
-    body.appendChild(checkbox(d.cache.keepAudio, (v) => { d.cache.keepAudio = v; markDirty(); }, '保留音频分块（默认关闭，避免占用空间）'));
   });
 }
 

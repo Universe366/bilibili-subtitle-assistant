@@ -103,11 +103,6 @@ export function skillFromMarkdown(text, opts = {}) {
 }
 
 // 从一批文件里识别出 SKILL.md（支持用户选择整个目录）
-export function pickSkillFiles(fileList) {
-  const files = Array.from(fileList || []);
-  return files.filter((f) => /(^|\/)SKILL\.md$/i.test(f.name || f.webkitRelativePath || ''));
-}
-
 // 由技能推导「何时使用」的提示词片段。
 // Cherry Studio / Anthropic 的约定：description 就是触发条件，
 // 所以技能很多时先只给模型「名称 + 描述」，由模型自己决定用哪个。

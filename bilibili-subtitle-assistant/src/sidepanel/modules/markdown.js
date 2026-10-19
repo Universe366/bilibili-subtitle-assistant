@@ -134,12 +134,6 @@ function renderInlineInto(parent, src, ctx, depth) {
 }
 
 // 行内文本 -> 纯字符串（搜索、复制用）
-export function inlineToText(text) {
-  const div = document.createElement('div');
-  div.appendChild(renderInline(text));
-  return div.textContent || '';
-}
-
 // ---------------------------------------------------------------------------
 // 块级解析
 // ---------------------------------------------------------------------------
