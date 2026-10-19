@@ -1508,7 +1508,7 @@
   //
   // `ident` = { aid, bvid, cid }：**当前身份**。用它主动请求 playurl，
   // 得到唯一可验证的音轨来源；页面全局只作兜底，且**不再被贴我们的 cid**。
-  async function collectAudioCandidates(ident = {}) {
+  async function collectAudioCandidates(ident = {}, meta = null) {
     const identityAid = ident.aid;
     const identityBvid = ident.bvid;
     const identityCid = ident.cid;
@@ -1552,19 +1552,30 @@
     // 在单页应用切换后可能仍是**上一个视频**的，
     // 而它们要么自带旧 cid（被过滤掉）、要么被我们**贴上当前 cid**
     // （于是看着"匹配"，实际是别的视频）。
-    let verifiedList = [];
+    // 记录这次刷新的结果，供上层诊断复用。
+    // 以前这里刷完之后上层在「候选为空」时**又刷一次**，同一请求连发两次；
+    // 现在把结果通过 meta 带出去，上层就能判断「刚刷过、不必重复」。
+    let refreshInfo = null;
     if (identityCid) {
+      refreshInfo = { attempted: true, ok: false, code: null, message: '', count: 0 };
       try {
         const fresh = await refreshAudioUrl(identityAid, identityBvid, identityCid);
+        refreshInfo = {
+          attempted: true,
+          ok: !!(fresh && fresh.ok),
+          code: fresh ? fresh.code : null,
+          message: fresh ? fresh.message : '',
+          count: fresh && fresh.audio ? fresh.audio.length : 0
+        };
         if (fresh && fresh.ok && fresh.audio && fresh.audio.length) {
-          const before = out.length;
           push(fresh.audio, 'playurl-api（已验证）', identityCid, true);
-          verifiedList = out.slice(before);
         }
       } catch (err) {
+        refreshInfo.message = String((err && err.message) || err);
         /* 落到页面全局 */
       }
     }
+    if (meta) meta.refresh = refreshInfo;
 
     // ---- ② 页面全局（**不可信**，只在拿不到可信来源时才用）----
     //
@@ -1620,20 +1631,50 @@
   async function collectAudioCandidatesWithRefresh(hint = {}) {
     // 身份从 hint 里取（调用方传的是「已稳定的那个身份」）
     const ident = { aid: hint.aid, bvid: hint.bvid, cid: hint.cid };
-    let list = await collectAudioCandidates(ident);
+    const meta = {};
+    let list = await collectAudioCandidates(ident, meta);
     const diag = {
       hint,
       pageInfo: null,
       sniffed: audioSniff.items.size,
       stages: [],
-      refreshed: null
+      refreshed: meta.refresh
+        ? {
+            ok: meta.refresh.ok,
+            code: meta.refresh.code,
+            message: meta.refresh.message,
+            count: meta.refresh.count
+          }
+        : null
     };
+    if (meta.refresh) {
+      diag.stages.push({
+        stage: '主动刷新 playurl',
+        ok: meta.refresh.ok,
+        code: meta.refresh.code,
+        message: meta.refresh.message,
+        count: meta.refresh.count
+      });
+    }
     diag.stages.push({ stage: '页面现有来源', count: list.length });
     LOG('音轨候选（页面现有来源）', list.length);
     if (list.length) return { list, diag };
+    // 先把页面信息记下来：即使随后因为「刚刷过」提前返回，诊断里也要有
+    // 播放器/cid/bvid，否则用户拿到的报错会少一半线索。
+    let info = {};
     try {
-      const info = getInfo() || {};
+      info = getInfo() || {};
       diag.pageInfo = { aid: info.aid || null, bvid: info.bvid || null, cid: info.cid || null, hasPlayer: !!getPlayer() };
+    } catch (err) {
+      /* 诊断信息拿不到不影响主流程 */
+    }
+    // 刚才已经用同一身份刷过一次 —— 立刻原样重试没有意义，只会多打一次接口。
+    // 真正需要补刷的只有「没有 cid、上次根本没刷」这一种情况。
+    if (meta.refresh && meta.refresh.attempted) {
+      diag.stages.push({ stage: '跳过重复刷新', reason: '同一身份刚刷新过且没有可用结果', count: 0 });
+      return { list, diag };
+    }
+    try {
       // 调用方（侧边栏）通常已经知道 aid/bvid/cid，优先用它，避免依赖页面状态
       const cid = hint.cid || info.cid || currentCid();
       const aid = hint.aid || info.aid;
@@ -1644,12 +1685,16 @@
       diag.refreshed = {
         ok: !!(fresh && fresh.ok),
         code: fresh ? fresh.code : null,
-        message: fresh ? fresh.message : null,
+        message: fresh ? fresh.message : '',
         count: fresh && fresh.audio ? fresh.audio.length : 0
       };
       diag.stages.push({ stage: '主动刷新 playurl', ok: diag.refreshed.ok, code: diag.refreshed.code, message: diag.refreshed.message, count: diag.refreshed.count });
       LOG('刷新结果', fresh && fresh.ok, fresh && fresh.message, fresh && (fresh.audio || []).length);
-      if (fresh && fresh.ok) list = await collectAudioCandidates(ident);
+      if (fresh && fresh.ok) {
+        const meta2 = {};
+        list = await collectAudioCandidates(ident, meta2);
+        if (meta2.refresh) diag.refreshed = { ok: meta2.refresh.ok, code: meta2.refresh.code, message: meta2.refresh.message, count: meta2.refresh.count };
+      }
       diag.stages.push({ stage: '刷新后候选', count: list.length });
     } catch (err) {
       diag.stages.push({ stage: '刷新抛错', error: String((err && err.message) || err) });
@@ -2144,7 +2189,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '1.63.3',
+    version: '1.63.4',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

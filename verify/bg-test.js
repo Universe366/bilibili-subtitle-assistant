@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '1.63.3', manifest_version: 3 }),
+    getManifest: () => ({ version: '1.63.4', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.3' };
+      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.4' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -461,7 +461,16 @@ async function main() {
   res = await rpc('subtitle.api', { aid: 123456, bvid: 'BV1xx411c7mD', cid: 999001, pageUrl: 'https://www.bilibili.com/video/BV1xx411c7mD' });
   check('字幕接口兜底：返回候选字幕轨', res.ok && res.data.tracks.length === 2 && res.data.tracks[0].lan === 'zh-CN', JSON.stringify(res.error || res.data).slice(0, 220));
   check('字幕接口兜底：识别 AI 字幕', res.ok && res.data.tracks.some((t) => t.lan === 'ai-zh' && t.isAi));
-  check('字幕接口兜底：请求带 Referer', fetchLog.some((f) => /x\/player(\/wbi)?\/v2/.test(f.url) && (f.headers.Referer || f.headers.referer)));
+  check(
+    '字幕接口兜底：带 Cookie 凭证、不设 forbidden Referer',
+    fetchLog.some(
+      (f) =>
+        /x\/player(\/wbi)?\/v2/.test(f.url) &&
+        f.credentials === 'include' &&
+        !f.headers.Referer &&
+        !f.headers.referer
+    )
+  );
   check('字幕接口兜底：协议相对地址被补全为 https', res.ok && res.data.tracks[0].url.startsWith('https://'), res.ok ? res.data.tracks[0].url : '');
   check('字幕接口兜底：记录有效来源', res.ok && Array.isArray(res.data.sources) && res.data.sources.length > 0, JSON.stringify(res.data && res.data.sources));
   check('字幕接口兜底：顺带补齐视频信息（时长/分P）', res.ok && !!res.data.video && res.data.video.duration === 754, JSON.stringify(res.data && res.data.video && { d: res.data.video.duration }));
@@ -648,7 +657,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.3' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.4' && !!res.data.platformSummary && !!res.data.permissions);
   check('诊断信息不回传明文密钥', JSON.stringify(res.data).indexOf('sk-test-1234567890abcd') === -1);
   res = await rpc('history.put', { video: { bvid: 'BV1', cid: 1, page: 1, title: 'T' }, entry: { lines: [{ from: 0, to: 1, text: 'x' }] } });
   check('历史写入成功', res.ok);

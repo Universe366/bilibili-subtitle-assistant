@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.63.3', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '1.63.4', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -482,7 +482,16 @@ async function main() {
     check('有可信来源时只用可信来源', /owned\.push\(\.\.\.verifiedCands\);/.test(bridgeSrc), '');
     check('无 cid 的候选不再宽松放行（有 wantCid 时）', /if \(cid && cid === wantCid\) unverifiedCands\.push\(c\);/.test(bridgeSrc), '');
     check('对外报告是否用了可信来源', /usingVerifiedSource: usingVerified/.test(bridgeSrc), '');
-    check('collectAudioCandidates 接收身份参数', /async function collectAudioCandidates\(ident = \{\}\)/.test(bridgeSrc), '');
+    check(
+      'collectAudioCandidates 接收身份参数与刷新结果',
+      /async function collectAudioCandidates\(ident = \{\}, meta = null\)/.test(bridgeSrc),
+      ''
+    );
+    check(
+      '候选为空时不再重复刷新同一身份',
+      /if \(meta\.refresh && meta\.refresh\.attempted\)/.test(bridgeSrc),
+      ''
+    );
   }
 
   console.log('\n===== 内容脚本 + 主环境桥 集成测试 =====');

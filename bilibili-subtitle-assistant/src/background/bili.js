@@ -7,9 +7,6 @@
 import { AppError } from './errors.js';
 import { md5 } from '../shared/md5.js';
 
-const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-
 const MIXIN_KEY_ENC_TAB = [
   46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
   33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61,
@@ -33,15 +30,13 @@ export function normalizeSubtitleUrl(raw) {
   return s;
 }
 
-function headerFor(pageUrl) {
-  let referer = 'https://www.bilibili.com/';
-  try {
-    const u = new URL(pageUrl || referer);
-    referer = `${u.protocol}//${u.host}/`;
-  } catch (err) {
-    /* ignore */
-  }
-  return { 'User-Agent': UA, Referer: referer, Accept: 'application/json, text/plain, */*' };
+// 后台请求 B 站接口时**只带能真正送出的头**。
+//
+// Referer / Origin 是 Fetch 的 forbidden header，在 service worker 里设置会被
+// 浏览器静默丢弃（见 AGENTS.md 2.1）；User-Agent 也交给浏览器自己发。
+// B 站接口的鉴权靠 cookie + wbi 签名，不依赖这几个头。
+function headerFor() {
+  return { Accept: 'application/json, text/plain, */*' };
 }
 
 async function getJson(url, pageUrl, timeoutMs = 20000) {
@@ -49,7 +44,7 @@ async function getJson(url, pageUrl, timeoutMs = 20000) {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
-      headers: headerFor(pageUrl),
+      headers: headerFor(),
       credentials: 'include',
       signal: ctrl.signal,
       redirect: 'follow'

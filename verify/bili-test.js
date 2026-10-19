@@ -129,7 +129,12 @@ async function main() {
   check('标记 AI 字幕', out.tracks.some((t) => t.lan === 'ai-zh' && t.isAi === true));
   check('记录了来源（wbi/v2）', out.sources.includes('wbi/v2'), JSON.stringify(out.sources));
   check('wbi 请求带签名（w_rid + wts）', fetchLog.some((f) => /x\/player\/wbi\/v2/.test(f.url) && /w_rid=/.test(f.url) && /wts=/.test(f.url)), fetchLog.filter((f) => /wbi/.test(f.url)).map((f) => f.url.slice(0, 120)).join('\n'));
-  check('请求带 Referer 与 UA', fetchLog.some((f) => /x\/player/.test(f.url) && f.headers.Referer && f.headers['User-Agent']));
+  // Referer / UA 在 service worker 里设了也会被静默丢弃；真实浏览器会自动带。
+  check(
+    '请求不设 forbidden 的 Referer / UA，只带 Accept',
+    fetchLog.some((f) => /x\/player/.test(f.url) && !!f.headers.Accept && !f.headers.Referer && !f.headers['User-Agent']),
+    JSON.stringify(fetchLog.filter((f) => /x\/player/.test(f.url)).map((f) => f.headers).slice(0, 2))
+  );
 
   // ---- 3. 登录门槛识别 ----
   fetchLog = [];

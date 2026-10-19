@@ -4959,3 +4959,38 @@ Key 长度 49 说明不是空值也不是掩码，是**真 Key**。同一把 Key
 panel-test 418 项、bg-test 66 项、content-test 96 项、flow2 39 项、asr 263 项
 其余 node 套件同上轮；浏览器相关套件未在本机跑
 ```
+
+---
+
+## 第八十三轮（1.63.4）—— 去掉重复刷新与最后一批「假请求头」
+
+### 1. 候选为空时不再重复刷新 playurl
+
+`collectAudioCandidates` 本身已经用当前身份主动刷过一次 playurl；
+`collectAudioCandidatesWithRefresh` 在结果为空时又原样刷了第二次 —— 同一请求、同一身份，
+立刻重试没有意义，只会多打一次接口、多一条误导性的诊断。
+
+* `collectAudioCandidates(ident, meta)` 现在把刷新结果（`ok/code/message/count/attempted`）
+  通过 `meta.refresh` 带出去；
+* 上层据此填 `diag.refreshed`，并在 `attempted` 为真且候选仍为空时直接返回
+  （`stage: '跳过重复刷新'`）；
+* 只有「没有 cid、上次根本没刷」的情况才会走到补刷分支；
+* 顺带删掉从未被读取的 `verifiedList`（死变量）。
+
+### 2. `bili.js` 不再伪造 Referer / UA
+
+`headerFor()` 以前返回 `User-Agent` + `Referer` + `Accept`。前两个在 service worker 的
+fetch 里要么被静默丢弃（Referer 是 forbidden header），要么交给浏览器更可靠（UA）。
+现在只带 `Accept`，接口鉴权继续依赖 cookie + wbi 签名。
+
+测试同步改成断言「**不**发送 forbidden 的 Referer/UA，但带 Cookie 凭证」——
+这样以后再有人加回这些头，测试会失败，而不是让死代码悄悄复活。
+
+### 3. 版本与测试
+
+1.63.3 → 1.63.4。
+
+```
+content/harvest/sniff/bili/bg/panel/asr 全部通过
+panel 418、bg 66、content 97、flow2 39、asr 263
+```
