@@ -1502,6 +1502,9 @@ function batchGroup(d) {
   return groupWrap('batch', '批量队列（支持合集 / 单个视频）', false, (body) => {
     const input = h('textarea', {
       class: 'input',
+      // 存在 ui.batchInput 里：排队/暂停/移除都会重绘设置页，
+      // 以前写了一半的链接会被清空。
+      value: store.get().ui.batchInput || '',
       placeholder:
         '每行一个链接。支持：\n' +
         '· 普通视频：https://www.bilibili.com/video/BV...\n' +
@@ -1509,6 +1512,13 @@ function batchGroup(d) {
         '  （也支持 /lists/<id>）\n' +
         '可以混着填。'
     });
+    input.addEventListener('input', () => {
+      store.get().ui.batchInput = input.value;
+    });
+    const clearInput = () => {
+      input.value = '';
+      store.get().ui.batchInput = '';
+    };
     body.appendChild(field('视频 / 合集链接', input));
 
     // 展开预览区：点「展开合集」后在这里列出解析结果，
@@ -1551,7 +1561,7 @@ function batchGroup(d) {
               const added = pending.length;
               batchAdd(pending.map((v) => v.url).join('\n'));
               pending = [];
-              input.value = '';
+              clearInput();
               renderPreview();
               render();
               toast({ title: `已加入 ${added} 个视频到队列`, detail: '在下方「队列」里可以看到进度' }, 'ok');
@@ -1584,7 +1594,7 @@ function batchGroup(d) {
             // 没有合集链接就按原样入队，不必多一步
             if (!/bilibili\.com\/.*(collectiondetail|seriesdetail|\/lists\/)/.test(text)) {
               batchAdd(text);
-              input.value = '';
+              clearInput();
               render();
               return;
             }
@@ -1602,7 +1612,7 @@ function batchGroup(d) {
             if (pending.length === 1 && !pending[0].fromCollection) {
               batchAdd(pending[0].url);
               pending = [];
-              input.value = '';
+              clearInput();
               render();
               return;
             }
@@ -1614,7 +1624,7 @@ function batchGroup(d) {
           '直接入队（不展开）',
           () => {
             batchAdd(input.value);
-            input.value = '';
+            clearInput();
             pending = [];
             renderPreview();
             render();
@@ -1626,6 +1636,9 @@ function batchGroup(d) {
 
     const st = store.get();
     const q = st.queue || [];
+    const hasQueued = q.some((x) => x.status === 'queued');
+    const hasRunning = q.some((x) => x.status === 'running');
+    const hasDone = q.some((x) => x.status === 'done' || x.status === 'error');
     if (q.length) {
       body.appendChild(h('div', { class: 'section-title', text: `队列（${q.filter((x) => x.status === 'queued').length} 待处理 / 共 ${q.length}）` }));
       for (const item of q) {
@@ -1635,7 +1648,14 @@ function batchGroup(d) {
             h('div', { class: 'muted', text: `状态：${statusLabel(item.status)}${item.error ? ` —— ${item.error}` : ''}` }),
             h('div', { class: 'row tight' }, [
               item.status === 'running' ? h('span', { class: 'pill', text: `${Math.round(item.progress || 0)}%` }) : null,
-              button('移除', () => batchRemove(item.id), { small: true, danger: true })
+              button('移除', () => batchRemove(item.id), {
+                small: true,
+                danger: true,
+                // 移除运行中的项并不会中止已经在跑的标签页/抓取，只会让它「看不见」，
+                // 之后仍会把字幕写回当前面板 —— 与其误导，不如禁用。
+                disabled: item.status === 'running',
+                title: item.status === 'running' ? '处理中不能移除；可先暂停队列，等这一条完成' : '从队列移除'
+              })
             ])
           ])
         );
@@ -1643,11 +1663,26 @@ function batchGroup(d) {
     }
     body.appendChild(
       h('div', { class: 'row tight' }, [
-        button('暂停队列', () => batchPause(true), { small: true }),
-        button('继续队列', () => batchPause(false), { small: true }),
-        button('清空已完成', () => batchClearDone(), { small: true })
+        button('暂停队列', () => batchPause(true), {
+          small: true,
+          disabled: !hasQueued && !hasRunning,
+          title: '当前正在处理的视频会先完成，之后不再开始下一条'
+        }),
+        button('继续队列', () => batchPause(false), {
+          small: true,
+          disabled: !app.batch.paused,
+          title: '继续处理排队中的视频'
+        }),
+        button('清空已完成', () => batchClearDone(), {
+          small: true,
+          disabled: !hasDone,
+          title: '移除已完成与失败的条目'
+        })
       ])
     );
+    if (app.batch.paused) {
+      body.appendChild(h('div', { class: 'note', text: '队列已暂停：当前这条会完成，之后不会自动开始下一条。' }));
+    }
   });
 }
 

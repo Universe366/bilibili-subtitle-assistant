@@ -404,11 +404,17 @@ function showSources() {
   const counts = st.search.counts || {};
   const sorted = [...st.search.results].sort((a, b) => (counts[b.url] || 0) - (counts[a.url] || 0));
   for (const r of sorted) {
+    const meta = [r.site, r.publishedAt ? String(r.publishedAt).slice(0, 10) : ''].filter(Boolean).join(' · ');
+    const brief = String(r.summary || r.snippet || r.content || '');
     body.appendChild(
       h('div', { class: 'src-row' }, [
         h('span', { class: 'cite-count', text: `×${counts[r.url] || 0}` }),
         h('a', { class: 'md-link', href: r.url, target: '_blank', rel: 'noreferrer', text: r.title || r.url }),
-        h('span', { class: 'muted', text: (r.snippet || '').slice(0, 80) })
+        h('span', {
+          class: 'muted',
+          text: `${meta ? `${meta} · ` : ''}${brief.slice(0, 120)}`,
+          title: brief.slice(0, 600)
+        })
       ])
     );
   }
