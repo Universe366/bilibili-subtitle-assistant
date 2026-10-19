@@ -705,6 +705,7 @@ export async function doProviderSearch(query, opts = {}) {
   try {
     const out = await SEARCH.runProviderSearch(s, query, {
       onLog: (m) => task && task.detail(m),
+      oriQuestion: opts.oriQuestion || query,
       ...(opts.fetchPageContent === false ? { fetchPageContent: false } : {})
     });
     if (out && out.results && !opts.ephemeral) {

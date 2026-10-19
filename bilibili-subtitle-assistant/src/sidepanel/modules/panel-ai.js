@@ -811,7 +811,13 @@ export function searchCapabilityOf(settings) {
   const search = (settings && settings.search) || {};
   const platforms = search.platforms || [];
   const active = platforms.find((p) => p.id === search.activeId) || platforms[0] || null;
-  const hasSearchKey = !!(active && String(active.apiKey || '').trim());
+  // 复用 AI Key 的平台（DeepSeek 搜索）：AI 那边填了 Key 就等于检索已配置
+  let reusedKey = '';
+  if (active && active.reuseAiKey) {
+    const ai = ((settings.ai && settings.ai.platforms) || []).find((p) => p.id === active.reuseAiKey);
+    reusedKey = (ai && ai.apiKey) || '';
+  }
+  const hasSearchKey = !!(active && (String(active.apiKey || '').trim() || String(reusedKey).trim()));
   const keylessOn = search.keylessFallback !== false;
   return {
     active,
@@ -833,15 +839,18 @@ export function searchCapabilityOf(settings) {
 export function needsWebSearch(question) {
   const q = String(question || '');
   if (!q.trim()) return false;
-  const recencyOrFact =
-    /最新|最近|现在|目前|今年|今天|今日|昨天|本周|本月|新闻|动态|进展|价格|股价|汇率|多少人|是谁|什么时候|哪一年|几点|为什么|多少|对比|区别|官网|地址|链接|资料|出处|来源/i;
-  if (recencyOrFact.test(q)) return true;
-  // 明确要求检索 / 询问联网能力
+  // ① 明确要求检索 / 询问联网能力
   const asksToSearch = /查一下|搜一下|帮我查|搜索一下|上网查|联网|上网|能不能查|可以查/i;
   if (asksToSearch.test(q)) return true;
-  // 要求核实 / 求证
+  // ② 要求核实 / 求证
   const asksToVerify = /核实|求证|验证|确认一下|准确吗|对不对|是真的吗|有没有错|事实核查|查证/i;
   if (asksToVerify.test(q)) return true;
+  // ③ 明确的「外部事实/时效」信号。
+  // 这里刻意**不放**「为什么 / 多少 / 对比 / 区别」这类泛问句 ——
+  // 它们大多能靠视频字幕回答，搜了反而是一堆无关网页。
+  const recencyOrFact =
+    /最新|最近|现在|目前|今年|今天|今日|昨天|本周|本月|新闻|动态|进展|价格|股价|汇率|多少人|是谁|什么时候|哪一年|几点|官网|地址|链接|出处|来源/i;
+  if (recencyOrFact.test(q)) return true;
   return false;
 }
 

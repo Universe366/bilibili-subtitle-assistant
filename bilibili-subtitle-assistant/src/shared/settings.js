@@ -401,6 +401,18 @@ export function defaultAsrPlatforms() {
 export function defaultSearchPlatforms() {
   return [
     {
+      id: 'deepseek-search',
+      name: 'DeepSeek 搜索（官方，推荐）',
+      homepage: 'https://api-docs.deepseek.com/guides/search/',
+      keyUrl: 'https://platform.deepseek.com/api_keys',
+      baseUrl: 'https://api.deepseek.com/v1/tools/search',
+      apiKey: '',
+      kind: 'deepseek-search',
+      // 复用 AI 平台里的 DeepSeek Key（同一把 Key），用户不用再填一遍
+      reuseAiKey: 'deepseek',
+      models: []
+    },
+    {
       id: 'tavily',
       name: 'Tavily',
       homepage: 'https://tavily.com/',
@@ -607,7 +619,10 @@ export function defaultSettings() {
       lastAutoApplied: false
     },
     search: {
-      activeId: 'tavily',
+      // 默认用 DeepSeek 官方搜索：它复用 AI 平台的 DeepSeek Key，
+      // 自带重排分数、权威度、发布时间与 600~800 字摘要，比免费引擎更适合当模型依据。
+      // 没配 DeepSeek Key 时仍会自动落到免费引擎兜底。
+      activeId: 'deepseek-search',
       platforms: defaultSearchPlatforms(),
       engine: 'bing',
       maxResults: 6,
@@ -943,7 +958,14 @@ export function computeReadiness(settings) {
   ok.prompt = !!(prompt && String(prompt.text || '').trim());
 
   const sp = activeSearch(settings);
-  ok.search = !!(sp && hasSecret(sp.apiKey) && sp.baseUrl);
+  // 有些检索平台复用 AI 平台的 Key（例如 DeepSeek 搜索复用 DeepSeek Key），
+  // 判定「是否已配置」时要把那把 Key 也算进来，否则会误报未配置。
+  let reusedSearchKey = '';
+  if (sp && sp.reuseAiKey) {
+    const aiForSearch = (settings.ai.platforms || []).find((p) => p.id === sp.reuseAiKey);
+    reusedSearchKey = (aiForSearch && aiForSearch.apiKey) || '';
+  }
+  ok.search = !!(sp && (hasSecret(sp.apiKey) || hasSecret(reusedSearchKey)) && sp.baseUrl);
   if (settings.search.platforms && settings.search.platforms.length && !ok.search) {
     issues.push({
       level: 'info',

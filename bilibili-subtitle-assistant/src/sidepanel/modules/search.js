@@ -29,7 +29,9 @@ export async function runProviderSearch(settings, query, hooks = {}) {
       query,
       maxResults: settings.search.maxResults,
       fetchPageContent: settings.search.fetchPageContent,
-      timeRange: hooks.timeRange !== undefined ? hooks.timeRange : settings.search.timeRange
+      timeRange: hooks.timeRange !== undefined ? hooks.timeRange : settings.search.timeRange,
+      // 原问题用于「查询理解」（DeepSeek 官方搜索的 ori_question）
+      oriQuestion: hooks.oriQuestion || query
     },
     { timeoutMs: 90000 }
   );
@@ -47,6 +49,8 @@ export async function runProviderSearch(settings, query, hooks = {}) {
 
   if (settings.search.fetchPageContent && results.length) {
     for (const r of results.slice(0, 4)) {
+      // DeepSeek 官方搜索在 need_content=true 时已直接带回正文，不用再抓一次
+      if (r.content && r.content.length > 200) continue;
       try {
         const page = await call('search.fetch-page', { url: r.url }, { timeoutMs: 45000 });
         if (page && page.text) r.content = page.text;
@@ -107,15 +111,20 @@ export function searchContextBlock(results, counts) {
   if (!results || !results.length) return '';
   const rows = results.map((r, i) => {
     const cited = counts ? counts[r.url] || 0 : 0;
-    // 抓到正文时给 AI 更多内容（每条最多 3000 字）。
-    // 之前只截 900 字 —— 那是「摘要级」的长度，装不下网页正文，
-    // 于是「抓取页面正文」抓了也几乎用不上。
-    const isFullText = !!(r.content && r.content.length > 200);
-    const body = (r.content || r.snippet || '').slice(0, isFullText ? 3000 : 900);
-    const label = isFullText ? '正文' : '摘要';
-    return `[来源 ${i + 1}] ${r.title}\nURL: ${r.url}\n被引用次数: ${cited}\n${label}: ${body}`;
+    // 优先用 summary（DeepSeek 官方搜索会给 600~800 字、面向模型的摘要），
+    // 其次才是正文/短摘要。以前只看 content/snippet，等于把最好的字段丢了。
+    const best = r.summary || r.content || r.snippet || '';
+    const isFullText = !r.summary && !!(r.content && r.content.length > 200);
+    const body = String(best).slice(0, isFullText ? 3000 : 1200);
+    const label = r.summary ? '摘要' : isFullText ? '正文' : '摘要';
+    const meta = [r.site, r.publishedAt ? String(r.publishedAt).slice(0, 10) : ''].filter(Boolean).join(' · ');
+    return `[来源 ${i + 1}] ${r.title}${meta ? `（${meta}）` : ''}\nURL: ${r.url}\n被引用次数: ${cited}\n${label}: ${body}`;
   });
-  return ['【联网检索到的参考资料】', ...rows].join('\n\n');
+  return [
+    '【联网检索到的参考资料】',
+    '使用规则：只使用与当前问题相关的来源；引用具体信息时标注 [来源 N]；不要编造来源或网址；来源互相矛盾时如实说明。',
+    ...rows
+  ].join('\n\n');
 }
 
 // 带「不可信外部数据」边界的安全版本。

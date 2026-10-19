@@ -1213,8 +1213,16 @@ function searchGroup(d) {
     body.appendChild(
       h('div', { class: 'note', text: '① 服务商检索：走检索 API，结果会作为 AI 的依据，消耗额度。② 直接搜索引擎：只打开结果页，不消耗额度，不进入 AI 上下文。' })
     );
-    for (const p of []) void p;
     body.appendChild(platformPicker('search', d));
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text:
+          '推荐「DeepSeek 搜索（官方）」：复用你在 AI 平台里填的 DeepSeek Key，不用再填一次；' +
+          '结果自带重排分数、权威度、发布时间与 600~800 字摘要，质量明显好于免费网页解析。' +
+          '按成功请求计费（$0.75 / 1000 次，失败与空结果不计费）。'
+      })
+    );
     body.appendChild(
       field(
         '直接搜索引擎',

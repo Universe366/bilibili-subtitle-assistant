@@ -164,6 +164,10 @@ export function timeParamsFor(engineOrKind, tr) {
     const map = { day: 'day', week: 'week', month: 'month', year: 'year' };
     return { search_recency_filter: map[bucket] };
   }
+  if (k === 'deepseek-search' || k === 'deepseek') {
+    // DeepSeek 官方搜索支持查询语法 after:/before:，用发布日期的下界即可。
+    return { after: tr.sinceDate };
+  }
   return {};
 }
 
@@ -180,6 +184,7 @@ export function timeParamsFor(engineOrKind, tr) {
 //
 // 这样做的原因：宁可少承诺，也不要让用户以为过滤生效了、实际拿到旧结果。
 export const TIME_CAPABLE = new Set([
+  'deepseek-search', // after:/before: 查询语法（官方文档）
   'tavily',   // time_range（官方文档）
   'exa',      // startPublishedDate（官方文档）
   'bocha',    // freshness（官方文档）

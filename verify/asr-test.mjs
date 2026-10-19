@@ -1127,13 +1127,31 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('联网检索有两个可控开关', 'autoSearchOnChat' in d.search && 'alwaysSearchOnChat' in d.search, Object.keys(d.search).join(','));
 
   // 复刻触发规则，验证哪些问法会触发检索、哪些不会
+  // 与 panel-ai.js 的 needsWebSearch 保持一致：只保留「明确要搜/核实」和
+  // 「明确的外部事实/时效」信号；「为什么/多少/对比/区别」这类泛问句不再触发。
   const needsWeb = (q) =>
-    /最新|现在|目前|今年|今天|新闻|价格|多少人|是谁|什么时候|为什么|查一下|搜一下|官网|地址|链接|资料|出处|来源|对比|区别|多少|几点|哪一年/i.test(
+    /查一下|搜一下|帮我查|搜索一下|上网查|联网|上网|能不能查|可以查|核实|求证|验证|确认一下|准确吗|对不对|是真的吗|有没有错|事实核查|查证|最新|最近|现在|目前|今年|今天|今日|昨天|本周|本月|新闻|动态|进展|价格|股价|汇率|多少人|是谁|什么时候|哪一年|几点|官网|地址|链接|出处|来源/i.test(
       q
     );
 
-  const shouldSearch = ['现在多少钱', '这个人是谁', '查一下官网', '最新新闻', '它的来源是哪', '今年有什么变化'];
-  const shouldSkip = ['总结一下这期视频', '刚才讲了什么', '帮我提炼要点', '这段的意思是什么'];
+  const shouldSearch = [
+    '现在多少钱',
+    '这个人是谁',
+    '查一下官网',
+    '帮我查一下 DeepSeek 的最新进展',
+    '最新新闻',
+    '它的来源是哪',
+    '今年有什么变化',
+    '这句话准确吗'
+  ];
+  const shouldSkip = [
+    '总结一下这期视频',
+    '刚才讲了什么',
+    '帮我提炼要点',
+    '这段的意思是什么',
+    '这两款产品有什么区别',
+    '视频里为什么这么说'
+  ];
   const missSearch = shouldSearch.filter((q) => !needsWeb(q));
   const falsePositive = shouldSkip.filter((q) => needsWeb(q));
   check('外部信息类问题会触发检索', missSearch.length === 0, missSearch.join(' | '));
@@ -1149,6 +1167,24 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 
   const onlySnippet = SEARCH.searchContextBlock([{ title: 'T', url: 'https://e.com', snippet: '短摘要' }], {});
   check('只有摘要时标注为「摘要」', /摘要:/.test(onlySnippet), onlySnippet.slice(0, 80));
+
+  // DeepSeek 官方搜索会给 summary / site / date：优先用 summary，并带上来源信息
+  const rich = SEARCH.searchContextBlock(
+    [
+      {
+        title: '官方结果',
+        url: 'https://x.example.com/a',
+        summary: '这是面向模型的长摘要，包含具体事实。',
+        snippet: '短',
+        site: 'Example',
+        publishedAt: '2026-10-01T00:00:00Z'
+      }
+    ],
+    {}
+  );
+  check('优先使用 summary（而不是短 snippet）', /摘要: 这是面向模型的长摘要/.test(rich), rich.slice(0, 160));
+  check('上下文里带上站点与发布日期', /Example/.test(rich) && /2026-10-01/.test(rich), rich.slice(0, 200));
+  check('上下文里给出引用规则', /\[来源 N\]/.test(rich), rich.slice(0, 200));
 }
 
 // ---------------- 33. 联网检索：新增 provider 的请求形态与响应解析 ----------------

@@ -26,11 +26,21 @@ export function wrapUntrusted(text) {
 
 // 清理单条结果里的所有外部文本字段
 export function sanitizeResult(r) {
+  const authRaw = r ? r.authority : null;
+  const authority =
+    authRaw === null || authRaw === undefined || !Number.isFinite(Number(authRaw)) ? -1 : Number(authRaw);
   return {
     title: neutralizeBoundary(String((r && r.title) || '')).slice(0, 200),
     url: String((r && r.url) || ''),
     snippet: neutralizeBoundary(String((r && r.snippet) || '')).slice(0, 800),
-    content: neutralizeBoundary(String((r && r.content) || '')).slice(0, 4000)
+    content: neutralizeBoundary(String((r && r.content) || '')).slice(0, 4000),
+    // DeepSeek 官方搜索等平台会带这些元信息；保留它们用于排序与展示，
+    // 全部按「外部文本」清洗后再截断。
+    summary: neutralizeBoundary(String((r && r.summary) || '')).slice(0, 1200),
+    site: neutralizeBoundary(String((r && r.site) || '')).slice(0, 120),
+    publishedAt: String((r && r.publishedAt) || '').slice(0, 40),
+    score: Number((r && r.score) || 0) || 0,
+    authority
   };
 }
 

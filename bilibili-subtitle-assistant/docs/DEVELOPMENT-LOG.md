@@ -5013,3 +5013,48 @@ panel 418、bg 66、content 97、flow2 39、asr 263
 ### 版本与测试
 
 1.63.4 → 1.63.5。content-test 98 项，其余套件同上轮。
+
+---
+
+## 第八十五轮（1.63.6）—— 联网搜索：接入 DeepSeek 官方搜索，并修掉「搜一堆没用的」
+
+### 为什么之前搜出来的东西弱
+
+不是「没联网」，而是**拿到的东西本身就差**：
+
+1. 默认平台 Tavily 没填 Key → 实际走免费引擎的 HTML 解析，只拿到标题 + 一两句摘要；
+2. 结果按引擎原始顺序截前 6 条，没有去重、没有重排、没有权威度/时间；
+3. 进入上下文时只用了 `snippet`（900 字），把 Provider 给的 `summary` 直接丢了；
+4. 查询词是用户的整句口语（「帮我查一下…」），没有清理；
+5. 自动检索的触发词太宽（「为什么 / 多少 / 对比 / 区别 / 资料」），大量本该由字幕回答的问题也去搜，自然显得噪声大。
+
+### 接入 DeepSeek 官方搜索（2026-10 上线的 Search API）
+
+* 端点 `POST https://api.deepseek.com/v1/tools/search`，与对话同一把 Bearer Key；
+* 平台定义 `deepseek-search`，`reuseAiKey: 'deepseek'` —— **复用 AI 平台里的 DeepSeek Key**，
+  用户不用填第二遍；没配 Key 时仍按老规则落到免费引擎兜底；
+* 请求带 `query / count / ori_question / need_content`：
+  * `ori_question` 是原问题，帮助查询理解；
+  * `need_content` 跟随「抓取页面正文」开关，为 true 时直接带回正文，省掉逐条再抓；
+  * 时间过滤用官方查询语法 `after:YYYY-MM-DD`（`time-range.js` 映射）；
+* 结果保留 `summary / rerank_score / authority / date / site_name`，
+  按 `rerank_score → authority` 排序，再去重；
+* 正文补抓走官方 `POST /v1/tools/fetch`（返回 Markdown），失败才退回通用「正则去标签」；
+* 计费按**成功请求**：$0.75 / 1000 次；失败、空结果不计费。
+* 默认 `search.activeId` 改为 `deepseek-search`（老用户配置不会被改，只影响新装）。
+
+### 同时对所有检索平台生效的改进
+
+* 结果统一保留 `summary / site / publishedAt / score / authority`（`sanitizeResult` 也清洗这些字段）；
+* 同一 URL 去重后再截断；
+* `searchContextBlock` 优先用 `summary`，带站点与发布日期，并加入引用规则
+  （只用相关来源、标注 `[来源 N]`、不要编造 URL）；
+* 检索词先经 `cleanSearchQuery()` 去掉「帮我查一下 / 请问」等前缀与首尾标点；
+* 已有正文的结果不再重复抓取；
+* `needsWebSearch` 去掉「为什么 / 多少 / 对比 / 区别 / 资料」这类泛问句触发词，
+  「视频里为什么这么说」这类问题不再无脑联网。
+
+### 版本与测试
+
+1.63.5 → 1.63.6。bg-test 新增 DeepSeek 搜索请求/解析/Key 复用/时间过滤/正文抓取断言；
+keyless-search-test 新增查询清理与 after 映射；asr-test 补充 summary/site/date 上下文断言。

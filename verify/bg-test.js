@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '1.63.5', manifest_version: 3 }),
+    getManifest: () => ({ version: '1.63.6', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.5' };
+      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '1.63.6' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -296,6 +296,37 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   // 检索
+  if (u.includes('api.deepseek.com/v1/tools/search')) {
+    return jsonResponse({
+      results: [
+        {
+          rerank_score: 2.4,
+          title: '官方高相关',
+          url: 'https://ds.example.com/a',
+          snippet: '短摘要A',
+          summary: '这是给模型看的长摘要A，包含具体事实与数字。',
+          content: '正文A',
+          site_name: 'Example',
+          date: '2026-10-01T00:00:00+00:00',
+          authority: 3
+        },
+        {
+          rerank_score: 0.4,
+          title: '低相关',
+          url: 'https://ds.example.com/b',
+          snippet: '短B',
+          summary: '摘要B',
+          content: '',
+          site_name: 'B',
+          date: null,
+          authority: 1
+        }
+      ]
+    });
+  }
+  if (u.includes('api.deepseek.com/v1/tools/fetch')) {
+    return jsonResponse({ title: '抓取页', content: '# 抓取正文\n内容' });
+  }
   if (u.includes('tavily.com')) {
     return jsonResponse({ results: [{ title: '来源A', url: 'https://a.example.com/1', content: '内容A' }, { title: '来源B', url: 'https://b.example.com/2', content: '内容B' }] });
   }
@@ -636,6 +667,67 @@ async function main() {
   res = await rpc('search.provider', { id: 'serper', query: '测试', maxResults: 5 });
   check('Serper 检索解析结果', res.ok && res.data.results.length === 1 && res.data.results[0].url.includes('d.example.com'), JSON.stringify(res.error));
 
+  // ---- 12b. DeepSeek 官方搜索（复用 AI Key） ----
+  res = await rpc('search.provider', {
+    id: 'deepseek-search',
+    query: '帮我查一下 DeepSeek V4 最新进展',
+    oriQuestion: '帮我查一下 DeepSeek V4 最新进展',
+    maxResults: 5,
+    fetchPageContent: true,
+    timeRange: '2026-01-01'
+  });
+  const dsReq = fetchLog.filter((f) => f.url.includes('/v1/tools/search')).pop() || {};
+  const dsBody = (() => {
+    try {
+      return JSON.parse(dsReq.body || '{}');
+    } catch (err) {
+      return {};
+    }
+  })();
+  check(
+    'DeepSeek 搜索：请求打到官方 tools/search',
+    res.ok && /api\.deepseek\.com\/v1\/tools\/search$/.test(dsReq.url),
+    JSON.stringify(res.error || dsReq.url)
+  );
+  check(
+    'DeepSeek 搜索：复用 AI 平台的 DeepSeek Key',
+    dsReq.headers &&
+      dsReq.headers.authorization === 'Bearer sk-test-1234567890abcd',
+    JSON.stringify(dsReq.headers)
+  );
+  check(
+    'DeepSeek 搜索：检索词去掉口语前缀并带时间过滤',
+    dsBody.query === 'DeepSeek V4 最新进展 after:2026-01-01',
+    JSON.stringify(dsBody.query)
+  );
+  check(
+    'DeepSeek 搜索：原问题作为 ori_question 透传',
+    dsBody.ori_question === '帮我查一下 DeepSeek V4 最新进展',
+    JSON.stringify(dsBody.ori_question)
+  );
+  check('DeepSeek 搜索：need_content 跟随「抓取正文」开关', dsBody.need_content === true, String(dsBody.need_content));
+  check(
+    'DeepSeek 搜索：保留 summary / 站点 / 发布时间 / 重排分',
+    res.ok &&
+      res.data.results[0].summary.includes('长摘要A') &&
+      res.data.results[0].site === 'Example' &&
+      res.data.results[0].publishedAt.startsWith('2026-10-01') &&
+      res.data.results[0].score === 2.4 &&
+      res.data.results[0].authority === 3,
+    JSON.stringify(res.data && res.data.results && res.data.results[0])
+  );
+  check(
+    'DeepSeek 搜索：结果按重排分排序',
+    res.ok && res.data.results[0].url.includes('ds.example.com/a'),
+    JSON.stringify(res.data && res.data.results && res.data.results.map((r) => r.url))
+  );
+  res = await rpc('search.fetch-page', { url: 'https://example.com/article' });
+  check(
+    'DeepSeek 搜索的正文抓取走官方 Fetch（Markdown）',
+    res.ok && res.data.via === 'deepseek' && /抓取正文/.test(res.data.text),
+    JSON.stringify(res.error || res.data)
+  );
+
   // ---- 13. 页面桥接（候选标签页逐个降级） ----
   tabMessageHandler = null;
   res = await rpc('page.info', {});
@@ -657,7 +749,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.5' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '1.63.6' && !!res.data.platformSummary && !!res.data.permissions);
   check('诊断信息不回传明文密钥', JSON.stringify(res.data).indexOf('sk-test-1234567890abcd') === -1);
   res = await rpc('history.put', { video: { bvid: 'BV1', cid: 1, page: 1, title: 'T' }, entry: { lines: [{ from: 0, to: 1, text: 'x' }] } });
   check('历史写入成功', res.ok);

@@ -14,7 +14,7 @@ import * as KS from './keyless-search.js';
 import * as SC from './search-cache.js';
 import { sanitizeResult } from '../shared/untrusted.js';
 import { normalizeTimeRange, timeParamsFor, supportsTime, TIME_CAPABLE } from '../shared/time-range.js';
-import { routeKeyless, describeRoute, wantsRecency, isCjkQuery } from '../shared/search-router.js';
+import { routeKeyless, describeRoute, wantsRecency, isCjkQuery, cleanSearchQuery } from '../shared/search-router.js';
 import { stripQuery } from '../shared/storage.js';
 
 // 检索结果缓存（默认 5 分钟 / 50 条）。
@@ -87,7 +87,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-19T12:00:00Z';
+const BUILD_TIME = '2026-10-19T13:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -130,6 +130,20 @@ async function settingsForUi() {
   const safe = CFG.stripSecrets(s);
   safe.__readiness = CFG.computeReadiness(s);
   return safe;
+}
+
+// 检索平台的 Key：优先用自己的；没有则按 `reuseAiKey` 复用 AI 平台的 Key。
+// DeepSeek 搜索与 DeepSeek 对话是同一把 Key，用户不该填两遍；
+// 复用之后 `hasKey`、就绪度、测试连接的行为都与「自己填了 Key」一致。
+function resolveSearchPlatform(settings, platform) {
+  if (!platform) return platform;
+  if (String(platform.apiKey || '').trim()) return platform;
+  if (!platform.reuseAiKey) return platform;
+  const ai = ((settings.ai && settings.ai.platforms) || []).find(
+    (p) => p.id === platform.reuseAiKey || p.id === platform.id
+  );
+  const key = (ai && String(ai.apiKey || '').trim()) || '';
+  return key ? { ...platform, apiKey: key } : platform;
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +385,7 @@ const methods = {
       return P.testAsrPlatform(plat);
     }
     if (kind === 'search') {
-      const plat = s.search.platforms.find((p) => p.id === params.id);
+      const plat = resolveSearchPlatform(s, s.search.platforms.find((p) => p.id === params.id));
       return P.testSearchPlatform(plat);
     }
     throw new AppError('badargs', '未知的测试类型', String(kind), '请在设置页点击「测试连接」。');
@@ -387,7 +401,8 @@ const methods = {
     }
     // 语音识别 / 检索多数平台没有 /models；先尝试 OpenAI 兼容，失败则返回内置建议
     const list = kind === 'asr' ? s.asr.platforms : s.search.platforms;
-    const plat = list.find((p) => p.id === params.id);
+    const rawPlat = list.find((p) => p.id === params.id);
+    const plat = kind === 'search' ? resolveSearchPlatform(s, rawPlat) : rawPlat;
     try {
       const out = await P.listModelsWithSource({ ...plat, model: plat.model || 'x' }, { kind: kind === 'asr' ? '语音识别' : '检索' });
       return { models: out.models, baseUrl: out.baseUrl, url: out.url, keyLength: out.keyLength, fallback: false };
@@ -713,9 +728,12 @@ const methods = {
   // ---- 检索 ----
   'search.provider': async (params) => {
     const s = await ST.loadSettings();
-    const plat = s.search.platforms.find((p) => p.id === params.id) || CFG.activeSearch(s);
+    const platRaw = s.search.platforms.find((p) => p.id === params.id) || CFG.activeSearch(s);
+    const plat = resolveSearchPlatform(s, platRaw);
     const hasKey = !!(plat && String(plat.apiKey || '').trim());
     const allowKeyless = s.search.keylessFallback !== false;
+    // 检索词先去掉口语前缀（「帮我查一下…」），原问题另存给查询理解用。
+    const query = cleanSearchQuery(params.query) || String(params.query || '').trim();
 
     // 时间过滤：参数优先，其次设置里的默认值
     const tr = normalizeTimeRange(params.timeRange !== undefined ? params.timeRange : s.search.timeRange);
@@ -724,11 +742,13 @@ const methods = {
     searchCache.ttlMs = Math.max(0, Number(s.search.cacheMinutes ?? 5) || 0) * 60 * 1000;
 
     // 先查缓存：同一句话反复问时省额度也更快
-    const cacheKey = searchCache.keyOf(params.query, {
+    const cacheKey = searchCache.keyOf(query, {
       maxResults: params.maxResults || s.search.maxResults,
       providerId: hasKey ? plat.id : '',
       fetchPageContent: params.fetchPageContent,
-      timeRange: tr ? tr.id : ''
+      timeRange: tr ? tr.id : '',
+      // 原问题会影响检索理解（DeepSeek 的 ori_question），必须进缓存键
+      oriQuestion: params.oriQuestion || ''
     });
     const cached = searchCache.get(cacheKey);
     if (cached) {
@@ -749,8 +769,8 @@ const methods = {
       }
       // 智能路由：按查询语言与时效需求决定先试谁
       const customOrder = Array.isArray(s.search.keylessOrder) && s.search.keylessOrder.length ? s.search.keylessOrder : null;
-      const route = routeKeyless(params.query, { order: customOrder, timeRange: tr });
-      const kl = await KS.searchKeyless(params.query, {
+      const route = routeKeyless(query, { order: customOrder, timeRange: tr });
+      const kl = await KS.searchKeyless(query, {
         maxResults: params.maxResults || s.search.maxResults,
         timeoutMs: 20000,
         order: route.order,
@@ -775,7 +795,7 @@ const methods = {
       }
       return {
         results: kl.results.map((r) => sanitizeResult(r)),
-        query: params.query,
+        query,
         provider: `免费引擎（${kl.engineLabel}）`,
         keyless: {
           engine: kl.engine,
@@ -792,10 +812,11 @@ const methods = {
 
     if (hasKey) {
       try {
-        const r = await P.searchProvider(plat, params.query, {
+        const r = await P.searchProvider(plat, query, {
           maxResults: params.maxResults || s.search.maxResults,
           fetchPageContent: params.fetchPageContent,
           timeRange: tr,
+          oriQuestion: params.oriQuestion || '',
           signal: registerExternalAbort(params.rid)
         });
         // 只有该平台**真的**支持时间过滤时才声称已过滤
@@ -821,9 +842,23 @@ const methods = {
     return out;
   },
 
-  'search.fetch-page': async (params) => ({
-    text: await P.fetchPageText(params.url, { signal: registerExternalAbort(params.rid) })
-  }),
+  'search.fetch-page': async (params) => {
+    const s = await ST.loadSettings();
+    const plat = resolveSearchPlatform(s, CFG.activeSearch(s));
+    // DeepSeek 有官方 Fetch（返回 Markdown），比通用「正则去标签」质量高；
+    // 失败再退回通用抓取，不影响主流程。
+    if (plat && plat.kind === 'deepseek-search' && String(plat.apiKey || '').trim()) {
+      try {
+        const page = await P.deepseekFetch(params.url, plat.apiKey, {
+          signal: registerExternalAbort(params.rid)
+        });
+        if (page && page.content) return { text: page.content, title: page.title, via: 'deepseek' };
+      } catch (err) {
+        /* 落到通用抓取 */
+      }
+    }
+    return { text: await P.fetchPageText(params.url, { signal: registerExternalAbort(params.rid) }) };
+  },
 
   'search.open-engine': async (params) => {
     const s = await ST.loadSettings();

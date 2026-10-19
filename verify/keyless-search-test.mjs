@@ -283,6 +283,8 @@ const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
   check('绝对日期标签可读', /2026-01-01 之后/.test(abs.label), abs.label);
   check('斜杠日期也支持', TR.normalizeTimeRange('2026/03/05', NOW).sinceDate === '2026-03-05', '');
 
+  check('deepseek 映射为 after 查询语法', TR.timeParamsFor('deepseek-search', abs).after === '2026-01-01', JSON.stringify(TR.timeParamsFor('deepseek-search', abs)));
+
   check('中文固定档（今天）', TR.normalizeTimeRange('今天', NOW).id === 'day', '');
   check('中文固定档（本周）', TR.normalizeTimeRange('本周', NOW).id === 'week', '');
   check('无法识别时返回 null（不报错）', TR.normalizeTimeRange('乱写的', NOW) === null && TR.normalizeTimeRange('', NOW) === null && TR.normalizeTimeRange(null, NOW) === null, '');
@@ -310,7 +312,7 @@ const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
   const wrong = freeShouldNotSupport.filter((id) => TR.supportsTime(id));
   check('免费引擎一律不算「支持时间过滤」', wrong.length === 0, `误标为支持: ${wrong.join(',')}`);
 
-  const paidShouldSupport = ['tavily', 'exa', 'bocha', 'zhipu', 'metaso', 'baidu'];
+  const paidShouldSupport = ['deepseek-search', 'tavily', 'exa', 'bocha', 'zhipu', 'metaso', 'baidu'];
   const missing = paidShouldSupport.filter((id) => !TR.supportsTime(id));
   check('文档支持的付费平台被正确标记', missing.length === 0, `漏标: ${missing.join(',')}`);
   check('未知引擎不算支持', TR.supportsTime('nothing-here') === false, '');
@@ -326,6 +328,16 @@ const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });
   check('中文查询被识别', R.isCjkQuery('人工智能最新进展') === true, '');
   check('英文查询不被误判为中文', R.isCjkQuery('deepseek v4 release') === false, '');
   check('日文假名也算 CJK', R.isCjkQuery('こんにちは') === true, '');
+  check(
+    '检索词去掉「帮我查一下」前缀',
+    R.cleanSearchQuery('帮我查一下 DeepSeek 最新进展') === 'DeepSeek 最新进展',
+    R.cleanSearchQuery('帮我查一下 DeepSeek 最新进展')
+  );
+  check(
+    '检索词去掉「请问」与首尾标点',
+    R.cleanSearchQuery('  请问，DeepSeek V4 是什么？ ') === 'DeepSeek V4 是什么',
+    R.cleanSearchQuery('  请问，DeepSeek V4 是什么？ ')
+  );
 
   const cn = R.routeKeyless('人工智能进展', {});
   check('中文路由把 bing 放首位', cn.order[0] === 'bing', cn.order.join(','));

@@ -1184,7 +1184,33 @@ export async function searchProvider(platform, query, opts = {}) {
   // 不支持时间过滤的引擎，这里返回 {}，调用方会如实提示「可能包含较早内容」。
   const tp = TP.timeParamsFor(kind, opts.timeRange);
 
-  if (kind === 'tavily') {
+  if (kind === 'deepseek-search') {
+    // DeepSeek 官方搜索：POST /v1/tools/search
+    //   count 1~50；need_content=true 时直接返回正文，省掉面板里逐条抓取；
+    //   时间过滤用查询语法 after:YYYY-MM-DD（官方支持的 query operator）。
+    const deepseekBase = String(platform.baseUrl || '').replace(/\/+$/, '');
+    url = /\/v1$/.test(deepseekBase) ? `${deepseekBase}/tools/search` : deepseekBase;
+    let deepseekQuery = String(query || '').trim();
+    if (!deepseekQuery) {
+      throw new AppError('badargs', '检索词为空', '', '请先输入要查的问题。');
+    }
+    // 查询上限 128 字符；after: 必须完整保留，不能被截断。
+    const afterSuffix = tp.after ? ` after:${tp.after}` : '';
+    deepseekQuery = `${deepseekQuery.slice(0, Math.max(1, 128 - afterSuffix.length))}${afterSuffix}`.trim();
+    init = {
+      method: 'POST',
+      headers: safeHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${platform.apiKey}`
+      }),
+      body: JSON.stringify({
+        query: deepseekQuery,
+        count: Math.max(1, Math.min(50, max)),
+        ...(opts.oriQuestion ? { ori_question: String(opts.oriQuestion).trim().slice(0, 128) } : {}),
+        need_content: !!opts.fetchPageContent
+      })
+    };
+  } else if (kind === 'tavily') {
     init = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1302,18 +1328,46 @@ export async function searchProvider(platform, query, opts = {}) {
   const data = await fetchJson(url, init, { timeoutMs, externalSignal: opts.signal, ctx });
 
   const results = [];
-  const push = (title, link, snippet, content) => {
+  const push = (title, link, snippet, content, extra = {}) => {
     if (!link) return;
     results.push({
       title: String(title || link).slice(0, 200),
       url: String(link),
       snippet: String(snippet || '').slice(0, 800),
-      content: content ? String(content).slice(0, 4000) : ''
+      content: content ? String(content).slice(0, 4000) : '',
+      ...extra
     });
   };
 
-  if (Array.isArray(data.results)) {
-    for (const r of data.results) push(r.title, r.url, r.content || r.snippet, r.raw_content);
+  if (kind === 'deepseek-search') {
+    // DeepSeek 的结果字段最全：summary（600~800 字）才是给模型看的，
+    // snippet 只有 100~200 字只适合 UI。这里两者都保留，
+    // 并带上 rerank_score / authority / date / site_name 供排序与展示。
+    for (const r of data.results || []) {
+      if (!r || !r.url) continue;
+      const summary = String(r.summary || '').slice(0, 1200);
+      results.push({
+        title: String(r.title || r.url).slice(0, 200),
+        url: String(r.url),
+        snippet: summary || String(r.snippet || '').slice(0, 800),
+        summary,
+        content: String(r.content || '').slice(0, 6000),
+        site: String(r.site_name || '').slice(0, 120),
+        publishedAt: String(r.date || '').slice(0, 40),
+        score: Number(r.rerank_score) || 0,
+        authority: Number.isFinite(Number(r.authority)) ? Number(r.authority) : -1
+      });
+    }
+    // 官方已按 rerank_score 排过；这里再显式排一次，避免未来响应顺序变化
+    results.sort((a, b) => (b.score - a.score) || (b.authority - a.authority));
+  } else if (Array.isArray(data.results)) {
+    for (const r of data.results) {
+      push(r.title, r.url, r.content || r.snippet, r.raw_content, {
+        summary: String(r.summary || '').slice(0, 1200),
+        publishedAt: String(r.published_date || r.date || '').slice(0, 40),
+        score: Number(r.score) || 0
+      });
+    }
   } else if (data.webPages && Array.isArray(data.webPages.value)) {
     for (const r of data.webPages.value) push(r.name, r.url, r.snippet, r.summary);
   } else if (Array.isArray(data.organic)) {
@@ -1357,7 +1411,38 @@ export async function searchProvider(platform, query, opts = {}) {
     for (const r of baiduList) push(r.title, r.url || r.link, r.content || r.snippet, r.content);
   }
 
-  return { results: results.slice(0, max), query, raw: opts.keepRaw ? data : undefined };
+  // 同一 URL 只保留一条（有些引擎的聚合页/重复结果会占掉名额）
+  const deduped = [];
+  const seenUrls = new Set();
+  for (const r of results) {
+    const key = String(r.url || '').replace(/#.*$/, '').replace(/\/+$/, '');
+    if (!key || seenUrls.has(key)) continue;
+    seenUrls.add(key);
+    deduped.push(r);
+  }
+
+  return { results: deduped.slice(0, max), query, raw: opts.keepRaw ? data : undefined };
+}
+
+// DeepSeek 官方抓取：POST /v1/tools/fetch，返回 Markdown 正文。
+// 比通用 fetchPageText 的「正则去标签」干净得多，用于 DeepSeek 搜索的正文补抓。
+export async function deepseekFetch(url, apiKey, opts = {}) {
+  const data = await fetchJson(
+    'https://api.deepseek.com/v1/tools/fetch',
+    {
+      method: 'POST',
+      headers: safeHeaders({
+        'content-type': 'application/json',
+        authorization: `Bearer ${apiKey}`
+      }),
+      body: JSON.stringify({ url: String(url) })
+    },
+    { timeoutMs: opts.timeoutMs || 30000, externalSignal: opts.signal || null, ctx: {} }
+  );
+  return {
+    title: String((data && data.title) || '').slice(0, 200),
+    content: String((data && data.content) || '').slice(0, 12000)
+  };
 }
 
 // 抓取页面正文（可选，仅供参考）

@@ -24,6 +24,22 @@ export function isCjkQuery(query) {
   return CJK.test(String(query || ''));
 }
 
+// 把用户的口语化问题收拾成适合检索的查询：
+//   · 去掉「帮我查一下 / 请问 / 搜一下」这类客套与指令前缀
+//   · 压缩空白、去掉首尾标点
+// 不改写实体名，也不做同义扩展 —— 那需要模型参与，成本和不确定性都更高。
+export function cleanSearchQuery(query) {
+  let q = String(query || '').replace(/\s+/g, ' ').trim();
+  // 先去掉客套前缀（「请问，」「麻烦你」），再单独处理「帮我查一下」这类指令。
+  q = q.replace(/^(?:请问|请|麻烦|你能|能不能|可以)\s*[，,：:]?\s*/i, '');
+  q = q.replace(
+    /^(?:帮我|帮忙)?\s*(?:查一下|查查|搜一下|搜索一下|找一下|问一下|告诉我)[：:，,\s]*/i,
+    ''
+  );
+  q = q.replace(/^[，,。.!！？?、:：\s]+/, '').replace(/[。.!！？?、:：\s]+$/, '');
+  return q.trim();
+}
+
 // 查询是否隐含时效需求（用于提示，不用于切换引擎）
 export function wantsRecency(query, timeRange) {
   if (timeRange) return true;
