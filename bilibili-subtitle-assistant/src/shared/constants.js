@@ -1,7 +1,7 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '1.63.6';
+export const VERSION = '1.63.7';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
@@ -119,7 +119,12 @@ export const METHOD_TIMEOUT = {
   'subtitle.api': 40000,
   'subtitle.trigger': 30000,
   // 打开标签页（浏览器级操作）
-  'tab.open': 15000
+  'tab.open': 15000,
+  // 刷新标签页（扩展更新后让旧页面加载新的主环境脚本）
+  'tab.reload': 15000,
+  // 终止指定 RPC / 全部 RPC（长视频分段总结的「停止」会用到）
+  cancel: 8000,
+  'cancel-all': 8000
 };
 
 export const DEFAULT_RPC_TIMEOUT = 30000;

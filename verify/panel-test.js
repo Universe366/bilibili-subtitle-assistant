@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.63.6', contentVersion: '1.63.6', modules: 17, buildTime: '2026-10-19T13:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.63.7', contentVersion: '1.63.7', modules: 17, buildTime: '2026-10-19T14:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.6', stale: false }],
-    contentVersion: '1.63.6'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.7', stale: false }],
+    contentVersion: '1.63.7'
   },
   diagnostics: {
-    extensionVersion: '1.63.6',
-    contentVersion: '1.63.6',
+    extensionVersion: '1.63.7',
+    contentVersion: '1.63.7',
     modules: 17,
-    buildTime: '2026-10-19T13:00:00Z',
+    buildTime: '2026-10-19T14:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.63.6', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.63.7', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.6 · 17 模块 · 2026-10-19/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.7 · 17 模块 · 2026-10-19/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -435,6 +435,15 @@ async function main() {
     { ai: { platforms: [{ id: 'p', apiKey: 'sk-real' }] }, asr: { platforms: [] }, search: { platforms: [] } }
   );
   check('界面掩码不会被写回存储', maskedSave.ai.platforms[0].apiKey === 'sk-real');
+  const clearedKey = api.settingsLib.mergeSecrets(
+    { ai: { platforms: [{ id: 'p', apiKey: '', apiKeyClear: true }] }, asr: { platforms: [] }, search: { platforms: [] } },
+    { ai: { platforms: [{ id: 'p', apiKey: 'sk-old' }] }, asr: { platforms: [] }, search: { platforms: [] } }
+  );
+  check(
+    '「清除」能真正清空已保存的 Key（不被「留空不改动」吞掉）',
+    clearedKey.ai.platforms[0].apiKey === '' && clearedKey.ai.platforms[0].apiKeyClear === undefined,
+    JSON.stringify(clearedKey.ai.platforms[0])
+  );
   const readiness = api.settingsLib.computeReadiness(api.settingsLib.migrateSettings({}));
   check('「是否已配置」用后台结果并给出可操作提示', readiness.ok.ai === false && readiness.issues.some((i) => /API Key/.test(i.text)));
 
@@ -464,6 +473,14 @@ async function main() {
   check('设置页含替换规则 / 术语表 / 检索 / 批量 / 历史', /替换规则组/.test(settingsText) && /术语表/.test(settingsText) && /联网检索/.test(settingsText) && /批量队列/.test(settingsText) && /历史记录/.test(settingsText));
   check('设置页含页面内功能（播放器按钮 / 画面字幕 / 跟随播放）', /播放器上显示/.test(settingsText) && /画面字幕/.test(settingsText) && /跟随播放/.test(settingsText));
   check('设置页说明密钥留空不改动', /留空保存表示「不改动」/.test(settingsText));
+  const settingsSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-settings.js'),
+    'utf8'
+  );
+  check('清除 Key 使用显式标记（不被「留空不改动」吞掉）', /apiKeyClear = true/.test(settingsSrc));
+  check('复用 AI Key 的平台会显示为已配置', /function platformKeyState/.test(settingsSrc) && /platformKeyState\(p, d\)/.test(settingsSrc));
+  check('设置页暴露「回车发送」开关', /d\.ai\.sendOnEnter/.test(settingsSrc));
+  check('刷新页面走 tab.reload（不是新开标签页）', /call\('tab\.reload'/.test(settingsSrc));
   check('设置页含向导与诊断入口', /首次向导/.test(settingsBar) && /诊断/.test(settingsBar));
   check('密钥输入框为密码框且提示留空含义', (() => {
     const inp = doc.querySelector('#settings-pane input[type="password"]');
@@ -476,9 +493,15 @@ async function main() {
   const overlayText = doc.getElementById('overlay-root').textContent;
   check('向导可打开且跳过按钮常驻', /首次使用向导/.test(overlayText) && /跳过向导/.test(overlayText));
   check('稳定性#3 浮层打开时遮罩 none / 卡片 auto', doc.getElementById('overlay-root').style.pointerEvents === 'none' && doc.querySelector('.overlay-card').style.pointerEvents === 'auto');
-  doc.querySelector('.overlay-card .overlay-head button').click();
+  // 向导是 dismissable:false：不能有 ×，Esc 也不能绕过「跳过 / 完成」
+  check('向导不提供 × 关闭按钮', !doc.querySelector('.overlay-card .overlay-head button'));
+  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(100);
+  check('Esc 不会绕过向导', doc.getElementById('overlay-root').getAttribute('data-open') === 'true');
+  const skipWizard = Array.from(doc.querySelectorAll('.overlay-card .overlay-foot button')).find((b) => /跳过向导/.test(b.textContent));
+  if (skipWizard) skipWizard.click();
   await sleep(200);
-  check('浮层可关闭', doc.getElementById('overlay-root').getAttribute('data-open') === 'false');
+  check('浮层可关闭（跳过向导）', doc.getElementById('overlay-root').getAttribute('data-open') === 'false');
 
   doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: '?', altKey: true, bubbles: true }));
   await sleep(250);
@@ -916,6 +939,13 @@ async function main() {
       ''
     );
     check('主按钮如实标出「先校对」', /生成总结（先校对）/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
+    check(
+      '长视频分段总结也能终止（rid + cancel）',
+      /state\.summaryRid = rid/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /call\('cancel', \{ rid: state\.summaryRid \}/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /summaryAbortRequested/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      ''
+    );
     check('快速总结跳过联网校对', /opts\.skipProofread === true/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('快速总结提示跳过校对', /快速总结：跳过联网校对/.test(srcOf('sidepanel/modules/panel-ai.js')), '');
     check('AI 工具栏有快速总结按钮', /⚡ 快速总结/.test(srcOf('sidepanel/modules/panel-ai.js')), '');

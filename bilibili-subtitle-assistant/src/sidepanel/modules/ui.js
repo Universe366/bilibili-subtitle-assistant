@@ -151,16 +151,22 @@ export function popoverMenu(items, opts = {}) {
   return wrap;
 }
 
+let activeDismissable = true;
+
 export function openOverlay(title, body, buttons = [], opts = {}) {
   const root = document.getElementById('overlay-root');
   if (!root) return null;
   root.textContent = '';
+  activeDismissable = opts.dismissable !== false;
   const card = h('div', { class: 'overlay-card' });
   if (opts.width) card.style.width = opts.width;
-  const head = h('div', { class: 'overlay-head' }, [
-    h('span', { text: title }),
-    h('button', { class: 'btn btn-sm icon-btn', type: 'button', title: '关闭', text: '×', onclick: () => closeOverlays() })
-  ]);
+  const headChildren = [h('span', { text: title })];
+  // 「不可取消」的浮层（例如首次向导）不提供 ×；否则 × 与 Esc 会绕过
+  // 「跳过 / 完成」流程，wizardDone 永远不会被写入。
+  if (activeDismissable) {
+    headChildren.push(h('button', { class: 'btn btn-sm icon-btn', type: 'button', title: '关闭', text: '×', onclick: () => closeOverlays() }));
+  }
+  const head = h('div', { class: 'overlay-head' }, headChildren);
   const bodyEl = h('div', { class: 'overlay-body' });
   if (typeof body === 'string') bodyEl.textContent = body;
   else bodyEl.appendChild(body);
@@ -190,6 +196,14 @@ export function closeOverlays() {
   root.style.display = 'none';
   root.textContent = '';
   root.onclick = null;
+  activeDismissable = true;
+}
+
+// 当前浮层是否允许用 Esc / 点遮罩关闭（向导这类流程页不允许）
+export function canDismissOverlay() {
+  const root = document.getElementById('overlay-root');
+  if (!root || root.getAttribute('data-open') !== 'true') return true;
+  return activeDismissable;
 }
 
 export function confirmDialog(title, message, onConfirm, opts = {}) {

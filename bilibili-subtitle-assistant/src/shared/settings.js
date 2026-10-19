@@ -858,6 +858,8 @@ export function stripSecrets(settings) {
     for (const p of list) {
       p.apiKey = maskSecret(p.apiKey);
       p.apiKeySet = hasSecret(settings?.[group]?.[listKey]?.find?.((x) => x.id === p.id)?.apiKey);
+      // 内部标记不应该出现在界面数据里
+      delete p.apiKeyClear;
     }
   }
   return clone;
@@ -872,6 +874,14 @@ export function mergeSecrets(incoming, stored) {
     if (!Array.isArray(inList)) continue;
     for (const p of inList) {
       const st = stList.find((x) => x.id === p.id);
+      // 显式「清除」：空字符串本身表示「不改动」，所以必须有一个单独的标记，
+      // 否则点「清除」保存后旧 Key 会被 mergeSecrets 原样保留回来。
+      if (p.apiKeyClear === true) {
+        p.apiKey = '';
+        delete p.apiKeyClear;
+        delete p.apiKeySet;
+        continue;
+      }
       const submitted = p.apiKey;
       const looksMasked = typeof submitted === 'string' && submitted.includes('•');
       if (looksMasked || submitted === undefined) {

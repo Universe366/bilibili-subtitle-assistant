@@ -91,6 +91,20 @@ function structuredCloneSafe(o) {
   }
 }
 
+// 某个平台「到底有没有可用 Key」。
+// 除了自己的 Key，还要算上 reuseAiKey（DeepSeek 搜索复用 AI 平台 Key）——
+// 否则下拉框会显示「未配 Key」，但实际请求是能跑的。
+function platformKeyState(p, d) {
+  const saved = !!(p && (p.apiKeySet || p.apiKey));
+  const typed = !!(p && p.apiKey && !String(p.apiKey).includes('•'));
+  let reused = false;
+  if (p && p.reuseAiKey) {
+    const ai = ((d && d.ai && d.ai.platforms) || []).find((x) => x.id === p.reuseAiKey);
+    reused = !!(ai && (ai.apiKeySet || ai.apiKey));
+  }
+  return { own: saved || typed, reused, configured: saved || typed || reused };
+}
+
 function markDirty() {
   state.dirty = true;
   renderToolbar();
@@ -102,6 +116,9 @@ export function render() {
   renderToolbar();
   const scroll = state.scrollHost ? state.scrollHost.scrollTop : 0;
   clear(state.body);
+  // 没有未保存改动时，外部设置变化（例如顶栏切主题、另一个面板保存）要反映到草稿；
+  // 有改动时保留草稿，避免把用户正在编辑的内容冲掉。
+  if (!state.dirty) state.draft = structuredCloneSafe(st.settings);
   const d = draft();
 
   // ---- 常驻提示：为什么现在不能用（第七章）----
@@ -465,6 +482,13 @@ function aiGroup(d) {
       )
     );
     body.appendChild(
+      checkbox(
+        d.ai.sendOnEnter !== false,
+        (v) => { d.ai.sendOnEnter = v; markDirty(); },
+        '回车发送消息（Shift + 回车换行；关闭后改为 Ctrl / Cmd + 回车发送）'
+      )
+    );
+    body.appendChild(
       h('div', {
         class: 'note',
         text:
@@ -552,7 +576,7 @@ function platformPicker(kind, d) {
 
   const options = list.map((p) => ({
     value: p.id,
-    label: `${p.name || p.id}${p.id === d[meta.listKey].activeId ? '（使用中）' : ''}${p.apiKeySet || p.apiKey ? '' : ' · 未配 Key'}`
+    label: `${p.name || p.id}${p.id === d[meta.listKey].activeId ? '（使用中）' : ''}${platformKeyState(p, d).configured ? '' : ' · 未配 Key'}`
   }));
 
   const isCustomNew = editingId && String(editingId).startsWith(meta.newIdPrefix);
@@ -650,14 +674,14 @@ function platformDetail(kind, list, p, d, rerender) {
   }
   const baseNote = (() => {
     const host = hostOf(p.baseUrl);
-    if (!host) return '自定义域名需要点「申请域名权限」。';
+    if (!host) return '填写接口地址后，如提示缺少域名权限，点「申请域名权限」。';
     if (/api\.siliconflow\.cn$/i.test(host)) {
       return '当前是国内站。**必须使用 cloud.siliconflow.cn 申请的 Key**；国际站的 Key 在这里会 401。';
     }
     if (/api\.siliconflow\.com$/i.test(host)) {
       return '当前是国际站。**必须使用 cloud.siliconflow.com 申请的 Key**；国内站的 Key 在这里会 401。';
     }
-    return '自定义域名需要点「申请域名权限」。';
+    return '如提示缺少域名权限（自定义接口地址常见），点「申请域名权限」。';
   })();
   body.appendChild(field('接口地址（Base URL）', baseRow, baseNote));
   if (kind !== 'search') {
@@ -748,15 +772,24 @@ function platformDetail(kind, list, p, d, rerender) {
 
   // 密钥：密码框 + 显示/隐藏 + 掩码提示
   const keyRow = h('div', { class: 'row tight' });
+  const ks = platformKeyState(p, d);
   const visible = !!(store.get().ui.pendingKeyVisibility || {})[p.id];
+  const typedKey = p.apiKey && !String(p.apiKey).includes('•') ? p.apiKey : '';
   const keyInput = h('input', {
     class: 'input',
     type: visible ? 'text' : 'password',
-    value: '',
-    placeholder: p.apiKeySet || p.apiKey ? `已保存：${p.apiKey || '••••'}（留空表示不改动）` : '粘贴 API Key',
+    // 已输入但还没保存的 Key 要留在输入框里：以前 value 恒为 ''，
+    // 点一次「显示 / 隐藏」或其他重绘就会把刚粘贴的 Key 从界面上抹掉。
+    value: typedKey,
+    placeholder: ks.own
+      ? `已保存：${p.apiKey || '••••'}（留空表示不改动）`
+      : ks.reused
+        ? '复用 AI 平台的 Key；这里留空即可'
+        : '粘贴 API Key',
     style: { flex: '1 1 auto' },
     oninput: (e) => {
       p.apiKey = e.target.value;
+      delete p.apiKeyClear;
       markDirty();
     }
   });
@@ -768,11 +801,26 @@ function platformDetail(kind, list, p, d, rerender) {
       rerender();
     }, { small: true })
   );
-  if (p.apiKeySet || p.apiKey) {
-    keyRow.appendChild(button('清除', () => { p.apiKey = ''; p.apiKeySet = false; markDirty(); rerender(); }, { small: true, danger: true }));
+  if (ks.own) {
+    keyRow.appendChild(
+      button('清除', () => {
+        p.apiKey = '';
+        p.apiKeySet = false;
+        // 空字符串在保存语义里等于「不改动」，必须用显式标记才能真正清掉
+        p.apiKeyClear = true;
+        markDirty();
+        rerender();
+      }, { small: true, danger: true })
+    );
   }
   body.appendChild(
-    field('API Key', keyRow, `只保存在本机（不同步）。已保存的只显示掩码；留空保存表示「不改动」。当前：${p.apiKeySet ? '已配置' : '未配置'}`)
+    field(
+      'API Key',
+      keyRow,
+      `只保存在本机（不同步）。已保存的只显示掩码；留空保存表示「不改动」。当前：${
+        ks.own ? '已配置' : ks.reused ? '已配置（复用 AI 平台 Key）' : '未配置'
+      }`
+    )
   );
 
   const acts = h('div', { class: 'row tight' });
@@ -1500,12 +1548,13 @@ function batchGroup(d) {
           button(
             `全部加入队列（${pending.length}）`,
             () => {
+              const added = pending.length;
               batchAdd(pending.map((v) => v.url).join('\n'));
               pending = [];
               input.value = '';
               renderPreview();
               render();
-              toast({ title: `已加入 ${preview.children.length ? '' : ''}队列`, detail: '在下方「队列」里可以看到进度' }, 'ok');
+              toast({ title: `已加入 ${added} 个视频到队列`, detail: '在下方「队列」里可以看到进度' }, 'ok');
             },
             { small: true, primary: true }
           ),
@@ -1694,8 +1743,12 @@ function advancedGroup(d) {
               }
             }, { small: true }),
             button('刷新页面', async () => {
-              await call('tab.open', { url: t.url, active: true });
-              toast({ title: '已打开新标签页', detail: '扩展更新后旧页面必须刷新才会生效。' }, 'warn', 5000);
+              try {
+                await call('tab.reload', { tabId: t.tabId }, { timeoutMs: 15000 });
+                toast({ title: '已刷新页面', detail: '旧的主环境脚本会被新版本替换。' }, 'ok', 4000);
+              } catch (err) {
+                showError(err, '刷新页面失败');
+              }
             }, { small: true })
           ])
         ])

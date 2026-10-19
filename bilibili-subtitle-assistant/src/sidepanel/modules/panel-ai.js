@@ -34,6 +34,10 @@ const state = {
   streaming: false,
   stream: null,
   summaryStreaming: false,
+  // 长视频「分段总结」不走流式；用 rid 让用户仍然能点「停止」，
+  // 后台 cancel 会 abort 当前那段 ai.chat，下一次循环前检查标记退出。
+  summaryRid: '',
+  summaryAbortRequested: false,
   lastSignature: '',
   // 生成中排队的消息（当前回合结束后自动发出；中止则还回输入框）
   queue: [],
@@ -1423,6 +1427,11 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, fixRe
   const summaries = [];
   const durSec = (video && video.duration) || 0;
   for (let i = 0; i < totalCount; i += 1) {
+    if (state.summaryAbortRequested) {
+      const e = new Error('已终止');
+      e.name = 'AbortError';
+      throw e;
+    }
     const c = chunks[i];
     // 该段首末时间（用于提示模型"这是哪一段"）
     const fromT = chunkStartSeconds(c, i, lines, durSec);
@@ -1431,9 +1440,13 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, fixRe
       60 + (i / (totalCount + 1)) * 25,
       `第 ${totalSteps}/${totalSteps} 步：分段总结 ${i + 1}/${totalCount}（全片 ${Math.round((fromT / 60) * 10) / 10} 分钟起）`
     );
+    // rid 让「停止」能真正 abort 当前这段请求（后台 cancel 按 rid 找 controller）
+    const rid = `sum_${Date.now().toString(36)}_${i}`;
+    state.summaryRid = rid;
     const res = await call(
       'ai.chat',
       {
+        rid,
         messages: [
           { role: 'system', content: systemBase ? `${systemBase}\n\n${CHUNK_SYSTEM}` : CHUNK_SYSTEM },
           {
@@ -1467,9 +1480,17 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, fixRe
   const chunkSummaries = summaries
     .map((s) => `【第 ${s.index}/${totalCount} 段 · 起于 ${fmtClock(s.from)}】\n${s.text}`)
     .join('\n\n---\n\n');
+  if (state.summaryAbortRequested) {
+    const e = new Error('已终止');
+    e.name = 'AbortError';
+    throw e;
+  }
+  const mergeRid = `sum_${Date.now().toString(36)}_merge`;
+  state.summaryRid = mergeRid;
   const res2 = await call(
     'ai.chat',
     {
+      rid: mergeRid,
       messages: [
         { role: 'system', content: systemBase },
         {
@@ -1662,6 +1683,8 @@ export async function generateSummary(opts = {}) {
     }
   ];
 
+  state.summaryAbortRequested = false;
+  state.summaryRid = '';
   state.summaryStreaming = true;
   state.streaming = true;
   store.set({ summaryStream: '' });
@@ -1695,6 +1718,8 @@ export async function generateSummary(opts = {}) {
       state.summaryStreaming = false;
       state.streaming = false;
       state.stream = null;
+      state.summaryRid = '';
+      state.summaryAbortRequested = false;
       store.set({ summary: finalText, summaryStream: '' });
       recountCitations(finalText);
       await saveHistory();
@@ -1711,13 +1736,23 @@ export async function generateSummary(opts = {}) {
       );
       return;
     } catch (err) {
+      const aborted = state.summaryAbortRequested || (err && err.name === 'AbortError');
       state.summaryStreaming = false;
       state.streaming = false;
       state.stream = null;
+      state.summaryRid = '';
+      state.summaryAbortRequested = false;
       task.end();
       const payload = (err && err.payload) || {};
       const partial = store.get().summaryStream || '';
-      if (partial) {
+      if (aborted) {
+        if (partial) {
+          store.set({ summary: partial, summaryStream: '' });
+          toast({ title: '已终止分段总结', detail: '已保留已经生成的部分', }, 'warn', 4000);
+        } else {
+          toast({ title: '已终止分段总结' }, 'warn', 2500);
+        }
+      } else if (partial) {
         store.set({ summary: partial, summaryStream: '' });
         toast({ title: '分段总结中断，已保留已生成的部分', detail: payload.detail || String(err.message || err) }, 'warn', 6000);
       } else {
@@ -1751,6 +1786,8 @@ export async function generateSummary(opts = {}) {
         state.summaryStreaming = false;
         state.streaming = false;
         state.stream = null;
+        state.summaryRid = '';
+        state.summaryAbortRequested = false;
         store.set({ summary: finalText, summaryStream: '' });
         recountCitations(finalText);
         await saveHistory();
@@ -1763,6 +1800,8 @@ export async function generateSummary(opts = {}) {
         state.summaryStreaming = false;
         state.streaming = false;
         state.stream = null;
+        state.summaryRid = '';
+        state.summaryAbortRequested = false;
         task.end();
         const partial = store.get().summaryStream || '';
         if (partial) {
@@ -1778,6 +1817,14 @@ export async function generateSummary(opts = {}) {
 }
 
 function stopStream() {
+  // 长视频分段总结没有流式对象，靠 rid 让后台 abort 当前那段 ai.chat。
+  // 以前的「停止」在这种情况下完全没反应 —— 按钮在、点了什么都不发生。
+  if (state.summaryStreaming && !state.stream && state.summaryRid) {
+    state.summaryAbortRequested = true;
+    call('cancel', { rid: state.summaryRid }, { timeoutMs: 8000 }).catch(() => {});
+    toast({ title: '正在终止分段总结…' }, 'warn', 1500);
+    return;
+  }
   if (state.stream) {
     state.stream.cancel();
     // 中止时把队列还回输入框（参考 yolo：不丢排队的消息）

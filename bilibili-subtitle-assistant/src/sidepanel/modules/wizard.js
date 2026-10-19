@@ -41,9 +41,11 @@ const STEPS = [
       box.appendChild(
         button('去设置 AI 平台', () => {
           closeOverlays();
-          app.panels.settings.render();
+          // 顺序很重要：先切到设置页、再展开分组，最后渲染；
+          // 反过来会先渲染出折叠状态，用户点进去看到的还是收起的。
           store.set({ activeTab: 'settings' });
           store.setGroupOpen('ai', true);
+          if (app.panels.settings) app.panels.settings.render();
         }, { small: true, primary: true })
       );
       box.appendChild(h('div', { class: 'note', text: '密钥只保存在本机（不同步）。填完后点「测试连接」确认可用。' }));
@@ -158,5 +160,5 @@ async function skip() {
   } catch (err) {
     /* ignore */
   }
-  toast({ title: '已跳过向导', detail: '右键侧边栏或点标题栏的「?」都能再次打开。' }, 'ok');
+  toast({ title: '已跳过向导', detail: '点标题栏的「?」可以在快捷键面板里再次打开。' }, 'ok');
 }

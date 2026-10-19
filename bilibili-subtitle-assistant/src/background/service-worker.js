@@ -59,7 +59,6 @@ async function collectMcpTools(mcpCfg, opts = {}) {
 }
 
 
-const inflight = new Map(); // rid -> { controller, label }
 // 构建指纹：版本号 + 模块数 + 构建时间（第十一章）。
 //
 // 这三项是给用户**确认自己真的加载了新代码**用的（README 第一节），
@@ -87,7 +86,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-19T13:00:00Z';
+const BUILD_TIME = '2026-10-19T14:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -938,6 +937,12 @@ const methods = {
     return { tabId: tab.id };
   },
 
+  // 刷新指定标签页（扩展更新后，旧页面里的 MAIN-world 脚本只能靠刷新替换）
+  'tab.reload': async (params) => {
+    if (params && params.tabId != null) await chrome.tabs.reload(params.tabId);
+    return { ok: true };
+  },
+
   'sidepanel.open': async (params, sender) => {
     const tabId = params?.tabId ?? sender?.tab?.id;
     if (tabId == null) return { ok: false, reason: 'no-tab' };
@@ -1026,18 +1031,20 @@ const methods = {
     ),
 
   'cancel': async (params) => {
-    const rec = inflight.get(params.rid);
+    // 注意：非流式 RPC 的 controller 注册在 externalAborts（registerExternalAbort），
+    // 不是旧代码里那个从未被写入的 inflight —— 以前 cancel 永远返回 false，是死代码。
+    const rec = externalAborts.get(params.rid);
     if (rec) {
-      rec.controller.abort();
-      inflight.delete(params.rid);
+      rec.abort();
+      externalAborts.delete(params.rid);
       return { cancelled: true };
     }
     return { cancelled: false };
   },
 
   'cancel-all': async () => {
-    for (const [, rec] of inflight) rec.controller.abort();
-    inflight.clear();
+    for (const [, rec] of externalAborts) rec.abort();
+    externalAborts.clear();
     return { ok: true };
   }
 };
@@ -1134,13 +1141,16 @@ async function handleRpc(message, sender) {
   }
   const timeout = methodTimeout(message.method);
   const rid = message.params && message.params.rid;
-  const result = await withTimeout(
-    Promise.resolve().then(() => fn(message.params || {}, sender)),
-    timeout,
-    `${message.method} 超时`
-  );
-  if (rid) externalAborts.delete(rid);
-  return result;
+  try {
+    return await withTimeout(
+      Promise.resolve().then(() => fn(message.params || {}, sender)),
+      timeout,
+      `${message.method} 超时`
+    );
+  } finally {
+    // 无论成功、失败还是被取消，都要清掉外部终止控制器，避免 Map 长期增长
+    if (rid) externalAborts.delete(rid);
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

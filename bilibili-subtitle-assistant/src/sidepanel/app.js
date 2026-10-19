@@ -5,7 +5,7 @@ import { store, loadSettings, loadBuildInfo } from './modules/store.js';
 import { app, usePanel, renderPanels, applyTheme, loadVideo, harvest, transcribe, exportSubtitles, copyAllSubtitles, doProviderSearch, pushPageOptions, saveHistory } from './modules/context.js';
 import * as jobs from './modules/jobs.js';
 import { h, clear, button, toast, setBoolAttr, fmtBytes } from './modules/dom.js';
-import { openOverlay, closeOverlays } from './modules/ui.js';
+import { openOverlay, closeOverlays, canDismissOverlay } from './modules/ui.js';
 import * as subtitlesPanel from './modules/panel-subtitles.js';
 import * as aiPanel from './modules/panel-ai.js';
 import * as settingsPanel from './modules/panel-settings.js';
@@ -359,7 +359,9 @@ const SHORTCUTS = [
 function wireKeys() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeOverlays();
+      // 向导这类 dismissable:false 的浮层不能被 Esc 绕过，
+      // 否则「跳过 / 完成」流程不会执行，wizardDone 永远写不进去。
+      if (canDismissOverlay()) closeOverlays();
       return;
     }
     if (!e.altKey) return;

@@ -23,7 +23,7 @@ import {
 import { call } from './bridge.js';
 import { openOverlay, closeOverlays, popoverMenu } from './ui.js';
 import { engineLabel } from './search.js';
-import { subtitleSpan } from './panel-ai.js';
+import { subtitleSpan, searchCapabilityOf } from './panel-ai.js';
 import * as TIMELINE from './timeline.js';
 
 let host = null;
@@ -141,10 +141,19 @@ export function render() {
     // 走 runTranscribe（统一入口，会先关掉可能挡着的浮层）
     host.appendChild(button('语音转录', () => runTranscribe(), { cls: 'btn-accent', title: '没有可用字幕时，把音轨转成文字' }));
   } else {
+    const capSearch = searchCapabilityOf(st.settings || {});
+    const willProofread = !!(
+      st.settings &&
+      st.settings.search &&
+      st.settings.search.verifyOnSummary !== false &&
+      capSearch.webCapable
+    );
     host.appendChild(
       button(hasSummary ? '重新生成总结' : '③ 生成总结', () => summarize(false), {
         primary: true,
-        title: '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结'
+        title: willProofread
+          ? '先联网校对字幕（术语/逻辑/时间/事实），再据此生成总结'
+          : '直接用现有字幕生成总结（未开启联网校对，或检索不可用）'
       })
     );
     // 快速总结：跳过联网校对，省掉最耗时的一段。

@@ -5058,3 +5058,55 @@ panel 418、bg 66、content 97、flow2 39、asr 263
 
 1.63.5 → 1.63.6。bg-test 新增 DeepSeek 搜索请求/解析/Key 复用/时间过滤/正文抓取断言；
 keyless-search-test 新增查询清理与 after 映射；asr-test 补充 summary/site/date 上下文断言。
+
+---
+
+## 第八十六轮（1.63.7）—— UI 体检：按钮、设置项与「点了没反应」
+
+### 设置页
+
+* **「清除」API Key 以前根本清不掉**：空字符串在保存语义里等于「不改动」，
+  `mergeSecrets` 会把旧 Key 原样保留。现在用 `apiKeyClear: true` 显式标记，
+  保存时真正清空，并在回写前删掉标记。
+* **DeepSeek 搜索复用 AI Key 时被显示成「未配 Key」**：新增 `platformKeyState()`，
+  把 `reuseAiKey` 解析出的 Key 也算作已配置；Key 输入框提示也区分
+  「已保存 / 复用 AI Key / 未配置」。
+* 已输入但未保存的 Key 会在重绘（显示/隐藏、切换模型）后留在输入框里；
+  以前 `value` 恒为空，点一次就「消失」。
+* 设置草稿在没有未保存改动时会跟随外部配置刷新，避免顶栏切主题后设置页仍显示旧值。
+* 新增「回车发送消息」开关（`ai.sendOnEnter` 一直存在，但设置页没有入口）。
+* 「刷新页面」以前调用 `tab.open` **新开一个标签页**；新增 `tab.reload` RPC，
+  现在是真的刷新当前页。
+* 批量队列「全部加入」的 toast 以前是「已加入 队列」（计数被空字符串拼掉）。
+
+### 浮层与向导
+
+* 向导是 `dismissable: false`，但以前仍有 ×、Esc 也能关 —— 绕过「跳过 / 完成」后
+  `wizardDone` 永远写不进去。现在不可取消的浮层不渲染 ×，Esc 也会被拦住。
+* 向导第 1 步「去设置 AI 平台」先渲染再展开分组，点进去看到的是折叠状态；
+  顺序改为「切页 → 展开 → 渲染」。
+
+### 生成 / 终止
+
+* `cancel` / `cancel-all` 操作的是 `inflight`，但非流式 RPC 的 controller 注册在
+  `externalAborts`，而 `inflight` **从未被写入** —— 这两个接口一直是死代码。
+  现在改为操作 `externalAborts`，并在 `handleRpc` 的 `finally` 里清理。
+* 长视频「分段总结」走非流式 `ai.chat`，以前点「停止」完全没反应。
+  现在每段带 `rid`，停止时按 rid 取消当前请求，并在下一段前检查
+  `summaryAbortRequested`；已生成的部分会保留。
+
+### 字幕列表
+
+* 编辑单行时按 Esc 取消，`render()` 移除 textarea 可能触发 blur，
+  而 blur 会保存 —— 「取消」反而写入了改动。现在用 `cancelled` 标记拦住。
+
+### 文案
+
+* 顶栏布局按钮标题补上「自动」；自定义接口地址的提示不再一律说
+  「需要申请域名权限」；顶部「生成总结」的 tooltip 按当前校对开关显示；
+  README 的分组数（14）与字号范围（0.8~1.6）同步。
+
+### 版本与测试
+
+1.63.6 → 1.63.7。panel-test 新增/更新：向导不可 Esc 关闭、清除 Key 语义、
+  sendOnEnter 入口、tab.reload、长视频分段总结可终止；共 425 项。

@@ -289,7 +289,11 @@ function startEdit(row, line, index, keep) {
   if (!textEl || textEl.querySelector('textarea')) return;
   const area = h('textarea', { class: 'input', style: { minHeight: '46px', width: '100%' } });
   area.value = String(line.text || '');
+  // Esc = 取消。必须显式标记：render() 会移除 textarea，可能触发 blur，
+  // 而 blur 的事件处理器会保存 —— 不拦住的话「取消」反而把改动写进去了。
+  let cancelled = false;
   const save = () => {
+    if (cancelled) return;
     const v = area.value.trim();
     updateLine(line.i, v);
     store.set({ subtitlesRevision: (store.get().subtitlesRevision || 0) + 1 });
@@ -304,6 +308,7 @@ function startEdit(row, line, index, keep) {
       save();
     }
     if (e.key === 'Escape') {
+      cancelled = true;
       state.editing = null;
       render();
     }
