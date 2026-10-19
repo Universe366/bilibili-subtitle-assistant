@@ -3,6 +3,7 @@
 
 import { AppError, classifyHttp, classifyNetwork, httpError } from './errors.js';
 import { readLines, timedFetch, fetchJson, joinUrl, sleep } from './net.js';
+import { ensureHeaderRules } from './header-rules.js';
 import * as TP from '../shared/time-range.js';
 
 function isAnthropic(baseUrl) {
@@ -146,6 +147,7 @@ export async function listModels(platform, opts = {}) {
       .filter(Boolean);
   }
   const url = joinUrl(platform.baseUrl, 'models');
+  await ensureHeaderRules(platform, url);
   const data = await fetchJson(
     url,
     { method: 'GET', headers: authHeaders(platform) },
@@ -323,6 +325,7 @@ function aiBody(platform, messages, opts) {
 export async function chatStream(platform, messages, onDelta, opts = {}) {
   assertPlatformReady(platform, 'AI');
   const url = buildAiUrl(platform);
+  await ensureHeaderRules(platform, url);
   const body = aiBody(platform, messages, { ...opts, stream: true });
   const res = await timedFetch(
     url,
@@ -449,6 +452,7 @@ export async function chatStream(platform, messages, onDelta, opts = {}) {
 export async function chatOnce(platform, messages, opts = {}) {
   assertPlatformReady(platform, 'AI');
   const url = buildAiUrl(platform);
+  await ensureHeaderRules(platform, url);
   const body = aiBody(platform, messages, { ...opts, stream: false });
   const data = await fetchJson(
     url,

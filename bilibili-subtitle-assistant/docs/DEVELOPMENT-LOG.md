@@ -4763,3 +4763,100 @@ bump 版本时我按 `1.62.0` 做字符串替换，18 处都换了，
 ```
 24 个套件，共 1315 项断言，全部通过
 ```
+
+---
+
+## 第八十轮（1.63.1）—— 修掉基元律动的 403 CSRF_INVALID
+
+### 用户的报告
+
+平台加好、Key 也填了，点「测试连接」却是：
+
+```
+API Key 无效或没有权限
+平台「基元律动（TokenRhythm）」 返回 403：CSRF_INVALID：请求安全校验失败，请刷新页面后重试（traceId trace_87f90e17-…）
+当前使用的 Key：长度 49，末四位 Cbig
+```
+
+Key 长度 49 说明不是空值也不是掩码，是**真 Key**。同一把 Key 用 curl 打
+`https://tokenrhythm.studio/v1/chat/completions` 是好的（Cherry Studio 的
+[CherryHQ/cherry-studio#18362](https://github.com/CherryHQ/cherry-studio/issues/18362)
+里，报告者贴的 curl 也成功，因此这条线索可以复用）。
+
+### 排查：不是 Key 的问题，是「浏览器上下文」的头
+
+1. **假 Key 探针矩阵**（Node fetch 直打真实接口）：无 Origin / `Origin: chrome-extension://…` /
+   `Origin: https://tokenrhythm.studio` / `Referer` / `X-Requested-With` / 全套浏览器头 /
+   `GET /v1/models` —— **全部 401 UNAUTHORIZED**。说明鉴权在 CSRF 之前执行，
+   假 Key **永远到不了** CSRF 检查，本地无法用它复现 403。继续打还被限流成 429。
+2. **从他们前端 bundle 里挖到 CSRF 客户端逻辑**：Cookie 名 `tr_csrf`、头名 `X-CSRF-Token`，
+   并且 `if (GET/HEAD/OPTIONS || headers.has('Authorization') || headers.has('X-CSRF-Token')) return;`
+   —— 即带 Authorization 的请求前端**根本不加 CSRF token**。所以后端拦的不是「缺 token」。
+3. **cherry-studio#18362 的结论**：触发头是 `Sec-Fetch-Site: cross-site`、`http-referer`、
+   `x-title`（「尤其是 x-title」），去掉归属头就好了。也就是说：**是浏览器/Electron 自动附加的头**
+   让网关判成「跨站伪造」。
+4. 我们扩展的 service worker 发跨域请求时会带 `Origin: chrome-extension://<id>` 和
+   `Sec-Fetch-Site` —— 用本地 echo 服务器实测确认了这一点。
+
+### 修法：用 declarativeNetRequest 把这三个头摘掉
+
+新增 `src/background/header-rules.js`：
+
+* `headerStripRule(host, id)` 生成 `modifyHeaders` 规则，移除
+  `origin` / `referer` / `sec-fetch-site`，`condition` 只写 `urlFilter: '||'+host`
+  与 `resourceTypes: ['xmlhttprequest','other']`；
+* `ensureHeaderRules(platform, url)`：**只有平台定义里 `stripBrowserHeaders === true` 才装规则**，
+  按域名去重、SW 内缓存、并发去抖，并先 `getSessionRules()` 查重
+  （session 规则活在浏览器会话里，SW 被回收后还在）。
+
+接在 `providers.js` 的三处真实出口：`listModels()`、`chatStream()`、`chatOnce()`
+（都必须在 `timedFetch` **之前** await，否则规则还没生效请求就发走了）。
+
+`settings.js` 的基元律动平台加 `stripBrowserHeaders: true`，并写明原因。
+
+### 关键技术事实（两次试错换来的，别再重走）
+
+* **`condition` 里绝对不能写 `initiatorDomains: [chrome.runtime.getURL('')]`。**
+  规则注册成功、`updateSessionRules` 不报错、`getSessionRules` 也看得到，
+  但**永不匹配**（`onRuleMatchedDebug` 无任何回调）。只写 `urlFilter` 就正常命中。
+  这是从 StackOverflow 抄来的「用 runtime.getURL() 当 initiatorDomains」的做法，实测是错的。
+* **`--load-extension` 在 Chrome 137+ 已被移除**（本机 Chrome 155 实测：
+  `--disable-extensions-except` + `--load-extension` 完全无效，target 列表里只有 Chrome
+  自带的 `fignfif…` 组件扩展）。想用真机验证 unpacked 扩展，正确姿势是：
+  ```js
+  // 启动：chrome --headless=new --enable-unsafe-extension-debugging --remote-debugging-port=PORT
+  // 然后走 CDP：
+  await browserTarget.send('Extensions.loadUnpacked', { path: '…/bilibili-subtitle-assistant' });
+  // 返回 { id }，SW target 的 url 是 chrome-extension://<id>/…
+  ```
+  配套注意：`Runtime.evaluate` 里 **`import()` 在 ServiceWorkerGlobalScope 被禁止**
+  （HTML 规范），要调我们自己的模块就从**扩展页面**（`panel.html`）里 `import('/src/background/providers.js')`。
+
+### 真机验证（不是猜的）
+
+复制一份真实扩展（只额外把 `http://127.0.0.1/*` 加进 `host_permissions`），
+用 CDP `Extensions.loadUnpacked` 装进 headless Chrome，在扩展页面里直接调 `providers.chatOnce()`，
+打本地 echo 服务器，对比两次请求：
+
+| 调用 | 服务器看到的 `origin` | `sec-fetch-site` | `referer` |
+| --- | --- | --- | --- |
+| 不加 `stripBrowserHeaders` | `chrome-extension://ekemcda…` | `none` | null |
+| 加 `stripBrowserHeaders: true` | **null** | **null** | **null** |
+
+第二次与 curl 发出的请求头一致 —— 这正是能通过 CSRF 校验的形态。
+
+### 新增断言（`verify/asr-test.mjs` 第 34c 节，共 9 项）
+
+基元律动带 `stripBrowserHeaders`；没有别的平台被误开；规则恰好移除三个头；
+`urlFilter` 正确；覆盖 `xmlhttprequest`；**规则不带 `initiatorDomains`**（回归防线）；
+`hostOfUrl` 取域名/非法地址返回空串；没声明该字段的平台 `ensureHeaderRules` 直接返回 false。
+
+### 版本
+
+1.63.0 → 1.63.1，18 处（含 `verify/panel-test.js:236` 里的**转义正则** `1\.63\.1`）。
+
+### 测试
+
+```
+24 个套件，共 1324 项断言，全部通过
+```

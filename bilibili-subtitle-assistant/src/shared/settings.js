@@ -288,6 +288,11 @@ export function defaultAiPlatforms() {
       //     所以 aiBody() 只能发 model / messages / temperature / max_tokens / stream
       //   · 支持 tools / tool_choice，但 DeepSeek 系只接受 none|auto|required 字符串，
       //     不能传 { type: 'auto' } 对象
+      //   · 网关会对「来自浏览器上下文」的请求做 CSRF 校验：带 Origin / Sec-Fetch-Site
+      //     的请求直接 403 CSRF_INVALID，而 curl（不带这些头）同一把 Key 完全正常。
+      //     所以这里打开 stripBrowserHeaders，由 background/header-rules.js 用
+      //     declarativeNetRequest 把这三类头从我们自己的请求里摘掉
+      //     （CherryHQ/cherry-studio#18362 是同一现象的独立报告）。
       // 模型清单取自模型页内嵌目录（type=chat 且 status=online 的条目），
       // 用户点「刷新模型列表」会重新向 /v1/models 拉取当前账号真正可用的清单。
       id: 'tokenrhythm',
@@ -295,6 +300,7 @@ export function defaultAiPlatforms() {
       homepage: 'https://tokenrhythm.studio/',
       keyUrl: 'https://tokenrhythm.studio/account',
       baseUrl: 'https://tokenrhythm.studio/v1',
+      stripBrowserHeaders: true,
       model: 'deepseek-v4-flash-0731',
       apiKey: '',
       models: [

@@ -1341,6 +1341,42 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('errorEnvelope 对非 JSON 返回 null', ERR.errorEnvelope('<html>502</html>') === null, '');
 }
 
+// ---------------- 34c. 基元律动的网关会拦「浏览器上下文」请求（403 CSRF_INVALID） ----------------
+// 真机现象：同一把有效 Key，curl 正常，扩展里稳定 403 CSRF_INVALID「请求安全校验失败」。
+// 根因是浏览器上下文自动附加的 Origin / Sec-Fetch-Site / Referer 头。
+// 修法是让 background/header-rules.js 用 declarativeNetRequest 把这三个头摘掉，
+// 并且**只在平台声明 stripBrowserHeaders 时**生效（不能污染其它平台）。
+{
+  const RULES = await import('../bilibili-subtitle-assistant/src/background/header-rules.js');
+  const SET3 = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const tr = SET3.defaultAiPlatforms().find((p) => p.id === 'tokenrhythm');
+
+  check('基元律动打开了 stripBrowserHeaders', !!tr && tr.stripBrowserHeaders === true, tr && String(tr.stripBrowserHeaders));
+
+  // 其它平台不能被动跟着改（一旦扩大会偷偷改掉所有人的请求）
+  const leaking = SET3.defaultAiPlatforms().filter((p) => p.id !== 'tokenrhythm' && p.stripBrowserHeaders === true);
+  check('没有别的平台被误开 stripBrowserHeaders', leaking.length === 0, leaking.map((p) => p.id).join(','));
+
+  const rule = RULES.headerStripRule('tokenrhythm.studio', 9100);
+  const removed = (rule.action.requestHeaders || []).map((h) => `${h.header}:${h.operation}`).sort();
+  check(
+    '规则移除 Origin / Referer / Sec-Fetch-Site 三个头',
+    removed.join(',') === 'origin:remove,referer:remove,sec-fetch-site:remove',
+    removed.join(',')
+  );
+  check('规则的 urlFilter 就是该域名', rule.condition.urlFilter === '||tokenrhythm.studio', rule.condition.urlFilter);
+  check('规则覆盖 xmlhttprequest（service worker 的 fetch 就是它）', (rule.condition.resourceTypes || []).includes('xmlhttprequest'), (rule.condition.resourceTypes || []).join(','));
+  // 回归防线：Chrome 实测 condition 里写了 initiatorDomains 就永不匹配（还不报错）
+  check('规则不带 initiatorDomains（带了会静默不匹配）', rule.condition.initiatorDomains === undefined, JSON.stringify(rule.condition.initiatorDomains));
+
+  check('hostOfUrl 能取出域名', RULES.hostOfUrl('https://tokenrhythm.studio/v1/chat/completions') === 'tokenrhythm.studio', RULES.hostOfUrl('https://tokenrhythm.studio/v1/chat/completions'));
+  check('hostOfUrl 对非法地址返回空串', RULES.hostOfUrl('not a url') === '' && RULES.hostOfUrl('') === '', '');
+
+  // 没有声明 stripBrowserHeaders 的平台不装规则（ensureHeaderRules 直接返回 false）
+  const noFlag = await RULES.ensureHeaderRules({ baseUrl: 'https://api.deepseek.com/v1' }, 'https://api.deepseek.com/v1/chat/completions');
+  check('未声明 stripBrowserHeaders 的平台不会被装规则', noFlag === false, String(noFlag));
+}
+
 // ---------------- 35. 扩展图标必须存在且被 manifest 正确引用 ----------------
 // 图标是扩展在工具栏/扩展页的外观。缺文件会让 Chrome 加载时报错或显示空白图标。
 {
