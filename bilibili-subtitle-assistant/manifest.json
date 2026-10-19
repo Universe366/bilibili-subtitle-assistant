@@ -3,7 +3,7 @@
   "name": "B站字幕助手",
   "short_name": "字幕助手",
   "description": "B站视频侧边栏字幕抓取、语音转录、AI 总结与对话、导出。所有配置在侧边栏内完成，无 Obsidian 集成。",
-  "version": "1.62.0",
+  "version": "1.63.0",
   "minimum_chrome_version": "116",
   "background": {
     "service_worker": "src/background/service-worker.js",
@@ -56,7 +56,8 @@
     "https://api.openai.com/*",
     "https://api.moonshot.cn/*",
     "https://open.bigmodel.cn/*",
-    "https://api.groq.com/*"
+    "https://api.groq.com/*",
+    "https://tokenrhythm.studio/*"
   ],
   "optional_host_permissions": [
     "http://*/*",

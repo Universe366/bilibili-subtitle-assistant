@@ -370,6 +370,18 @@ export async function chatStream(platform, messages, onDelta, opts = {}) {
             '换一个模型或平台后重试。'
           );
         }
+        // 少数聚合网关（如基元律动 TokenRhythm）在**流已经建立**之后才抛错，
+        // 用的是自家信封 { code, message, traceId }，没有 choices 字段。
+        // 不拦的话这些块会被当成「没有正文的空增量」直接吞掉，
+        // 用户拿到的就是一段静默截断的总结 —— 比报错糟糕得多。
+        if (!json.choices && typeof json.code === 'string' && typeof json.message === 'string') {
+          throw new AppError(
+            'server',
+            '模型返回错误',
+            `${json.code}：${json.message}${json.traceId ? `（traceId ${json.traceId}）` : ''}`,
+            '换一个模型或平台后重试；若持续失败，请把这段错误发给平台排查。'
+          );
+        }
         // 思维链与正文必须**分开**累计。
         //
         // 之前这一行是：

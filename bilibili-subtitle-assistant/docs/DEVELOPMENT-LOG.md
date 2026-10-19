@@ -4615,3 +4615,151 @@ PASS  合并提示词限制时间数量（全篇最多 2~3 处）
 ```
 24 个套件，共 1302 项断言，全部通过
 ```
+
+## 第七十九轮（1.63.0）—— 接入基元律动（TokenRhythm）
+
+用户要求：「将基元流动这个平台加入到AI模型里面 https://tokenrhythm.studio/」
+
+（用户写的「基元流动」是笔误，官方名是**基元律动** —— 页脚写着
+「© 北京基元律动智能科技有限公司」。）
+
+### 这个平台是什么
+
+看清了它的三条文档才动手：
+
+| 项 | 内容 |
+|---|---|
+| 基础地址 | `https://tokenrhythm.studio/v1` |
+| 对话接口 | `POST /v1/chat/completions`，字段与 OpenAI 完全一致 |
+| 模型列表 | `GET /v1/models` |
+| 鉴权 | `Authorization: Bearer sk_tr_...` |
+| Key 申请 | `https://tokenrhythm.studio/account` |
+
+它还提供一个 Anthropic 协议的 `POST /v1/messages`，但**我们用不上** ——
+`buildAiUrl()` 的 `isAnthropic()` 只认 `/anthropic\.com/i`，
+所以它自然落到 OpenAI 分支，得到
+`https://tokenrhythm.studio/v1/chat/completions`。
+
+### 三件「接一个 OpenAI 兼容平台并不只是加一行配置」的事
+
+**① 它的错误信封是自家格式，不是 OpenAI 的**
+
+```json
+{ "code": "UNAUTHORIZED", "message": "未认证或登录已过期", "traceId": "trace_45f6e697-…" }
+```
+
+而 OpenAI 是 `{ "error": { "message": … } }`。
+`classifyHttp()` 原来只会把原始 JSON 截前 600 字符丢给用户 ——
+用户看到的就是一坨 `{"code":"UNAUTHORIZED",...}`，**看不出发生了什么**。
+
+新增 `errorEnvelope(bodyText)` 把它压成一句人话，并且**保留 traceId**
+（向平台排查工单时要用）：
+
+```
+平台「基元律动（TokenRhythm）」 返回 401：UNAUTHORIZED：未认证或登录已过期（traceId trace_45f6e697-…）
+```
+
+几个刻意的边界：
+
+- 只认**顶层**的 `code` + `message`；遇到 `json.error` 主动让路，
+  保证 OpenAI 标准信封仍走原逻辑（有断言锁住）
+- 解析失败返回 `null` 而不是抛错 —— 它不是校验器，只是个格式化器
+- **关键词判定（quota / balance / 限流）仍用原文 600 字符**，
+  不能改用解析后的中文文案：`MAX_TOKENS_EXCEEDED` 之类的英文码
+  一旦被翻译掉就匹配不上了
+- `MAX_TOKENS_EXCEEDED` 单独给了一条可操作的建议：
+  「设置 → AI 模型 里把「最大输出长度」调小」
+
+**② 网关可能在**流建立之后**才抛这个信封**
+
+`chatStream` 原本只处理 `json.error`。如果数据流已经开始、
+然后来一个 `{code, message}`，旧代码会把它当成「一个没有 choices 的增量」
+**静默跳过** —— 用户最后拿到一段**被截断但看起来正常**的总结，
+这是最难发现的一类故障。
+
+所以在 `if (json.error)` 之后补了一段：
+
+```js
+if (!json.choices && typeof json.code === 'string' && typeof json.message === 'string') {
+  throw new AppError('server', '模型返回错误', `${json.code}：${json.message}（traceId …）`, …);
+}
+```
+
+**③ 它不在静态授权的 6 个域名里**
+
+`manifest.json` 的 `host_permissions` 只硬编码了 deepseek / siliconflow /
+openai / moonshot / bigmodel / groq 六个域名，其它域名靠
+`optional_host_permissions` + `ensureOriginPermission()` 弹窗申请。
+
+为了不让用户先踩一次「申请域名权限」，直接把
+`https://tokenrhythm.studio/*` 加进静态列表。
+
+### 改动的 5 处
+
+| 文件 | 改动 |
+|---|---|
+| `src/shared/settings.js` | `defaultAiPlatforms()` 新增 `tokenrhythm`（`together` 之后、`custom-ai` 之前），12 个模型，不预置 Key |
+| `manifest.json` | `host_permissions` 加 `https://tokenrhythm.studio/*` |
+| `src/background/errors.js` | 新增 `errorEnvelope()`；`classifyHttp` 用它做文案；新增 `MAX_TOKENS_EXCEEDED` 分支 |
+| `src/background/providers.js` | `chatStream` 拦截流内自家错误信封 |
+| 版本 | 1.62.0 → 1.63.0（18 处，含测试里的「构建指纹」断言） |
+
+**老用户不需要任何迁移**：`mergeBuiltinPlatforms()` 会把缺失的内置平台
+以 `apiKey: ''` 追加，`migrateSettings()` 里已经调了三处（ai/asr/search）。
+默认 `apiKey` 为空，所以它**不会**出现在「模型下拉框」里（那个框只列已配置
+的平台），不会污染现有用户的界面。
+
+### 真机验证（用假 Key 打真实接口）
+
+沙箱里没有真 Key，但**错误路径本身就能验证接入是否正确**：
+
+```
+chat URL: https://tokenrhythm.studio/v1/chat/completions   ← 地址对
+chatStream      → 401，kind=auth，title=API Key 无效或没有权限
+listModelsWithSource → 401（说明「刷新模型列表」这条路也通）
+detail: 平台「基元律动（TokenRhythm）」 返回 401：UNAUTHORIZED：未认证或登录已过期（traceId trace_45f6e697-…）
+```
+
+**这条 detail 是重点**：改之前这里会是原始 JSON。现在它证明
+`errorEnvelope()` 在**真实响应**上生效，不只是在单测的构造字符串上生效。
+
+### 新增 13 项断言（`verify/asr-test.mjs` 第 34b 节）
+
+```
+PASS  AI 平台里含基元律动（TokenRhythm）
+PASS  基元律动的基础地址是 https://tokenrhythm.studio/v1
+PASS  基元律动默认模型在自己的模型清单里
+PASS  基元律动不预置任何人的 Key
+PASS  基元律动给了申请 Key 的地址
+PASS  基元律动走 OpenAI 协议 /chat/completions
+PASS  manifest 已静态授权 tokenrhythm.studio
+PASS  基元律动的错误信封被读成可读文案
+PASS  错误信封保留了 traceId，便于向平台排查
+PASS  错误信封里的原因也被保留
+PASS  OpenAI 标准 error 信封仍按原逻辑处理
+PASS  errorEnvelope 对标准信封返回 null
+PASS  errorEnvelope 对非 JSON 返回 null
+```
+
+写成 `plain.kind === 'server'`（**不是 `code`**）—— 这个项目里 `AppError`
+的字段一直叫 `kind`，第一版断言写错了一次。
+
+### 一个自己踩的坑：版本断言是**转义正则**
+
+bump 版本时我按 `1.62.0` 做字符串替换，18 处都换了，
+但 `panel-test` 还是红了一项：
+
+```js
+// verify/panel-test.js:236
+/构建指纹 1\.62\.0 · 8 模块 · 2025-06-01/.test(doc.getElementById('fingerprint').textContent)
+//                    ^^ 转义了，纯字符串替换匹配不到
+```
+
+单独替换 `1\.62\.0` → `1\.63\.0` 才好。**纯数字的版本串会藏在转义正则里**，
+下次 bump 要连 `\.` 形式一起搜。
+
+### 测试
+
+```
+24 个套件，共 1315 项断言，全部通过
+```

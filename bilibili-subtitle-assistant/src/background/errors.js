@@ -53,10 +53,58 @@ export function toErrorPayload(err) {
   };
 }
 
+// 有些聚合网关用自己的错误信封，而不是 OpenAI 的 { error: { message } }。
+// 例如基元律动 TokenRhythm 统一返回：
+//   { "code": "MAX_TOKENS_EXCEEDED", "message": "输出长度超过平台限制…", "traceId": "…" }
+// 直接把这串 JSON 原样丢给用户既难读，又把 code 这个最关键的线索埋在一堆引号里。
+// 这里把「带 message 或 code 的裸 JSON」压成一句人话；其它情况返回 null，交回原逻辑。
+//
+// 注意：只认**顶层** code/message，且遇到 OpenAI 标准的 error 字段就主动让路，
+// 避免把正常的 { error: ... } 响应误判成信封。
+export function errorEnvelope(bodyText) {
+  const raw = String(bodyText || '').trim();
+  if (!raw || raw[0] !== '{') return null;
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+  if (json.error) return null;
+  const message = typeof json.message === 'string' ? json.message.trim() : '';
+  const code =
+    typeof json.code === 'string'
+      ? json.code.trim()
+      : typeof json.code === 'number'
+        ? String(json.code)
+        : '';
+  if (!message && !code) return null;
+  const head = [code, message].filter(Boolean).join('：');
+  const trace = typeof json.traceId === 'string' && json.traceId.trim() ? `（traceId ${json.traceId.trim()}）` : '';
+  return head + trace;
+}
+
 export function classifyHttp(status, bodyText, ctx = {}) {
-  const snippet = String(bodyText || '').slice(0, 600);
-  const lower = snippet.toLowerCase();
+  const rawBody = String(bodyText || '');
+  // 展示给用户用可读版（信封 → 人话），但关键词判定仍用原文，
+  // 否则信封里的中文 message 会让 quota/balance 这类英文关键词匹配不到。
+  const envelope = errorEnvelope(rawBody);
+  const snippet = envelope || rawBody.slice(0, 600);
+  const lower = rawBody.slice(0, 600).toLowerCase();
   const where = ctx.platformName ? `平台「${ctx.platformName}」` : '服务端';
+
+  // 网关自家信封已经点名原因时，直接给出对应动作，
+  // 不必让用户对着「确认接口地址、模型名与 Key 是否匹配」去猜。
+  if (envelope && /MAX_TOKENS_EXCEEDED/i.test(envelope)) {
+    return new AppError(
+      'output-limit',
+      '输出长度超过平台上限',
+      `${where} 返回 ${status}：${snippet}`,
+      '在 设置 → AI 模型 里把「最大输出长度（max tokens）」调小后重试（该平台对每个模型有固定的输出上限）。',
+      { status }
+    );
+  }
 
   if (status === 401 || status === 403) {
     if (lower.includes('quota') || lower.includes('balance') || lower.includes('insufficient')) {

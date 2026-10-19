@@ -1287,6 +1287,60 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('用户自建平台的 Key 未被清空', custom.ai.platforms.find((p) => p.id === 'my-own').apiKey === 'k', '');
 }
 
+// ---------------- 34b. 基元律动（TokenRhythm）必须是完整的第一类 AI 平台 ----------------
+// 用户要求把 https://tokenrhythm.studio/ 加进 AI 模型。
+// 它走 OpenAI 兼容协议（POST /v1/chat/completions，基础地址 .../v1），不是 Anthropic 原生协议；
+// 基础地址 / 默认模型 / 模型清单 / manifest 域名权限，四者缺一都会让用户「配好 Key 却调不通」。
+{
+  const SET2 = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const ERR = await import('../bilibili-subtitle-assistant/src/background/errors.js');
+  const allAi2 = SET2.defaultAiPlatforms();
+  const tr = allAi2.find((p) => p.id === 'tokenrhythm');
+
+  check('AI 平台里含基元律动（TokenRhythm）', !!tr, allAi2.map((p) => p.id).join(','));
+  check('基元律动的基础地址是 https://tokenrhythm.studio/v1', !!tr && tr.baseUrl === 'https://tokenrhythm.studio/v1', tr && tr.baseUrl);
+  check('基元律动默认模型在自己的模型清单里', !!(tr && Array.isArray(tr.models) && tr.models.includes(tr.model)), tr && `${tr.model} / ${tr.models ? tr.models.length : 0} 个`);
+  check('基元律动不预置任何人的 Key', !!tr && !tr.apiKey, tr && tr.apiKey);
+  check('基元律动给了申请 Key 的地址', !!tr && /^https:\/\//.test(String(tr.keyUrl || '')), tr && tr.keyUrl);
+
+  // 协议必须按 OpenAI 走：baseUrl 里一旦出现 anthropic 就会被切到 /messages 原生协议
+  let chatUrl = '';
+  try {
+    chatUrl = providers.buildAiUrl({ baseUrl: tr.baseUrl, model: tr.model });
+  } catch (err) {
+    chatUrl = `抛错: ${err.message}`;
+  }
+  check('基元律动走 OpenAI 协议 /chat/completions', chatUrl === 'https://tokenrhythm.studio/v1/chat/completions', chatUrl);
+
+  // manifest 必须静态授权该域名，否则首次调用会卡在「申请域名权限」的浏览器弹窗
+  {
+    const fs2 = await import('node:fs');
+    const path2 = await import('node:path');
+    const { fileURLToPath: f2 } = await import('node:url');
+    const manifest2 = JSON.parse(
+      fs2.readFileSync(path2.resolve(path2.dirname(f2(import.meta.url)), '..', 'bilibili-subtitle-assistant', 'manifest.json'), 'utf8')
+    );
+    const hosts = manifest2.host_permissions || [];
+    check('manifest 已静态授权 tokenrhythm.studio', hosts.includes('https://tokenrhythm.studio/*'), hosts.join(','));
+  }
+
+  // 错误信封：它返回 { code, message, traceId }，不是 OpenAI 的 { error: { message } }
+  const env = ERR.classifyHttp(
+    400,
+    '{"code":"MAX_TOKENS_EXCEEDED","message":"输出长度超过平台限制，请降低 max_tokens 后重试。","traceId":"abc123"}',
+    { platformName: '基元律动（TokenRhythm）' }
+  );
+  check('基元律动的错误信封被读成可读文案', env.title === '输出长度超过平台上限', env.title);
+  check('错误信封保留了 traceId，便于向平台排查', /abc123/.test(env.detail), env.detail);
+  check('错误信封里的原因也被保留', /输出长度超过平台限制/.test(env.detail), env.detail);
+
+  // 不能把 OpenAI 标准的 error 信封误判成自家信封
+  const plain = ERR.classifyHttp(500, '{"error":{"message":"boom"}}', {});
+  check('OpenAI 标准 error 信封仍按原逻辑处理', plain.kind === 'server', plain.kind);
+  check('errorEnvelope 对标准信封返回 null', ERR.errorEnvelope('{"error":{"message":"boom"}}') === null, '');
+  check('errorEnvelope 对非 JSON 返回 null', ERR.errorEnvelope('<html>502</html>') === null, '');
+}
+
 // ---------------- 35. 扩展图标必须存在且被 manifest 正确引用 ----------------
 // 图标是扩展在工具栏/扩展页的外观。缺文件会让 Chrome 加载时报错或显示空白图标。
 {

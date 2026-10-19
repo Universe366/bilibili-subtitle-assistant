@@ -275,6 +275,44 @@ export function defaultAiPlatforms() {
       models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo']
     },
     {
+      // 基元律动（TokenRhythm）：一个 Key 打通 DeepSeek / GLM / Qwen / Kimi /
+      // MiniMax / MiMo / 豆包 Seed / LongCat 等多家模型，走 OpenAI 兼容协议。
+      //
+      // 关键事实（对照 https://tokenrhythm.studio/docs/api-integration 核实）：
+      //   · 统一基础地址 https://tokenrhythm.studio/v1，
+      //     POST /v1/chat/completions（标准 OpenAI 字段）、GET /v1/models
+      //   · 鉴权 Authorization: Bearer sk_xxx（Key 形如 sk_tr_...）
+      //   · 错误信封是自家格式 { code, message, traceId }，不是 OpenAI 的
+      //     { error: {...} } —— errors.js 的 errorEnvelope() 专门负责把它读成人话
+      //   · 不支持未知请求字段（多传一个 thinking 就 400 UNKNOWN_FIELD），
+      //     所以 aiBody() 只能发 model / messages / temperature / max_tokens / stream
+      //   · 支持 tools / tool_choice，但 DeepSeek 系只接受 none|auto|required 字符串，
+      //     不能传 { type: 'auto' } 对象
+      // 模型清单取自模型页内嵌目录（type=chat 且 status=online 的条目），
+      // 用户点「刷新模型列表」会重新向 /v1/models 拉取当前账号真正可用的清单。
+      id: 'tokenrhythm',
+      name: '基元律动（TokenRhythm）',
+      homepage: 'https://tokenrhythm.studio/',
+      keyUrl: 'https://tokenrhythm.studio/account',
+      baseUrl: 'https://tokenrhythm.studio/v1',
+      model: 'deepseek-v4-flash-0731',
+      apiKey: '',
+      models: [
+        'deepseek-v4-flash-0731',
+        'deepseek-v4.1-flash-1017',
+        'deepseek-v4-pro-0813',
+        'glm-5.3',
+        'glm-5.2',
+        'qwen3.8-max',
+        'qwen3.7-max',
+        'kimi-k2.6',
+        'minimax-m2.7',
+        'mimo-v2.5-pro',
+        'longcat-2.0',
+        'seed-2.1-pro'
+      ]
+    },
+    {
       id: 'custom-ai',
       name: '自定义（OpenAI 兼容）',
       homepage: '',
