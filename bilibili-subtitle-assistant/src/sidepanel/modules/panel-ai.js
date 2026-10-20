@@ -199,19 +199,41 @@ export function render() {
   renderInput();
 }
 
+// 分段总结每段的字符数（与 summarizeInChunks 共用，保证估算一致）
+const SUMMARY_CHUNK_CHARS = 40000;
+
 // 估算一次总结大概要几次检索 / AI 调用，给用户一个额度与耗时预期。
-// 只算主流程，不含长视频分段合并的额外调用。
+// 按字幕总字符数估算分段数；主流程不含“校对失败后重试”等异常路径。
 export function estimateSummaryCost(settings, opts = {}) {
   const s = (settings && settings.search) || {};
+  const chars = Math.max(0, Number(opts.subtitleChars) || 0);
+  const chunks = Math.max(1, Math.ceil(chars / SUMMARY_CHUNK_CHARS));
+  const summaryCalls = chunks > 1 ? chunks + 1 : 1;
+  const segmentHint = chunks > 1 ? `（${chunks} 段分段）` : '';
   const webCapable = opts.webCapable !== false;
   if (!webCapable || s.verifyOnSummary === false) {
-    return { searches: 0, aiCalls: 1, label: '约 1 次 AI 调用（未启用联网校对）' };
+    return {
+      searches: 0,
+      aiCalls: summaryCalls,
+      chunks,
+      label: `约 ${summaryCalls} 次 AI 调用${segmentHint}（未启用联网校对）`
+    };
   }
   const aiQuery = s.aiQueryGeneration !== false;
   const n = Math.max(1, Math.min(16, Number(s.verifyItemCount) || 12));
-  return aiQuery
-    ? { searches: 6, aiCalls: 4, label: '约 3~6 次检索 + 4 次 AI 调用' }
-    : { searches: n, aiCalls: 3, label: `约 ${n} 次检索 + 3 次 AI 调用` };
+  const baseAi = aiQuery ? 3 : 2; // 查询生成（可选）+ 校正 + 外部补充
+  const aiCalls = baseAi + summaryCalls;
+  const searchLabel = aiQuery ? '3~6' : String(n);
+  return {
+    searches: aiQuery ? 6 : n,
+    aiCalls,
+    chunks,
+    label: `约 ${searchLabel} 次检索 + ${aiCalls} 次 AI 调用${segmentHint}`
+  };
+}
+
+function subtitleCharCount(lines) {
+  return (Array.isArray(lines) ? lines : []).reduce((n, l) => n + String((l && l.text) || '').length, 0);
 }
 
 function renderToolbar() {
@@ -232,7 +254,10 @@ function renderToolbar() {
   const searchCfg = (st.settings && st.settings.search) || {};
   const proofreadReady = searchCfg.verifyOnSummary !== false && searchCapabilityOf(st.settings || {}).webCapable;
   const willProofread = hasLines && proofreadReady;
-  const cost = estimateSummaryCost(st.settings || {}, { webCapable: proofreadReady });
+  const cost = estimateSummaryCost(st.settings || {}, {
+    webCapable: proofreadReady,
+    subtitleChars: subtitleCharCount(st.subtitles)
+  });
   bar.appendChild(
     button(state.summaryStreaming ? '生成中…' : willProofread ? '生成总结（先校对）' : '生成总结', () => generateSummary(), {
       small: true,
@@ -308,11 +333,14 @@ function renderSummary() {
     );
     if (hasLines) {
       const cap = searchCapabilityOf(st.settings || {});
-      const cost = estimateSummaryCost(st.settings || {}, { webCapable: cap.webCapable });
+      const cost = estimateSummaryCost(st.settings || {}, {
+        webCapable: cap.webCapable,
+        subtitleChars: subtitleCharCount(st.subtitles)
+      });
       host.appendChild(
         h('div', {
           class: 'note',
-          text: `按当前设置：${cost.label}。实际取决于字幕长度与检索结果；长视频分段合并会再多几次调用。`
+          text: `按当前设置：${cost.label}。实际取决于字幕长度与检索结果。`
         })
       );
     }
@@ -1668,7 +1696,7 @@ function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, ex
 // 所以这里用普通 `ai.chat` 调用。合并那一步也用普通调用 ——
 // 它可能很长，但比"丢内容"要好。
 async function summarizeInChunks({ lines, systemBase, video, extraContext, chunkContext, webSupplement, settings, task, totalSteps, onChunkSummary }) {
-  const CHUNK_CHARS = 40000;
+  const CHUNK_CHARS = SUMMARY_CHUNK_CHARS;
   const chunks = chunkTranscript(lines, CHUNK_CHARS);
   const totalCount = chunks.length;
   const title = (video && video.title) || '';
