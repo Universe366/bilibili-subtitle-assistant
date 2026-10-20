@@ -317,8 +317,17 @@ function renderSummary() {
   }
   host.appendChild(box);
 
+  const evidence = Array.isArray(st.verifyEvidence) ? st.verifyEvidence : [];
   const queries = Array.isArray(st.verifyQueries) ? st.verifyQueries : [];
-  if (queries.length) {
+  if (evidence.length) {
+    const details = h('details', { class: 'verify-queries' });
+    details.appendChild(h('summary', { text: `本次联网核对（${evidence.length} 条查询，点击查看证据）` }));
+    for (const e of evidence) {
+      const label = `${e.q} · ${e.count || 0} 条证据${e.titles && e.titles[0] ? ` · ${e.titles[0]}` : ''}`;
+      details.appendChild(h('div', { class: 'verify-query', text: label }));
+    }
+    host.appendChild(details);
+  } else if (queries.length) {
     const details = h('details', { class: 'verify-queries' });
     details.appendChild(h('summary', { text: `本次联网核对的检索词（${queries.length} 条）` }));
     for (const q of queries) details.appendChild(h('div', { class: 'verify-query', text: q }));
@@ -1023,6 +1032,14 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
         /* 核对失败仍可做纯文本校对 */
       }
     }
+    // 给界面用的「查询 → 证据条数/标题」，方便判断哪条检索词没搜到东西。
+    const evidenceByQuery = new Map(verify.map((v) => [v.item, v.evidence || []]));
+    store.set({
+      verifyEvidence: items.slice(0, 12).map((q) => {
+        const ev = evidenceByQuery.get(q) || [];
+        return { q, count: ev.length, titles: ev.slice(0, 2).map((e) => e.title) };
+      })
+    });
   }
   if (shouldAbort()) throw abortError();
   if (onStage) onStage('correct', 0, 1, null);
@@ -1745,7 +1762,7 @@ export async function generateSummary(opts = {}) {
   state.summaryRid = '';
   state.summaryStreaming = true;
   state.streaming = true;
-  store.set({ summaryStream: '', verifyQueries: [] });
+  store.set({ summaryStream: '', verifyQueries: [], verifyEvidence: [] });
   render();
 
   // ---- 阶段 1：校对字幕（联网核对术语/逻辑/时间/事实），并**实际更正字幕** ----
