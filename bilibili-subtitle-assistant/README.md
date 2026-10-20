@@ -122,9 +122,9 @@
 - 历史记录（查看 / 恢复 / 删除 / 清空）、缓存复用开关
 
 **版本更新**
-- 设置 → 诊断与关于：显示当前版本 / 最新版本 / 上次检查时间
-- **自动检查**（每天一次，可关）与**手动检查**；发现新版可查看说明、一键打开下载页
-- Edge 商店版由浏览器自动更新；手动加载版用这里的检查提示
+- **Edge 商店版由浏览器自动更新**：在 Partner Center 提交新版本并通过认证后，已安装用户会自动收到更新
+- 手动加载的开发版需要重新下载 zip 覆盖，再刷新扩展
+- 设置 → 诊断与关于 可查看当前构建版本；不内置 GitHub 更新检查，项目仓库可以保持 private
 
 **导出**
 - 6 种格式：SRT / WebVTT / ASS（可指定字号）/ TXT / Markdown / JSON
@@ -303,7 +303,7 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 | [`../PRIVACY.md`](../PRIVACY.md) | 隐私政策 |
 | [`AGENTS.md`](AGENTS.md) | **给后续 AI / 贡献者**：环境硬约束（CSP、沙箱边界、service worker 生命周期）、已踩过的坑、排查方法论 |
 | [`docs/DEVELOPMENT-LOG.md`](docs/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
-| [`../verify/README.md`](../verify/README.md) | 自动化测试套件：25 个套件（含静态体检 / 布局体检 / 导入体检 / 更新检查），以及每个套件覆盖什么 |
+| [`../verify/README.md`](../verify/README.md) | 自动化测试套件：24 个套件（含静态体检 / 布局体检 / 导入体检），以及每个套件覆盖什么 |
 
 ---
 

@@ -1746,131 +1746,16 @@ function pageGroup(d) {
   });
 }
 
-function updateSection(d) {
-  const status = h('div', { class: 'note', text: '正在读取更新信息…' });
-  const meta = h('div', { class: 'muted', text: '' });
-  const details = h('details', { class: 'update-notes', style: { marginTop: '6px', display: 'none' } });
-  const pre = h('pre', {
-    style: {
-      whiteSpace: 'pre-wrap',
-      maxHeight: '240px',
-      overflow: 'auto',
-      fontSize: '12px',
-      lineHeight: '1.5',
-      margin: '4px 0 0'
-    },
-    text: ''
-  });
-  details.appendChild(h('summary', { text: '新版本说明' }));
-  details.appendChild(pre);
-
-  let current = null;
-
-  const openBtn = button(
-    '打开下载页',
-    async () => {
-      const url =
-        (current && current.release && current.release.htmlUrl) ||
-        (current && current.releaseUrl) ||
-        'https://github.com/Universe366/bilibili-subtitle-assistant/releases';
-      try {
-        await call('tab.open', { url });
-      } catch (err) {
-        showError(err, '打开下载页失败');
-      }
-    },
-    { small: true }
-  );
-
-  const checkBtn = button(
-    '检查更新',
-    () => load(true),
-    { small: true, primary: true }
-  );
-
-  function renderState(out) {
-    if (!out) {
-      status.textContent = '尚未检查';
-      return;
-    }
-    if (out.hasUpdate) {
-      status.textContent = `发现新版本 v${out.latest}（当前 v${out.current}）`;
-      details.open = true;
-    } else if (out.ok) {
-      status.textContent = `已是最新版本 v${out.latest}`;
-    } else if (out.reason === 'disabled') {
-      status.textContent = '自动检查已关闭（仍可手动检查）';
-    } else if (out.reason === 'not-found') {
-      status.textContent = '无法检查：GitHub 仓库未公开，或还没有发布 Release';
-    } else if (out.reason === 'rate-limit') {
-      status.textContent = '无法检查：GitHub API 限流，请稍后再试';
-    } else {
-      status.textContent = `检查失败：${out.message || out.reason || '未知原因'}`;
-    }
-    meta.textContent = out.checkedAt ? `上次检查：${fmtRelative(out.checkedAt)}` : '尚未检查';
-    const notes = out.release && out.release.notes ? String(out.release.notes) : '';
-    if (notes) {
-      pre.textContent = notes.slice(0, 12000);
-      details.style.display = '';
-    } else {
-      pre.textContent = '该版本没有填写说明。';
-      details.style.display = '';
-    }
-  }
-
-  async function load(manual) {
-    checkBtn.disabled = true;
-    status.textContent = manual ? '正在检查新版本…' : '正在读取更新信息…';
-    try {
-      let out = manual ? null : await call('update.state');
-      if (!out || !out.checkedAt) {
-        out = await call('update.check', { manual: !!manual }, { timeoutMs: 30000 });
-      }
-      current = out;
-      renderState(out);
-      if (manual && out && out.ok) {
-        toast(
-          {
-            title: out.hasUpdate ? `发现新版本 v${out.latest}` : '已是最新版本',
-            detail: out.hasUpdate ? '可点「打开下载页」查看说明并下载。' : ''
-          },
-          out.hasUpdate ? 'ok' : 'info',
-          4000
-        );
-      }
-    } catch (err) {
-      status.textContent = `检查失败：${(err && err.message) || '网络请求失败'}`;
-    } finally {
-      checkBtn.disabled = false;
-    }
-  }
-
-  const box = h('div', { class: 'update-box' }, [
-    h('div', { class: 'section-title', text: '版本更新' }),
-    status,
-    meta,
-    h('div', { class: 'row tight', style: { marginTop: '6px' } }, [checkBtn, openBtn]),
-    checkbox(
-      (d.update && d.update.autoCheck) !== false,
-      (v) => {
-        d.update = d.update || {};
-        d.update.autoCheck = v;
-        markDirty();
-      },
-      '自动检查更新（每天一次，保存设置后生效）'
-    ),
-    details
-  ]);
-
-  load(false);
-  return box;
-}
-
 function advancedGroup(d) {
   return groupWrap('advanced', '诊断与关于', false, (body) => {
     const st = store.get();
     const b = st.build;
-    body.appendChild(updateSection(d));
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text: '通过 Edge 商店安装的版本由浏览器自动更新；手动加载的开发版请重新下载 zip 覆盖后刷新扩展。'
+      })
+    );
     body.appendChild(
       h('div', { class: 'kv' }, [
         h('span', { class: 'kv-key', text: '构建指纹' }),

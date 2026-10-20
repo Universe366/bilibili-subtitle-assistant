@@ -10,7 +10,6 @@ import * as P from './providers.js';
 import * as BILI from './bili.js';
 import * as M from './mcp.js';
 import * as T from './tools.js';
-import { checkForUpdate, getUpdateState, initUpdateChecker } from './update.js';
 import * as KS from './keyless-search.js';
 import * as SC from './search-cache.js';
 import { sanitizeResult } from '../shared/untrusted.js';
@@ -69,7 +68,6 @@ async function collectMcpTools(mcpCfg, opts = {}) {
 // 于是「模块数」恒定不变，失去了指纹的意义。
 const BUILD_MODULES = [
   '../shared/constants.js',
-  '../shared/version.js',
   '../shared/settings.js',
   '../shared/storage.js',
   '../shared/untrusted.js',
@@ -85,11 +83,10 @@ const BUILD_MODULES = [
   './keyless-search.js',
   './search-cache.js',
   './tabs.js',
-  './update.js',
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-20T20:00:00Z';
+const BUILD_TIME = '2026-10-20T21:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -127,7 +124,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-initUpdateChecker();
+// 说明：Edge 商店版由浏览器自动更新；这里不再内置 GitHub 更新检查。
 
 async function initPanelBehavior() {
   try {
@@ -949,10 +946,6 @@ const methods = {
     modules: BUILD_MODULES.length,
     buildTime: BUILD_TIME
   }),
-
-  'update.check': async (params) => checkForUpdate({ manual: params && params.manual === true }),
-
-  'update.state': async () => getUpdateState(),
 
   'tab.open': async (params) => {
     const tab = await chrome.tabs.create({ url: params.url, active: params.active !== false });

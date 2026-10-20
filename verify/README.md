@@ -1,6 +1,6 @@
 # 验证套件（不属于扩展运行时）
 
-针对 `../bilibili-subtitle-assistant` 的自动化验证。**25 个套件（含静态体检 / 布局体检 / 导入体检 / 更新检查），全部通过。**
+针对 `../bilibili-subtitle-assistant` 的自动化验证。**24 个套件（含静态体检 / 布局体检 / 导入体检），全部通过。**
 
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb
@@ -24,7 +24,6 @@ node mcp-test.mjs                  # MCP 客户端 + 工具调用循环
 node skills-test.mjs               # SKILL.md 解析与导入
 node keyless-search-test.mjs       # 免费引擎回退链/缓存/注入防护
 node reasoning-test.mjs            # 思维链与正文分离
-node update-test.mjs               # 版本比较 + 更新检查接线
 node checklist.js                  # 需求文档功能清单逐项核对
 ```
 
