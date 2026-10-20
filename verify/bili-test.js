@@ -190,7 +190,27 @@ async function main() {
   check('番剧页用 ep_id 换到播放地址并拿到字幕', out.tracks.length === 2, JSON.stringify(out.sources));
   check('番剧请求走了 season 接口', fetchLog.some((f) => /pgc\/view\/web\/season/.test(f.url)));
 
-  // ---- 7. 网络异常给出可操作错误 ----
+  // ---- 7. 热门评论：只有 bvid 时先换数字 aid ----
+  fetchLog = [];
+  installFetch([
+    [/x\/web-interface\/view/, () => VIEW_RESPONSE],
+    [
+      /x\/v2\/reply/,
+      () => ({
+        code: 0,
+        data: {
+          replies: [{ member: { uname: '测试用户' }, like: 3, content: { message: ' 不错的视频 ' } }],
+          page: { count: 1 }
+        }
+      })
+    ]
+  ]);
+  const comments = await BILI.fetchTopComments({ bvid: 'BV1xx411c7mD', pageUrl: 'https://www.bilibili.com/video/BV1xx411c7mD' });
+  check('评论：只有 bvid 时先请求 view 换 aid', fetchLog.some((f) => /x\/web-interface\/view/.test(f.url)), '');
+  check('评论：查询用数字 aid 而不是 BV 号', fetchLog.some((f) => /x\/v2\/reply/.test(f.url) && /oid=123456/.test(f.url)), fetchLog.filter((f) => /reply/.test(f.url)).map((f) => f.url).join('\n'));
+  check('评论：正常解析用户/点赞/正文', comments.ok && comments.comments[0].user === '测试用户' && comments.comments[0].like === 3 && comments.comments[0].text === '不错的视频', JSON.stringify(comments));
+
+  // ---- 8. 网络异常给出可操作错误 ----
   globalThis.fetch = async () => {
     throw new Error('Failed to fetch');
   };
