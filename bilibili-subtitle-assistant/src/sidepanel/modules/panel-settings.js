@@ -1304,13 +1304,11 @@ function searchGroup(d) {
         class: 'note',
         text:
           '做法：先从字幕里抽出**具体的待核实项**（年份、数字、版本号、专有术语），\n' +
-          '每项单独检索，并做**相关性过滤**（与该项毫无词重叠的结果直接丢弃），\n' +
+          '按字幕前 / 中 / 后段抽样，每项单独检索，并做**相关性过滤**（与该项毫无词重叠的结果直接丢弃），\n' +
           '只把紧凑的「条目 → 证据摘录」交给模型。\n\n' +
-          '模型被要求：\n' +
-          '· 只用于**校正**字幕里的术语/数字/时间/因果关系错误，用 [待核实 N] 标注\n' +
-          '· **不要**转述网页内容，不要介绍这些来源\n' +
-          '· 证据没覆盖的地方保持字幕原样，不臆测\n' +
-          '· 确有更正时，文末列一条「⚠️ 已更正」\n\n' +
+          '校对阶段：模型只用于**校正**字幕里的术语/数字/时间/因果关系错误。\n' +
+          '总结阶段：同一批证据会一起交给模型，允许在正文用 [来源 N] 引用，\n' +
+          '对冲突或证据不足的地方提示「待核实」；末尾可附来源列表（可关闭）。\n\n' +
           '不会抓取整篇网页正文 —— 那样会把上万字无关内容灌进上下文，\n' +
           '把字幕挤成少数派（这是之前版本的问题）。'
       })
@@ -1318,10 +1316,11 @@ function searchGroup(d) {
     body.appendChild(
       field(
         '每次核实几条',
-        numberInput(d.search.verifyItemCount ?? 6, (v) => {
-          d.search.verifyItemCount = Math.max(1, Math.min(10, v));
+        numberInput(d.search.verifyItemCount ?? 12, (v) => {
+          d.search.verifyItemCount = Math.max(1, Math.min(16, v));
           markDirty();
-        }, { min: 1, max: 10 })
+        }, { min: 1, max: 16 }),
+        '从字幕的前 / 中 / 后段各取候选项；越多覆盖越全，但更慢、也更耗检索额度'
       )
     );
     body.appendChild(
@@ -1336,6 +1335,13 @@ function searchGroup(d) {
         d.summary && d.summary.useComments === true,
         (v) => { d.summary = d.summary || {}; d.summary.useComments = v; markDirty(); },
         '总结时带上热门评论（了解观众关注点；多跑一次接口，评论噪声较大，默认关闭）'
+      )
+    );
+    body.appendChild(
+      checkbox(
+        (d.summary && d.summary.attachSources) !== false,
+        (v) => { d.summary = d.summary || {}; d.summary.attachSources = v; markDirty(); },
+        '总结末尾附上「联网核对来源」（正文里的 [来源 N] 可在末尾回查）'
       )
     );
     body.appendChild(

@@ -8,7 +8,13 @@ import { renderMarkdownInto, renderInline } from './markdown.js';
 import { selectContext, linesToTranscript, fmtClock } from './subtitles.js';
 import { searchContextBlockGuarded, engineLabel } from './search.js';
 import * as OPT from './optimize.js';
-import { extractVerifyItems, verifyItems, verifyContextBlock } from '../../shared/verify.js';
+import {
+  extractVerifyItems,
+  verifyItems,
+  summaryVerifyBlock,
+  summarySourcesFooter,
+  collectVerifiedSources
+} from '../../shared/verify.js';
 import { Stream, call } from './bridge.js';
 import * as jobs from './jobs.js';
 import { TASK_LABEL } from '../../shared/constants.js';
@@ -886,9 +892,13 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
 
   // 联网核对（可选）
   let verify = [];
-  if (cap.webCapable && cap.searchOn) {
+  if (cap.webCapable) {
     if (shouldAbort()) throw abortError();
-    const items = extractVerifyItems(lines, settings.search?.verifyItemCount || settings.optimize?.verifyItemCount || 8);
+    const verifyLimit = Math.max(
+      1,
+      Math.min(16, Number(settings.search?.verifyItemCount || settings.optimize?.verifyItemCount || 12))
+    );
+    const items = extractVerifyItems(lines, verifyLimit);
     if (items.length) {
       try {
         verify = await verifyItems(
@@ -896,7 +906,7 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
           // ephemeral：连续多条搜索，不能冲掉用户上次的检索面板结果
           (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
           {
-            maxItems: settings.search?.verifyItemCount || 8,
+            maxItems: verifyLimit,
             perItem: 3,
             shouldAbort,
             // 逐条报告进度，界面能显示「正在核对 3/6：DeepSeek」
@@ -928,7 +938,7 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
     { timeoutMs: 300000 }
   );
   const corrections = OPT.parseOptimizeResult(res.text);
-  if (!corrections.length) return { corrections: [], applied: { changed: 0 }, lines, report: '' };
+  if (!corrections.length) return { corrections: [], applied: { changed: 0 }, lines, report: '', verify };
 
   const applied = OPT.applyCorrections(lines, corrections);
 
@@ -967,7 +977,7 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
       5000
     );
   }
-  return { corrections, applied, lines: applied.lines, report, kindText };
+  return { corrections, applied, lines: applied.lines, report, kindText, verify };
 }
 
 // 回退到原始字幕（校对前的那一份）
@@ -1059,6 +1069,7 @@ export function buildCapabilityBlock(info = {}) {
     searchUsed = false,
     searchResultCount = 0,
     searchFailNote = '',
+    evidenceLabel = '参考资料',
     hasSubtitles = false,
     subtitleCount = 0,
     attachmentCount = 0,
@@ -1077,12 +1088,12 @@ export function buildCapabilityBlock(info = {}) {
   // 但检索是按关键词触发的 —— 问题没命中关键词时模型收到空资料，
   // 只能回一句「系统提示说会附参考资料，但这次并没有」。
   // 那是我们的提示在撒谎，不是模型出错。
-  if (webCapable && searchOn) {
+  if (webCapable && (searchOn || searchUsed)) {
     const channel = hasSearchKey
       ? `已配置检索平台${searchProviderName ? `（${searchProviderName}）` : ''}`
       : '使用免费检索引擎（Bing / AnySearch / Exa，无需 Key）';
     if (searchUsed && searchResultCount > 0) {
-      lines.push(`· 联网检索：**可用**（${channel}），**本轮已经检索过**，${searchResultCount} 条来源见下方参考资料。`);
+      lines.push(`· 联网检索：**可用**（${channel}），**本轮已经检索过**，${searchResultCount} 条来源见下方${evidenceLabel}。`);
     } else if (alwaysSearch) {
       lines.push(`· 联网检索：**可用**（${channel}），已设为每轮都检索。下方参考资料若为空说明这次检索失败。`);
     } else {
@@ -1396,12 +1407,13 @@ export function describeSpan(span, durationSeconds) {
 }
 
 // 把各段摘要合并成最终总结
-function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fixReport, extraContext, spanText }) {
+function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fixReport, extraContext, webEvidence, spanText }) {
   return [
     title ? `视频：${title}${part ? ` · ${part}` : ''}` : '',
     duration ? `时长：${duration}` : '',
     spanText,
     extraContext,
+    webEvidence,
     `下面是这部视频**分成 ${chunkCount} 段**分别提取的内容，请把它们**合并成一篇完整、连贯的总结**。`,
     '要求：',
     '- 按时间顺序组织，覆盖**全片**（不要只写开头，也不要遗漏后面的段落）',
@@ -1428,7 +1440,7 @@ function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, fi
 // 为什么不用流式：分段时每一段都要单独拿到完整结果才能进入下一段，
 // 所以这里用普通 `ai.chat` 调用。合并那一步也用普通调用 ——
 // 它可能很长，但比"丢内容"要好。
-async function summarizeInChunks({ lines, systemBase, video, extraContext, fixReport, settings, task, totalSteps, onChunkSummary }) {
+async function summarizeInChunks({ lines, systemBase, video, extraContext, webEvidence, fixReport, settings, task, totalSteps, onChunkSummary }) {
   const CHUNK_CHARS = 40000;
   const chunks = chunkTranscript(lines, CHUNK_CHARS);
   const totalCount = chunks.length;
@@ -1517,6 +1529,7 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, fixRe
             chunkSummaries,
             fixReport,
             extraContext,
+            webEvidence,
             spanText
           })
         }
@@ -1596,6 +1609,7 @@ export async function generateSummary(opts = {}) {
     st.subtitles.length > 0;
   let correctedLines = st.subtitles;
   let fixReport = '';
+  let webVerify = [];
   const totalSteps = willProofread ? 3 : 2;
   if (skipProofread) {
     task.set(5, '快速总结：跳过联网校对');
@@ -1614,6 +1628,7 @@ export async function generateSummary(opts = {}) {
           }
         }
       });
+      webVerify = (out && out.verify) || [];
       if (out && out.applied && out.applied.changed) {
         correctedLines = out.lines;
         fixReport = out.report;
@@ -1652,17 +1667,26 @@ export async function generateSummary(opts = {}) {
     return;
   }
 
+  // 把同一批核对证据也交给总结阶段：允许模型引用来源、对冲突/不确定处给出提示；
+  // 末尾再附一份确定性的来源列表，编号与正文里的 [来源 N] 对应。
+  const webEvidence = summaryVerifyBlock(webVerify);
+  const sourcesFooter =
+    settings.summary && settings.summary.attachSources === false ? '' : summarySourcesFooter(webVerify);
+
   let ctx = selectContext(correctedLines, '', 40000);
   // 若在对话区选过技能，总结也按该技能的指令走
   const activeSkill = ((settings.skills && settings.skills.items) || []).find((x) => x.id === state.activeSkillId);
   // 总结也带上能力自述：用户可能在总结里问「这个结果是联网查的吗」
   const cap = searchCapabilityOf(settings);
+  const summarySources = collectVerifiedSources(webVerify, 1);
   const capBlock = buildCapabilityBlock({
     webCapable: cap.webCapable,
     searchOn: cap.searchOn,
     hasSearchKey: cap.hasSearchKey,
     searchProviderName: cap.providerName,
-    searchResultCount: (st.search.results || []).length,
+    searchUsed: summarySources.length > 0,
+    searchResultCount: summarySources.length,
+    evidenceLabel: '联网核对证据',
     hasSubtitles: (st.subtitles || []).length > 0,
     subtitleCount: (st.subtitles || []).length,
     mcpOn: !!(settings.mcp && settings.mcp.enabled),
@@ -1723,6 +1747,7 @@ export async function generateSummary(opts = {}) {
         // 自己脑补出「之后 N 分钟字幕未提供」这种不存在的结论。
         describeSpan(subtitleSpan(correctedLines), st.video && st.video.duration),
         extraContext,
+        webEvidence,
         '下面是这期视频的字幕原文（**已提供的全部**，请据此整理，不要推测缺失部分）：',
         ctx.text
       ]
@@ -1744,6 +1769,7 @@ export async function generateSummary(opts = {}) {
           .join('\n\n'),
         video: st.video,
         extraContext,
+        webEvidence,
         fixReport,
         settings,
         task,
@@ -1754,17 +1780,18 @@ export async function generateSummary(opts = {}) {
           renderSummary();
         }
       });
-      const finalText = result && result.text ? result.text : '';
-      if (!finalText) throw new Error('分段总结没有返回内容');
+      const bodyText = result && result.text ? result.text : '';
+      if (!bodyText) throw new Error('分段总结没有返回内容');
+      const finalText = sourcesFooter ? `${bodyText}\n\n${sourcesFooter}` : bodyText;
       state.summaryStreaming = false;
       state.streaming = false;
       state.stream = null;
       state.summaryRid = '';
       state.summaryAbortRequested = false;
       store.set({ summary: finalText, summaryStream: '' });
-      recountCitations(finalText);
+      recountCitations(bodyText);
       await saveHistory();
-      task.set(100, `完成（${finalText.length} 字，覆盖全片 ${result.chunks} 段）`);
+      task.set(100, `完成（${bodyText.length} 字，覆盖全片 ${result.chunks} 段）`);
       task.end();
       render();
       toast(
@@ -1823,19 +1850,20 @@ export async function generateSummary(opts = {}) {
         scrollAiBottom();
       },
       onEnd: async () => {
-        const finalText = store.get().summaryStream || '';
+        const bodyText = store.get().summaryStream || '';
+        const finalText = sourcesFooter ? `${bodyText}\n\n${sourcesFooter}` : bodyText;
         state.summaryStreaming = false;
         state.streaming = false;
         state.stream = null;
         state.summaryRid = '';
         state.summaryAbortRequested = false;
         store.set({ summary: finalText, summaryStream: '' });
-        recountCitations(finalText);
+        recountCitations(bodyText);
         await saveHistory();
-        task.set(100, `完成（${finalText.length} 字）`);
+        task.set(100, `完成（${bodyText.length} 字）`);
         task.end();
         render();
-        toast({ title: '总结完成', detail: `已按 Markdown 渲染（${finalText.length} 字）` }, 'ok');
+        toast({ title: '总结完成', detail: `已按 Markdown 渲染（${bodyText.length} 字）` }, 'ok');
       },
       onError: (payload) => {
         state.summaryStreaming = false;

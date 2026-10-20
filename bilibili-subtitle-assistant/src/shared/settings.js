@@ -645,13 +645,17 @@ export function defaultSettings() {
       cacheMinutes: 5,
       // 生成总结前**主动联网核实**：用视频标题+字幕关键句检索一次，
       // 把网页资料交给模型去校正字幕里的事实性错误（用户明确要的「多方求证」）。
-      verifyOnSummary: true
+      verifyOnSummary: true,
+      // 每次从字幕里抽多少条去核实。12 条覆盖更广，但更慢、也更容易消耗检索额度。
+      verifyItemCount: 12
     },
     // 总结的附加上下文：视频简介、热门评论
     summary: {
       useVideoMeta: true,
       // 评论默认关闭 —— 需要多跑一次接口，且评论区噪声较大，让用户自己决定
-      useComments: false
+      useComments: false,
+      // 总结末尾是否附上「联网核对来源」（编号与正文里的 [来源 N] 对应）
+      attachSources: true
     },
     exportCfg: {
       format: 'srt',
