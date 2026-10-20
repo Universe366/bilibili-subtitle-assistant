@@ -956,6 +956,9 @@ export function batchCancel(id) {
     renderPanels();
     const ctl = batchControllers.get(id);
     if (ctl) ctl.abort();
+    // batch.resolve 在后台等标签页加载/注入，客户端 AbortController 管不到它；
+    // 用同一个 rid 让后台把当前 RPC 也 abort 掉。
+    call('cancel', { rid: `batch_${id}` }).catch(() => {});
   }
 }
 
@@ -991,7 +994,7 @@ async function runBatchQueue() {
       });
       let resolved = null;
       try {
-        resolved = await call('batch.resolve', { url: item.url }, { timeoutMs: 90000 });
+        resolved = await call('batch.resolve', { url: item.url, rid: `batch_${item.id}` }, { timeoutMs: 90000 });
         const video = resolved.video;
         item.title = video.title || item.url;
         syncQueue();

@@ -2,6 +2,13 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.6.0（2026-10-21）
+
+### 改进
+- **批量解析阶段也能取消**：`batch.resolve` 现在接收 `rid`，等待标签页加载、注入内容脚本、读取视频信息都可被 `cancel` 中止。
+- 取消后立即释放 `batch.resolve` 打开的标签页，不再等 45 秒加载超时。
+- 客户端取消时同时 abort 本地 signal 和后台 RPC。
+
 ## 2.5.0（2026-10-21）
 
 ### 改进

@@ -89,7 +89,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-21T03:30:00Z';
+const BUILD_TIME = '2026-10-21T04:00:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -507,26 +507,36 @@ const methods = {
       );
     }
     const target = normalizeBatchUrl(url);
+    const signal = registerExternalAbort(params.rid);
+    if (signal && signal.aborted) throw abortError();
     const existing = (await chrome.tabs.query({})).find((t) => stripQuery(t.url || '') === stripQuery(target));
     let tabId = existing ? existing.id : null;
     let created = null;
     if (tabId == null) {
       created = await chrome.tabs.create({ url: target, active: false });
       tabId = created.id;
-      await waitTabComplete(tabId, 45000);
+      await waitTabComplete(tabId, 45000, signal);
     }
     try {
       await ensureContentScript(tabId, { pingTimeoutMs: 2500 });
-      const info = await withTimeout(
-        chrome.tabs.sendMessage(tabId, { type: CHANNEL.TO_CONTENT, method: 'getInfo', params: {} }),
-        20000,
-        '批量读取视频信息超时'
+      if (signal && signal.aborted) throw abortError();
+      const info = await abortable(
+        withTimeout(
+          chrome.tabs.sendMessage(tabId, { type: CHANNEL.TO_CONTENT, method: 'getInfo', params: {} }),
+          20000,
+          '批量读取视频信息超时'
+        ),
+        signal
       );
-      const subs = await withTimeout(
-        chrome.tabs.sendMessage(tabId, { type: CHANNEL.TO_CONTENT, method: 'getSubtitles', params: {} }),
-        20000,
-        '批量读取字幕轨超时'
+      const subs = await abortable(
+        withTimeout(
+          chrome.tabs.sendMessage(tabId, { type: CHANNEL.TO_CONTENT, method: 'getSubtitles', params: {} }),
+          20000,
+          '批量读取字幕轨超时'
+        ),
+        signal
       );
+      if (signal && signal.aborted) throw abortError();
       const video = { ...(info && info.data ? info.data : {}) };
       video.subtitleTracks = (subs && subs.data && subs.data.subtitles) || [];
       video.url = target;
@@ -1099,7 +1109,46 @@ function normalizeBatchUrl(url) {
   return clean.toString();
 }
 
-function waitTabComplete(tabId, timeoutMs = 45000) {
+function abortError() {
+  const e = new Error('已取消');
+  e.name = 'AbortError';
+  return e;
+}
+
+// 把外部 AbortSignal 和一个 Promise 竞速：取消时立即 reject，
+// 底层 Promise 即使晚点完成也不会覆盖取消结果。
+function abortable(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(abortError());
+      return;
+    }
+    let done = false;
+    const onAbort = () => {
+      if (done) return;
+      done = true;
+      reject(abortError());
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (v) => {
+        if (done) return;
+        done = true;
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e) => {
+        if (done) return;
+        done = true;
+        signal.removeEventListener('abort', onAbort);
+        reject(e);
+      }
+    );
+  });
+}
+
+function waitTabComplete(tabId, timeoutMs = 45000, signal = null) {
   return new Promise((resolve, reject) => {
     let done = false;
     const finish = (err) => {
@@ -1107,13 +1156,22 @@ function waitTabComplete(tabId, timeoutMs = 45000) {
       done = true;
       clearTimeout(timer);
       chrome.tabs.onUpdated.removeListener(listener);
+      if (signal) signal.removeEventListener('abort', onAbort);
       if (err) reject(err);
       else resolve();
     };
+    const onAbort = () => finish(abortError());
     const timer = setTimeout(() => finish(null), timeoutMs);
     const listener = (id, info) => {
       if (id === tabId && info.status === 'complete') finish(null);
     };
+    if (signal) {
+      if (signal.aborted) {
+        finish(abortError());
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
     chrome.tabs.onUpdated.addListener(listener);
     chrome.tabs.get(tabId).then(
       (t) => {

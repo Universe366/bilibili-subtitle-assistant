@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.5.0', contentVersion: '2.5.0', modules: 19, buildTime: '2026-10-21T03:30:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.6.0', contentVersion: '2.6.0', modules: 19, buildTime: '2026-10-21T04:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.5.0', stale: false }],
-    contentVersion: '2.5.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.6.0', stale: false }],
+    contentVersion: '2.6.0'
   },
   diagnostics: {
-    extensionVersion: '2.5.0',
-    contentVersion: '2.5.0',
+    extensionVersion: '2.6.0',
+    contentVersion: '2.6.0',
     modules: 19,
-    buildTime: '2026-10-21T03:30:00Z',
+    buildTime: '2026-10-21T04:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.5.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.6.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.5\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.6\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1326,6 +1326,15 @@ async function main() {
       /export function batchCancel/.test(ctxSrc) &&
         /signal: ctl\.signal/.test(ctxSrc) &&
         /batchControllers\.get/.test(ctxSrc),
+      ''
+    );
+    check(
+      '批量解析阶段也能中止（rid + abortable）',
+      /rid: `batch_\$\{item\.id\}`/.test(ctxSrc) &&
+        /registerExternalAbort\(params\.rid\)/.test(
+          fs.readFileSync(path.join(ROOT, 'src/background/service-worker.js'), 'utf8')
+        ) &&
+        /function abortable\(/.test(fs.readFileSync(path.join(ROOT, 'src/background/service-worker.js'), 'utf8')),
       ''
     );
   }

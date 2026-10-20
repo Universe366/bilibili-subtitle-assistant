@@ -90,7 +90,7 @@ npm test              # 21 个 node 套件
 npm run test:browser  # 4 个真实浏览器套件（需要 Chrome/Edge）
 ```
 
-当前 **21 个 node 套件、1373 项断言**全部通过；浏览器套件需要本地 Chrome，未在 CI 中运行。
+当前 **21 个 node 套件、1374 项断言**全部通过；浏览器套件需要本地 Chrome，未在 CI 中运行。
 
 ## 文档
 

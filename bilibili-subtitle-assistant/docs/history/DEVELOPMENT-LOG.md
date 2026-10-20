@@ -5522,3 +5522,21 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 ### 版本与测试
 
 2.4.0 → 2.5.0。20 个 node 套件 1373 项 + 布局体检 5 项通过。
+
+---
+
+## 第一百零三轮（2.6.0）—— 批量解析阶段可中止
+
+### 改法
+
+* 客户端 `batch.resolve` 带 `rid = batch_<itemId>`；取消时通过 `cancel` RPC
+  abort 后台的 external controller。
+* 后台新增 `abortable(promise, signal)`：取消立即 reject，底层 Promise 晚完成也不覆盖。
+* `waitTabComplete` 接收 signal，取消时立刻结束等待并清理定时器/监听器。
+* 开标签页后依次检查 signal；等待加载、注入脚本、读取 getInfo/getSubtitles
+  都可中止；取消仍会走 catch 里的 remove tab。
+* 客户端 `batchCancel` 同时 abort 本地 signal 和后台 rid。
+
+### 版本与测试
+
+2.5.0 → 2.6.0。20 个 node 套件 1374 项 + 布局体检 5 项通过。
