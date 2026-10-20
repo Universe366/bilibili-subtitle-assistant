@@ -68,7 +68,23 @@ async function api(url, opts = {}) {
   return json;
 }
 
+async function findRelease(version) {
+  try {
+    return await api(`https://api.github.com/repos/${REPO}/releases/tags/v${version}`);
+  } catch (err) {
+    if (/^404\b/.test(err.message)) return null;
+    throw err;
+  }
+}
+
 async function main() {
+  if (process.argv.includes('--help')) {
+    console.log('用法：node tools/release.mjs [--create] [--update]');
+    console.log('  默认只生成 release-notes-v<版本>.md');
+    console.log('  --create  创建 Release 并上传 zip（需 GITHUB_TOKEN）');
+    console.log('  --update  版本已存在时更新 body/附件（可与 --create 同用）');
+    return;
+  }
   const version = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8')).version;
   const changelog = fs.readFileSync(path.join(EXT, 'CHANGELOG.md'), 'utf8');
   const section = extractChangelogSection(changelog, version);
@@ -90,22 +106,45 @@ async function main() {
   execFileSync('git', ['-C', ROOT, 'archive', '--format=zip', '--output', zipPath, 'HEAD:bilibili-subtitle-assistant']);
   console.log(`已打包 ${zipPath}`);
 
-  const release = await api(`https://api.github.com/repos/${REPO}/releases`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tag_name: `v${version}`,
-      target_commitish: 'master',
-      name: `v${version}`,
-      body,
-      draft: false,
-      prerelease: false
-    })
-  });
-  console.log(`已创建 Release：${release.html_url}`);
+  const update = process.argv.includes('--update');
+  let release = await findRelease(version);
+  if (release) {
+    if (!update) {
+      throw new Error(`Release v${version} 已存在；加 --update 覆盖 body/附件`);
+    }
+    release = await api(`https://api.github.com/repos/${REPO}/releases/${release.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `v${version}`, body })
+    });
+    console.log(`已更新 Release：${release.html_url}`);
+  } else {
+    release = await api(`https://api.github.com/repos/${REPO}/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tag_name: `v${version}`,
+        target_commitish: 'master',
+        name: `v${version}`,
+        body,
+        draft: false,
+        prerelease: false
+      })
+    });
+    console.log(`已创建 Release：${release.html_url}`);
+  }
+
+  const assetName = path.basename(zipPath);
+  const existingAsset = (release.assets || []).find((a) => a.name === assetName);
+  if (existingAsset) {
+    await api(`https://api.github.com/repos/${REPO}/releases/assets/${existingAsset.id}`, {
+      method: 'DELETE'
+    });
+    console.log(`已删除旧附件：${assetName}`);
+  }
 
   const asset = await api(
-    `https://uploads.github.com/repos/${REPO}/releases/${release.id}/assets?name=${encodeURIComponent(path.basename(zipPath))}`,
+    `https://uploads.github.com/repos/${REPO}/releases/${release.id}/assets?name=${encodeURIComponent(assetName)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/zip' },

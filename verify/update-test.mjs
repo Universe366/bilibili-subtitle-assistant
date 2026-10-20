@@ -54,6 +54,11 @@ check(
   ''
 );
 check('发布脚本会补安装说明', /### 安装 \/ 更新/.test(buildReleaseBody('2.0.0', '- A')), '');
+check(
+  '发布脚本支持 --update 覆盖已有 Release',
+  /--update/.test(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'tools/release.mjs'), 'utf8')),
+  ''
+);
 
 console.log(`合计 ${pass + fail} 项，失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

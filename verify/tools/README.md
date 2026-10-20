@@ -24,6 +24,8 @@ node tools/make-icons.mjs
 ```bash
 node tools/release.mjs                 # 生成 release-notes-v<版本>.md 并打印
 GITHUB_TOKEN=... node tools/release.mjs --create  # 建 Release + 上传 zip
+GITHUB_TOKEN=... node tools/release.mjs --create --update  # 已存在则更新 body/附件
 ```
 
 `--create` 要求工作区干净，token 只从环境变量读取，不写进仓库。
+`--update` 会先删除同名旧附件，再上传新 zip。

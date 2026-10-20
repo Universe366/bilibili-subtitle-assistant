@@ -5648,3 +5648,12 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 `extractChangelogSection` 与安装说明两项断言。
 
 全量 21 个 node 套件 1381 项通过。
+
+---
+
+## 第一百一十一轮（工具）—— Release 脚本支持更新
+
+* `release.mjs --update`：版本已存在时 PATCH body，而不是报 422。
+* 上传前删除同名旧附件，再传新 zip；避免「already_exists」。
+* `--help` 输出用法；`--create` 与 `--update` 可同用。
+* 补一条 `--update` 接线断言；全量 21 个 node 套件 1382 项通过。
