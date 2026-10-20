@@ -1304,6 +1304,7 @@ function searchGroup(d) {
         class: 'note',
         text:
           '做法：优先让 AI 根据视频标题 + 字幕生成 3~6 条**具体查询**（人名/产品/数字/版本）；\n' +
+          '不想多花一次小调用，可关闭上方「用 AI 生成检索词」，改用规则抽取。\n' +
           '生成失败时，再按「每次核实几条」从字幕前 / 中 / 后段抽术语兜底。\n' +
           '每项单独检索，并做**相关性过滤**（与该项毫无词重叠的结果直接丢弃）。\n\n' +
           '校对阶段：模型只用于**校正**字幕里的术语/数字/时间/因果关系错误。\n' +
@@ -1312,6 +1313,13 @@ function searchGroup(d) {
           '不会抓取整篇网页正文 —— 那样会把上万字无关内容灌进上下文，\n' +
           '把字幕挤成少数派（这是之前版本的问题）。'
       })
+    );
+    body.appendChild(
+      checkbox(
+        d.search.aiQueryGeneration !== false,
+        (v) => { d.search.aiQueryGeneration = v; markDirty(); },
+        '用 AI 生成检索词（更准，但每次总结多一次小模型调用；关闭则只用规则抽取）'
+      )
     );
     body.appendChild(
       field(

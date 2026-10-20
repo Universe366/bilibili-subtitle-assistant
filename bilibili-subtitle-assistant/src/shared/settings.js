@@ -648,6 +648,8 @@ export function defaultSettings() {
       verifyOnSummary: true,
       // 每次从字幕里抽多少条去核实。12 条覆盖更广，但更慢、也更容易消耗检索额度。
       verifyItemCount: 12,
+      // 是否让 AI 根据标题+字幕生成检索词；关闭则只用规则抽取（省一次小调用）
+      aiQueryGeneration: true,
       // 用户补充的核实查询（每行一条），会与 AI 生成的查询合并
       extraVerifyQueries: ''
     },

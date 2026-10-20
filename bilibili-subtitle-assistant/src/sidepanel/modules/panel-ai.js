@@ -1013,13 +1013,15 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
       1,
       Math.min(16, Number(settings.search?.verifyItemCount || settings.optimize?.verifyItemCount || 12))
     );
-    // 优先让 AI 根据标题+字幕生成「具体查询」；失败/空结果再退回规则抽取。
+    // 优先让 AI 根据标题+字幕生成「具体查询」；关闭或失败/空结果再退回规则抽取。
     let items = [];
-    try {
-      items = await buildSearchQueries(lines, settings, st.video, proofRid);
-    } catch (err) {
-      if (err && err.name === 'AbortError') throw err;
-      /* 生成查询失败就回退到规则抽取 */
+    if (settings.search?.aiQueryGeneration !== false) {
+      try {
+        items = await buildSearchQueries(lines, settings, st.video, proofRid);
+      } catch (err) {
+        if (err && err.name === 'AbortError') throw err;
+        /* 生成查询失败就回退到规则抽取 */
+      }
     }
     if (!items.length) items = extractVerifyItems(lines, verifyLimit);
     // 用户在设置里填的额外查询：原样补进来，方便纠正 AI 漏掉的关键实体。

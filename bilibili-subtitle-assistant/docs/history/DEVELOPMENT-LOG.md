@@ -5585,3 +5585,18 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 ### 版本与测试
 
 2.7.1 → 2.7.2。20 个 node 套件 1372 项 + 布局体检 5 项通过。
+
+---
+
+## 第一百零七轮（2.8.0）—— AI 生成检索词开关
+
+给不想多花一次小调用/多等一次往返的用户一个选择：
+
+* `settings.search.aiQueryGeneration` 默认 `true`。
+* 设置页加勾选框；关闭后 `proofreadSubtitles` 不再调用 `buildSearchQueries`，
+  直接走 `extractVerifyItems` 规则抽取。
+* 生成失败的回退逻辑不变，与开关无关。
+
+### 版本与测试
+
+2.7.2 → 2.8.0。20 个 node 套件 1375 项 + 布局体检 5 项通过。
