@@ -21,13 +21,14 @@ node method-contract-test.mjs      # 三层方法白名单一致性
 node m4a-encode-test.mjs           # 真实浏览器里的 M4A 编码
 node ffmpeg-remux-test.mjs         # FFmpeg.wasm 封装重传
 node mp4-structure-test.mjs        # MP4 结构正确性
+node csp-ffmpeg-test.mjs           # CSP 等约束下的 FFmpeg 加载
 node patch-ffmpeg-vendor.mjs       # FFmpeg 补丁与 CSP 校验
 node mcp-test.mjs                  # MCP 客户端 + 工具调用循环
 node skills-test.mjs               # SKILL.md 解析与导入
 node keyless-search-test.mjs       # 免费引擎回退链/缓存/注入防护
 node reasoning-test.mjs            # 思维链与正文分离
 node update-test.mjs               # 版本比较 + 更新检查接线
-node checklist.js                  # 需求文档功能清单逐项核对
+node checklist.js                  # 功能清单逐项核对
 ```
 
 | 文件 | 覆盖内容 |
@@ -43,7 +44,7 @@ node checklist.js                  # 需求文档功能清单逐项核对
 | `bg-test.js` | chrome/fetch 桩直接加载 `service-worker.js`：RPC 路由、密钥掩码与「留空不改动」、字幕下载、音轨 Range 分块、SSE 流式、401/429/404 分类、检索平台、候选标签页降级、诊断不回传明文密钥 |
 | `content-test.js` | jsdom 模拟 B 站页面：主环境桥读 `__INITIAL_STATE__`/`player` → DOM 通道 → 隔离环境；分 P/cid 签名、字幕轨协议补全、音轨选择、版本握手、播放器按钮、画面字幕、跟随播放、pushState 检测 |
 | `panel-test.js` | 面板渲染、布局、Markdown 安全渲染、导出 6×4、时长校验分档、重叠去重、自适应切片、规则导入导出、密钥处理、状态持久化、设置页 12 组、向导、浮层、快捷键 |
-| `checklist.js` | 按 `功能需求.md` 第十三章逐项在代码里找实现，输出 `[x]/[ ]` 清单 |
+| `checklist.js` | 按维护中的功能清单逐项在代码里找实现，输出 `[x]/[ ]` 清单 |
 
 > `bundle.js` 依赖 `test-entry.js`（测试专用入口，把面板与自检挂钩打进同一个 IIFE）。
 > 扩展内的 `src/sidepanel/selfcheck.js` 会把内部模块与面板 API 挂到 `window.__BSUB_SELFCHECK__`，供测试断言调用。

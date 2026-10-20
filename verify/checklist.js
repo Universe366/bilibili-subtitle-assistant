@@ -1,4 +1,4 @@
-// 按需求文档第十三章「功能清单」逐项自检：每项都要能在代码里找到对应实现。
+// 按维护中的功能清单逐项自检：每项都要能在代码里找到对应实现。
 // 输出为勾选清单，便于人工复核。
 const fs = require('fs');
 const path = require('path');
@@ -126,7 +126,7 @@ for (const [g, name, ok] of items) {
 
 let total = 0;
 let passed = 0;
-console.log('===== 需求文档第十三章「功能清单」逐项自检 =====\n');
+console.log('===== 功能清单逐项自检 =====\n');
 for (const [g, list] of groups) {
   console.log(`【${g}】`);
   for (const it of list) {

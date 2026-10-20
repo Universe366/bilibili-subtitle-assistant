@@ -1,15 +1,16 @@
 {
-  "name": "verify",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "name": "bilibili-subtitle-assistant-verify",
+  "version": "2.0.0",
+  "private": true,
+  "description": "B站字幕助手的自动化验证套件（不属于扩展运行时）",
   "type": "commonjs",
+  "scripts": {
+    "bundle": "node bundle.js",
+    "test": "node bundle.js && node panel-test.js && node bg-test.js && node content-test.js && node flow2.js && node harvest-test.mjs && node bili-test.js && node sniff-test.mjs && node asr-test.mjs && node asr-e2e-test.mjs && node method-contract-test.mjs && node bridge-transparency-test.mjs && node patch-ffmpeg-vendor.mjs && node mcp-test.mjs && node skills-test.mjs && node keyless-search-test.mjs && node reasoning-test.mjs && node checklist.js && node import-check.mjs && node static-check.mjs && node layout-check.mjs && node update-test.mjs",
+    "test:browser": "node csp-ffmpeg-test.mjs && node ffmpeg-remux-test.mjs && node m4a-encode-test.mjs && node mp4-structure-test.mjs"
+  },
+  "author": "Universe366",
+  "license": "MIT",
   "dependencies": {
     "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
