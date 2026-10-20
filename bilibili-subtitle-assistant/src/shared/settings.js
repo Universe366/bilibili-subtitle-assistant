@@ -653,9 +653,7 @@ export function defaultSettings() {
     summary: {
       useVideoMeta: true,
       // 评论默认关闭 —— 需要多跑一次接口，且评论区噪声较大，让用户自己决定
-      useComments: false,
-      // 总结末尾是否附上「联网核对来源」（编号与正文里的 [来源 N] 对应）
-      attachSources: true
+      useComments: false
     },
     exportCfg: {
       format: 'srt',

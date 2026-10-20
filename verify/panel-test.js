@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '1.63.11', contentVersion: '1.63.11', modules: 17, buildTime: '2026-10-20T18:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '1.63.12', contentVersion: '1.63.12', modules: 17, buildTime: '2026-10-20T19:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.11', stale: false }],
-    contentVersion: '1.63.11'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '1.63.12', stale: false }],
+    contentVersion: '1.63.12'
   },
   diagnostics: {
-    extensionVersion: '1.63.11',
-    contentVersion: '1.63.11',
+    extensionVersion: '1.63.12',
+    contentVersion: '1.63.12',
     modules: 17,
-    buildTime: '2026-10-20T18:00:00Z',
+    buildTime: '2026-10-20T19:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '1.63.11', manifest_version: 3 }),
+      getManifest: () => ({ version: '1.63.12', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.11 · 17 模块 · 2026-10-20/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 1\.63\.12 · 17 模块 · 2026-10-20/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -898,21 +898,13 @@ async function main() {
       }
       const lateItems = V.extractVerifyItems(longLines, 8);
       check('长字幕分段抽样能覆盖到结尾术语', lateItems.some((x) => /2027|512/.test(x)), JSON.stringify(lateItems));
-
-      // 总结阶段的证据块：允许引用 + 提示待核实，编号与末尾来源一致
-      const sample = [{ item: 'DeepSeek V4', evidence: [{ title: '官方发布', url: 'https://a.com/1', text: '摘要' }, { title: '第二条', url: 'https://a.com/2', text: 'E2' }] }];
-      const summaryBlock = V.summaryVerifyBlock(sample);
-      const summaryFooter = V.summarySourcesFooter(sample);
-      check('总结证据块带来源编号', /\[来源 1\]/.test(summaryBlock), summaryBlock.slice(0, 200));
-      check('总结证据块允许引用/提示待核实', /\[来源 N\]/.test(summaryBlock) && /待核实/.test(summaryBlock), '');
-      check('总结证据块每个条目只用第一条证据', !/\[来源 2\]/.test(summaryBlock), summaryBlock.slice(0, 200));
-      check('总结末尾来源列表编号一致', /\[来源 1\]/.test(summaryFooter) && /联网核对来源/.test(summaryFooter), '');
-      check('空证据返回空串', V.summaryVerifyBlock([]) === '' && V.summarySourcesFooter([]) === '', '');
+      const noisy = V.extractVerifyItems([{ text: '这是一个非常便宜、正式发布的产品' }], 8);
+      check('只出现一次的中文泛词不会成为核实项', !noisy.includes('非常便宜') && !noisy.includes('正式发布'), JSON.stringify(noisy));
     }
 
     const defaults = api.settingsLib.defaultSettings();
     check('默认每次核实 12 条', defaults.search.verifyItemCount === 12, String(defaults.search.verifyItemCount));
-    check('默认在总结末尾附联网来源', defaults.summary.attachSources === true, String(defaults.summary.attachSources));
+    check('不再有「总结末尾附来源」配置', defaults.summary.attachSources === undefined, String(defaults.summary.attachSources));
 
     // 能力自述：未检索时不得承诺「会附参考资料」
     const B = mod.buildCapabilityBlock;
@@ -990,16 +982,20 @@ async function main() {
       ''
     );
     check(
-      '总结阶段拿到同一批联网核对证据',
-      /const webEvidence = summaryVerifyBlock\(webVerify\)/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
-        /webEvidence,/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      '总结阶段会把证据整理成 0~3 条外部补充',
+      /async function buildSummarySupplement\(/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /const webSupplementBlock =/.test(srcOf('sidepanel/modules/panel-ai.js')),
       ''
     );
     check(
-      '总结末尾附确定性来源列表',
-      /const sourcesFooter =/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
-        /summarySourcesFooter\(webVerify\)/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
-        /sourcesFooter \?/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      '总结不再列来源 / 编号 / 待核实',
+      !/summaryVerifyBlock|summarySourcesFooter|sourcesFooter/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /不要单独列出来源/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      ''
+    );
+    check(
+      '总结不再注入字幕更正清单',
+      !/本次字幕已校对并更正/.test(srcOf('sidepanel/modules/panel-ai.js')),
       ''
     );
     check(
