@@ -2186,3 +2186,421 @@ mark.hit {
     min-width: 0;
   }
 }
+
+/* ================================================================== */
+/* 视觉升级（2.1）：更柔和的层次、卡片与交互反馈                      */
+/* 只覆盖视觉，不改任何布局/尺寸约束；稳定性 #2 的 flex 链保持不变。  */
+/* ================================================================== */
+
+:root {
+  --radius: 12px;
+  --radius-sm: 9px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 14px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 10px 30px rgba(16, 24, 40, 0.1);
+  --ring: 0 0 0 3px rgba(251, 114, 153, 0.18);
+}
+
+:root[data-theme='dark'] {
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 18px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 14px 36px rgba(0, 0, 0, 0.45);
+  --ring: 0 0 0 3px rgba(251, 114, 153, 0.24);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='system'] {
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 18px rgba(0, 0, 0, 0.22);
+    --shadow-md: 0 14px 36px rgba(0, 0, 0, 0.45);
+    --ring: 0 0 0 3px rgba(251, 114, 153, 0.24);
+  }
+}
+
+/* 顶栏：一条品牌色细线 + 轻微渐变，让顶部不再是一块纯色 */
+#topbar {
+  position: relative;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
+  border-bottom-color: var(--line);
+}
+
+#topbar::before {
+  content: '';
+  display: block;
+  height: 3px;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+  opacity: 0.9;
+}
+
+.topbar-row {
+  padding: 10px 12px 8px;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 12px rgba(251, 114, 153, 0.28);
+}
+
+.brand-title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* 分段标签：选中项用品牌渐变，而不是一块白底 */
+.tabs {
+  margin: 0 10px 10px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  border-radius: 12px;
+}
+
+.tab {
+  padding: 6px 8px;
+  border-radius: 9px;
+  font-weight: 500;
+}
+
+body[data-tab='subtitles'] .tab[data-tab-btn='subtitles'],
+body[data-tab='ai'] .tab[data-tab-btn='ai'],
+body[data-tab='settings'] .tab[data-tab-btn='settings'] {
+  background: linear-gradient(135deg, var(--brand), #ff8fb1);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 3px 10px rgba(251, 114, 153, 0.28);
+}
+
+/* 按钮：默认轻边框；主按钮用渐变和柔和投影 */
+.btn {
+  border-radius: 9px;
+  padding: 4px 10px;
+  border-color: var(--line);
+  background: var(--bg);
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.03);
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--brand), #f25f86);
+  box-shadow: 0 5px 14px rgba(251, 114, 153, 0.28);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--brand-strong), #e94f78);
+  border-color: transparent;
+  box-shadow: 0 7px 18px rgba(251, 114, 153, 0.34);
+}
+
+.btn-danger {
+  background: var(--bg);
+  border-color: var(--danger);
+}
+
+.icon-btn {
+  min-width: 30px;
+  padding: 4px 7px;
+  border-radius: 8px;
+}
+
+/* 输入：更柔和的底色、更明显的聚焦环 */
+.input {
+  padding: 6px 10px;
+  border-radius: 9px;
+  border-color: var(--line);
+  background: var(--bg);
+}
+
+.input:hover {
+  border-color: var(--line-strong);
+}
+
+.input:focus {
+  border-color: var(--brand);
+  box-shadow: var(--ring);
+}
+
+.field-label {
+  font-weight: 600;
+  font-size: calc(var(--fs) * 0.96);
+}
+
+/* 设置分组：变成独立卡片，组与组之间有呼吸感 */
+.settings .group {
+  margin: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: visible;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings .group-head {
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 14px;
+}
+
+.settings .group-head:hover {
+  background: var(--bg-hover);
+}
+
+.settings .group-body {
+  padding: 10px 12px 16px;
+  border-radius: 0 0 14px 14px;
+}
+
+/* 区块标题：左侧品牌色短条，去掉沉重的整条下划线 */
+.section-title {
+  border-bottom: none;
+  padding-left: 10px;
+  position: relative;
+  margin: 16px 0 8px;
+  font-size: calc(var(--fs) * 1.02);
+  letter-spacing: 0.1px;
+}
+
+.section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.25em;
+  bottom: 0.25em;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--brand), var(--accent));
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
+/* 提示块：浅底 + 左侧强调，不再像一块纯文字 */
+.note {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: 9px;
+  background: var(--bg-soft);
+  color: var(--fg-soft);
+  line-height: 1.65;
+}
+
+/* 总结/对话：卡片化，但保留原有滚动与流式状态 */
+.summary-box {
+  padding: 12px 13px;
+  border-radius: 14px;
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+.summary-box[data-streaming='true'] {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
+.chat-list {
+  gap: 10px;
+}
+
+.msg {
+  padding: 9px 12px;
+  border-radius: 14px;
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+.msg[data-role='user'] {
+  background: linear-gradient(135deg, var(--brand-soft), var(--bg));
+  border-color: transparent;
+}
+
+.msg[data-role='assistant'] {
+  background: var(--bg);
+}
+
+/* 字幕行：更松的间距 + 选中时渐变高亮 */
+.subtitle-row {
+  padding: 6px 12px;
+  border-left-width: 2px;
+}
+
+.subtitle-row:hover {
+  background: var(--bg-hover);
+}
+
+.subtitle-row[data-active='true'] {
+  background: linear-gradient(90deg, var(--brand-soft), transparent 80%);
+}
+
+.st-time {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--bg-sunken);
+}
+
+/* 任务与提示：小卡片、柔和进度条 */
+.jobs {
+  padding: 10px 12px;
+  background: var(--bg-soft);
+}
+
+.job {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.bar {
+  height: 6px;
+}
+
+.alert {
+  margin: 8px 10px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--bg-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+.alert.error { background: var(--danger-soft); }
+.alert.warn { background: var(--warn-soft); }
+.alert.ok { background: var(--ok-soft); }
+
+/* 悬浮层与菜单 */
+.overlay-card {
+  border-radius: 18px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--line);
+}
+
+.toast {
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.menu-panel {
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--line);
+}
+
+.menu-item {
+  border-radius: 8px;
+}
+
+.pill:not(.pill-brand):not(.pill-warn) {
+  border-color: transparent;
+  background: var(--bg-sunken);
+}
+
+.kv {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 空状态：留白更足 */
+.empty {
+  padding: 28px 16px;
+}
+
+.empty-title {
+  font-size: calc(var(--fs) * 1.14);
+  letter-spacing: 0.2px;
+}
+
+/* 键盘可见焦点 */
+.btn:focus-visible,
+.tab:focus-visible,
+.input:focus-visible,
+.tag:focus-visible,
+.check input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* 滚动条：细、圆、低对比 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: var(--line-strong);
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-faint);
+  background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* 按钮变体的顺序修正：基础 .btn 覆盖必须让位给尺寸/语义变体 */
+.btn-sm {
+  padding: 2px 7px;
+  font-size: calc(var(--fs) * 0.88);
+}
+
+.btn-lg {
+  padding: 8px 14px;
+  font-size: var(--fs);
+}
+
+.btn-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-accent:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  filter: brightness(1.08);
+}
+
+.btn-danger {
+  background: var(--bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
