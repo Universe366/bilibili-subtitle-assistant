@@ -1,17 +1,17 @@
 # Edge Add-ons 提交材料
 
-> 这是提交到 Microsoft Partner Center 时可以直接复制的内容。
+> 当前发布方式以 **GitHub Releases** 为主；本文档保留，等以后要上 Edge 商店时直接使用。
 > 官方流程：<https://learn.microsoft.com/en-us/microsoft-edge/extensions/publish/publish-extension>
 
 ## 1. 包
 
-- 版本：**1.64.1**
+- 版本：**1.64.2**
 - 包内根目录必须直接有 `manifest.json`
 - 不要包含 `verify/`、`.git/`、`node_modules/`
 - 构建：
 
 ```bash
-git -C repo archive --format=zip -o edge-1.64.1.zip HEAD:bilibili-subtitle-assistant
+git -C repo archive --format=zip -o edge-1.64.2.zip HEAD:bilibili-subtitle-assistant
 ```
 
 ## 2. 商店文案（中文，≥250 字符）
@@ -59,7 +59,7 @@ git -C repo archive --format=zip -o edge-1.64.1.zip HEAD:bilibili-subtitle-assis
   - Website content（B 站页面、字幕、评论、音轨）
   - Authentication information（用户自备的 API Key，仅本地保存并直连服务商）
   - 不收集位置、浏览历史、个人身份信息，不出售数据
-- **Privacy policy URL**：`https://gist.github.com/Universe366/ec06f35cf9e74238d5085b3b1bfc6ad6`（公开 gist；项目仓库可以保持 private）
+- **Privacy policy URL**：`https://gist.github.com/Universe366/ec06f35cf9e74238d5085b3b1bfc6ad6`（公开 gist，仓库 public/private 都能用）
 
 ## 5. 商店素材清单
 
@@ -82,11 +82,9 @@ git -C repo archive --format=zip -o edge-1.64.1.zip HEAD:bilibili-subtitle-assis
 
 ## 7. 更新
 
-商店版由 Edge 自动更新，**不需要 GitHub 公开，也不需要扩展内更新检查**。发布新版本时：
+商店版由 Edge 自动更新。发布新版本时：
 
 1. 递增 `manifest.json` 的 `version`
 2. 重新打包
 3. Partner Center → Packages → 上传新 zip
 4. 提交认证
-
-用户安装的是商店版时，认证通过后 Edge 会自动推送更新；GitHub 仓库可以一直保持 private。

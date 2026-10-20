@@ -5326,30 +5326,22 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 
 ---
 
-## 第九十三轮（1.64.1）—— 仓库保持 private，更新交给 Edge 商店
+## 第九十四轮（1.64.2）—— 放弃 Edge 商店，回到 GitHub Releases
 
 ### 背景
 
-1.64.0 为了让匿名更新检查可用，把仓库改成了 public。但这违背了作者意愿：
-**不想公开 GitHub 仓库，只希望用户通过 Edge 官方商店更新。**
+尝试走 Edge 商店，但 Partner Center 的注册/入口不顺利，作者决定不上了；
+改为 **GitHub 公开仓库 + Releases** 分发与更新。
 
-### 结论
+### 改动
 
-* Edge 商店版由浏览器自动更新，完全不依赖 GitHub 是否公开；
-* 因此把仓库恢复为 **private**；
-* 移除扩展内置的 GitHub 更新检查（公开仓库时才有意义，private 下只会 404）：
-  * 删除 `src/background/update.js`、`src/shared/version.js`；
-  * 删除 `update.check` / `update.state` RPC 与设置页「版本更新」区块；
-  * 删除 `alarms` 权限与 `update` 设置；
-  * 构建模块 19 → 17。
-
-### 保留
-
-* `content_scripts.matches` 收窄到 `*://*.bilibili.com/*`（对商店审核与权限提示都有好处）；
-* `PRIVACY.md` 与 `docs/EDGE-STORE.md`；
-* 隐私政策已发布为**公开 gist**，项目仓库无需公开：
-  `https://gist.github.com/Universe366/ec06f35cf9e74238d5085b3b1bfc6ad6`
+* 项目仓库从 private 改回 **public**；
+* 恢复 1.64.0 的 GitHub 更新检查（`update.js` / `version.js` / `update-test.mjs`）：
+  * 每天自动检查、手动检查、24 小时缓存、版本说明、打开下载页；
+* 版本 1.64.0 → **1.64.2**（1.64.1 是 private/Edge 方向的中间提交，未发布）；
+* `docs/EDGE-STORE.md` 保留，但注明 Edge 上架暂缓；
+* 隐私政策仍用公开 gist，GitHub 公开后仓库内的 `PRIVACY.md` 也可访问。
 
 ### 版本与测试
 
-1.64.0 → 1.64.1。删除 `update-test.mjs`；全量 20 个 node 套件、1339 项断言通过。
+1.64.0 → 1.64.2。恢复 `update-test.mjs`；全量 21 个 node 套件、1356 项断言通过。

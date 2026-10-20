@@ -56,7 +56,9 @@ API Key 不会同步到其它设备，也不会被开发者读取。你可以随
 
 ## 6. 联系方式
 
-如有隐私相关问题，请通过 Microsoft Edge Add-ons 商店列表页提供的“支持”联系方式与我们联系。
+如有隐私相关问题，请在本仓库提交 Issue：
+
+https://github.com/Universe366/bilibili-subtitle-assistant/issues
 
 ---
 
@@ -64,4 +66,4 @@ API Key 不会同步到其它设备，也不会被开发者读取。你可以随
 
 This extension stores settings, API keys, subtitle caches, history and temporary audio chunks locally in your browser. It sends only the data required for a feature you trigger (Bilibili video metadata/subtitles/audio, and prompts/subtitles to the AI/ASR/search provider you configure). The developer operates no server that receives user data, and does not collect, sell or share personal data. API keys never leave your device except when sent directly to the provider you selected. You can delete all local data by clearing caches in the settings or uninstalling the extension.
 
-Contact: use the support contact listed on the Microsoft Edge Add-ons store page.
+Contact: https://github.com/Universe366/bilibili-subtitle-assistant/issues

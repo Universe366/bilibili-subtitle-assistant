@@ -1,7 +1,7 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '1.64.1';
+export const VERSION = '1.64.2';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
@@ -108,6 +108,9 @@ export const METHOD_TIMEOUT = {
   'bili.comments': 20000,
   // 构建信息（本地，极快）
   'build.info': 8000,
+  // 更新检查：GitHub API 正常很快，网络差时给 25 秒
+  'update.check': 25000,
+  'update.state': 8000,
   // 让 content script 重新注入 / 刷新
   'page.refresh': 20000,
   'page.reinject': 20000,
