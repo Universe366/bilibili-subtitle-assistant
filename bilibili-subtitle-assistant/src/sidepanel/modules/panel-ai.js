@@ -1058,8 +1058,8 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
         return {
           q,
           count: ev.length,
-          titles: ev.slice(0, 2).map((e) => e.title),
-          items: ev.slice(0, 2).map((e) => ({ title: e.title, url: e.url }))
+          titles: ev.slice(0, 3).map((e) => e.title),
+          items: ev.slice(0, 3).map((e) => ({ title: e.title, url: e.url }))
         };
       })
     });
