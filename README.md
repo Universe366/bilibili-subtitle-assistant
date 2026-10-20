@@ -65,6 +65,8 @@ node panel-test.js   # 以及其他套件，见 verify/README.md
 | [`bilibili-subtitle-assistant/CHANGELOG.md`](bilibili-subtitle-assistant/CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
 | [`bilibili-subtitle-assistant/AGENTS.md`](bilibili-subtitle-assistant/AGENTS.md) | 给 AI / 贡献者：环境硬约束、踩坑、排查方法论 |
 | [`bilibili-subtitle-assistant/docs/DEVELOPMENT-LOG.md`](bilibili-subtitle-assistant/docs/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘 |
+| [`PRIVACY.md`](PRIVACY.md) | 隐私政策（Edge 商店提交用） |
+| [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md) | Edge 商店文案、权限理由与认证备注 |
 | [`verify/README.md`](verify/README.md) | 测试套件说明与运行方式 |
 
 ## 说明

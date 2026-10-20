@@ -299,6 +299,8 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 | 文件 | 内容 |
 |---|---|
 | [`CHANGELOG.md`](CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
+| [`docs/EDGE-STORE.md`](docs/EDGE-STORE.md) | Edge 商店提交材料：文案、权限理由、隐私表单、认证备注 |
+| [`../PRIVACY.md`](../PRIVACY.md) | 隐私政策 |
 | [`AGENTS.md`](AGENTS.md) | **给后续 AI / 贡献者**：环境硬约束（CSP、沙箱边界、service worker 生命周期）、已踩过的坑、排查方法论 |
 | [`docs/DEVELOPMENT-LOG.md`](docs/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
 | [`../verify/README.md`](../verify/README.md) | 自动化测试套件：25 个套件（含静态体检 / 布局体检 / 导入体检 / 更新检查），以及每个套件覆盖什么 |
