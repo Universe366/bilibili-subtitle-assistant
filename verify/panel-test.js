@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.7.0', contentVersion: '2.7.0', modules: 19, buildTime: '2026-10-21T04:30:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.7.1', contentVersion: '2.7.1', modules: 19, buildTime: '2026-10-21T05:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.7.0', stale: false }],
-    contentVersion: '2.7.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.7.1', stale: false }],
+    contentVersion: '2.7.1'
   },
   diagnostics: {
-    extensionVersion: '2.7.0',
-    contentVersion: '2.7.0',
+    extensionVersion: '2.7.1',
+    contentVersion: '2.7.1',
     modules: 19,
-    buildTime: '2026-10-21T04:30:00Z',
+    buildTime: '2026-10-21T05:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.7.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.7.1', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.7\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.7\.1 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -881,15 +881,6 @@ async function main() {
         V.isRelevantToQuery({ title: 'DeepSeek V4 正式发布', snippet: '参数量 6710 亿' }, 'DeepSeek V4') === true, '');
       check('空标题空摘要判为不相关',
         V.isRelevantToQuery({ title: '', snippet: '' }, 'DeepSeek V4') === false, '');
-
-      // 核实块必须明确要求「只校正、不要转述」
-      const block = V.verifyContextBlock([
-        { item: 'DeepSeek V4', evidence: [{ title: 'T', url: 'https://a.com', text: 'E' }] }
-      ]);
-      check('核实块要求只用于校正', /只用于\*\*校正\*\*/.test(block), block.slice(0, 160));
-      check('核实块禁止转述网页', /不要\*\*把证据里的内容写成总结/.test(block), '');
-      check('核实块不叫「参考资料」（避免模型转述）', !/【联网检索到的参考资料】/.test(block), '');
-      check('空核实结果返回空串', V.verifyContextBlock([]) === '', '');
 
       // 长字幕要按前/中/后段抽样，不能只取开头反复出现的术语
       const longLines = [];

@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.7.1（2026-10-21）
+
+### 清理
+- 删除生产代码已不用的 `verifyContextBlock()`（连同它的 `wrapUntrusted` 依赖和 4 条测试断言）。
+- 功能无变化。
+
 ## 2.7.0（2026-10-21）
 
 ### 新增
