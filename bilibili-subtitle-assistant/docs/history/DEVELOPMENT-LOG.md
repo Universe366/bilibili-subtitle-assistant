@@ -5632,3 +5632,19 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 ### 版本与测试
 
 2.9.0 → 2.10.0。20 个 node 套件 1379 项 + 布局体检 5 项通过。
+
+---
+
+## 第一百一十轮（工具）—— 发布说明/Release 脚本
+
+新增 `verify/tools/release.mjs`：
+
+* 从 `CHANGELOG.md` 提取当前 `manifest.json` 版本的段落；
+* 生成 `release-notes-v<版本>.md`，并补上统一的安装/更新步骤；
+* `--create` 会检查工作区干净、`git archive` 打包、创建 Release、上传 zip；
+* token 只从 `GITHUB_TOKEN` 读，不落盘；未设置时提示，不会把凭据写进仓库。
+
+以后发版不用再手写 release body，也少一次复制粘贴出错。测试补了
+`extractChangelogSection` 与安装说明两项断言。
+
+全量 21 个 node 套件 1381 项通过。

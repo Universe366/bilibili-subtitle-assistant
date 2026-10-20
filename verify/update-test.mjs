@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compareVersions, normalizeVersion, isNewerVersion } from '../bilibili-subtitle-assistant/src/shared/version.js';
+import { extractChangelogSection, buildReleaseBody } from './tools/release.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'bilibili-subtitle-assistant');
 let pass = 0;
@@ -47,6 +48,12 @@ check('设置页有下载页按钮', /'打开下载页'/.test(uiSrc), '');
 check('设置页有跳过此版本按钮', /'跳过此版本'/.test(uiSrc), '');
 check('设置页显示新版本说明', /新版本说明/.test(uiSrc), '');
 check('设置页有自动检查开关', /自动检查更新/.test(uiSrc), '');
+check(
+  '发布脚本能从 CHANGELOG 提取对应版本',
+  extractChangelogSection('## 2.0.0（2026-01-01）\n- A\n\n## 1.9.0（2026-01-01）\n- B', '2.0.0') === '- A',
+  ''
+);
+check('发布脚本会补安装说明', /### 安装 \/ 更新/.test(buildReleaseBody('2.0.0', '- A')), '');
 
 console.log(`合计 ${pass + fail} 项，失败 ${fail} 项`);
 process.exit(fail ? 1 : 0);

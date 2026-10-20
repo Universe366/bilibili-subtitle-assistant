@@ -33,3 +33,7 @@ verify/probe-*.mjs
 verify/dbg*.mjs
 verify/calc*.mjs
 verify/*-probe*.js
+
+# 发布脚本生成的说明与打包产物
+release-notes-v*.md
+bilibili-subtitle-assistant-v*.zip
