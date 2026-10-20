@@ -199,6 +199,21 @@ export function render() {
   renderInput();
 }
 
+// 估算一次总结大概要几次检索 / AI 调用，给用户一个额度与耗时预期。
+// 只算主流程，不含长视频分段合并的额外调用。
+export function estimateSummaryCost(settings, opts = {}) {
+  const s = (settings && settings.search) || {};
+  const webCapable = opts.webCapable !== false;
+  if (!webCapable || s.verifyOnSummary === false) {
+    return { searches: 0, aiCalls: 1, label: '约 1 次 AI 调用（未启用联网校对）' };
+  }
+  const aiQuery = s.aiQueryGeneration !== false;
+  const n = Math.max(1, Math.min(16, Number(s.verifyItemCount) || 12));
+  return aiQuery
+    ? { searches: 6, aiCalls: 4, label: '约 3~6 次检索 + 4 次 AI 调用' }
+    : { searches: n, aiCalls: 3, label: `约 ${n} 次检索 + 3 次 AI 调用` };
+}
+
 function renderToolbar() {
   const st = store.get();
   const bar = state.root.querySelector('#ai-toolbar');
@@ -217,6 +232,7 @@ function renderToolbar() {
   const searchCfg = (st.settings && st.settings.search) || {};
   const proofreadReady = searchCfg.verifyOnSummary !== false && searchCapabilityOf(st.settings || {}).webCapable;
   const willProofread = hasLines && proofreadReady;
+  const cost = estimateSummaryCost(st.settings || {}, { webCapable: proofreadReady });
   bar.appendChild(
     button(state.summaryStreaming ? '生成中…' : willProofread ? '生成总结（先校对）' : '生成总结', () => generateSummary(), {
       small: true,
@@ -224,7 +240,7 @@ function renderToolbar() {
       disabled: !hasLines || state.streaming,
       title: hasLines
         ? willProofread
-          ? '先联网校对字幕（术语/逻辑/时间/事实），再用更正后的字幕生成总结；想跳过请点「⚡ 快速总结」'
+          ? `先联网校对字幕（术语/逻辑/时间/事实），再用更正后的字幕生成总结；${cost.label}（不含长视频分段合并）。想跳过请点「⚡ 快速总结」`
           : '直接用现有字幕生成总结（未开启联网校对，或检索不可用）'
         : '需要先有字幕'
     })
@@ -286,9 +302,20 @@ function renderSummary() {
   setBoolAttr(host, 'data-streaming', false);
   if (!st.summary) {
     host.textContent = '';
+    const hasLines = (st.subtitles || []).length > 0;
     host.appendChild(
-      h('div', { class: 'empty', text: (st.subtitles || []).length ? '还没有总结。点上方「生成总结」。' : '「生成总结」需要先有字幕；但下方对话可以直接提问，不需要字幕。' })
+      h('div', { class: 'empty', text: hasLines ? '还没有总结。点上方「生成总结」。' : '「生成总结」需要先有字幕；但下方对话可以直接提问，不需要字幕。' })
     );
+    if (hasLines) {
+      const cap = searchCapabilityOf(st.settings || {});
+      const cost = estimateSummaryCost(st.settings || {}, { webCapable: cap.webCapable });
+      host.appendChild(
+        h('div', {
+          class: 'note',
+          text: `按当前设置：${cost.label}。实际取决于字幕长度与检索结果；长视频分段合并会再多几次调用。`
+        })
+      );
+    }
     return;
   }
   host.textContent = '';
