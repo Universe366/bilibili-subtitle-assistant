@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.1.0', contentVersion: '2.1.0', modules: 19, buildTime: '2026-10-21T01:30:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.2.0', contentVersion: '2.2.0', modules: 19, buildTime: '2026-10-21T02:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.1.0', stale: false }],
-    contentVersion: '2.1.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.2.0', stale: false }],
+    contentVersion: '2.2.0'
   },
   diagnostics: {
-    extensionVersion: '2.1.0',
-    contentVersion: '2.1.0',
+    extensionVersion: '2.2.0',
+    contentVersion: '2.2.0',
     modules: 19,
-    buildTime: '2026-10-21T01:30:00Z',
+    buildTime: '2026-10-21T02:00:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.1.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.2.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.1\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.2\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -905,6 +905,18 @@ async function main() {
     const defaults = api.settingsLib.defaultSettings();
     check('默认每次核实 12 条', defaults.search.verifyItemCount === 12, String(defaults.search.verifyItemCount));
     check('不再有「总结末尾附来源」配置', defaults.summary.attachSources === undefined, String(defaults.summary.attachSources));
+
+    // AI 生成检索词的解析：JSON / 编号行 / 过滤
+    const Q = api.panelAi.parseSearchQueries;
+    check('检索词解析：JSON 数组', JSON.stringify(Q('["DeepSeek V4 发布时间","6710 亿参数量"]')) === JSON.stringify(['DeepSeek V4 发布时间', '6710 亿参数量']), '');
+    check('检索词解析：编号行 + 去重', JSON.stringify(Q('1. DeepSeek V4\n2. 6710 亿参数量\n3. DeepSeek V4')) === JSON.stringify(['DeepSeek V4', '6710 亿参数量']), '');
+    check('检索词解析：过滤 URL / 空话', Q('["https://a.com", "没有", "DeepSeek V4"]').length === 1, JSON.stringify(Q('["https://a.com", "没有", "DeepSeek V4"]')));
+    check(
+      '校对优先用 AI 生成查询，失败回退规则',
+      /buildSearchQueries\(lines, settings/.test(fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/panel-ai.js'), 'utf8')) &&
+        /extractVerifyItems\(lines, verifyLimit\)/.test(fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/panel-ai.js'), 'utf8')),
+      ''
+    );
 
     // 能力自述：未检索时不得承诺「会附参考资料」
     const B = mod.buildCapabilityBlock;

@@ -859,6 +859,88 @@ export function needsWebSearch(question) {
   return false;
 }
 
+// 把 AI 生成的检索词解析成干净的数组。
+// 兼容三种输出：JSON 数组、{"queries":[...]}、每行一条（允许编号/项目符号）。
+export function parseSearchQueries(text, max = 6) {
+  const raw = String(text || '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
+  if (!raw) return [];
+  let arr = [];
+  try {
+    const json = JSON.parse(raw);
+    if (Array.isArray(json)) arr = json;
+    else if (json && Array.isArray(json.queries)) arr = json.queries;
+  } catch (err) {
+    /* 不是 JSON，按行解析 */
+  }
+  if (!arr.length) arr = raw.split(/\n+/);
+  const out = [];
+  for (const item of arr) {
+    if (typeof item !== 'string') continue;
+    const q = item
+      // 只去掉真正的列表前缀（- / 1. / (1)），不要把「6710 亿」这种数字开头吃掉
+      .replace(/^\s*(?:[-*•·]+\s*|\(\d{1,2}\)\s*|\d{1,2}[.、)）]\s*)/u, '')
+      .replace(/^["“”'']+|["“”'']+$/gu, '')
+      .trim();
+    if (q.length < 3 || q.length > 100) continue;
+    if (/https?:\/\//i.test(q) || /^(无|没有|无法|none|null)$/i.test(q)) continue;
+    if (out.some((x) => x.toLowerCase() === q.toLowerCase())) continue;
+    out.push(q);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+// 从字幕里抽一段有代表性的节选（开头 / 中间 / 结尾），给 AI 生成检索词用。
+function sampleSubtitleText(lines, maxChars = 3600) {
+  const list = Array.isArray(lines) ? lines : [];
+  if (!list.length) return '';
+  const per = Math.ceil(maxChars / 3);
+  const take = (arr) =>
+    arr
+      .map((l) => String(l.text || ''))
+      .join('\n')
+      .slice(0, per);
+  const third = Math.max(1, Math.floor(list.length / 3));
+  return [take(list.slice(0, third)), take(list.slice(third, third * 2)), take(list.slice(third * 2))]
+    .filter(Boolean)
+    .join('\n…\n');
+}
+
+// 让 AI 根据标题 + 字幕节选生成 3~6 条具体检索词。
+// 失败/空结果由调用方回退到规则抽取，不影响校对主流程。
+async function buildSearchQueries(lines, settings, video, rid) {
+  const sample = sampleSubtitleText(lines);
+  if (!sample) return [];
+  const system = [
+    '你是检索词生成助手。根据视频标题与字幕节选，生成 3~6 条适合外部事实验证的搜索查询。',
+    '要求：',
+    '1. 每条查询要具体，尽量包含人名、公司、产品、版本号、数字、年份或事件；',
+    '2. 不要泛问（例如「这个视频讲了什么」），不要解释，不要编号；',
+    '3. 只输出 JSON 字符串数组，例如 ["DeepSeek V4 发布时间", "6710 亿参数量"]。'
+  ].join('\n');
+  const user = [
+    `视频标题：${(video && video.title) || ''}${video && video.partTitle ? ` · ${video.partTitle}` : ''}`,
+    `字幕节选：\n${sample}`
+  ].join('\n\n');
+  const res = await call(
+    'ai.chat',
+    {
+      rid,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      platformId: settings.ai.activeId,
+      temperature: 0.2,
+      maxTokens: 300
+    },
+    { timeoutMs: 120000 }
+  );
+  return parseSearchQueries((res && res.text) || '', 6);
+}
+
 // ---------------------------------------------------------------------------
 // 阶段 1：校对字幕
 // ---------------------------------------------------------------------------
@@ -896,7 +978,15 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
       1,
       Math.min(16, Number(settings.search?.verifyItemCount || settings.optimize?.verifyItemCount || 12))
     );
-    const items = extractVerifyItems(lines, verifyLimit);
+    // 优先让 AI 根据标题+字幕生成「具体查询」；失败/空结果再退回规则抽取。
+    let items = [];
+    try {
+      items = await buildSearchQueries(lines, settings, st.video, proofRid);
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw err;
+      /* 生成查询失败就回退到规则抽取 */
+    }
+    if (!items.length) items = extractVerifyItems(lines, verifyLimit);
     if (items.length) {
       try {
         verify = await verifyItems(
