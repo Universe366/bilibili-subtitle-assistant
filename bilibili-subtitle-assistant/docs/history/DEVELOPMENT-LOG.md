@@ -5416,3 +5416,33 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 ### 版本与测试
 
 2.0.1 → 2.0.2。20 个 node 套件 1356 项 + 布局体检 5 项通过。
+
+---
+
+## 第九十八轮（2.1.0）—— 批量取消、搜索可中断、长视频背景
+
+### 批量取消
+
+* `runBatchQueue` 为每个运行中的条目建 `AbortController`，signal 透传给
+  `harvestSubtitles`；新增 `batchCancel(id)`：
+  * 排队中：直接移除；
+  * 运行中：状态变 `cancelling`，abort 当前抓取；
+  * 结束后状态 `cancelled`，队列继续下一条。
+* 取消/失败也统一在 `finally` 里 `batch.release`，不再泄漏 resolve 打开的标签页。
+* 移除运行中条目不再静默删数组，改为调用取消。
+
+### 校对搜索可中断
+
+* `runProviderSearch` 把 `rid` 传给 `search.provider`；后台本来就有
+  `registerExternalAbort`，只是客户端没传。
+* `proofreadSubtitles` 在搜索开始前就建好 `proofRid` 并写到 `state.summaryRid`，
+  搜索和后续 AI 校正共用同一个 rid；点停止能 abort 当前检索。
+
+### 长视频背景
+
+* `summarizeInChunks` 新增 `chunkContext`，把简介/评论压到 900 字后放进每一段
+  `chunkUserPrompt`；最后合并仍用完整 `extraContext`。
+
+### 版本与测试
+
+2.0.2 → 2.1.0。20 个 node 套件 1359 项 + 布局体检 5 项通过。

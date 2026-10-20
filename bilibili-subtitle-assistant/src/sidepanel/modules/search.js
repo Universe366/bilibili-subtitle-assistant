@@ -31,7 +31,8 @@ export async function runProviderSearch(settings, query, hooks = {}) {
       fetchPageContent: settings.search.fetchPageContent,
       timeRange: hooks.timeRange !== undefined ? hooks.timeRange : settings.search.timeRange,
       // 原问题用于「查询理解」（DeepSeek 官方搜索的 ori_question）
-      oriQuestion: hooks.oriQuestion || query
+      oriQuestion: hooks.oriQuestion || query,
+      rid: hooks.rid
     },
     { timeoutMs: 90000 }
   );

@@ -666,6 +666,7 @@ export async function doProviderSearch(query, opts = {}) {
     const out = await SEARCH.runProviderSearch(s, query, {
       onLog: (m) => task && task.detail(m),
       oriQuestion: opts.oriQuestion || query,
+      rid: opts.rid,
       ...(opts.fetchPageContent === false ? { fetchPageContent: false } : {})
     });
     if (out && out.results && !opts.ephemeral) {
@@ -921,9 +922,39 @@ export async function expandCollectionsFromText(text) {
 }
 
 export function batchRemove(id) {
+  const item = app.batch.items.find((x) => x.id === id);
+  // 运行中的条目不能只从数组里删掉：抓取仍在继续，之后还会把字幕写回面板。
+  // 想中止请走 batchCancel()。
+  if (item && (item.status === 'running' || item.status === 'cancelling')) {
+    batchCancel(id);
+    return;
+  }
   app.batch.items = app.batch.items.filter((x) => x.id !== id);
   store.set({ queue: app.batch.items });
   renderPanels();
+}
+
+// 队列里每个正在处理的条目都有自己的 AbortController。
+// 不能塞进 app.batch.items —— 那个对象会被 store 序列化。
+const batchControllers = new Map();
+
+export function batchCancel(id) {
+  const item = app.batch.items.find((x) => x.id === id);
+  if (!item) return;
+  if (item.status === 'queued') {
+    app.batch.items = app.batch.items.filter((x) => x.id !== id);
+    syncQueue();
+    renderPanels();
+    return;
+  }
+  if (item.status === 'running') {
+    item.status = 'cancelling';
+    item.error = '正在取消…';
+    syncQueue();
+    renderPanels();
+    const ctl = batchControllers.get(id);
+    if (ctl) ctl.abort();
+  }
 }
 
 export function batchPause(paused) {
@@ -933,7 +964,9 @@ export function batchPause(paused) {
 }
 
 export function batchClearDone() {
-  app.batch.items = app.batch.items.filter((x) => x.status !== 'done' && x.status !== 'error');
+  app.batch.items = app.batch.items.filter(
+    (x) => x.status !== 'done' && x.status !== 'error' && x.status !== 'cancelled'
+  );
   store.set({ queue: app.batch.items });
   renderPanels();
 }
@@ -948,9 +981,15 @@ async function runBatchQueue() {
       if (!item) break;
       item.status = 'running';
       syncQueue();
-      const task = jobs.beginTask(TASK_LABEL.batch, { detail: item.url.slice(0, 50) });
+      const ctl = new AbortController();
+      batchControllers.set(item.id, ctl);
+      const task = jobs.beginTask(TASK_LABEL.batch, {
+        detail: item.url.slice(0, 50),
+        onCancel: () => ctl.abort()
+      });
+      let resolved = null;
       try {
-        const resolved = await call('batch.resolve', { url: item.url }, { timeoutMs: 90000 });
+        resolved = await call('batch.resolve', { url: item.url }, { timeoutMs: 90000 });
         const video = resolved.video;
         item.title = video.title || item.url;
         syncQueue();
@@ -968,9 +1007,13 @@ async function runBatchQueue() {
         task.set(20, '抓取字幕');
         const s = store.get().settings;
         const result = await harvestSubtitles(video, s, {
+          signal: ctl.signal,
           onProgress: (p) => task.set(20 + p.percent * 0.6, p.detail)
         });
-        if (result.ok) {
+        if (ctl.signal.aborted) {
+          item.status = 'cancelled';
+          item.error = '已取消';
+        } else if (result.ok) {
           // 汇总结论：历史里有总结就保留，避免把已有成果清掉
           store.set({
             subtitles: result.lines,
@@ -984,19 +1027,30 @@ async function runBatchQueue() {
           item.status = 'error';
           item.error = result.reason?.title || '没有可用字幕';
         }
-        await call('batch.release', { tabId: resolved.tabId, closeTab: resolved.openedNew });
-        task.end();
-        syncQueue();
-        renderPanels();
-        await new Promise((r) => setTimeout(r, 400));
       } catch (err) {
-        const payload = errorPayload(err);
-        item.status = 'error';
-        item.error = payload.title;
+        if (ctl.signal.aborted || (err && err.name === 'AbortError')) {
+          item.status = 'cancelled';
+          item.error = '已取消';
+        } else {
+          const payload = errorPayload(err);
+          item.status = 'error';
+          item.error = payload.title;
+        }
+      } finally {
+        // 不管成功、失败还是取消，都释放 batch.resolve 打开的标签页
+        if (resolved) {
+          try {
+            await call('batch.release', { tabId: resolved.tabId, closeTab: resolved.openedNew });
+          } catch (err) {
+            /* 释放失败不影响队列 */
+          }
+        }
+        batchControllers.delete(item.id);
         task.end();
         syncQueue();
         renderPanels();
       }
+      await new Promise((r) => setTimeout(r, 400));
     }
   } finally {
     app.batch.running = false;

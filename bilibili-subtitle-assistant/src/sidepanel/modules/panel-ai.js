@@ -884,6 +884,9 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
   // 终止信号：用户点「停止」时，逐条核对与最后的 AI 校正都要能中断
   const shouldAbort = () => state.summaryAbortRequested === true;
   const abortError = () => Object.assign(new Error('已终止'), { name: 'AbortError' });
+  // 核对搜索与最后的 AI 校正共用同一个 rid：点停止时两者都能被后台 abort。
+  const proofRid = `proof_${Date.now().toString(36)}`;
+  state.summaryRid = proofRid;
 
   // 联网核对（可选）
   let verify = [];
@@ -899,7 +902,7 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
         verify = await verifyItems(
           items,
           // ephemeral：连续多条搜索，不能冲掉用户上次的检索面板结果
-          (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
+          (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true, rid: proofRid }),
           {
             maxItems: verifyLimit,
             perItem: 3,
@@ -924,9 +927,7 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
     useSearch: false,
     videoTitle: (st.video && st.video.title) || ''
   });
-  // 与分段总结一样：给这次校正一个 rid，停止时后台能按 rid abort
-  const proofRid = `proof_${Date.now().toString(36)}`;
-  state.summaryRid = proofRid;
+  // 与分段总结一样：rid 已在函数开头建好，停止时后台能按 rid abort
   const res = await call(
     'ai.chat',
     { rid: proofRid, messages, temperature: 0.1, maxTokens: 4000 },
@@ -1387,9 +1388,10 @@ export function chunkTranscript(lines, maxChars = 40000, onProgress) {
 const CHUNK_SYSTEM = '你是视频字幕整理助手。用户会给你**一部长视频中的一段**字幕。' +
   '请只针对这一段做结构化提取，不要臆测其它段落的内容，也不要写“本段/接下来”这类过渡语。';
 
-function chunkUserPrompt({ title, part, index, total, fromLabel, toLabel, text }) {
+function chunkUserPrompt({ title, part, index, total, fromLabel, toLabel, background, text }) {
   return [
     title ? `视频：${title}${part ? ` · ${part}` : ''}` : '',
+    background ? `【视频背景（辅助理解，不要照抄）】\n${background}` : '',
     `这是第 ${index}/${total} 段字幕，时间范围约 ${fromLabel} ~ ${toLabel}。`,
     '请按下面的格式提取这一段的内容（Markdown，用中文）：',
     '- `### <小标题>`：这一段的主题',
@@ -1489,7 +1491,7 @@ function mergeUserPrompt({ title, part, duration, chunkCount, chunkSummaries, ex
 // 为什么不用流式：分段时每一段都要单独拿到完整结果才能进入下一段，
 // 所以这里用普通 `ai.chat` 调用。合并那一步也用普通调用 ——
 // 它可能很长，但比"丢内容"要好。
-async function summarizeInChunks({ lines, systemBase, video, extraContext, webSupplement, settings, task, totalSteps, onChunkSummary }) {
+async function summarizeInChunks({ lines, systemBase, video, extraContext, chunkContext, webSupplement, settings, task, totalSteps, onChunkSummary }) {
   const CHUNK_CHARS = 40000;
   const chunks = chunkTranscript(lines, CHUNK_CHARS);
   const totalCount = chunks.length;
@@ -1533,6 +1535,7 @@ async function summarizeInChunks({ lines, systemBase, video, extraContext, webSu
               total: totalCount,
               fromLabel: fmtClock(fromT),
               toLabel: fmtClock(toT),
+              background: chunkContext,
               text: c.text
             })
           }
@@ -1837,6 +1840,10 @@ export async function generateSummary(opts = {}) {
           .join('\n\n'),
         video: st.video,
         extraContext,
+        // 每段只带一个压缩版背景，避免 2000 字简介 + 评论被复制 10 份
+        chunkContext: extraContext
+          ? `${extraContext.slice(0, 900)}${extraContext.length > 900 ? '…' : ''}`
+          : '',
         webSupplement: webSupplementBlock,
         settings,
         task,

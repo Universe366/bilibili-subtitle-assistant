@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.0.2', contentVersion: '2.0.2', modules: 19, buildTime: '2026-10-21T01:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.1.0', contentVersion: '2.1.0', modules: 19, buildTime: '2026-10-21T01:30:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,14 +140,14 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.0.2', stale: false }],
-    contentVersion: '2.0.2'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.1.0', stale: false }],
+    contentVersion: '2.1.0'
   },
   diagnostics: {
-    extensionVersion: '2.0.2',
-    contentVersion: '2.0.2',
+    extensionVersion: '2.1.0',
+    contentVersion: '2.1.0',
     modules: 19,
-    buildTime: '2026-10-21T01:00:00Z',
+    buildTime: '2026-10-21T01:30:00Z',
     userAgent: 'jsdom',
     manifestVersion: 3,
     cache: { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.0.2', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.1.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.0\.2 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.1\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -485,7 +485,7 @@ async function main() {
     '批量队列按钮按状态禁用',
     /disabled: !hasQueued && !hasRunning/.test(settingsSrc) &&
       /disabled: !hasDone/.test(settingsSrc) &&
-      /disabled: item\.status === 'running'/.test(settingsSrc),
+      /button\('取消', \(\) => batchCancel/.test(settingsSrc),
     ''
   );
   check(
@@ -982,6 +982,18 @@ async function main() {
       ''
     );
     check(
+      '校对阶段的联网搜索也能被停止',
+      /rid: proofRid/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /rid: hooks\.rid/.test(srcOf('sidepanel/modules/search.js')),
+      ''
+    );
+    check(
+      '长视频的每一段都带压缩后的视频背景',
+      /chunkContext/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
+        /background: chunkContext/.test(srcOf('sidepanel/modules/panel-ai.js')),
+      ''
+    );
+    check(
       '总结阶段会把证据整理成 0~3 条外部补充',
       /async function buildSummarySupplement\(/.test(srcOf('sidepanel/modules/panel-ai.js')) &&
         /const webSupplementBlock =/.test(srcOf('sidepanel/modules/panel-ai.js')),
@@ -1280,6 +1292,13 @@ async function main() {
     check('historyPut 兜底：空 summary 不覆盖', /entry && entry\.summary === '' && prev\.summary/.test(storSrc), '');
     check('historyPut 兜底：空 lines 不覆盖', /entry\.lines\.length === 0 && Array\.isArray\(prev\.lines\)/.test(storSrc), '');
     check('批量处理保留已有总结', /restoredSummary/.test(ctxSrc), '');
+    check(
+      '批量运行中可取消（AbortController + signal 透传）',
+      /export function batchCancel/.test(ctxSrc) &&
+        /signal: ctl\.signal/.test(ctxSrc) &&
+        /batchControllers\.get/.test(ctxSrc),
+      ''
+    );
   }
 
   // ---- 二进制垃圾不能当字幕解析 ----

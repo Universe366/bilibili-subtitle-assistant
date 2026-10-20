@@ -5,13 +5,13 @@
 
 ## 1. 包
 
-- 版本：**2.0.2**
+- 版本：**2.1.0**
 - 包内根目录必须直接有 `manifest.json`
 - 不要包含 `verify/`、`.git/`、`node_modules/`
 - 构建：
 
 ```bash
-git -C repo archive --format=zip -o edge-2.0.2.zip HEAD:bilibili-subtitle-assistant
+git -C repo archive --format=zip -o edge-2.1.0.zip HEAD:bilibili-subtitle-assistant
 ```
 
 ## 2. 商店文案（中文，≥250 字符）

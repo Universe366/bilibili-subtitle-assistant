@@ -25,7 +25,7 @@ import { openOverlay, closeOverlays, confirmDialog, promptDialog } from './ui.js
 import { SEARCH_ENGINES, EXPORT_FORMATS, EXPORT_TEMPLATES, DEFAULT_SYSTEM_PROMPT } from '../../shared/constants.js';
 import { exportRuleGroups, parseRuleGroups } from './optimize.js';
 import { downloadFile } from './dom.js';
-import { batchAdd, batchRemove, batchPause, batchClearDone, expandCollectionsFromText } from './context.js';
+import { batchAdd, batchRemove, batchCancel, batchPause, batchClearDone, expandCollectionsFromText } from './context.js';
 import * as SKILLS from '../../shared/skills.js';
 import { TIME_PRESETS, normalizeTimeRange } from '../../shared/time-range.js';
 
@@ -1636,7 +1636,7 @@ function batchGroup(d) {
     const q = st.queue || [];
     const hasQueued = q.some((x) => x.status === 'queued');
     const hasRunning = q.some((x) => x.status === 'running');
-    const hasDone = q.some((x) => x.status === 'done' || x.status === 'error');
+    const hasDone = q.some((x) => x.status === 'done' || x.status === 'error' || x.status === 'cancelled');
     if (q.length) {
       body.appendChild(h('div', { class: 'section-title', text: `队列（${q.filter((x) => x.status === 'queued').length} 待处理 / 共 ${q.length}）` }));
       for (const item of q) {
@@ -1645,15 +1645,22 @@ function batchGroup(d) {
             h('div', { class: 't', text: item.title || item.url }),
             h('div', { class: 'muted', text: `状态：${statusLabel(item.status)}${item.error ? ` —— ${item.error}` : ''}` }),
             h('div', { class: 'row tight' }, [
-              item.status === 'running' ? h('span', { class: 'pill', text: `${Math.round(item.progress || 0)}%` }) : null,
-              button('移除', () => batchRemove(item.id), {
-                small: true,
-                danger: true,
-                // 移除运行中的项并不会中止已经在跑的标签页/抓取，只会让它「看不见」，
-                // 之后仍会把字幕写回当前面板 —— 与其误导，不如禁用。
-                disabled: item.status === 'running',
-                title: item.status === 'running' ? '处理中不能移除；可先暂停队列，等这一条完成' : '从队列移除'
-              })
+              item.status === 'running' || item.status === 'cancelling'
+                ? h('span', { class: 'pill', text: `${Math.round(item.progress || 0)}%` })
+                : null,
+              item.status === 'running'
+                ? button('取消', () => batchCancel(item.id), {
+                    small: true,
+                    danger: true,
+                    title: '中止这一条的抓取/处理，继续队列里的下一条'
+                  })
+                : item.status === 'cancelling'
+                  ? button('取消中…', () => {}, { small: true, disabled: true })
+                  : button('移除', () => batchRemove(item.id), {
+                      small: true,
+                      danger: true,
+                      title: '从队列移除'
+                    })
             ])
           ])
         );
@@ -1685,7 +1692,7 @@ function batchGroup(d) {
 }
 
 function statusLabel(s) {
-  return { queued: '排队中', running: '处理中', done: '已完成', error: '失败' }[s] || s;
+  return { queued: '排队中', running: '处理中', cancelling: '正在取消', cancelled: '已取消', done: '已完成', error: '失败' }[s] || s;
 }
 
 function historyGroup(d) {
