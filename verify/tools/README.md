@@ -7,6 +7,7 @@
 | `make-icons.mjs` | 用本机 Chrome/Edge 渲染 `icons/icon{16,32,48,128}.png` |
 | `make-m4a-sample.mjs` | 在真实 Chrome 里生成 `sample-mediarecorder.m4a`，供 MP4/M4A 结构测试使用 |
 | `sw-capture-test.mjs` | 让真实扩展 service worker 向本地抓包服务发请求，核对实际发出的头部/body |
+| `make-banner.py` | 生成 `docs/banner.png` 与 `docs/social-preview.png`（Pillow） |
 
 从 `verify/` 目录运行，例如：
 
