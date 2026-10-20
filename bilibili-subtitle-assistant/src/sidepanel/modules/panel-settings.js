@@ -2096,8 +2096,34 @@ export async function diagnosticsDialog() {
     }
     body.appendChild(h('div', { class: 'section-title', text: '已授权域名' }));
     for (const o of (diag.permissions && diag.permissions.origins) || []) {
-      body.appendChild(h('div', { class: 'kv-val', text: o }));
+      const row = h('div', { class: 'kv' }, [
+        h('span', { class: 'kv-key', text: o }),
+        button(
+          '撤销',
+          async () => {
+            try {
+              const r = await call('permission.revoke', { url: o }, { timeoutMs: 10000 });
+              if (r && r.removed) {
+                row.remove();
+                toast({ title: '已撤销该域名权限' }, 'ok', 3000);
+              } else {
+                toast({ title: '该权限是必需的，无法撤销' }, 'warn', 3500);
+              }
+            } catch (err) {
+              showError(err, '撤销权限失败');
+            }
+          },
+          { small: true, danger: true, title: '撤销自定义接口域名的访问权限' }
+        )
+      ]);
+      body.appendChild(row);
     }
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text: 'B 站、AI/ASR 等必需域名无法撤销；这里主要用来回收自定义接口的权限。'
+      })
+    );
   } catch (err) {
     clear(body);
     body.appendChild(h('div', { text: '读取诊断信息失败：' + (err.payload?.detail || err.message) }));

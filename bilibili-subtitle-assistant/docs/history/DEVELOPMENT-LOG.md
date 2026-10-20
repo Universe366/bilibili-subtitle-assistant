@@ -5540,3 +5540,25 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 ### 版本与测试
 
 2.5.0 → 2.6.0。20 个 node 套件 1374 项 + 布局体检 5 项通过。
+
+---
+
+## 第一百零四轮（2.7.0）—— 证据可点、权限可撤销
+
+### 证据标题可点击
+
+* `verifyEvidence` 增加 `items: {title,url}`；总结下方每个证据标题渲染为
+  `a.verify-link`，点击走 `tab.open` 打开来源（避免页面内导航）。
+* 仍然只展示前 2 条证据，避免列表膨胀。
+
+### 域名权限可撤销
+
+* 新增 `revokeOriginPermission()` 与 `permission.revoke` RPC。
+* 诊断浮层「已授权域名」每个域名旁加「撤销」；成功移除后行消失，
+  必需权限返回 `removed:false`，提示无法撤销。
+* 注意：`optional_host_permissions` 不能收窄成“不声明、运行时任意申请”——
+  Chrome 要求申请的 origin 必须先声明；实际授权仍只在用户填地址并确认时发生。
+
+### 版本与测试
+
+2.6.0 → 2.7.0。20 个 node 套件 1376 项 + 布局体检 5 项通过。

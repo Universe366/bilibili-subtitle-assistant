@@ -323,8 +323,26 @@ function renderSummary() {
     const details = h('details', { class: 'verify-queries' });
     details.appendChild(h('summary', { text: `本次联网核对（${evidence.length} 条查询，点击查看证据）` }));
     for (const e of evidence) {
-      const label = `${e.q} · ${e.count || 0} 条证据${e.titles && e.titles[0] ? ` · ${e.titles[0]}` : ''}`;
-      details.appendChild(h('div', { class: 'verify-query', text: label }));
+      const line = h('div', { class: 'verify-query' });
+      line.appendChild(h('span', { text: `${e.q} · ${e.count || 0} 条证据` }));
+      const items = Array.isArray(e.items)
+        ? e.items
+        : (e.titles || []).map((title) => ({ title, url: '' }));
+      for (const item of items) {
+        if (!item.title) continue;
+        const link = h('a', {
+          class: 'verify-link',
+          href: item.url || '#',
+          rel: 'noreferrer',
+          text: item.title
+        });
+        link.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          if (item.url) call('tab.open', { url: item.url }).catch(() => {});
+        });
+        line.appendChild(link);
+      }
+      details.appendChild(line);
     }
     host.appendChild(details);
   } else if (queries.length) {
@@ -1037,7 +1055,12 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
     store.set({
       verifyEvidence: items.slice(0, 12).map((q) => {
         const ev = evidenceByQuery.get(q) || [];
-        return { q, count: ev.length, titles: ev.slice(0, 2).map((e) => e.title) };
+        return {
+          q,
+          count: ev.length,
+          titles: ev.slice(0, 2).map((e) => e.title),
+          items: ev.slice(0, 2).map((e) => ({ title: e.title, url: e.url }))
+        };
       })
     });
   }

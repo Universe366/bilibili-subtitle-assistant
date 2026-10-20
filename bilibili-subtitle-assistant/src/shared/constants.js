@@ -1,7 +1,7 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '2.6.0';
+export const VERSION = '2.7.0';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
@@ -42,6 +42,7 @@ export const METHOD_TIMEOUT = {
   'platform.test': 45000,
   'platform.models': 30000,
   'permission.request': 120000,
+  'permission.revoke': 10000,
   'page.info': 20000,
   'page.subtitles': 60000,
   'page.time': 8000,

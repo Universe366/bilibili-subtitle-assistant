@@ -1513,3 +1513,18 @@ export async function ensureOriginPermission(url) {
   }
   return { granted: true, pattern, already: false };
 }
+
+// 撤销运行时申请的域名权限（必需权限会返回 removed:false）。
+export async function revokeOriginPermission(url) {
+  const pattern = originPatternOf(url);
+  if (!pattern) {
+    throw new AppError('badurl', '接口地址不合法', String(url || ''), '无法识别要撤销的域名。');
+  }
+  let removed = false;
+  try {
+    removed = await chrome.permissions.remove({ origins: [pattern] });
+  } catch (err) {
+    removed = false;
+  }
+  return { pattern, removed };
+}

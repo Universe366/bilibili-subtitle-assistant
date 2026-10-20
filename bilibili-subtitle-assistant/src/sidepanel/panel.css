@@ -2657,3 +2657,19 @@ body[data-tab='settings'] .tab[data-tab-btn='settings'] {
   color: var(--brand);
   font-weight: 700;
 }
+
+.verify-link {
+  display: inline-block;
+  max-width: 100%;
+  margin-left: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.verify-link:hover {
+  text-decoration: underline;
+}

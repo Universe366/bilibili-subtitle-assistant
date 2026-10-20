@@ -89,7 +89,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-21T04:00:00Z';
+const BUILD_TIME = '2026-10-21T04:30:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -437,6 +437,8 @@ const methods = {
   },
 
   'permission.request': async (params) => P.ensureOriginPermission(params.url),
+
+  'permission.revoke': async (params) => P.revokeOriginPermission(params.url),
 
   // 诊断：把「每个主机 × 每种传输方式」的实际返回列成表
   'platform.probe': async (params) => {
