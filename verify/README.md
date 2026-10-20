@@ -1,11 +1,13 @@
 # 验证套件（不属于扩展运行时）
 
-针对 `../bilibili-subtitle-assistant` 的自动化验证。**25 个套件（含静态体检 / 布局体检 / 导入体检 / 更新检查），全部通过。**
+针对 `../bilibili-subtitle-assistant` 的自动化验证。**21 个 node 套件已通过；4 个真实浏览器套件需要本地 Chrome/Edge，单独运行 `npm run test:browser`。**
 
 开发辅助脚本（图标生成、M4A 样本、SW 抓包）在 [`tools/`](tools/README.md)，不属于测试套件。
 
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb
+npm test                    # 全部 node 套件（等价于下面逐个跑）
+npm run test:browser        # 4 个真实浏览器套件（需要 Chrome/Edge）
 node bundle.js              # 把面板打包成 IIFE（jsdom 不执行 type=module 脚本）
 node panel-test.js          # 侧边栏渲染与纯逻辑
 node bg-test.js             # 后台 service worker 端到端
