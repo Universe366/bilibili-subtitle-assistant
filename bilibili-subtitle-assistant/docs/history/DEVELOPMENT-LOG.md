@@ -5471,3 +5471,21 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 
 2.1.0 → 2.2.0。20 个 node 套件 1366 项 + 布局体检 5 项通过；
 新增 4 项解析/接线断言。
+
+---
+
+## 第一百轮（2.3.0）—— 跳过此版本
+
+### 改法
+
+* `settings.update.skipVersion` 记录要跳过的版本。
+* `checkForUpdate` 计算 `skipped = latest === skipVersion`；
+  `hasUpdate` 再与 `!skipped` 相与，小圆点自然消失。
+* `setSkippedVersion()` 通过 `patchSettings` 落盘，并清掉 24h 更新缓存；
+  `update.skip` RPC 暴露给面板。
+* 设置页「版本更新」增加「跳过此版本 / 取消跳过」按钮。
+* 缓存命中时也会重新套用 skip，避免跳过之后缓存还显示“有新版”。
+
+### 版本与测试
+
+2.2.0 → 2.3.0。20 个 node 套件 1369 项 + 布局体检 5 项通过。

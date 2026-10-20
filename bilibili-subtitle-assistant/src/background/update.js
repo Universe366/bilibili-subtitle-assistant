@@ -8,7 +8,7 @@
 
 import { CONTENT_VERSION } from '../shared/constants.js';
 import { compareVersions } from '../shared/version.js';
-import { loadSettings } from '../shared/storage.js';
+import { loadSettings, patchSettings } from '../shared/storage.js';
 
 const REPO = 'Universe366/bilibili-subtitle-assistant';
 const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -83,28 +83,36 @@ function errorState(reason, message, extra = {}) {
 // manual=true：忽略缓存、忽略 autoCheck 开关。
 export async function checkForUpdate({ manual = false, fetchImpl = fetch } = {}) {
   const cached = await readCache();
+  let settings = null;
+  try {
+    settings = await loadSettings();
+  } catch (err) {
+    /* 读不到设置就按默认处理 */
+  }
+  const skipVersion = String((settings && settings.update && settings.update.skipVersion) || '')
+    .trim()
+    .replace(/^v/i, '');
+
+  const withSkip = (data) => {
+    if (!data || !data.ok) return data;
+    const skipped = !!(skipVersion && data.latest === skipVersion);
+    return { ...data, skipped, hasUpdate: !!data.hasUpdate && !skipped };
+  };
 
   if (!manual && cached && cached.checkedAt && Date.now() - cached.checkedAt < TTL_MS) {
-    return { ...cached, cached: true };
+    return { ...withSkip(cached), cached: true };
   }
 
-  if (!manual) {
-    try {
-      const settings = await loadSettings();
-      if (settings.update && settings.update.autoCheck === false) {
-        return {
-          ...(cached || {}),
-          ok: cached ? !!cached.ok : false,
-          reason: (cached && cached.reason) || 'disabled',
-          disabled: true,
-          current: CONTENT_VERSION,
-          checkedAt: (cached && cached.checkedAt) || 0,
-          releaseUrl: (cached && cached.releaseUrl) || RELEASES_URL
-        };
-      }
-    } catch (err) {
-      /* 读不到设置就按默认开启处理 */
-    }
+  if (!manual && settings && settings.update && settings.update.autoCheck === false) {
+    return {
+      ...(cached || {}),
+      ok: cached ? !!cached.ok : false,
+      reason: (cached && cached.reason) || 'disabled',
+      disabled: true,
+      current: CONTENT_VERSION,
+      checkedAt: (cached && cached.checkedAt) || 0,
+      releaseUrl: (cached && cached.releaseUrl) || RELEASES_URL
+    };
   }
 
   let data;
@@ -140,8 +148,21 @@ export async function checkForUpdate({ manual = false, fetchImpl = fetch } = {})
     data = errorState('network', (err && err.message) || '网络请求失败');
   }
 
+  data = withSkip(data);
   await writeCache(data);
   return data;
+}
+
+// 记录「跳过此版本」。传空字符串表示取消跳过。
+export async function setSkippedVersion(version) {
+  const v = safeString(version, 40).trim().replace(/^v/i, '');
+  await patchSettings(['update', 'skipVersion'], v);
+  try {
+    await chrome.storage.local.remove(CACHE_KEY);
+  } catch (err) {
+    /* 缓存清不掉不影响下次手动检查 */
+  }
+  return { skipVersion: v };
 }
 
 // 在 service worker 里注册：每天检查一次；启动时也检查一次（有缓存则直接复用）。

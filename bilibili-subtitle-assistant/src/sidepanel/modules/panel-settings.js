@@ -1796,12 +1796,31 @@ function updateSection(d) {
     { small: true, primary: true }
   );
 
+  const skipBtn = button(
+    '跳过此版本',
+    async () => {
+      const version = current && current.skipped ? '' : (current && current.latest) || '';
+      if (!version && !(current && current.skipped)) return;
+      try {
+        await call('update.skip', { version });
+        await load(true);
+        toast({ title: version ? `已跳过 v${version}` : '已恢复该版本的更新提醒' }, 'ok', 3000);
+      } catch (err) {
+        showError(err, '更新跳过设置失败');
+      }
+    },
+    { small: true }
+  );
+  skipBtn.style.display = 'none';
+
   function renderState(out) {
     if (!out) {
       status.textContent = '尚未检查';
       return;
     }
-    if (out.hasUpdate) {
+    if (out.skipped) {
+      status.textContent = `已跳过 v${out.latest}（可点「取消跳过」恢复提醒）`;
+    } else if (out.hasUpdate) {
       status.textContent = `发现新版本 v${out.latest}（当前 v${out.current}）`;
       details.open = true;
     } else if (out.ok) {
@@ -1814,6 +1833,12 @@ function updateSection(d) {
       status.textContent = '无法检查：GitHub API 限流，请稍后再试';
     } else {
       status.textContent = `检查失败：${out.message || out.reason || '未知原因'}`;
+    }
+    if (out.hasUpdate || out.skipped) {
+      skipBtn.style.display = '';
+      skipBtn.textContent = out.skipped ? '取消跳过' : '跳过此版本';
+    } else {
+      skipBtn.style.display = 'none';
     }
     const tabBtn = document.querySelector('[data-tab-btn="settings"]');
     const gear = document.getElementById('btn-settings');
@@ -1872,7 +1897,7 @@ function updateSection(d) {
     h('div', { class: 'section-title', text: '版本更新' }),
     status,
     meta,
-    h('div', { class: 'row tight', style: { marginTop: '6px' } }, [checkBtn, openBtn]),
+    h('div', { class: 'row tight', style: { marginTop: '6px' } }, [checkBtn, skipBtn, openBtn]),
     checkbox(
       (d.update && d.update.autoCheck) !== false,
       (v) => {

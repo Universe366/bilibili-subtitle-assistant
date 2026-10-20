@@ -34,14 +34,17 @@ check('内容脚本只匹配 B 站域名', manifest.content_scripts.every((c) =>
 
 const settingsSrc = fs.readFileSync(path.join(ROOT, 'src/shared/settings.js'), 'utf8');
 check('默认开启自动检查更新', /update:\s*\{\s*autoCheck:\s*true/.test(settingsSrc), '');
+check('默认没有跳过的版本', /skipVersion:\s*''/.test(settingsSrc), '');
 
 const swSrc = fs.readFileSync(path.join(ROOT, 'src/background/service-worker.js'), 'utf8');
 check('注册 update.check / update.state', /'update\.check'/.test(swSrc) && /'update\.state'/.test(swSrc), '');
+check('注册 update.skip', /'update\.skip'/.test(swSrc), '');
 check('启动时初始化更新检查', /initUpdateChecker\(\)/.test(swSrc), '');
 
 const uiSrc = fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/panel-settings.js'), 'utf8');
 check('设置页有检查更新按钮', /'检查更新'/.test(uiSrc), '');
 check('设置页有下载页按钮', /'打开下载页'/.test(uiSrc), '');
+check('设置页有跳过此版本按钮', /'跳过此版本'/.test(uiSrc), '');
 check('设置页显示新版本说明', /新版本说明/.test(uiSrc), '');
 check('设置页有自动检查开关', /自动检查更新/.test(uiSrc), '');
 

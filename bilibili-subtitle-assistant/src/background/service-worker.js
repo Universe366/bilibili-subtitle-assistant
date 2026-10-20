@@ -10,7 +10,7 @@ import * as P from './providers.js';
 import * as BILI from './bili.js';
 import * as M from './mcp.js';
 import * as T from './tools.js';
-import { checkForUpdate, getUpdateState, initUpdateChecker } from './update.js';
+import { checkForUpdate, getUpdateState, initUpdateChecker, setSkippedVersion } from './update.js';
 import * as KS from './keyless-search.js';
 import * as SC from './search-cache.js';
 import { sanitizeResult } from '../shared/untrusted.js';
@@ -89,7 +89,7 @@ const BUILD_MODULES = [
   './service-worker.js'
 ];
 
-const BUILD_TIME = '2026-10-21T02:00:00Z';
+const BUILD_TIME = '2026-10-21T02:30:00Z';
 
 // ---------------------------------------------------------------------------
 // 启动
@@ -953,6 +953,8 @@ const methods = {
   'update.check': async (params) => checkForUpdate({ manual: params && params.manual === true }),
 
   'update.state': async () => getUpdateState(),
+
+  'update.skip': async (params) => setSkippedVersion(params && params.version),
 
   'tab.open': async (params) => {
     const tab = await chrome.tabs.create({ url: params.url, active: params.active !== false });
