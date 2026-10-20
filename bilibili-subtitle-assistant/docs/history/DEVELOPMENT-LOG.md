@@ -5345,3 +5345,28 @@ GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。�
 ### 版本与测试
 
 1.64.0 → 1.64.2。恢复 `update-test.mjs`；全量 21 个 node 套件、1356 项断言通过。
+
+---
+
+## 第九十五轮（2.0.0）—— 公开前的仓库整理
+
+### 背景
+
+作者是刚开始用 GitHub / AI 编程的个人开发者，担心仓库“乱”影响后续贡献者。
+结论是仓库本身不乱（106 个文件、11MB），不需要新建仓库；只做结构整理与许可证补齐。
+
+### 改动
+
+* 加 **MIT LICENSE**（只覆盖本项目代码）；
+* 加 **THIRD-PARTY-NOTICES.md**：确认 `ffmpeg-core.wasm` 是 `--enable-gpl` + libx264/libx265
+  的 GPL-2.0-or-later 构建，附 GPL 全文与源码入口；
+* 加 **CONTRIBUTING.md**（环境、测试、PR 约定）；
+* `docs/DEVELOPMENT-LOG.md` → `docs/history/DEVELOPMENT-LOG.md`，并更新所有链接；
+* `verify/` 的三个开发工具移到 `verify/tools/`，同步修正相对路径与提示；
+* 删除一次性的 `verify/setup-github.ps1` 和读取本机 Cherry Studio 配置的 `inspect-cherry.mjs`；
+* README 增加许可证、贡献、非官方声明与文档索引；
+* 版本 1.64.2 → **2.0.0**（保持高于 1.64.2，避免更新检查把版本当降级）。
+
+### 版本与测试
+
+2.0.0。20 个 node 测试套件 + 更新检查套件、1356 项断言通过。

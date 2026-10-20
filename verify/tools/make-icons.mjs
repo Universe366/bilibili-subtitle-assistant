@@ -17,7 +17,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'icons');
+const OUT = path.join(__dirname, '..', '..', 'bilibili-subtitle-assistant', 'icons');
 const TMP = path.join(process.env.TEMP || '/tmp', 'bsub-icon-gen');
 const SIZES = [16, 32, 48, 128];
 const MASTER = 1024;

@@ -1,6 +1,21 @@
 # 更新记录
 
-> 完整逐轮复盘（含「当时为什么想错」）见 [`docs/DEVELOPMENT-LOG.md`](docs/DEVELOPMENT-LOG.md)。
+> 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
+
+## 2.0.0（2026-10-20）
+
+首个公开整理的版本。功能与 1.64.2 一致，主要改仓库结构与许可证。
+
+### 整理
+- 新增根目录 **MIT `LICENSE`**（仅覆盖本项目代码）。
+- 新增 **`THIRD-PARTY-NOTICES.md`**：说明内置 FFmpeg core 为 GPL-2.0-or-later 构建，附 GPL 全文与源码入口。
+- 新增 **`CONTRIBUTING.md`**：环境、跑测试、提 PR 的最小说明。
+- 开发日志移到 `docs/history/`，与当前文档区分；`AGENTS.md` 保留在扩展根目录。
+- `verify/` 的开发工具移到 `verify/tools/`；删除一次性的 `setup-github.ps1` 和读取本机 Cherry Studio 配置的 `inspect-cherry.mjs`。
+- README 增加许可证、贡献、非官方声明与文档索引。
+
+### 版本
+1.64.2 → 2.0.0（保持比 1.64.2 更高，避免更新检查把版本当成降级）。
 
 ## 1.64.2（2026-10-20）
 
@@ -83,4 +98,4 @@
 ## 1.63.0 及更早
 
 - 接入基元律动、长视频总结分段、ASR 分片默认 600s、FFmpeg 流复制重封装、MCP / Skills、免费引擎兜底等。
-- 详见 [`docs/DEVELOPMENT-LOG.md`](docs/DEVELOPMENT-LOG.md)。
+- 详见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。

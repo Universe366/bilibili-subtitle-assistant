@@ -2,6 +2,8 @@
 
 针对 `../bilibili-subtitle-assistant` 的自动化验证。**25 个套件（含静态体检 / 布局体检 / 导入体检 / 更新检查），全部通过。**
 
+开发辅助脚本（图标生成、M4A 样本、SW 抓包）在 [`tools/`](tools/README.md)，不属于测试套件。
+
 ```bash
 npm install                 # jsdom / esbuild / fake-indexeddb
 node bundle.js              # 把面板打包成 IIFE（jsdom 不执行 type=module 脚本）
@@ -52,7 +54,7 @@ node checklist.js                  # 需求文档功能清单逐项核对
 
 逐轮缺陷与修复复盘已拆分到独立文件：
 
-**`bilibili-subtitle-assistant/docs/DEVELOPMENT-LOG.md`**
+**`bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md`**
 
 它记录了每一轮改了什么、为什么改，以及**当时为什么会想错**。
 建议按主题搜索（例如「Content-Type」「超时」「CSP」「service worker」），而不是从头读。

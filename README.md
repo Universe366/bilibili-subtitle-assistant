@@ -5,10 +5,13 @@
 </div>
 
 [![Release](https://img.shields.io/github/v/release/Universe366/bilibili-subtitle-assistant?sort=semver&display_name=tag)](https://github.com/Universe366/bilibili-subtitle-assistant/releases)
+[![License](https://img.shields.io/github/license/Universe366/bilibili-subtitle-assistant)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![Chrome](https://img.shields.io/badge/Chrome-116%2B-4285F4)](https://www.google.com/chrome/)
 
 > Chrome / Edge MV3 扩展 · 所有配置都在侧边栏内完成 · 无 Obsidian 集成 · 密钥只保存在本机
+>
+> 非官方项目，与哔哩哔哩无关联。自己的代码使用 MIT 许可证；内置的 FFmpeg core 按 GPL 分发，详见 [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md)。
 
 完整文档见 **[bilibili-subtitle-assistant/README.md](bilibili-subtitle-assistant/README.md)**。
 
@@ -62,11 +65,14 @@ node panel-test.js   # 以及其他套件，见 verify/README.md
 | 文件 | 内容 |
 |---|---|
 | [`bilibili-subtitle-assistant/README.md`](bilibili-subtitle-assistant/README.md) | 用户文档：安装、配置、功能、故障排查 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
+| [`LICENSE`](LICENSE) | MIT（本项目代码） |
+| [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方组件许可证 |
 | [`bilibili-subtitle-assistant/CHANGELOG.md`](bilibili-subtitle-assistant/CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
 | [`bilibili-subtitle-assistant/AGENTS.md`](bilibili-subtitle-assistant/AGENTS.md) | 给 AI / 贡献者：环境硬约束、踩坑、排查方法论 |
-| [`bilibili-subtitle-assistant/docs/DEVELOPMENT-LOG.md`](bilibili-subtitle-assistant/docs/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘 |
-| [`PRIVACY.md`](PRIVACY.md) | 隐私政策（Edge 商店提交用） |
-| [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md) | Edge 商店文案、权限理由与认证备注 |
+| [`bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md`](bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘（开发记录，不是使用文档） |
+| [`PRIVACY.md`](PRIVACY.md) | 隐私政策 |
+| [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md) | Edge 商店文案、权限理由与认证备注（暂缓使用） |
 | [`verify/README.md`](verify/README.md) | 测试套件说明与运行方式 |
 
 ## 说明

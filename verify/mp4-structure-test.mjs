@@ -91,7 +91,7 @@ if (!a.missing) {
   check('MediaRecorder 产出是 fragmented MP4（含 moof/mvex）', a.fragmented === true, JSON.stringify(a.topLevel));
   check('fragmented MP4 含 mvex', a.hasMvex === true, JSON.stringify(a.topLevel));
 } else {
-  console.log('（未找到 sample-mediarecorder.m4a，跳过；可先运行 make-m4a-sample.mjs 生成）');
+  console.log('（未找到 sample-mediarecorder.m4a，跳过；可先运行 tools/make-m4a-sample.mjs 生成）');
 }
 
 if (!b.missing) {

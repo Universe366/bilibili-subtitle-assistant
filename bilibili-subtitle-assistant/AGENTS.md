@@ -17,7 +17,7 @@ B 站视频侧边栏助手，**Chrome / Edge MV3 扩展**（无 Obsidian 集成�
 | `src/shared/` | 设置、常量、跨环境工具（md5、skills 解析） |
 | `vendor/ffmpeg/` | FFmpeg.wasm 内核（**31MB，必需**，已提交入库） |
 | `../verify/` | 自动化测试套件（**不属于扩展运行时**，加载扩展时不需要） |
-| `docs/` | `DEVELOPMENT-LOG.md` —— 逐轮缺陷与修复记录 |
+| `docs/history/` | `DEVELOPMENT-LOG.md` —— 逐轮缺陷与修复记录 |
 
 ---
 
@@ -229,7 +229,7 @@ docs: 拆分开发日志，补 AGENTS.md
 |---|---|---|
 | `README.md` | **用户** | 安装、配置、功能、故障排查 |
 | `AGENTS.md`（本文件） | **AI / 贡献者** | 环境约束、已踩的坑、方法论 |
-| `docs/DEVELOPMENT-LOG.md` | **维护者** | 逐轮缺陷与修复（含「为什么当时想错了」） |
+| `docs/history/DEVELOPMENT-LOG.md` | **维护者** | 逐轮缺陷与修复（含「为什么当时想错了」） |
 | `../verify/README.md` | **维护者** | 测试套件说明与运行方式 |
 
 新增功能时请同步更新对应文档；**变动用户可见行为 → 改 README**。

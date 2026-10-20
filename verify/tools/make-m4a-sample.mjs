@@ -7,7 +7,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', '..', 'bilibili-subtitle-assistant');
 const PROFILE = path.join(process.env.TEMP || '/tmp', `cdp-samp-${Date.now()}`);
 const PORT = 9777;
 const HTTP_PORT = 9888;
@@ -176,7 +176,7 @@ main()
       process.exit(2);
     }
     const bytes = Buffer.from(out.base64, 'base64');
-    const dest = path.join(__dirname, 'sample-mediarecorder.m4a');
+    const dest = path.join(__dirname, '..', 'sample-mediarecorder.m4a');
     fs.writeFileSync(dest, bytes);
     console.log(`已写出 ${dest}（${bytes.length} 字节，来自 ${SECONDS}s 音频）`);
     process.exit(0);

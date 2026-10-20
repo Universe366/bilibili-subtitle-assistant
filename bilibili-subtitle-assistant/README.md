@@ -1,11 +1,14 @@
 # B站字幕助手（Chrome / Edge MV3 扩展）
 
 [![Release](https://img.shields.io/github/v/release/Universe366/bilibili-subtitle-assistant?sort=semver&display_name=tag)](https://github.com/Universe366/bilibili-subtitle-assistant/releases)
+[![License](https://img.shields.io/github/license/Universe366/bilibili-subtitle-assistant)](../LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![Chrome](https://img.shields.io/badge/Chrome-116%2B-4285F4)](https://www.google.com/chrome/)
 
 在 B 站视频页的**侧边栏**里完成：抓官方字幕 → 语音转录 → AI 总结 → 与 AI 对话 → 优化与替换 → 导出。
 **无 Obsidian 集成**；所有配置都在侧边栏内完成，不另开设置标签页。
+
+> 非官方项目，与哔哩哔哩无关联。自己的代码使用 MIT；内置 FFmpeg core 按 GPL 分发，见 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)。
 
 > 最新版本见 [Releases](https://github.com/Universe366/bilibili-subtitle-assistant/releases)；逐版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 > 遇到问题请提 [Issue](https://github.com/Universe366/bilibili-subtitle-assistant/issues)，并附上侧边栏「诊断」里复制出的信息。
@@ -299,11 +302,14 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 | 文件 | 内容 |
 |---|---|
 | [`CHANGELOG.md`](CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
-| [`docs/EDGE-STORE.md`](docs/EDGE-STORE.md) | Edge 商店提交材料：文案、权限理由、隐私表单、认证备注 |
+| [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
+| [`LICENSE`](LICENSE) | MIT（本项目代码） |
+| [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方许可证 |
+| [`docs/EDGE-STORE.md`](docs/EDGE-STORE.md) | Edge 商店提交材料（暂缓使用） |
 | [`../PRIVACY.md`](../PRIVACY.md) | 隐私政策 |
 | [`AGENTS.md`](AGENTS.md) | **给后续 AI / 贡献者**：环境硬约束（CSP、沙箱边界、service worker 生命周期）、已踩过的坑、排查方法论 |
-| [`docs/DEVELOPMENT-LOG.md`](docs/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
-| [`../verify/README.md`](../verify/README.md) | 自动化测试套件：25 个套件（含静态体检 / 布局体检 / 导入体检 / 更新检查），以及每个套件覆盖什么 |
+| [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
+| [`../verify/README.md`](../verify/README.md) | 自动化测试套件：25 个套件（21 个 node + 4 个真实浏览器），以及每个套件覆盖什么 |
 
 ---
 

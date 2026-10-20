@@ -172,7 +172,7 @@ let sampleB64 = '';
 if (fs.existsSync(samplePath)) {
   sampleB64 = fs.readFileSync(samplePath).toString('base64');
 } else {
-  console.log('缺少 sample-mediarecorder.m4a（先运行 node make-m4a-sample.mjs），跳过');
+  console.log('缺少 sample-mediarecorder.m4a（先运行 node tools/make-m4a-sample.mjs），跳过');
   process.exit(0);
 }
 

@@ -35,7 +35,7 @@ if (!fs.existsSync(coreJsPath) || !fs.existsSync(coreWasmPath)) {
 }
 const samplePath = path.join(__dirname, 'sample-mediarecorder.m4a');
 if (!fs.existsSync(samplePath)) {
-  console.log('缺少 sample-mediarecorder.m4a（先运行 make-m4a-sample.mjs），跳过');
+  console.log('缺少 sample-mediarecorder.m4a（先运行 tools/make-m4a-sample.mjs），跳过');
   process.exit(0);
 }
 const sampleB64 = fs.readFileSync(samplePath).toString('base64');
