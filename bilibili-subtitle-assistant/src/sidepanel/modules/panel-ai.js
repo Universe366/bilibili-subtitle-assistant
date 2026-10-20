@@ -1774,9 +1774,20 @@ export async function generateSummary(opts = {}) {
         if (out && out.ok && out.comments && out.comments.length) {
           const rows = out.comments.map((c, i) => `${i + 1}. [${c.like}赞] ${c.user}：${c.text}`);
           bits.push(`【热门评论（供参考，不代表事实）】\n${rows.join('\n')}`);
+        } else if (out && !out.ok) {
+          toast(
+            { title: '评论获取失败，已跳过', detail: out.reason || '不影响总结生成' },
+            'warn',
+            3500
+          );
         }
       } catch (err) {
-        /* 评论拿不到就不放 */
+        // 用户明确开了「带上评论」时，失败要说一声，不能静默少一块上下文
+        toast(
+          { title: '评论获取失败，已跳过', detail: (err && err.message) || '不影响总结生成' },
+          'warn',
+          3500
+        );
       }
     }
     if (bits.length) extraContext = bits.join('\n\n');

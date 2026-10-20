@@ -2604,3 +2604,23 @@ body[data-tab='settings'] .tab[data-tab-btn='settings'] {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* 有新版时，设置入口上的小圆点（不改变布局） */
+.tab[data-update='true'],
+#btn-settings[data-update='true'] {
+  position: relative;
+}
+
+.tab[data-update='true']::after,
+#btn-settings[data-update='true']::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 2px var(--bg);
+  pointer-events: none;
+}

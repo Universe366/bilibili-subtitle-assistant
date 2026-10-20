@@ -307,8 +307,24 @@ export function extractLines(json) {
 export async function fetchTopComments({ aid, bvid, pageUrl }, opts = {}) {
   const timeoutMs = opts.timeoutMs || 15000;
   const limit = Math.max(1, Math.min(20, opts.limit || 10));
-  const oid = aid || bvid;
-  if (!oid) return { ok: false, comments: [], reason: '缺少 aid/bvid' };
+  let oid = Number(aid) || 0;
+
+  // /x/v2/reply 的 oid 必须是数字 aid；直接传 BV 号会返回空/错误。
+  // 页面信息里偶尔只有 bvid，这里先用 view 接口换一次 aid。
+  if (!oid && bvid) {
+    try {
+      const { json } = await getJson(
+        `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`,
+        pageUrl,
+        timeoutMs
+      );
+      oid = Number(json && json.data && json.data.aid) || 0;
+    } catch (err) {
+      return { ok: false, comments: [], reason: `无法用 bvid 解析 aid：${(err && err.message) || err}` };
+    }
+  }
+  if (!oid) return { ok: false, comments: [], reason: '缺少数字 aid，无法查询评论' };
+
   try {
     const q = [`oid=${encodeURIComponent(oid)}`, 'type=1', `ps=${limit}`, 'pn=1', 'sort=1', 'nohot=0'];
     const { json } = await getJson(`https://api.bilibili.com/x/v2/reply?${q.join('&')}`, pageUrl, timeoutMs);

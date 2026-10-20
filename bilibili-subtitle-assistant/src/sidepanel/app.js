@@ -52,6 +52,7 @@ async function boot() {
   wireRuntime();
   wireStore();
   wireKeys();
+  checkUpdateBadge();
 
   // 首次使用向导（必须能随时跳过，跳过入口常驻可见）
   const s = store.get().settings;
@@ -60,9 +61,35 @@ async function boot() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// 外壳
-// ---------------------------------------------------------------------------
+// 自动检查更新后，在设置入口留一个小圆点，避免用户永远不知道有新版本。
+async function checkUpdateBadge() {
+  try {
+    let out = await call('update.state');
+    if (!out || !out.checkedAt) out = await call('update.check', { manual: false });
+    applyUpdateBadge(out);
+  } catch (err) {
+    /* 更新检查失败不影响面板 */
+  }
+}
+
+export function applyUpdateBadge(out) {
+  const on = !!(out && out.hasUpdate);
+  const tab = document.querySelector('[data-tab-btn="settings"]');
+  const btn = document.getElementById('btn-settings');
+  if (tab) {
+    if (on) tab.setAttribute('data-update', 'true');
+    else tab.removeAttribute('data-update');
+  }
+  if (btn) {
+    if (on) {
+      btn.setAttribute('data-update', 'true');
+      btn.setAttribute('title', `设置（发现新版本 v${out.latest}）`);
+    } else {
+      btn.removeAttribute('data-update');
+      btn.setAttribute('title', '设置');
+    }
+  }
+}
 
 function installShell() {
   const tabButtons = Array.from(document.querySelectorAll('[data-tab-btn]'));

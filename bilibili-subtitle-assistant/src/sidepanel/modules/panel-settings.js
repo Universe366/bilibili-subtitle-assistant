@@ -1807,6 +1807,21 @@ function updateSection(d) {
     } else {
       status.textContent = `检查失败：${out.message || out.reason || '未知原因'}`;
     }
+    const tabBtn = document.querySelector('[data-tab-btn="settings"]');
+    const gear = document.getElementById('btn-settings');
+    if (out.hasUpdate) {
+      if (tabBtn) tabBtn.setAttribute('data-update', 'true');
+      if (gear) {
+        gear.setAttribute('data-update', 'true');
+        gear.setAttribute('title', `设置（发现新版本 v${out.latest}）`);
+      }
+    } else {
+      if (tabBtn) tabBtn.removeAttribute('data-update');
+      if (gear) {
+        gear.removeAttribute('data-update');
+        gear.setAttribute('title', '设置');
+      }
+    }
     meta.textContent = out.checkedAt ? `上次检查：${fmtRelative(out.checkedAt)}` : '尚未检查';
     const notes = out.release && out.release.notes ? String(out.release.notes) : '';
     if (notes) {
