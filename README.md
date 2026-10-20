@@ -55,7 +55,7 @@ node bundle.js       # 把面板打包成 IIFE（jsdom 不执行 type=module）
 node panel-test.js   # 以及其他套件，见 verify/README.md
 ```
 
-当前 **20 个 node 测试套件、1331 项断言**全部通过。浏览器相关套件（CSP / FFmpeg / M4A / MP4）需要真实 Chrome，未在 CI 中运行。
+当前 **21 个 node 测试套件、1356 项断言**全部通过。浏览器相关套件（CSP / FFmpeg / M4A / MP4）需要真实 Chrome，未在 CI 中运行。
 
 ## 文档
 

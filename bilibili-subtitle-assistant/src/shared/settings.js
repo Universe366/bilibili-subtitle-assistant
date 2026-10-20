@@ -685,6 +685,9 @@ export function defaultSettings() {
     diagnostics: {
       verbose: false
     },
+    update: {
+      autoCheck: true
+    },
     // ---- MCP 服务：给模型接上「手和脚」 ----
     // 浏览器无法起 stdio 子进程，所以只支持 HTTP 与 SSE 两种远程传输。
     mcp: {

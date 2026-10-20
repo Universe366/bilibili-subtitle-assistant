@@ -3,7 +3,7 @@
   "name": "B站字幕助手",
   "short_name": "字幕助手",
   "description": "B站视频侧边栏字幕抓取、语音转录、AI 总结与对话、导出。所有配置在侧边栏内完成，无 Obsidian 集成。",
-  "version": "1.63.12",
+  "version": "1.64.0",
   "minimum_chrome_version": "116",
   "background": {
     "service_worker": "src/background/service-worker.js",
@@ -34,7 +34,8 @@
     "scripting",
     "sidePanel",
     "webNavigation",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "alarms"
   ],
   "declarative_net_request": {
     "rule_resources": [
@@ -65,16 +66,14 @@
   ],
   "content_scripts": [
     {
-      "matches": ["*://*/*"],
-      "include_globs": ["*://*.bilibili.com/*"],
+      "matches": ["*://*.bilibili.com/*"],
       "js": ["src/content/page-bridge.js"],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["*://*/*"],
-      "include_globs": ["*://*.bilibili.com/*"],
+      "matches": ["*://*.bilibili.com/*"],
       "js": ["src/content/content.js"],
       "css": ["src/content/content.css"],
       "run_at": "document_start",

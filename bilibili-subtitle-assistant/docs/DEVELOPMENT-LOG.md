@@ -5287,3 +5287,39 @@ keyless-search-test 新增查询清理与 after 映射；asr-test 补充 summary
 
 1.63.11 → 1.63.12。panel-test 更新为：不再有来源块、总结用 supplement、
 中文泛词被过滤；共 439 项。
+
+---
+
+## 第九十二轮（1.64.0）—— 检查更新 + Edge 上架准备
+
+### 更新检查
+
+* 新增 `src/shared/version.js`（数字逐段比较，`1.63.10 > 1.63.9`）与
+  `src/background/update.js`（GitHub Releases API、24 小时缓存、手动绕过缓存）。
+* 新增 `update.check` / `update.state` RPC；service worker 启动时检查一次，
+  并用 `chrome.alarms` 每 24 小时检查一次。
+* 设置 → 诊断与关于新增「版本更新」：当前/最新版本、上次检查、自动检查开关、
+  检查更新、打开下载页、可折叠的新版本说明。
+
+### 已知限制（重要）
+
+GitHub 仓库目前是 **private**，匿名调用 Releases API 会返回 404。因此：
+
+* 目前只有仓库所有者（或加了 Token 的请求）能真正拿到版本；
+* 要让所有用户都能自动检查，需要把仓库改成 **public**（已扫描提交历史，只有测试占位 Key）；
+* 商店版由 Edge 自动更新，不依赖这个检查。
+
+### Edge 上架准备
+
+* `content_scripts.matches` 从 `*://*/*` 收窄为 `*://*.bilibili.com/*`，
+  避免 Edge 按「读取所有网站」提示权限；`include_globs` 删除。
+* 新增 `alarms` 权限；构建模块 17 → 19。
+* 新增根目录 `PRIVACY.md`（隐私政策底稿）。
+* 新增 `docs/EDGE-STORE.md`：商店描述、权限理由、隐私表单答案、认证备注、素材清单。
+* 实际提交必须由账号持有人登录 Partner Center 完成（涉及微软账号与服务协议），
+  代码侧只能准备到「上传包 + 文案」为止。
+
+### 版本与测试
+
+1.63.12 → 1.64.0。新增 `update-test.mjs`（版本比较 + 接线检查）；共 17 项。
+全量 21 个 node 套件、1356 项断言通过。
