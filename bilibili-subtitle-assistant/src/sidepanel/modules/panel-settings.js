@@ -1323,6 +1323,24 @@ function searchGroup(d) {
         '从字幕的前 / 中 / 后段各取候选项（AI 生成查询失败时的兜底数量）'
       )
     );
+    const extraQueriesInput = h('textarea', {
+      class: 'input',
+      rows: 3,
+      placeholder: '每行一条，例如：DeepSeek V4 发布时间',
+      title: '这些查询会补充到 AI 生成的检索词里'
+    });
+    extraQueriesInput.value = d.search.extraVerifyQueries || '';
+    extraQueriesInput.addEventListener('input', () => {
+      d.search.extraVerifyQueries = extraQueriesInput.value;
+      markDirty();
+    });
+    body.appendChild(
+      field(
+        '额外核实查询（每行一条）',
+        extraQueriesInput,
+        'AI 漏掉的关键实体可以在这里补；会与 AI 生成的查询合并、去重'
+      )
+    );
     body.appendChild(
       checkbox(
         (d.summary && d.summary.useVideoMeta) !== false,

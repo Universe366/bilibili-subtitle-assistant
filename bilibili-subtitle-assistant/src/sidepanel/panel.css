@@ -2624,3 +2624,36 @@ body[data-tab='settings'] .tab[data-tab-btn='settings'] {
   box-shadow: 0 0 0 2px var(--bg);
   pointer-events: none;
 }
+
+/* 本次联网核对使用的检索词（默认折叠，避免干扰总结） */
+.verify-queries {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  font-size: calc(var(--fs) * 0.9);
+  color: var(--fg-soft);
+}
+
+.verify-queries summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.verify-query {
+  margin-top: 4px;
+  padding-left: 10px;
+  position: relative;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.verify-query::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  color: var(--brand);
+  font-weight: 700;
+}

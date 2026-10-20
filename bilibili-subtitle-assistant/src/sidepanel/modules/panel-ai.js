@@ -316,6 +316,14 @@ function renderSummary() {
     host.appendChild(chapBox);
   }
   host.appendChild(box);
+
+  const queries = Array.isArray(st.verifyQueries) ? st.verifyQueries : [];
+  if (queries.length) {
+    const details = h('details', { class: 'verify-queries' });
+    details.appendChild(h('summary', { text: `本次联网核对的检索词（${queries.length} 条）` }));
+    for (const q of queries) details.appendChild(h('div', { class: 'verify-query', text: q }));
+    host.appendChild(details);
+  }
 }
 
 // 思维链折叠块。
@@ -987,7 +995,16 @@ export async function proofreadSubtitles(lines, settings, opts = {}) {
       /* 生成查询失败就回退到规则抽取 */
     }
     if (!items.length) items = extractVerifyItems(lines, verifyLimit);
+    // 用户在设置里填的额外查询：原样补进来，方便纠正 AI 漏掉的关键实体。
+    const extraQueries = String(settings.search?.extraVerifyQueries || '')
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 3 && s.length <= 100);
+    if (extraQueries.length) {
+      items = [...new Set([...items, ...extraQueries])].slice(0, 12);
+    }
     if (items.length) {
+      store.set({ verifyQueries: items.slice(0, 12) });
       try {
         verify = await verifyItems(
           items,
@@ -1728,7 +1745,7 @@ export async function generateSummary(opts = {}) {
   state.summaryRid = '';
   state.summaryStreaming = true;
   state.streaming = true;
-  store.set({ summaryStream: '' });
+  store.set({ summaryStream: '', verifyQueries: [] });
   render();
 
   // ---- 阶段 1：校对字幕（联网核对术语/逻辑/时间/事实），并**实际更正字幕** ----

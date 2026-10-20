@@ -647,7 +647,9 @@ export function defaultSettings() {
       // 把网页资料交给模型去校正字幕里的事实性错误（用户明确要的「多方求证」）。
       verifyOnSummary: true,
       // 每次从字幕里抽多少条去核实。12 条覆盖更广，但更慢、也更容易消耗检索额度。
-      verifyItemCount: 12
+      verifyItemCount: 12,
+      // 用户补充的核实查询（每行一条），会与 AI 生成的查询合并
+      extraVerifyQueries: ''
     },
     // 总结的附加上下文：视频简介、热门评论
     summary: {
