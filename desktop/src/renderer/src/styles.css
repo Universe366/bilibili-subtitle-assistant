@@ -1891,7 +1891,25 @@ button:disabled {
   gap: 6px;
 }
 
-.settings-inline > .settings-advanced {
+.settings-inline > .platform-status {
+  padding: 5px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.platform-status.ok {
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.12);
+}
+
+.platform-status.err {
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.12);
+}
+
+.settings-advanced {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px dashed var(--border);

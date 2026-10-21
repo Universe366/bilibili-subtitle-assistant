@@ -90,6 +90,11 @@ export function SettingsPanel() {
   const [modelCache, setModelCache] = useState<Record<string, string[]>>({});
   const [platformBusy, setPlatformBusy] = useState('');
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [platformStatus, setPlatformStatus] = useState<{
+    key: string;
+    text: string;
+    ok: boolean;
+  } | null>(null);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
@@ -351,13 +356,21 @@ export function SettingsPanel() {
     if (!platform) return;
     setPlatformBusy(`${kind}:test`);
     setError('');
+    setPlatformStatus({ key: `${kind}:test`, text: '测试中…', ok: true });
     try {
       const response = await window.bsub.testPlatform(kind, platform);
       if (response.ok) {
-        setMessage(`连接正常（${response.data.ms}ms）${response.data.sample ? ` · ${response.data.sample}` : ''}`);
+        const text = `连接正常（${response.data.ms}ms）${response.data.sample ? ` · ${response.data.sample}` : ''}`;
+        setPlatformStatus({ key: `${kind}:test`, text, ok: true });
+        setMessage(text);
       } else {
+        setPlatformStatus({ key: `${kind}:test`, text: response.error, ok: false });
         setError(response.error);
       }
+    } catch (caught) {
+      const text = (caught as Error)?.message || String(caught);
+      setPlatformStatus({ key: `${kind}:test`, text, ok: false });
+      setError(text);
     } finally {
       setPlatformBusy('');
     }
@@ -368,6 +381,7 @@ export function SettingsPanel() {
     if (!platform) return;
     setPlatformBusy(`${kind}:probe`);
     setError('');
+    setPlatformStatus({ key: `${kind}:probe`, text: '探测中…', ok: true });
     try {
       const response = await window.bsub.probePlatformModels(kind, platform);
       if (response.ok) {
@@ -375,13 +389,29 @@ export function SettingsPanel() {
           ...previous,
           [platform.id]: response.data.models
         }));
-        setMessage(`探测到 ${response.data.models.length} 个模型`);
+        const text = `探测到 ${response.data.models.length} 个模型`;
+        setPlatformStatus({ key: `${kind}:probe`, text, ok: true });
+        setMessage(text);
       } else {
+        setPlatformStatus({ key: `${kind}:probe`, text: response.error, ok: false });
         setError(response.error);
       }
+    } catch (caught) {
+      const text = (caught as Error)?.message || String(caught);
+      setPlatformStatus({ key: `${kind}:probe`, text, ok: false });
+      setError(text);
     } finally {
       setPlatformBusy('');
     }
+  };
+
+  const platformStatusNode = (kind: 'ai' | 'asr' | 'search') => {
+    if (!platformStatus || !platformStatus.key.startsWith(`${kind}:`)) return null;
+    return (
+      <div className={`platform-status${platformStatus.ok ? ' ok' : ' err'}`}>
+        {platformStatus.text}
+      </div>
+    );
   };
 
   const uid = (prefix: string) =>
@@ -890,6 +920,7 @@ export function SettingsPanel() {
             探测模型
           </button>
         </div>
+        {platformStatusNode('ai')}
         {(() => {
           const models = modelCache[active.id] || active.models || [];
           if (!models.length) return null;
@@ -1114,6 +1145,7 @@ export function SettingsPanel() {
             探测模型
           </button>
         </div>
+        {platformStatusNode('asr')}
         {(() => {
           const models = modelCache[activeAsr.id] || activeAsr.models || [];
           if (!models.length) return null;
@@ -1519,6 +1551,7 @@ export function SettingsPanel() {
                 测试连接
               </button>
             </div>
+            {platformStatusNode('search')}
 
             <div className="settings-label">检索 API Key</div>
             <div className="settings-inline">

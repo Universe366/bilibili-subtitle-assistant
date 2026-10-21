@@ -661,6 +661,7 @@ export async function testPlatform(platform: AiPlatform): Promise<{ latencyMs: n
       'content-type': 'application/json',
       authorization: `Bearer ${platform.apiKey.trim()}`
     },
+    signal: AbortSignal.timeout(30000),
     body: JSON.stringify({
       model: platform.model.trim(),
       max_tokens: 4,
