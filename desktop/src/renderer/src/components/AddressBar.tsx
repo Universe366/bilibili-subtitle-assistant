@@ -1,0 +1,89 @@
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Globe, Home, RotateCw, X } from 'lucide-react';
+import type { TabInfo } from '../../../shared/types';
+
+export function AddressBar({ tab }: { tab: TabInfo | null }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setValue(tab?.url ?? '');
+  }, [tab?.url, editing]);
+
+  const submit = () => {
+    const text = value.trim();
+    if (!text) return;
+    setEditing(false);
+    inputRef.current?.blur();
+    void window.bsub.navigate(text);
+  };
+
+  return (
+    <div className="address-bar">
+      <div className="nav-group">
+        <button
+          className="nav-btn"
+          disabled={!tab?.canGoBack}
+          title="后退"
+          onClick={() => void window.bsub.back()}
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <button
+          className="nav-btn"
+          disabled={!tab?.canGoForward}
+          title="前进"
+          onClick={() => void window.bsub.forward()}
+        >
+          <ArrowRight size={16} />
+        </button>
+        <button
+          className="nav-btn"
+          title={tab?.loading ? '停止' : '刷新'}
+          onClick={() => (tab?.loading ? void window.bsub.stop() : void window.bsub.reload())}
+        >
+          {tab?.loading ? <X size={15} /> : <RotateCw size={15} />}
+        </button>
+      </div>
+
+      <div className="address-field">
+        <Globe size={13} />
+        <input
+          ref={inputRef}
+          value={editing ? value : tab?.url ?? ''}
+          placeholder="输入 BV 号、链接或搜索词"
+          spellCheck={false}
+          onChange={(event) => {
+            setEditing(true);
+            setValue(event.target.value);
+          }}
+          onFocus={(event) => {
+            setEditing(true);
+            setValue(tab?.url ?? '');
+            event.currentTarget.select();
+          }}
+          onBlur={() => {
+            setEditing(false);
+            setValue(tab?.url ?? '');
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') submit();
+            if (event.key === 'Escape') {
+              setEditing(false);
+              inputRef.current?.blur();
+            }
+          }}
+        />
+      </div>
+
+      <button
+        className="nav-btn"
+        title="打开 B 站首页"
+        onClick={() => void window.bsub.newTab('https://www.bilibili.com/')}
+      >
+        <Home size={16} />
+      </button>
+    </div>
+  );
+}

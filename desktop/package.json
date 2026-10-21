@@ -1,0 +1,74 @@
+{
+  "name": "bsub-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "B站字幕助手桌面端",
+  "author": "bsub",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "sync:bridge": "node scripts/sync-bridge.mjs",
+    "predev": "npm run sync:bridge",
+    "dev": "electron-vite dev",
+    "prebuild": "npm run sync:bridge",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win --dir"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.9.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^6.0.0",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.5"
+  },
+  "build": {
+    "appId": "com.bsub.desktop",
+    "productName": "B站字幕助手",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "."
+      }
+    ],
+    "npmRebuild": false,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "B站字幕助手-${version}-setup.${ext}",
+      "shortcutName": "B站字幕助手"
+    },
+    "asar": true
+  }
+}

@@ -4,6 +4,8 @@ _src/
 # 依赖与构建产物
 node_modules/
 build/
+!desktop/build/
+!desktop/build/icon.ico
 
 # 测试过程中生成的样本（可重新生成）
 verify/sample-mediarecorder.m4a

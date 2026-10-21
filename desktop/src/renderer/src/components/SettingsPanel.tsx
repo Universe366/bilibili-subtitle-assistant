@@ -1,0 +1,248 @@
+import { useEffect, useState } from 'react';
+import { FolderOpen, Loader2, Save, Wifi } from 'lucide-react';
+import type { AiPlatform, AppSettings, BridgeStatus } from '../../../shared/types';
+
+export function SettingsPanel() {
+  const [draft, setDraft] = useState<AppSettings | null>(null);
+  const [dataDir, setDataDir] = useState('');
+  const [version, setVersion] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
+
+  useEffect(() => {
+    void window.bsub.getBridgeStatus().then((response) => {
+      if (response.ok) setBridge(response.data);
+    });
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    window.bsub
+      .getSettings()
+      .then((response) => {
+        if (!alive) return;
+        if (response.ok) {
+          setDraft(response.data.settings);
+          setDataDir(response.data.dataDir);
+          setVersion(response.data.version);
+        } else {
+          setError(response.error);
+        }
+      })
+      .catch((caught) => {
+        if (alive) setError((caught as Error).message);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const active = draft
+    ? draft.ai.platforms.find((platform) => platform.id === draft.ai.activeId) || draft.ai.platforms[0]
+    : null;
+
+  const updatePlatform = (patch: Partial<AiPlatform>) => {
+    if (!draft || !active) return;
+    setDraft({
+      ...draft,
+      ai: {
+        ...draft.ai,
+        platforms: draft.ai.platforms.map((platform) =>
+          platform.id === active.id ? { ...platform, ...patch } : platform
+        )
+      }
+    });
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    setSaving(true);
+    setMessage('');
+    setError('');
+    try {
+      const response = await window.bsub.saveSettings(draft);
+      if (response.ok) {
+        setDraft(response.data.settings);
+        setDataDir(response.data.dataDir);
+        setMessage('已保存');
+        const status = await window.bsub.getBridgeStatus();
+        if (status.ok) setBridge(status.data);
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setSaving(false);
+      window.setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  const test = async () => {
+    if (!active) return;
+    setTesting(true);
+    setMessage('');
+    setError('');
+    try {
+      const response = await window.bsub.testAi(active);
+      if (response.ok) setMessage(`连接成功 · ${response.data.latencyMs}ms`);
+      else setError(response.error);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (!draft || !active) {
+    return (
+      <div className="panel">
+        <div className="panel-title">设置</div>
+        <div className="status-line">
+          <Loader2 size={13} className="spin" />
+          读取设置…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-toolbar">
+        <div className="panel-title">设置</div>
+        <div className="toolbar-actions">
+          <button className="mini-btn primary" disabled={saving} onClick={() => void save()}>
+            {saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />} 保存
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">AI 平台</div>
+        <select
+          className="settings-input"
+          value={draft.ai.activeId}
+          onChange={(event) =>
+            setDraft({ ...draft, ai: { ...draft.ai, activeId: event.target.value } })
+          }
+        >
+          {draft.ai.platforms.map((platform) => (
+            <option key={platform.id} value={platform.id}>
+              {platform.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="settings-label">Base URL</div>
+        <input
+          className="settings-input"
+          value={active.baseUrl}
+          spellCheck={false}
+          onChange={(event) => updatePlatform({ baseUrl: event.target.value })}
+        />
+
+        <div className="settings-label">模型</div>
+        <input
+          className="settings-input"
+          value={active.model}
+          spellCheck={false}
+          onChange={(event) => updatePlatform({ model: event.target.value })}
+        />
+
+        <div className="settings-label">API Key</div>
+        <input
+          className="settings-input"
+          type="password"
+          value={active.apiKey}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => updatePlatform({ apiKey: event.target.value })}
+        />
+
+        <button className="mini-btn" disabled={testing} onClick={() => void test()}>
+          {testing ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />} 测试连接
+        </button>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">插件桥（外部浏览器推送）</div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.bridge.enabled}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                bridge: { ...draft.bridge, enabled: event.target.checked }
+              })
+            }
+          />
+          启用本机接收
+        </label>
+
+        <div className="settings-label">端口</div>
+        <input
+          className="settings-input"
+          type="number"
+          value={draft.bridge.port}
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              bridge: { ...draft.bridge, port: Number(event.target.value) || 47821 }
+            })
+          }
+        />
+
+        <div className="settings-label">Token</div>
+        <div className="settings-token">
+          <code title={draft.bridge.token}>{draft.bridge.token || '保存后自动生成'}</code>
+          <button
+            className="mini-btn"
+            disabled={!draft.bridge.token}
+            onClick={() => void window.bsub.writeClipboard(draft.bridge.token)}
+          >
+            复制
+          </button>
+        </div>
+        <div className="settings-hint">
+          {bridge?.running
+            ? `运行中 · 127.0.0.1:${bridge.port}`
+            : bridge?.error
+              ? `未启动：${bridge.error}`
+              : '未启动'}
+          {' · '}
+          POST /v1/ingest
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">总结提示词</div>
+        <textarea
+          className="settings-textarea"
+          rows={7}
+          value={draft.prompt.summary}
+          onChange={(event) =>
+            setDraft({ ...draft, prompt: { ...draft.prompt, summary: event.target.value } })
+          }
+        />
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">数据目录</div>
+        <div className="settings-path" title={dataDir}>
+          {dataDir}
+        </div>
+        <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
+          <FolderOpen size={12} /> 打开目录
+        </button>
+      </div>
+
+      {message && <div className="settings-message ok">{message}</div>}
+      {error && <div className="settings-message error">{error}</div>}
+
+      <div className="panel-foot">
+        <span>Key 只保存在本机 settings.json</span>
+        <span>v{version}</span>
+      </div>
+    </div>
+  );
+}

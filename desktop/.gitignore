@@ -1,0 +1,9 @@
+node_modules/
+resources/page-bridge.js
+resources/tray.png
+out/
+dist/
+release/
+spike/report*.json
+spike/subtitle-sample.json
+spike/*.log
