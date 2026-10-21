@@ -745,6 +745,32 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_SETTINGS_SHOT === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          const clicked = await win.webContents.executeJavaScript(`
+            (() => {
+              const button = [...document.querySelectorAll('button')].find((item) =>
+                (item.textContent || '').trim().includes('设置')
+              );
+              if (!button) return false;
+              button.click();
+              return true;
+            })()
+          `);
+          await new Promise((resolve) => setTimeout(resolve, 1600));
+          const image = await win.webContents.capturePage();
+          const file = path.join(app.getPath('temp'), 'bsub-settings-shot.png');
+          fs.writeFileSync(file, image.toPNG());
+          console.log('[settings-shot]', clicked, file);
+        } catch (error) {
+          console.warn('[settings-shot] failed', (error as Error).message);
+        }
+      }, 6000);
+    }
+
     if (process.env.BSUB_PLATFORM_CONN_TEST === '1') {
       setTimeout(async () => {
         try {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Download,
   FolderOpen,
@@ -89,6 +89,8 @@ export function SettingsPanel() {
   const [editingSearchId, setEditingSearchId] = useState('');
   const [modelCache, setModelCache] = useState<Record<string, string[]>>({});
   const [platformBusy, setPlatformBusy] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const savedJsonRef = useRef('');
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [platformStatus, setPlatformStatus] = useState<{
     key: string;
@@ -116,6 +118,7 @@ export function SettingsPanel() {
         if (!alive) return;
         if (response.ok) {
           setDraft(response.data.settings);
+          savedJsonRef.current = JSON.stringify(response.data.settings);
           setDataDir(response.data.dataDir);
           setVersion(response.data.version);
         } else {
@@ -638,6 +641,8 @@ export function SettingsPanel() {
       const response = await window.bsub.saveSettings(draft);
       if (response.ok) {
         setDraft(response.data.settings);
+        savedJsonRef.current = JSON.stringify(response.data.settings);
+        setDirty(false);
         setDataDir(response.data.dataDir);
         setMessage('已保存');
         const status = await window.bsub.getBridgeStatus();
@@ -732,6 +737,23 @@ export function SettingsPanel() {
     if (status.ok) setBridge(status.data);
   };
 
+  const jumpToSection = (label: string) => {
+    const sections = Array.from(
+      document.querySelectorAll<HTMLElement>('.settings-section')
+    );
+    const target = sections.find((section) =>
+      (section.querySelector('.settings-label')?.textContent || '').includes(label)
+    );
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  useEffect(() => {
+    if (!draft) return;
+    const current = JSON.stringify(draft);
+    if (!savedJsonRef.current) savedJsonRef.current = current;
+    setDirty(current !== savedJsonRef.current);
+  }, [draft]);
+
   if (!draft || !active || !activeTemplate || !activeAsr) {
     return (
       <div className="panel">
@@ -746,25 +768,51 @@ export function SettingsPanel() {
 
   return (
     <div className="panel settings-panel">
-      <div className="panel-toolbar">
-        <div className="panel-title">设置</div>
-        <div className="toolbar-actions">
-          <button className="mini-btn primary" disabled={saving} onClick={() => void save()}>
-            {saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />} 保存
-          </button>
+      <div className="settings-sticky">
+        <div className="panel-toolbar">
+          <div className="panel-title">设置</div>
+          <div className="toolbar-actions">
+            {dirty ? (
+              <span className="settings-dirty">未保存</span>
+            ) : (
+              <span className="settings-saved">已保存</span>
+            )}
+            <button className="mini-btn primary" disabled={saving} onClick={() => void save()}>
+              {saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />} 保存
+            </button>
+          </div>
         </div>
-      </div>
 
-      <input
-        className="settings-input settings-search"
-        placeholder="搜索设置（Key / 导出 / 超时…）"
-        value={settingsQuery}
-        spellCheck={false}
-        onChange={(event) => setSettingsQuery(event.target.value)}
-      />
-      {settingsQuery && (
-        <div className="settings-hint">匹配 {visibleSections} 个分组</div>
-      )}
+        <div className="settings-search-row">
+          <Search size={14} />
+          <input
+            className="settings-search-input"
+            placeholder="搜索设置（Key / 导出 / 超时…）"
+            value={settingsQuery}
+            spellCheck={false}
+            onChange={(event) => setSettingsQuery(event.target.value)}
+          />
+          {settingsQuery && (
+            <button className="mini-btn" onClick={() => setSettingsQuery('')}>
+              清除
+            </button>
+          )}
+        </div>
+
+        <div className="settings-toc">
+          {['通用', 'AI', '语音', '提示词', '检索', '校对', '导出', 'MCP', 'Skills', '更新', '数据'].map(
+            (label) => (
+              <button key={label} className="settings-chip" onClick={() => jumpToSection(label)}>
+                {label}
+              </button>
+            )
+          )}
+        </div>
+
+        {settingsQuery && (
+          <div className="settings-hint">匹配 {visibleSections} 个分组</div>
+        )}
+      </div>
 
       <div className="settings-section">
         <div className="settings-label">通用</div>
@@ -2313,8 +2361,18 @@ export function SettingsPanel() {
         </div>
       </div>
 
-      {message && <div className="settings-message ok">{message}</div>}
-      {error && <div className="settings-message error">{error}</div>}
+      {(message || error) && (
+        <div
+          className={`settings-toast ${error ? 'err' : 'ok'}`}
+          onClick={() => {
+            setMessage('');
+            setError('');
+          }}
+          title="点击关闭"
+        >
+          {error || message}
+        </div>
+      )}
 
       <div className="panel-foot">
         <span>Key 只保存在本机 settings.json</span>
