@@ -380,8 +380,12 @@ async function handleContentEvent(msg) {
   const { event, payload } = msg;
   if (event === 'time') {
     const st = store.get();
+    const prevTime = st.follow && typeof st.follow.currentTime === 'number' ? st.follow.currentTime : null;
+    const nextTime = Number(payload.currentTime) || 0;
+    // 正常播放每 1s 左右；超过 2.5s 视为拖动进度条/跳转，强制定位字幕
+    const jumped = prevTime != null && Math.abs(nextTime - prevTime) > 2.5;
     store.set({ follow: { currentTime: payload.currentTime, duration: payload.duration, paused: false } });
-    subtitlesPanel.syncActive();
+    subtitlesPanel.syncActive(jumped);
     return;
   }
   if (event === 'navigate') {

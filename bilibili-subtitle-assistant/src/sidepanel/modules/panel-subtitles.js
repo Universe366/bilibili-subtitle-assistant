@@ -112,6 +112,7 @@ function buildItems(st) {
   state.rendered.clear();
   state.inner.textContent = '';
   state.tmp = null;
+  lastActive = -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -364,17 +365,26 @@ function askAboutLine(line) {
 // ---------------------------------------------------------------------------
 
 let lastActive = -1;
-export function syncActive() {
+export function syncActive(force = false) {
   const st = store.get();
   const t = st.follow && st.follow.paused === false ? st.follow.currentTime : null;
   const idx = t == null ? -1 : findByTime(t);
-  if (idx === lastActive) return;
+  const autoFollow = st.settings?.general.autoFollow !== false;
+  if (idx === lastActive && !force) return;
   lastActive = idx;
+
+  // 用户拖动进度条属于明确跳转：即使之前手动滚动过，也恢复跟随并定位。
+  if (force && autoFollow) {
+    state.followPaused = false;
+    renderToolbar();
+  }
+  if (idx >= 0 && autoFollow && (force || !state.followPaused)) {
+    scrollToActive(idx);
+    // 目标行可能在虚拟列表视口外，先滚过去再渲染，最后才能正确高亮
+    renderWindow();
+  }
   for (const [i, row] of state.rendered.entries()) {
     setBoolAttr(row, 'data-active', i === idx);
-  }
-  if (idx >= 0 && !state.followPaused && st.settings?.general.autoFollow !== false) {
-    scrollToActive(idx);
   }
 }
 

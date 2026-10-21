@@ -130,7 +130,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.14.7', contentVersion: '2.14.7', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.14.8', contentVersion: '2.14.8', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -151,12 +151,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.14.7', stale: false }],
-    contentVersion: '2.14.7'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.14.8', stale: false }],
+    contentVersion: '2.14.8'
   },
   diagnostics: {
-    extensionVersion: '2.14.7',
-    contentVersion: '2.14.7',
+    extensionVersion: '2.14.8',
+    contentVersion: '2.14.8',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -172,7 +172,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.14.7', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.14.8', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -245,7 +245,7 @@ async function main() {
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
   check('侧边栏有「在页面内打开」按钮', !!doc.getElementById('btn-embed'), '');
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.14\.7 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.14\.8 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
 
   // Edge / Chrome 商店语言检测依赖 _locales + __MSG_ 占位符
   const manifestJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
@@ -1407,6 +1407,7 @@ async function main() {
     const appSrc = srcOf('sidepanel/app.js');
     const swSrc = srcOf('background/service-worker.js');
     const contentSrc = srcOf('content/content.js');
+    const subSrc = srcOf('sidepanel/modules/panel-subtitles.js');
 
     // ① AI 优化升级：五类修正
     check('优化提示词覆盖错别字/术语/时间/数据/逻辑', /错别字[\s\S]{0,160}术语[\s\S]{0,160}时间[\s\S]{0,160}数据[\s\S]{0,160}逻辑/.test(optSrc), '');
@@ -1427,6 +1428,13 @@ async function main() {
 
     // ③ 切换视频清残留
     check('loadVideo 会检测 signature 变化', /prevSig !== \(video\.signature/.test(ctxSrc), '');
+    check(
+      '拖动进度条时强制跟随并定位字幕',
+      /syncActive\(force = false\)/.test(subSrc) &&
+        /Math\.abs\(nextTime - prevTime\) > 2\.5/.test(appSrc) &&
+        /subtitlesPanel\.syncActive\(jumped\)/.test(appSrc),
+      ''
+    );
     check(
       'loadVideo 首次取字幕带 expectSignature',
       /getSubtitleBundle[\s\S]{0,220}expectSignature/.test(ctxSrc),
