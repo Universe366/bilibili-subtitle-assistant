@@ -157,7 +157,32 @@ export interface AppSettings {
     port: number;
     token: string;
   };
+  update: {
+    autoCheck: boolean;
+    feedUrl: string;
+  };
   dataDir: string;
+}
+
+export type UpdateState =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error';
+
+export interface UpdateStatus {
+  state: UpdateState;
+  currentVersion: string;
+  version?: string;
+  progress?: number;
+  error?: string;
+  notes?: string;
+  manual?: boolean;
+  checkedAt?: number;
 }
 
 export interface BridgeStatus {

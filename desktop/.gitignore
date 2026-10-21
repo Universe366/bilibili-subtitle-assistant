@@ -7,3 +7,4 @@ release/
 spike/report*.json
 spike/subtitle-sample.json
 spike/*.log
+spike/update-feed/

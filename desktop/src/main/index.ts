@@ -9,6 +9,7 @@ import { summarize } from './ai';
 import { buildExport } from './exporters';
 import { settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
+import { disposeUpdater, initUpdater } from './updater';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -349,7 +350,10 @@ app.whenReady().then(() => {
   createWindow();
   writeLog('startup.log', 'window created');
   createTray();
-  if (mainWindow) void startBridge(mainWindow);
+  if (mainWindow) {
+    void startBridge(mainWindow);
+    initUpdater(mainWindow);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -366,6 +370,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   writeLog('startup.log', 'before-quit');
   isQuitting = true;
+  disposeUpdater();
   stopBridge();
   closeLibrary();
 });

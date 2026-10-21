@@ -19,6 +19,7 @@ import type {
   SummaryRef,
   TabInfo,
   TrackBody,
+  UpdateStatus,
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
@@ -72,6 +73,15 @@ const api: BsubApi = {
     ipcRenderer.invoke('bridge:status') as Promise<Result<BridgeStatus>>,
   writeClipboard: (text: string) =>
     ipcRenderer.invoke('clipboard:write', text) as Promise<void>,
+
+  getUpdateStatus: () =>
+    ipcRenderer.invoke('update:status') as Promise<Result<UpdateStatus>>,
+  checkForUpdates: () =>
+    ipcRenderer.invoke('update:check') as Promise<Result<UpdateStatus>>,
+  downloadUpdate: () =>
+    ipcRenderer.invoke('update:download') as Promise<Result<UpdateStatus>>,
+  installUpdate: () => ipcRenderer.invoke('update:install') as Promise<void>,
+  onUpdateStatus: (cb: (status: UpdateStatus) => void) => on<UpdateStatus>('update:status', cb),
 
   summarize: (payload: SummarizeRequest) =>
     ipcRenderer.invoke('ai:summarize', payload) as Promise<Result<{ requestId: string }>>,

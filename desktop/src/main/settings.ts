@@ -56,6 +56,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   prompt: { summary: DEFAULT_PROMPT },
   bridge: { enabled: true, port: 47821, token: '' },
+  update: { autoCheck: false, feedUrl: '' },
   dataDir: ''
 };
 
@@ -76,6 +77,11 @@ function normalize(raw: any): AppSettings {
       const port = Number(raw.bridge.port);
       if (Number.isFinite(port) && port >= 1024 && port <= 65535) base.bridge.port = Math.floor(port);
       base.bridge.token = typeof raw.bridge.token === 'string' ? raw.bridge.token : '';
+    }
+
+    if (raw.update && typeof raw.update === 'object') {
+      base.update.autoCheck = raw.update.autoCheck !== false;
+      base.update.feedUrl = typeof raw.update.feedUrl === 'string' ? raw.update.feedUrl.trim() : '';
     }
 
     const byId = new Map(base.ai.platforms.map((platform) => [platform.id, platform]));

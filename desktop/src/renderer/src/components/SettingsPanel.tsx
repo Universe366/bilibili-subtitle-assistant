@@ -1,6 +1,30 @@
 import { useEffect, useState } from 'react';
-import { FolderOpen, Loader2, Save, Wifi } from 'lucide-react';
-import type { AiPlatform, AppSettings, BridgeStatus } from '../../../shared/types';
+import { Download, FolderOpen, Loader2, RefreshCw, Save, Wifi } from 'lucide-react';
+import type { AiPlatform, AppSettings, BridgeStatus, UpdateStatus } from '../../../shared/types';
+
+function updateText(status: UpdateStatus | null): string {
+  if (!status) return '尚未检查';
+  switch (status.state) {
+    case 'disabled':
+      return status.error || '当前版本不支持自动更新';
+    case 'idle':
+      return '尚未检查';
+    case 'checking':
+      return '正在检查更新…';
+    case 'available':
+      return `发现新版本 ${status.version || ''}`;
+    case 'not-available':
+      return '已是最新版本';
+    case 'downloading':
+      return `正在下载 ${status.progress || 0}%`;
+    case 'downloaded':
+      return `新版本 ${status.version || ''} 已下载，重启后安装`;
+    case 'error':
+      return `检查失败：${status.error || '未知错误'}`;
+    default:
+      return '';
+  }
+}
 
 export function SettingsPanel() {
   const [draft, setDraft] = useState<AppSettings | null>(null);
@@ -11,11 +35,16 @@ export function SettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
   useEffect(() => {
     void window.bsub.getBridgeStatus().then((response) => {
       if (response.ok) setBridge(response.data);
     });
+    void window.bsub.getUpdateStatus().then((response) => {
+      if (response.ok) setUpdateState(response.data);
+    });
+    return window.bsub.onUpdateStatus((status) => setUpdateState(status));
   }, []);
 
   useEffect(() => {
@@ -211,6 +240,78 @@ export function SettingsPanel() {
               : '未启动'}
           {' · '}
           POST /v1/ingest
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">版本更新</div>
+        <div className="settings-row">
+          <span>当前版本</span>
+          <code>v{version}</code>
+        </div>
+        <div className="update-state">{updateText(updateState)}</div>
+        {updateState?.state === 'downloading' && (
+          <div className="update-progress">
+            <span style={{ width: `${updateState.progress || 0}%` }} />
+          </div>
+        )}
+        {(updateState?.state === 'available' || updateState?.state === 'downloaded') &&
+          updateState?.notes && <pre className="update-notes">{updateState.notes}</pre>}
+
+        <div className="toolbar-actions">
+          <button
+            className="mini-btn"
+            disabled={
+              !updateState ||
+              updateState.state === 'checking' ||
+              updateState.state === 'downloading' ||
+              updateState.state === 'disabled'
+            }
+            onClick={() => void window.bsub.checkForUpdates()}
+          >
+            <RefreshCw size={12} /> 检查
+          </button>
+          {updateState?.state === 'available' && (
+            <button className="mini-btn primary" onClick={() => void window.bsub.downloadUpdate()}>
+              <Download size={12} /> 下载
+            </button>
+          )}
+          {updateState?.state === 'downloaded' && (
+            <button className="mini-btn primary" onClick={() => void window.bsub.installUpdate()}>
+              重启安装
+            </button>
+          )}
+        </div>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.update.autoCheck !== false}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                update: { ...draft.update, autoCheck: event.target.checked }
+              })
+            }
+          />
+          启动后自动检查
+        </label>
+
+        <div className="settings-label">自定义更新源（可选）</div>
+        <input
+          className="settings-input"
+          value={draft.update.feedUrl || ''}
+          spellCheck={false}
+          placeholder="留空使用内置 GitHub Releases"
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              update: { ...draft.update, feedUrl: event.target.value }
+            })
+          }
+        />
+        <div className="settings-hint">
+          自动检查与更新源修改后下次启动生效；未签名时 SmartScreen 仍会提示。
         </div>
       </div>
 

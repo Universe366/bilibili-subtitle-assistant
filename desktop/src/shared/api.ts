@@ -16,6 +16,7 @@ import type {
   SummaryRef,
   TrackBody,
   TabInfo,
+  UpdateStatus,
   ExportPayload,
   LibraryIngestPayload,
   LibraryIngestResult,
@@ -54,6 +55,12 @@ export interface BsubApi {
   openDataDir(): Promise<void>;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;
   writeClipboard(text: string): Promise<void>;
+
+  getUpdateStatus(): Promise<Result<UpdateStatus>>;
+  checkForUpdates(): Promise<Result<UpdateStatus>>;
+  downloadUpdate(): Promise<Result<UpdateStatus>>;
+  installUpdate(): Promise<void>;
+  onUpdateStatus(cb: (status: UpdateStatus) => void): () => void;
 
   summarize(payload: SummarizeRequest): Promise<Result<{ requestId: string }>>;
   cancelSummary(requestId: string): Promise<void>;

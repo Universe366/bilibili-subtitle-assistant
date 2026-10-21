@@ -18,6 +18,7 @@ import type {
   SubtitleBundle,
   SummarizeRequest,
   SummaryRef,
+  UpdateStatus,
   TrackBody,
   LibraryIngestPayload,
   LibraryIngestResult,
@@ -29,6 +30,7 @@ import { getPageInfo, getSubtitles, getTime, getTrackBody, seek } from './page';
 import { getSummaryFor, ingestVideo, listLibrary, removeVideo, saveSummary, searchLibrary } from './library';
 import { activePlatform, saveSettings, settingsSnapshot, testPlatform } from './settings';
 import { bridgeStatus, restartBridge } from './bridge';
+import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
 import { buildExport, exportFilters } from './exporters';
 
@@ -225,6 +227,34 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('clipboard:write', (_event, text: string) => {
     clipboard.writeText(String(text ?? ''));
+  });
+
+  ipcMain.handle('update:status', (): Result<UpdateStatus> => {
+    try {
+      return { ok: true, data: updateStatus() };
+    } catch (error) {
+      return failure<UpdateStatus>(error);
+    }
+  });
+
+  ipcMain.handle('update:check', async (): Promise<Result<UpdateStatus>> => {
+    try {
+      return { ok: true, data: await checkForUpdates(true) };
+    } catch (error) {
+      return failure<UpdateStatus>(error);
+    }
+  });
+
+  ipcMain.handle('update:download', async (): Promise<Result<UpdateStatus>> => {
+    try {
+      return { ok: true, data: await downloadUpdate() };
+    } catch (error) {
+      return failure<UpdateStatus>(error);
+    }
+  });
+
+  ipcMain.handle('update:install', () => {
+    installUpdate();
   });
 
   ipcMain.handle('settings:test', async (_event, platform?: AiPlatform) => {
