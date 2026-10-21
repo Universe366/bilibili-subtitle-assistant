@@ -7,6 +7,7 @@ import { closeLibrary, getSummaryFor, ingestVideo, initLibrary, listLibrary, sav
 import { getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
 import { searchWeb } from './search';
+import { applyCorrectionToText } from './correction';
 import { buildExport } from './exporters';
 import { loadSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -155,6 +156,35 @@ function createWindow(): void {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
+
+    if (process.env.BSUB_CORRECTION_TEST === '1') {
+      setTimeout(() => {
+        const settings = loadSettings();
+        settings.correction.groups = [
+          {
+            id: 'g',
+            name: '测试',
+            enabled: true,
+            rules: [
+              {
+                id: 'r1',
+                pattern: 'AI',
+                replacement: '人工智能',
+                regex: false,
+                caseSensitive: true
+              }
+            ]
+          }
+        ];
+        settings.correction.glossary.terms = [
+          { id: 't', from: 'UP主', to: 'UP 主', note: '' }
+        ];
+        console.log(
+          '[correction-test]',
+          applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
+        );
+      }, 4000);
+    }
 
     if (process.env.BSUB_SEARCH_TEST === '1') {
       setTimeout(async () => {

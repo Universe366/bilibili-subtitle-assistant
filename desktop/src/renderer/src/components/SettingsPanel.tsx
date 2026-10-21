@@ -15,7 +15,10 @@ import type {
   AiPlatform,
   AppSettings,
   BridgeStatus,
+  CorrectionRule,
+  CorrectionRuleGroup,
   ExportFormat,
+  GlossaryTerm,
   PromptTemplate,
   SearchProvider,
   SearchTimeRange,
@@ -66,6 +69,9 @@ export function SettingsPanel() {
   const [searchTesting, setSearchTesting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('B站 视频 总结');
   const [searchResults, setSearchResults] = useState<WebReference[] | null>(null);
+  const [correctionTest, setCorrectionTest] = useState('这是一段测试字幕，AI 和 GPU 可能会被写错。');
+  const [correctionPreview, setCorrectionPreview] = useState('');
+  const [correctionTesting, setCorrectionTesting] = useState(false);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
@@ -123,6 +129,103 @@ export function SettingsPanel() {
   const updateSearch = (patch: Partial<AppSettings['search']>) => {
     if (!draft) return;
     setDraft({ ...draft, search: { ...draft.search, ...patch } });
+  };
+
+  const uid = (prefix: string) =>
+    `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const updateCorrection = (patch: Partial<AppSettings['correction']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, correction: { ...draft.correction, ...patch } });
+  };
+
+  const updateGroup = (id: string, patch: Partial<CorrectionRuleGroup>) => {
+    if (!draft) return;
+    updateCorrection({
+      groups: draft.correction.groups.map((group) =>
+        group.id === id ? { ...group, ...patch } : group
+      )
+    });
+  };
+
+  const addGroup = () => {
+    if (!draft) return;
+    const group: CorrectionRuleGroup = {
+      id: uid('group'),
+      name: '新规则组',
+      enabled: true,
+      rules: []
+    };
+    updateCorrection({ groups: [...draft.correction.groups, group] });
+  };
+
+  const removeGroup = (id: string) => {
+    if (!draft) return;
+    updateCorrection({ groups: draft.correction.groups.filter((group) => group.id !== id) });
+  };
+
+  const updateRule = (groupId: string, ruleId: string, patch: Partial<CorrectionRule>) => {
+    if (!draft) return;
+    updateCorrection({
+      groups: draft.correction.groups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              rules: group.rules.map((rule) =>
+                rule.id === ruleId ? { ...rule, ...patch } : rule
+              )
+            }
+          : group
+      )
+    });
+  };
+
+  const addRule = (groupId: string) => {
+    if (!draft) return;
+    const group = draft.correction.groups.find((item) => item.id === groupId);
+    if (!group) return;
+    const rule: CorrectionRule = {
+      id: uid('rule'),
+      pattern: '',
+      replacement: '',
+      regex: false,
+      caseSensitive: false
+    };
+    updateGroup(groupId, { rules: [...group.rules, rule] });
+  };
+
+  const removeRule = (groupId: string, ruleId: string) => {
+    if (!draft) return;
+    const group = draft.correction.groups.find((item) => item.id === groupId);
+    if (!group) return;
+    updateGroup(groupId, { rules: group.rules.filter((rule) => rule.id !== ruleId) });
+  };
+
+  const updateGlossary = (patch: Partial<AppSettings['correction']['glossary']>) => {
+    if (!draft) return;
+    updateCorrection({ glossary: { ...draft.correction.glossary, ...patch } });
+  };
+
+  const addTerm = () => {
+    if (!draft) return;
+    const term: GlossaryTerm = { id: uid('term'), from: '', to: '', note: '' };
+    updateGlossary({ terms: [...draft.correction.glossary.terms, term] });
+  };
+
+  const updateTerm = (id: string, patch: Partial<GlossaryTerm>) => {
+    if (!draft) return;
+    updateGlossary({
+      terms: draft.correction.glossary.terms.map((term) =>
+        term.id === id ? { ...term, ...patch } : term
+      )
+    });
+  };
+
+  const removeTerm = (id: string) => {
+    if (!draft) return;
+    updateGlossary({
+      terms: draft.correction.glossary.terms.filter((term) => term.id !== id)
+    });
   };
 
   const updatePlatform = (patch: Partial<AiPlatform>) => {
@@ -254,6 +357,19 @@ export function SettingsPanel() {
       }
     } finally {
       setSearchTesting(false);
+    }
+  };
+
+  const previewCorrection = async () => {
+    if (!draft) return;
+    setCorrectionTesting(true);
+    setError('');
+    try {
+      const response = await window.bsub.previewCorrection(correctionTest, draft);
+      if (response.ok) setCorrectionPreview(response.data);
+      else setError(response.error);
+    } finally {
+      setCorrectionTesting(false);
     }
   };
 
@@ -592,6 +708,170 @@ export function SettingsPanel() {
         )}
         <div className="settings-hint">
           免 Key 引擎可能被限流；失败会自动换另一个免 Key 引擎。检索结果只作为总结参考。
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">字幕校对与术语表</div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.correction.enabled}
+            onChange={(event) => updateCorrection({ enabled: event.target.checked })}
+          />
+          读取字幕 / 入库时应用规则
+        </label>
+
+        <div className="settings-inline">
+          <span className="settings-label" style={{ flex: 1 }}>
+            规则组
+          </span>
+          <button className="mini-btn" onClick={addGroup}>
+            <Plus size={12} /> 规则组
+          </button>
+        </div>
+
+        {draft.correction.groups.map((group) => (
+          <div key={group.id} className="correction-group">
+            <div className="settings-inline">
+              <input
+                className="settings-input"
+                value={group.name}
+                onChange={(event) => updateGroup(group.id, { name: event.target.value })}
+              />
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={group.enabled}
+                  onChange={(event) => updateGroup(group.id, { enabled: event.target.checked })}
+                />
+                启用
+              </label>
+              <button
+                className="mini-btn"
+                title="删除规则组"
+                onClick={() => removeGroup(group.id)}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+
+            {group.rules.map((rule) => (
+              <div key={rule.id} className="correction-rule">
+                <input
+                  className="settings-input"
+                  placeholder="匹配内容"
+                  value={rule.pattern}
+                  spellCheck={false}
+                  onChange={(event) =>
+                    updateRule(group.id, rule.id, { pattern: event.target.value })
+                  }
+                />
+                <input
+                  className="settings-input"
+                  placeholder="替换为"
+                  value={rule.replacement}
+                  spellCheck={false}
+                  onChange={(event) =>
+                    updateRule(group.id, rule.id, { replacement: event.target.value })
+                  }
+                />
+                <div className="settings-inline">
+                  <label className="settings-check">
+                    <input
+                      type="checkbox"
+                      checked={rule.regex}
+                      onChange={(event) =>
+                        updateRule(group.id, rule.id, { regex: event.target.checked })
+                      }
+                    />
+                    正则
+                  </label>
+                  <label className="settings-check">
+                    <input
+                      type="checkbox"
+                      checked={rule.caseSensitive}
+                      onChange={(event) =>
+                        updateRule(group.id, rule.id, { caseSensitive: event.target.checked })
+                      }
+                    />
+                    区分大小写
+                  </label>
+                  <button
+                    className="mini-btn"
+                    title="删除规则"
+                    onClick={() => removeRule(group.id, rule.id)}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <button className="mini-btn" onClick={() => addRule(group.id)}>
+              <Plus size={12} /> 规则
+            </button>
+          </div>
+        ))}
+
+        <div className="settings-label">术语表</div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.correction.glossary.enabled}
+            onChange={(event) => updateGlossary({ enabled: event.target.checked })}
+          />
+          启用术语替换，并注入总结提示词
+        </label>
+
+        {draft.correction.glossary.terms.map((term) => (
+          <div key={term.id} className="correction-term">
+            <div className="settings-inline">
+              <input
+                className="settings-input"
+                placeholder="原词"
+                value={term.from}
+                spellCheck={false}
+                onChange={(event) => updateTerm(term.id, { from: event.target.value })}
+              />
+              <span className="settings-arrow">→</span>
+              <input
+                className="settings-input"
+                placeholder="统一写法"
+                value={term.to}
+                spellCheck={false}
+                onChange={(event) => updateTerm(term.id, { to: event.target.value })}
+              />
+              <button className="mini-btn" title="删除术语" onClick={() => removeTerm(term.id)}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <input
+              className="settings-input"
+              placeholder="备注（可选）"
+              value={term.note}
+              onChange={(event) => updateTerm(term.id, { note: event.target.value })}
+            />
+          </div>
+        ))}
+
+        <button className="mini-btn" onClick={addTerm}>
+          <Plus size={12} /> 术语
+        </button>
+
+        <div className="settings-label">预览</div>
+        <input
+          className="settings-input"
+          value={correctionTest}
+          spellCheck={false}
+          onChange={(event) => setCorrectionTest(event.target.value)}
+        />
+        <button className="mini-btn" disabled={correctionTesting} onClick={() => void previewCorrection()}>
+          {correctionTesting ? <Loader2 size={12} className="spin" /> : <Search size={12} />} 预览结果
+        </button>
+        {correctionPreview && <pre className="correction-preview">{correctionPreview}</pre>}
+        <div className="settings-hint">
+          规则按组顺序执行，术语替换在规则之后；非法正则自动跳过。
         </div>
       </div>
 

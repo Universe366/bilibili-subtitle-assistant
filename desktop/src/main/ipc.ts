@@ -35,6 +35,7 @@ import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
 import { testSearch } from './search';
+import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
 
 function failure<T>(error: unknown): Result<T> {
@@ -127,10 +128,14 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('page:track-body', async (_event, url: string): Promise<Result<TrackBody>> => {
     try {
       const body = await getTrackBody(url);
-      console.log('[m2] track body', `lines=${body.lines.length}`, url.slice(0, 90));
-      if (body.lines.length) {
-        const first = body.lines[0];
-        const last = body.lines[body.lines.length - 1];
+      const bodyCorrected = {
+        ...body,
+        lines: applyCorrectionToLines(body.lines, loadSettings())
+      };
+      console.log('[m2] track body', `lines=${bodyCorrected.lines.length}`, url.slice(0, 90));
+      if (bodyCorrected.lines.length) {
+        const first = bodyCorrected.lines[0];
+        const last = bodyCorrected.lines[bodyCorrected.lines.length - 1];
         console.log(
           '[m2] track range',
           `start=${first.start}`,
@@ -138,7 +143,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           JSON.stringify({ first: first.text, last: last.text })
         );
       }
-      return { ok: true, data: body };
+      return { ok: true, data: bodyCorrected };
     } catch (error) {
       console.warn('[m2] track body failed:', (error as Error).message);
       return failure<TrackBody>(error);
@@ -167,6 +172,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('library:ingest', async (_event, payload: LibraryIngestPayload): Promise<Result<LibraryIngestResult>> => {
     try {
+      // 字幕读取时已经套过校对规则；这里不再重复应用，避免 A→AA 被放大。
       const result = ingestVideo(payload);
       console.log(
         '[m3] ingest',
@@ -385,6 +391,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return { ok: true, data: await testSearch(loadSettings(), q) };
     } catch (error) {
       return failure<WebReference[]>(error);
+    }
+  });
+
+  ipcMain.handle('correction:preview', (_event, text: string, settings?: AppSettings): Result<string> => {
+    try {
+      return {
+        ok: true,
+        data: applyCorrectionToText(String(text || ''), settings || loadSettings())
+      };
+    } catch (error) {
+      return failure<string>(error);
     }
   });
 

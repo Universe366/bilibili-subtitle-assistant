@@ -1246,6 +1246,52 @@ button:disabled {
   gap: 5px;
 }
 
+.correction-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.correction-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.correction-term {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.settings-arrow {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.correction-preview {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 7px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .settings-section {
   display: flex;
   flex-direction: column;

@@ -82,6 +82,8 @@ const api: BsubApi = {
     >,
   testSearch: (query: string) =>
     ipcRenderer.invoke('search:test', query) as Promise<Result<WebReference[]>>,
+  previewCorrection: (text: string, settings?: AppSettings) =>
+    ipcRenderer.invoke('correction:preview', text, settings) as Promise<Result<string>>,
   testAi: (platform?: AiPlatform) =>
     ipcRenderer.invoke('settings:test', platform) as Promise<
       Result<{ latencyMs: number; message: string }>

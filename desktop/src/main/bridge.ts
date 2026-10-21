@@ -11,6 +11,7 @@ import type {
 } from '../shared/types';
 import { ingestVideo, listLibrary, saveSummary } from './library';
 import { loadSettings, saveSettings } from './settings';
+import { applyCorrectionToLines } from './correction';
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024;
 
@@ -165,7 +166,8 @@ function createHandler(win: BrowserWindow, token: string) {
           return;
         }
 
-        const result = ingestVideo({ info, track, lines });
+        const correctedLines = applyCorrectionToLines(lines, loadSettings());
+        const result = ingestVideo({ info, track, lines: correctedLines });
         let summarySaved = false;
         if (typeof payload.summary === 'string' && payload.summary.trim()) {
           saveSummary(info, payload.summary, String(payload.model || 'extension'));

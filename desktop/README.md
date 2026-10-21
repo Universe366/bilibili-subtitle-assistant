@@ -54,6 +54,7 @@ docs/          V1 方案
 - **M3 本地库**：SQLite（`node:sqlite`，无需重编译原生模块）、一键入库、视频列表、字幕全文搜索（FTS5 trigram，短词退化 LIKE）、点击搜索结果回到对应时间、删除入库视频
 - **M4 总结与导出**：AI 流式总结（OpenAI 兼容）、零依赖 Markdown 渲染、总结存库、导出 Markdown / SRT / TXT / JSON；设置页可配置 AI 平台、Key、模型、总结提示词、数据目录与连接测试
 - **M5 插件桥 / 托盘 / 打包**：本地 HTTP 桥（`127.0.0.1` + Bearer token，`GET /v1/health`、`POST /v1/ingest`）、设置页显示端口/Token/运行状态、关闭到托盘、NSIS 安装包 + 绿色 zip
+- **字幕校对**：规则组（正则/大小写）+ 术语表，读取/推送时应用，支持预览
 - **联网检索**：Exa / AnySearch 免 Key，Tavily / Brave 需 Key；结果作为总结参考资料
 - **设置页**：主题、关闭到托盘、休眠时长、AI 平台/温度/token/流式、提示词模板、导出默认值、设置导入导出
 - **自动更新**：设置页检查 / 下载 / 重启安装；默认关闭自动检查（发布首个桌面 Release 后可在设置里开启）；支持自定义 generic 更新源

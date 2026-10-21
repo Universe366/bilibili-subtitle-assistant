@@ -2,6 +2,7 @@ import { session } from 'electron';
 import type { AiPlatform, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
 import { buildSearchQuery, searchWeb } from './search';
+import { glossaryTerms } from './correction';
 
 const MAX_TRANSCRIPT_CHARS = 30000;
 const REQUEST_TIMEOUT_MS = 300000;
@@ -49,6 +50,14 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
   const platform = options.platform || activePlatform(settings);
   const template = activePrompt(settings);
   const prompt = options.prompt || template.text;
+
+  const glossary = glossaryTerms(settings);
+  const glossaryBlock = glossary.length
+    ? `\n\n术语表（输出时统一使用以下写法）：\n${glossary
+        .slice(0, 80)
+        .map((term) => `- ${term.from} → ${term.to}${term.note ? `（${term.note}）` : ''}`)
+        .join('\n')}`
+    : '';
 
   if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
   if (!platform.model.trim()) throw new Error('请先在设置里填写模型名');
@@ -117,7 +126,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
         temperature: settings.ai.temperature,
         max_tokens: settings.ai.maxTokens || undefined,
         messages: [
-          { role: 'system', content: prompt },
+          { role: 'system', content: `${prompt}${glossaryBlock}` },
           { role: 'user', content: `${userContent}${referencesBlock}` }
         ]
       }),

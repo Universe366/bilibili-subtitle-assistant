@@ -105,6 +105,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     includeContent: true,
     timeRange: 'any'
   },
+  correction: {
+    enabled: true,
+    groups: [],
+    glossary: {
+      enabled: true,
+      terms: []
+    }
+  },
   export: {
     format: 'md',
     includeTimestamps: true,
@@ -212,6 +220,40 @@ function normalize(raw: any): AppSettings {
       base.search.includeContent = raw.search.includeContent !== false;
       const ranges = ['any', 'year', 'month', 'week'];
       base.search.timeRange = ranges.includes(raw.search.timeRange) ? raw.search.timeRange : 'any';
+    }
+
+    if (raw.correction && typeof raw.correction === 'object') {
+      base.correction.enabled = raw.correction.enabled !== false;
+      const groups = Array.isArray(raw.correction.groups) ? raw.correction.groups : [];
+      base.correction.groups = groups
+        .filter((group: any) => group && typeof group === 'object' && String(group.id || '').trim())
+        .map((group: any) => ({
+          id: String(group.id),
+          name: String(group.name || '规则组'),
+          enabled: group.enabled !== false,
+          rules: (Array.isArray(group.rules) ? group.rules : [])
+            .filter((rule: any) => rule && typeof rule === 'object' && String(rule.id || '').trim())
+            .map((rule: any) => ({
+              id: String(rule.id),
+              pattern: String(rule.pattern || ''),
+              replacement: String(rule.replacement || ''),
+              regex: rule.regex === true,
+              caseSensitive: rule.caseSensitive === true
+            }))
+        }));
+
+      const glossary = raw.correction.glossary;
+      if (glossary && typeof glossary === 'object') {
+        base.correction.glossary.enabled = glossary.enabled !== false;
+        base.correction.glossary.terms = (Array.isArray(glossary.terms) ? glossary.terms : [])
+          .filter((term: any) => term && typeof term === 'object' && String(term.id || '').trim())
+          .map((term: any) => ({
+            id: String(term.id),
+            from: String(term.from || ''),
+            to: String(term.to || ''),
+            note: String(term.note || '')
+          }));
+      }
     }
 
     if (raw.bridge && typeof raw.bridge === 'object') {

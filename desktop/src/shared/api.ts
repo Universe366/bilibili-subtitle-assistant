@@ -57,6 +57,7 @@ export interface BsubApi {
   exportSettings(): Promise<Result<{ canceled: boolean; path?: string }>>;
   importSettings(): Promise<Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>>;
   testSearch(query: string): Promise<Result<WebReference[]>>;
+  previewCorrection(text: string, settings?: AppSettings): Promise<Result<string>>;
   testAi(platform?: AiPlatform): Promise<Result<{ latencyMs: number; message: string }>>;
   openDataDir(): Promise<void>;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;

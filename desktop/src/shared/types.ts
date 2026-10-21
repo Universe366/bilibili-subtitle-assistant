@@ -167,6 +167,28 @@ export interface WebReference {
   snippet: string;
 }
 
+export interface CorrectionRule {
+  id: string;
+  pattern: string;
+  replacement: string;
+  regex: boolean;
+  caseSensitive: boolean;
+}
+
+export interface CorrectionRuleGroup {
+  id: string;
+  name: string;
+  enabled: boolean;
+  rules: CorrectionRule[];
+}
+
+export interface GlossaryTerm {
+  id: string;
+  from: string;
+  to: string;
+  note: string;
+}
+
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface AppSettings {
@@ -193,6 +215,14 @@ export interface AppSettings {
     maxResults: number;
     includeContent: boolean;
     timeRange: SearchTimeRange;
+  };
+  correction: {
+    enabled: boolean;
+    groups: CorrectionRuleGroup[];
+    glossary: {
+      enabled: boolean;
+      terms: GlossaryTerm[];
+    };
   };
   export: {
     format: ExportFormat;
