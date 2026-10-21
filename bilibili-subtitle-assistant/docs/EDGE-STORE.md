@@ -78,7 +78,22 @@ unzip -p edge-2.12.1.zip manifest.json | head
 2. 设置页，显示搜索框与分组摘要；
 3. 「本次联网核对」展开，显示字幕原句、支持/反驳标签。
 
-截图不要伪造；如果没有，可以先提交（官方标注为可选），之后再补。生成素材的脚本：`python verify/tools/make-store-assets.py`。
+截图不是按「窗口大小」判定，而是按**导出图片的实际像素**。推荐做法：
+
+- Windows 显示缩放设为 100%，浏览器缩放 100%；
+- 打开 B 站视频 + 侧边栏，截取包含两者的窗口内容区（不要只截窄侧边栏再放大）；
+- 用 Win+Shift+S / Snipaste 固定区域，或在画图/Photoshop 里新建 **1280×800** 画布，把截图等比缩放/裁切填入，不要拉伸变形；
+- 检查尺寸：右键图片 → 属性 → 详细信息 → 尺寸，或运行：
+
+```bash
+python verify/tools/fit-store-screenshot.py 你的截图.png --check
+python verify/tools/fit-store-screenshot.py 你的截图.png --size 1280x800 --mode contain
+# 或 cover：填满画布并居中裁切
+```
+
+`contain` 会留背景边，适合整窗截图；`cover` 会裁掉边缘，适合已经接近 16:10 的截图。生成后默认输出到 `docs/store/screenshot-1280x800.png`。
+
+> 不要伪造截图；如果暂时没有，可以先提交（官方标注为可选），之后再补。
 
 ## 4. 隐私页填写
 
