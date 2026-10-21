@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.14.2';
+  const CONTENT_VERSION = '2.14.3';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -444,11 +444,11 @@
   function syncEmbedHeight() {
     const el = document.getElementById(EMBED_ID);
     if (!el) return;
-    if (state.embedCollapsed) {
-      el.style.height = '34px';
-      return;
-    }
-    el.style.height = `${embedHeight()}px`;
+    const next = state.embedCollapsed ? 34 : embedHeight();
+    const current = Number.parseFloat(el.style.height) || 0;
+    // 定时器每 1.5s 都会走到这里；高度没变就不要重复写 style，避免无谓重绘
+    if (Math.abs(current - next) <= 1) return;
+    el.style.height = `${next}px`;
   }
 
   // 折叠只保留标题栏；再点一次展开。和「× 关闭」不同，面板不会被移除。
@@ -456,15 +456,21 @@
     const el = document.getElementById(EMBED_ID);
     if (!el) return;
     const collapsed = !!state.embedCollapsed;
-    el.dataset.collapsed = collapsed ? 'true' : 'false';
-    const btn = el.shadowRoot && el.shadowRoot.querySelector('.bsub-embed-collapse');
-    if (btn) {
-      btn.textContent = collapsed ? '＋' : '−';
-      btn.title = collapsed ? '展开面板' : '折叠面板';
-      btn.setAttribute('aria-expanded', String(!collapsed));
+    const desired = collapsed ? 'true' : 'false';
+    if (el.dataset.collapsed !== desired) {
+      el.dataset.collapsed = desired;
+      const btn = el.shadowRoot && el.shadowRoot.querySelector('.bsub-embed-collapse');
+      if (btn) {
+        btn.textContent = collapsed ? '＋' : '−';
+        btn.title = collapsed ? '展开面板' : '折叠面板';
+        btn.setAttribute('aria-expanded', String(!collapsed));
+      }
     }
-    if (collapsed) el.style.height = '34px';
-    else syncEmbedHeight();
+    if (collapsed) {
+      if (el.style.height !== '34px') el.style.height = '34px';
+    } else {
+      syncEmbedHeight();
+    }
   }
 
   function setEmbedCollapsed(value) {
@@ -575,6 +581,17 @@
 
     let wrap = document.getElementById(EMBED_ID);
     if (wrap && wrap.isConnected && host.contains(wrap)) {
+      applyEmbedCollapsed();
+      syncEmbedHeight();
+      return true;
+    }
+    // 右侧栏被 B 站重建时，复用已有 host/iframe 并移动过去；
+    // 直接 remove 再新建会让 iframe 重新加载，看起来就是一闪一闪。
+    if (wrap && wrap.shadowRoot) {
+      const up = host.querySelector('.up-panel-container');
+      if (up && up.parentNode === host) up.after(wrap);
+      else host.prepend(wrap);
+      state.embedFrame = wrap.shadowRoot.querySelector('iframe') || state.embedFrame;
       applyEmbedCollapsed();
       syncEmbedHeight();
       return true;
@@ -1012,11 +1029,24 @@
 
     ensureEmbedPanel();
 
-    // 周期性确保播放器按钮存在（播放器会被动态重建）
+    // 周期性确保播放器按钮存在（播放器会被动态重建）。
+    // 面板已挂载时不要每 1.5s 重新走一遍挂载/写样式，只做轻量检查。
     setInterval(() => {
       ensurePlayerButton();
-      ensureEmbedPanel();
+      const host = findEmbedHost();
+      const panel = document.getElementById(EMBED_ID);
+      if (!panel || !panel.isConnected || !host || !host.contains(panel)) {
+        ensureEmbedPanel();
+      } else {
+        syncEmbedHeight();
+      }
     }, 1500);
+
+    let resizeTimer = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => syncEmbedHeight(), 150);
+    });
   }
 
   // 监听必须**在注入时立刻注册**，不能等 DOMContentLoaded。
