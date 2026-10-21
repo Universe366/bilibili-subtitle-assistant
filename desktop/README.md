@@ -69,24 +69,33 @@ npm run dist
 | `release/bsub-desktop-setup-0.2.0.exe` | NSIS 安装包，可选安装目录 |
 | `release/bsub-desktop-0.2.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
+| `release/bilibili-subtitle-assistant-v2.17.0.zip` | 浏览器插件（由 CI 打包） |
 
-未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。自动更新尚未接入时请手动替换。
+未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。
 
 ### 发布
 
-1. 更新 `CHANGELOG.md` 和版本号（`npm version 0.2.1 --no-git-tag-version`）。
-2. `npm run dist` 本地确认能构建。
-3. `npm run release:notes` 生成发布说明。
-4. 打 tag 并推送：
+发布使用**合并 Release**：一个 tag（插件版本号，例如 `v2.17.0`）同时提供插件 zip 和桌面端安装包/绿色包。
+这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
+
+1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.17.0）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.2.1 --no-git-tag-version`）。
+3. `npm run dist` 本地确认能构建。
+4. `npm run release:notes` 生成发布说明。
+5. 打 tag 并推送：
 
 ```bash
-git tag desktop-v0.2.0
-git push origin desktop-v0.2.0
+git tag v2.17.0
+git push origin master
+git push origin v2.17.0
 ```
 
 GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner 上重新构建，
-并创建 Release，资产包含 setup / `latest.yml` / blockmap / 绿色 zip。
-自动更新读取的是**带 `latest.yml` 的最新 Release**。
+并创建 Release，资产包含：
+插件 zip / setup / `latest.yml` / blockmap / 绿色 zip。
+
+自动更新读取的是**带 `latest.yml` 的最新 Release**；插件更新读取**最新 Release 的 tag**。
+两者都要求最新 Release 来自这个合并工作流。
 
 ## 数据
 

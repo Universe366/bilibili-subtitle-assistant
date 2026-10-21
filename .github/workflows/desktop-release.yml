@@ -1,13 +1,13 @@
-name: Desktop Release
+name: Desktop + Extension Release
 
 on:
   push:
     tags:
-      - 'desktop-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（例如 0.2.0）'
+        description: '插件版本号（例如 2.17.0）'
         required: true
         type: string
 
@@ -31,7 +31,6 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-
       - run: npm run build
 
       - run: npx electron-builder --win --publish never
@@ -51,13 +50,20 @@ jobs:
           "@ | Set-Content -Path "$dir/README.txt" -Encoding UTF8
           Compress-Archive -Path "$dir/*" -DestinationPath "release/bsub-desktop-$version-win-x64-green.zip" -Force
 
+      - name: Package browser extension
+        shell: pwsh
+        run: |
+          $extVersion = (Get-Content ../bilibili-subtitle-assistant/manifest.json -Raw | ConvertFrom-Json).version
+          Compress-Archive -Path ../bilibili-subtitle-assistant -DestinationPath "release/bilibili-subtitle-assistant-v$extVersion.zip" -Force
+          Write-Output "extension=$extVersion"
+
       - run: npm run release:notes
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', inputs.version) }}
-          name: 桌面端 ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', inputs.version) }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+          name: 桌面端 + 插件 ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
           body_path: desktop/release/release-notes.md
           files: |
             desktop/release/*.exe

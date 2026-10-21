@@ -7,6 +7,7 @@ const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT_VERSION = require(path.join(EXT, 'manifest.json')).version;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 const errors = [];
@@ -171,11 +172,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.16.2', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === EXT_VERSION, JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.16.2' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === EXT_VERSION && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
