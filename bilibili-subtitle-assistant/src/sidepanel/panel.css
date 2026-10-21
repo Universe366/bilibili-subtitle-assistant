@@ -935,6 +935,7 @@ textarea.input {
   padding: 4px 10px;
   border-left: 3px solid transparent;
   transition: background 0.1s ease;
+  position: relative;
 }
 
 .subtitle-row:hover {
@@ -973,28 +974,31 @@ textarea.input {
 .st-text {
   flex: 1 1 auto;
   min-width: 0;
-  word-break: break-word;
+  word-break: normal;
   line-height: 1.65;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  max-height: calc(1.65em * 2);
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  padding-bottom: 2px;
 }
 
-/* 长句默认最多两行；点行内「展开」才显示全文 */
-.subtitle-row[data-expanded='true'] .st-text {
-  display: block;
-  -webkit-line-clamp: unset;
-  overflow: visible;
-  max-height: none;
+.st-text::-webkit-scrollbar {
+  height: 4px;
 }
 
+.st-text::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+/* 长句只占一行，左右拖动查看；编辑时恢复换行 */
 .subtitle-row[data-editing='true'] .st-text {
-  display: block;
-  -webkit-line-clamp: unset;
-  overflow: visible;
-  max-height: none;
+  white-space: normal;
+  overflow-x: visible;
+  overflow-y: visible;
+  padding-bottom: 0;
 }
 
 .st-text mark,
@@ -1006,22 +1010,32 @@ mark.hit {
 }
 
 .st-actions {
-  flex: 0 0 auto;
+  position: absolute;
+  right: 6px;
+  top: 2px;
+  z-index: 2;
   display: flex;
   gap: 2px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.12s ease;
 }
 
 .subtitle-row:hover .st-actions,
 .subtitle-row:focus-within .st-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .stats {
   color: var(--fg-faint);
-  font-size: calc(var(--fs) * 0.82);
+  font-size: calc(var(--fs) * 0.76);
   white-space: nowrap;
+  flex: 0 0 auto;
   padding-top: 3px;
 }
 

@@ -19,7 +19,6 @@ const state = {
   positions: [],
   total: 0,
   rendered: new Map(),
-  expanded: new Set(),
   lastSignature: '',
   followPaused: false,
   manualScrollAt: 0,
@@ -111,7 +110,6 @@ function buildItems(st) {
   state.searchRe = q ? new RegExp(escapeRegExp(q), 'gi') : null;
   state.items = lines;
   state.rendered.clear();
-  state.expanded.clear();
   state.inner.textContent = '';
   state.tmp = null;
   lastActive = -1;
@@ -136,19 +134,13 @@ function renderWindow(force = false) {
   state.emptyShown = false;
 
   // 估算行高：编辑中或长文本行更高
-  const estimate = (line, idx) => {
-    const text = String(line.text || '');
-    const width = Math.max(160, host.clientWidth - 120);
-    const perChar = 12.5;
-    const fullRows = Math.max(1, Math.ceil((text.length * perChar) / width));
-    const rows = state.expanded.has(idx) ? fullRows : Math.min(2, fullRows);
-    return 22 * rows + 8;
-  };
+  // 单行 + 横向滚动后，每行高度基本固定；真实高度仍会测量修正
+  const estimate = () => 30;
   const positions = [];
   let y = 0;
   for (let i = 0; i < items.length; i += 1) {
     const realH = state.measured && state.measured.get(i);
-    const hh = realH || estimate(items[i], i);
+    const hh = realH || estimate();
     positions.push({ top: y, height: hh });
     y += hh;
   }
@@ -226,25 +218,20 @@ function buildRow(line, index, pos) {
   });
   row.appendChild(time);
 
-  const textEl = h('span', { class: 'st-text' });
+  const textEl = h('span', { class: 'st-text', title: `${String(line.text || '')}\n（左右拖动查看完整字幕）` });
   renderTextWithHighlight(textEl, String(line.text || ''), state.searchRe);
-  textEl.title = String(line.text || '');
   row.appendChild(textEl);
-
-  const expanded = state.expanded.has(index);
-  setBoolAttr(row, 'data-expanded', expanded);
 
   const stats = lineStats(line);
   row.appendChild(
     h('span', {
       class: 'stats',
-      title: '单行统计：句数 / 字数 / 预计朗读时长 / 覆盖时长',
-      text: `${stats.sentences}句 ${stats.chars}字 ~${fmtTime(stats.speakSeconds)} / ${fmtTime(stats.durationSeconds)}`
+      title: `单行统计：句数 / 字数 / 预计朗读时长 / 覆盖时长\n${stats.sentences}句 ${stats.chars}字 ~${fmtTime(stats.speakSeconds)} / ${fmtTime(stats.durationSeconds)}`,
+      text: `${stats.chars}字`
     })
   );
 
   const actions = h('span', { class: 'st-actions' });
-  actions.appendChild(iconMini(expanded ? '⤡' : '⤢', expanded ? '收起这一句' : '展开这一句', () => toggleExpand(index)));
   actions.appendChild(iconMini('⧉', '复制这一行', () => copyLine(line)));
   actions.appendChild(iconMini('✎', '编辑这一行', () => startEdit(row, line, index)));
   actions.appendChild(iconMini('?', '就这一行问 AI', () => askAboutLine(line)));
@@ -254,15 +241,6 @@ function buildRow(line, index, pos) {
   row.addEventListener('dblclick', () => startEdit(row, line, index));
   if (state.editing === index) startEdit(row, line, index, true);
   return row;
-}
-
-function toggleExpand(index) {
-  if (state.expanded.has(index)) state.expanded.delete(index);
-  else state.expanded.add(index);
-  if (state.measured) state.measured.delete(index);
-  const row = state.rendered.get(index);
-  if (row) setBoolAttr(row, 'data-expanded', state.expanded.has(index));
-  renderWindow(true);
 }
 
 function iconMini(label, title, onClick) {
