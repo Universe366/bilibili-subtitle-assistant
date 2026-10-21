@@ -1,4 +1,4 @@
-# Edge Add-ons 提交材料（2.13.1）
+# Edge Add-ons 提交材料（2.13.2）
 
 > 官方流程：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/publish-extension>
 > 开发者注册：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/create-dev-account>（免费，需要 Microsoft 账号 + Partner Center）
@@ -9,7 +9,7 @@ Edge 使用与 Chrome 相同的 MV3 包。**zip 根目录必须直接有 `manife
 
 ```bash
 cd repo
-git archive --format=zip -o edge-2.13.1.zip HEAD:bilibili-subtitle-assistant \
+git archive --format=zip -o edge-2.13.2.zip HEAD:bilibili-subtitle-assistant \
   manifest.json rules.json src vendor icons _locales LICENSE THIRD-PARTY-NOTICES.md LICENSES
 ```
 
@@ -18,11 +18,11 @@ git archive --format=zip -o edge-2.13.1.zip HEAD:bilibili-subtitle-assistant \
 上传前检查：
 
 ```bash
-unzip -l edge-2.13.1.zip | head
-unzip -p edge-2.13.1.zip manifest.json | head
+unzip -l edge-2.13.2.zip | head
+unzip -p edge-2.13.2.zip manifest.json | head
 ```
 
-- 版本：**2.13.1**
+- 版本：**2.13.2**
 - 运行时文件约 11 MB（主要是 `vendor/ffmpeg/ffmpeg-core.wasm`，31 MB 未压缩）
 - `rules.json` 是静态 DNR 规则；`src/background/header-rules.js` 会在会话中为 TokenRhythm 动态加规则
 - 包含 `_locales/zh_CN` 与 `_locales/en`，Partner Center 才能识别中文/英文列表语言
@@ -47,7 +47,7 @@ unzip -p edge-2.13.1.zip manifest.json | head
 > 4. 联网核对：生成总结前会按字幕原句逐条检索，判定证据是支持、反驳还是无关；按独立域名区分多来源一致与单一来源，外部信息只作为补充提醒，不污染正文。
 > 5. 优化与导出：AI 修正错别字/术语/数字，规则组与术语表；支持 SRT、WebVTT、ASS、TXT、Markdown、JSON。
 > 6. 质量与批量：章节、质量自检、批量队列、历史记录、操作留痕与回退。
-> 7. 页面内嵌：默认在 B 站视频页右侧直接显示面板，页面内容整体缩到左侧而不是覆盖；可拖宽、可收起，也可一键切回浏览器原生侧边栏。
+> 7. 页面内嵌：默认在 B 站视频页右侧直接显示面板，面板挂在 B 站右侧栏里而不是覆盖页面，高度对齐播放器区域；可收起，也可一键切回浏览器原生侧边栏。
 > 8. 设置与更新：设置页支持搜索、分组摘要与「去配置」；发现新版本时提示先备份设置；支持导出/导入完整设置备份，避免手动更新换目录后配置丢失。
 >
 > 所有配置都在侧边栏内完成；API Key 只保存在本机，不上传到开发者服务器。首次使用无需填写 Key 即可抓取官方字幕；AI 总结、语音转录与联网检索需要用户自备对应服务的 Key。
@@ -188,7 +188,7 @@ AI 总结、语音转录、联网检索是可选功能，需要用户自备第�
 ## 7. 提交步骤
 
 1. 注册 Partner Center → Microsoft Edge 计划（免费）。
-2. **Create new extension** → 上传 `edge-2.13.1.zip`。
+2. **Create new extension** → 上传 `edge-2.13.2.zip`。
 3. **Availability**：Public；市场默认全部（或按需选择）。
 4. **Properties**：类别 Productivity；网站填 GitHub 仓库；支持链接填 Issues。
 5. **Privacy**：按第 4、5 节填写 Single purpose、权限理由、Remote code=No、Data usage、Privacy URL。

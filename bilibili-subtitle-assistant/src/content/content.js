@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.1';
+  const CONTENT_VERSION = '2.13.2';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -241,6 +241,32 @@
     hintTimer = setTimeout(() => el.classList.remove('is-open'), 6000);
   }
 
+  // 打开浏览器原生侧边栏；失败时重试一次并提示。
+  function requestSidePanel() {
+    try {
+      chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res) => {
+        const err = chrome.runtime.lastError;
+        if (err) return;
+        if (res && res.ok === false) {
+          setTimeout(() => {
+            try {
+              chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res2) => {
+                void chrome.runtime.lastError;
+                if (res2 && res2.ok === false) {
+                  showPanelHint(res2.detail || '侧边栏未能自动打开，请点浏览器工具栏上的扩展图标。');
+                }
+              });
+            } catch (e2) {
+              showPanelHint(res.detail || '');
+            }
+          }, 260);
+        }
+      });
+    } catch (err) {
+      /* 扩展已重载 */
+    }
+  }
+
   // 尝试直接打开侧边栏。
   //
   // 说明：`chrome.sidePanel` **只在扩展页面里可用**，内容脚本拿不到
@@ -287,36 +313,15 @@
         ev.stopPropagation();
       }
       sendEvent('player-button', { prompt: state.options.playerButtonPrompt, embedded: canEmbed() });
-      // 开启页面内嵌时，播放器按钮直接展开面板，不再要求另开侧边栏
+      // 开启页面内嵌时，播放器按钮直接展开面板；找不到 B 站右侧栏再退回侧边栏
       if (canEmbed()) {
         state.embedClosed = false;
-        ensureEmbedPanel(true);
+        ensureEmbedPanel(true).then((ok) => {
+          if (!ok) requestSidePanel();
+        });
         return;
       }
-      // 打开侧边栏失败时必须让用户看见 —— 否则就是「点了没反应」
-      try {
-        chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res) => {
-          const err = chrome.runtime.lastError;
-          if (err) return; // 后台没起来，事件其实已经发出去，会由侧边栏接手
-          // 打不开时重试一次：首次失败常常是侧边栏正在切换状态
-          if (res && res.ok === false) {
-            setTimeout(() => {
-              try {
-                chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res2) => {
-                  void chrome.runtime.lastError;
-                  if (res2 && res2.ok === false) {
-                    showPanelHint(res2.detail || '侧边栏未能自动打开，请点浏览器工具栏上的扩展图标。');
-                  }
-                });
-              } catch (e2) {
-                showPanelHint(res.detail || '');
-              }
-            }, 260);
-          }
-        });
-      } catch (err) {
-        /* 扩展已重载 */
-      }
+      requestSidePanel();
     };
     btn.addEventListener('click', fire, true);
     btn.addEventListener('keydown', (ev) => {
@@ -331,7 +336,6 @@
 
   const EMBED_ID = '__bsub_embed_panel__';
   const EMBED_TAB_ID = '__bsub_embed_tab__';
-  const EMBED_WIDTH_KEY = 'bsub.embed.width';
 
   function isVideoPage() {
     return /^\/(video|bangumi\/play|list)\//.test(location.pathname);
@@ -344,73 +348,40 @@
   function removeEmbedPanel() {
     const el = document.getElementById(EMBED_ID);
     if (el && el.parentNode) el.parentNode.removeChild(el);
-    clearEmbedDock();
   }
 
-  // 真正的「内嵌」：给页面右侧预留一列，内容整体缩到左侧，而不是覆盖。
-  function applyEmbedDock(width) {
-    try {
-      document.documentElement.classList.add('bsub-embed-dock');
-      document.documentElement.style.setProperty('--bsub-embed-width', `${Math.round(width)}px`);
-    } catch (err) {
-      /* ignore */
-    }
+  // 按 Bilitato 的做法：挂进 B 站自己的右侧栏，而不是覆盖页面。
+  function findEmbedHost() {
+    return (
+      document.querySelector('.right-container-inner.scroll-sticky') ||
+      document.querySelector('.right-container-inner') ||
+      document.querySelector('.right-container')
+    );
   }
 
-  function clearEmbedDock() {
-    try {
-      document.documentElement.classList.remove('bsub-embed-dock');
-      document.documentElement.style.removeProperty('--bsub-embed-width');
-    } catch (err) {
-      /* ignore */
-    }
+  function embedHeight() {
+    const area =
+      document.querySelector('.bpx-player-video-area') ||
+      document.querySelector('.video-container-v1') ||
+      document.querySelector('#bilibili-player');
+    const sending = document.querySelector('.bpx-player-sending-bar') || document.querySelector('.player-sending-bar');
+    const toolbar = document.querySelector('.video-toolbar-container') || document.querySelector('#arc_toolbar_report');
+    let total = 0;
+    if (area) total += area.getBoundingClientRect().height || 0;
+    if (sending) total += sending.getBoundingClientRect().height || 0;
+    if (toolbar) total += toolbar.getBoundingClientRect().height || 0;
+    if (!total || total < 300) total = 560;
+    return Math.round(Math.min(total, 760));
+  }
+
+  function syncEmbedHeight() {
+    const el = document.getElementById(EMBED_ID);
+    if (el) el.style.height = `${embedHeight()}px`;
   }
 
   function removeEmbedTab() {
     const el = document.getElementById(EMBED_TAB_ID);
     if (el && el.parentNode) el.parentNode.removeChild(el);
-  }
-
-  function readEmbedWidth() {
-    return new Promise((resolve) => {
-      try {
-        if (!chrome.storage || !chrome.storage.local || !chrome.storage.local.get) return resolve(400);
-        chrome.storage.local.get(EMBED_WIDTH_KEY, (obj) => {
-          void chrome.runtime.lastError;
-          const w = Number(obj && obj[EMBED_WIDTH_KEY]);
-          resolve(Number.isFinite(w) && w >= 320 && w <= 640 ? w : 400);
-        });
-      } catch (err) {
-        resolve(400);
-      }
-    });
-  }
-
-  function saveEmbedWidth(width) {
-    try {
-      if (chrome.storage && chrome.storage.local) chrome.storage.local.set({ [EMBED_WIDTH_KEY]: width });
-    } catch (err) {
-      /* ignore */
-    }
-  }
-
-  function startEmbedResize(ev, wrap) {
-    ev.preventDefault();
-    const startX = ev.clientX;
-    const startW = wrap.getBoundingClientRect().width || 400;
-    const move = (e) => {
-      const max = Math.max(320, Math.min(640, (window.innerWidth || 1280) - 360));
-      const width = Math.max(320, Math.min(max, startW + (startX - e.clientX)));
-      wrap.style.width = `${Math.round(width)}px`;
-      applyEmbedDock(width);
-    };
-    const up = () => {
-      document.removeEventListener('pointermove', move);
-      const w = Math.round(wrap.getBoundingClientRect().width);
-      if (w) saveEmbedWidth(w);
-    };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up, { once: true });
   }
 
   function openSidePanelFromEmbed() {
@@ -455,34 +426,31 @@
     if (!canEmbed()) {
       removeEmbedPanel();
       removeEmbedTab();
-      return;
+      return false;
     }
     if (state.embedClosed && !force) {
       removeEmbedPanel();
       ensureEmbedTab();
-      return;
+      return false;
     }
     removeEmbedTab();
-    const existing = document.getElementById(EMBED_ID);
-    if (existing) {
-      applyEmbedDock(existing.getBoundingClientRect().width || 400);
-      return;
+
+    const host = findEmbedHost();
+    if (!host) {
+      // B 站右侧栏还没渲染出来，等下一轮 interval 再试；不要退化成覆盖层
+      return false;
     }
 
-    const storedWidth = await readEmbedWidth();
-    if (!canEmbed()) return;
-    const raced = document.getElementById(EMBED_ID);
-    if (raced) {
-      applyEmbedDock(raced.getBoundingClientRect().width || 400);
-      return;
+    let wrap = document.getElementById(EMBED_ID);
+    if (wrap && wrap.isConnected && host.contains(wrap)) {
+      syncEmbedHeight();
+      return true;
     }
+    if (wrap) wrap.remove();
 
-    const max = Math.max(320, Math.min(640, (window.innerWidth || 1280) - 360));
-    const wrap = document.createElement('div');
+    wrap = document.createElement('div');
     wrap.id = EMBED_ID;
     wrap.className = 'bsub-embed';
-    const width = Math.max(320, Math.min(max, storedWidth));
-    wrap.style.width = `${width}px`;
 
     const bar = document.createElement('div');
     bar.className = 'bsub-embed-bar';
@@ -516,16 +484,16 @@
     frame.src = `${chrome.runtime.getURL('src/sidepanel/panel.html')}?embed=1`;
     frame.addEventListener('error', () => showPanelHint('页面内嵌面板加载失败，请点工具栏图标用浏览器侧边栏。'));
 
-    const handle = document.createElement('div');
-    handle.className = 'bsub-embed-resize';
-    handle.title = '拖动调整面板宽度';
-    handle.addEventListener('pointerdown', (ev) => startEmbedResize(ev, wrap));
-
     wrap.appendChild(bar);
     wrap.appendChild(frame);
-    wrap.appendChild(handle);
-    (document.body || document.documentElement).appendChild(wrap);
-    applyEmbedDock(width);
+
+    // 插到右侧栏的 UP 主卡片之后、推荐列表之前；没有就放最前面
+    const upPanel = host.querySelector('.up-panel-container');
+    if (upPanel && upPanel.parentNode === host) upPanel.after(wrap);
+    else host.prepend(wrap);
+
+    syncEmbedHeight();
+    return true;
   }
 
   // ---------------------------------------------------------------------------

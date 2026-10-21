@@ -21,6 +21,11 @@ const PAGE_HTML = `<!DOCTYPE html>
       <div class="bpx-player-control-bottom-right"></div>
     </div>
   </div>
+  <div class="video-container-v1"><div class="bpx-player-video-area" style="height: 500px"></div></div>
+  <div class="right-container-inner scroll-sticky">
+    <div class="up-panel-container"></div>
+    <div id="reco_list"></div>
+  </div>
   <h1 class="video-title">【测试】这是一个 B 站视频标题</h1>
   <span class="up-name">测试UP主</span>
 </body></html>`;
@@ -162,7 +167,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.1', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.2', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -194,16 +199,23 @@ async function main() {
     embed ? embed.textContent.slice(0, 80) : ''
   );
   check(
-    '内嵌时给页面右侧预留空间（不是覆盖）',
-    doc.documentElement.classList.contains('bsub-embed-dock') &&
-      doc.documentElement.style.getPropertyValue('--bsub-embed-width') === '400px',
-    doc.documentElement.style.getPropertyValue('--bsub-embed-width')
+    '内嵌面板挂进 B 站右侧栏（不是覆盖层）',
+    !!embed &&
+      embed.parentElement &&
+      embed.parentElement.classList.contains('right-container-inner') &&
+      !!embed.previousElementSibling &&
+      embed.previousElementSibling.classList.contains('up-panel-container'),
+    embed && embed.parentElement ? embed.parentElement.className : '未挂载'
+  );
+  check(
+    '内嵌面板高度已同步',
+    !!embed && Number.parseInt(embed.style.height, 10) >= 300,
+    embed ? embed.style.height : ''
   );
   if (embed) {
     embed.querySelector('.bsub-embed-close').click();
     await sleep(80);
     check('收起后显示右侧「字幕」标签', !doc.getElementById('__bsub_embed_panel__') && !!doc.getElementById('__bsub_embed_tab__'));
-    check('收起后恢复页面布局', !doc.documentElement.classList.contains('bsub-embed-dock'), '');
   }
   await rpc('applyOptions', { embedPanel: false });
   await sleep(80);
