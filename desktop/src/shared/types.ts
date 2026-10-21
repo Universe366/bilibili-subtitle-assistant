@@ -231,6 +231,7 @@ export interface AppSettings {
     templates: PromptTemplate[];
     chat: string;
     translate: string;
+    optimize: string;
   };
   search: {
     enabled: boolean;
@@ -393,6 +394,28 @@ export interface TranslateDoneEvent {
 }
 
 export interface TranslateErrorEvent {
+  requestId: string;
+  error: string;
+}
+
+export interface OptimizeSuggestion {
+  index: number;
+  original: string;
+  suggestion: string;
+}
+
+export interface OptimizeProgressEvent {
+  requestId: string;
+  percent: number;
+  message: string;
+}
+
+export interface OptimizeDoneEvent {
+  requestId: string;
+  suggestions: OptimizeSuggestion[];
+}
+
+export interface OptimizeErrorEvent {
   requestId: string;
   error: string;
 }

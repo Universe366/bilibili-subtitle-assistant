@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Eye, Loader2, RefreshCw } from 'lucide-react';
 import type {
+  OptimizeSuggestion,
   PageInfo,
   SubtitleBundle,
   SubtitleLine,
@@ -52,6 +53,12 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [translateProgress, setTranslateProgress] = useState(0);
   const [translateMessage, setTranslateMessage] = useState('');
   const translateRequestRef = useRef('');
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeProgress, setOptimizeProgress] = useState(0);
+  const [optimizeMessage, setOptimizeMessage] = useState('');
+  const [suggestions, setSuggestions] = useState<OptimizeSuggestion[] | null>(null);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
+  const optimizeRequestRef = useRef('');
   const infoRef = useRef<PageInfo | null>(null);
   const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -83,6 +90,12 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     setTranslateProgress(0);
     setTranslateMessage('');
     translateRequestRef.current = '';
+    setOptimizing(false);
+    setOptimizeProgress(0);
+    setOptimizeMessage('');
+    setSuggestions(null);
+    setSelectedSuggestions(new Set());
+    optimizeRequestRef.current = '';
     loadedRef.current = { key: '', reload: -1 };
   }, [activeTab?.id, videoKey]);
 
@@ -142,6 +155,31 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       setTranslateMessage('');
       setError(event.error);
     });
+    const offOptimizeProgress = window.bsub.onOptimizeProgress((event) => {
+      if (event.requestId !== optimizeRequestRef.current) return;
+      setOptimizeProgress(event.percent);
+      setOptimizeMessage(event.message);
+    });
+    const offOptimizeDone = window.bsub.onOptimizeDone((event) => {
+      if (event.requestId !== optimizeRequestRef.current) return;
+      optimizeRequestRef.current = '';
+      setOptimizing(false);
+      setOptimizeProgress(100);
+      setSuggestions(event.suggestions);
+      setSelectedSuggestions(new Set(event.suggestions.map((item) => item.index)));
+      setOptimizeMessage(
+        event.suggestions.length
+          ? `发现 ${event.suggestions.length} 处改动`
+          : '没有发现需要修改的地方'
+      );
+    });
+    const offOptimizeError = window.bsub.onOptimizeError((event) => {
+      if (event.requestId !== optimizeRequestRef.current) return;
+      optimizeRequestRef.current = '';
+      setOptimizing(false);
+      setOptimizeMessage('');
+      setError(event.error);
+    });
     return () => {
       offProgress();
       offDone();
@@ -149,6 +187,9 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       offTranslateProgress();
       offTranslateDone();
       offTranslateError();
+      offOptimizeProgress();
+      offOptimizeDone();
+      offOptimizeError();
     };
   }, []);
 
@@ -183,6 +224,57 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
 
   const stopTranslate = () => {
     if (translateRequestRef.current) void window.bsub.cancelTranslate(translateRequestRef.current);
+  };
+
+  const startOptimize = async () => {
+    if (!lines.length || optimizing) return;
+    const requestId = (() => {
+      try {
+        return crypto.randomUUID();
+      } catch {
+        return `opt_${Date.now()}`;
+      }
+    })();
+    optimizeRequestRef.current = requestId;
+    setOptimizing(true);
+    setOptimizeProgress(0);
+    setOptimizeMessage('准备校对…');
+    setSuggestions(null);
+    setSelectedSuggestions(new Set());
+    setError(null);
+    const started = await window.bsub.optimize({ requestId, lines });
+    if (!started.ok) {
+      optimizeRequestRef.current = '';
+      setOptimizing(false);
+      setOptimizeMessage('');
+      setError(started.error);
+    }
+  };
+
+  const stopOptimize = () => {
+    if (optimizeRequestRef.current) void window.bsub.cancelOptimize(optimizeRequestRef.current);
+  };
+
+  const applySuggestions = (all = false) => {
+    if (!suggestions) return;
+    const chosen = all
+      ? suggestions
+      : suggestions.filter((item) => selectedSuggestions.has(item.index));
+    if (!chosen.length) return;
+    const byIndex = new Map(chosen.map((item) => [item.index, item.suggestion]));
+    const updated = lines.map((line, index) =>
+      byIndex.has(index) ? { ...line, text: byIndex.get(index) || line.text } : line
+    );
+    setLines(updated);
+    if (track?.source === 'asr' && infoRef.current) {
+      setAsrResult(videoKeyRef.current, infoRef.current, updated);
+    }
+    setSuggestions(null);
+    setSelectedSuggestions(new Set());
+    setTranslated(null);
+    setTranslatedLang('');
+    setViewMode('original');
+    setOptimizeMessage(`已应用 ${chosen.length} 处修改`);
   };
 
   // 页面加载完成后读取视频信息与字幕轨
@@ -367,6 +459,14 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           >
             {translating ? <Loader2 size={12} className="spin" /> : '翻译'}
           </button>
+          <button
+            className="mini-btn"
+            disabled={!lines.length || optimizing}
+            title="用 AI 校对错别字、同音字和专有名词"
+            onClick={() => void startOptimize()}
+          >
+            {optimizing ? <Loader2 size={12} className="spin" /> : '优化'}
+          </button>
           {translated && (
             <select
               className="mini-select"
@@ -434,6 +534,69 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
         <div className="translate-progress">
           <span>{translateMessage || '翻译中…'}</span>
           <span>{Math.round(translateProgress)}%</span>
+        </div>
+      )}
+
+      {optimizing && (
+        <div className="translate-progress">
+          <span>{optimizeMessage || '校对中…'}</span>
+          <span>
+            {Math.round(optimizeProgress)}%
+            <button className="mini-btn" onClick={stopOptimize} style={{ marginLeft: 6 }}>
+              停止
+            </button>
+          </span>
+        </div>
+      )}
+
+      {!optimizing && optimizeMessage && <div className="save-status">{optimizeMessage}</div>}
+
+      {suggestions && suggestions.length > 0 && (
+        <div className="opt-panel">
+          <div className="opt-head">
+            <span>AI 优化建议 · {suggestions.length} 处</span>
+            <div className="toolbar-actions">
+              <button className="mini-btn" onClick={() => applySuggestions(true)}>
+                全部应用
+              </button>
+              <button
+                className="mini-btn"
+                onClick={() => {
+                  setSuggestions(null);
+                  setSelectedSuggestions(new Set());
+                }}
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+          <div className="opt-list">
+            {suggestions.map((item) => (
+              <label key={item.index} className="opt-row">
+                <input
+                  type="checkbox"
+                  checked={selectedSuggestions.has(item.index)}
+                  onChange={(event) => {
+                    const next = new Set(selectedSuggestions);
+                    if (event.target.checked) next.add(item.index);
+                    else next.delete(item.index);
+                    setSelectedSuggestions(next);
+                  }}
+                />
+                <div className="opt-text">
+                  <div className="opt-original">{item.original}</div>
+                  <div className="opt-suggestion">{item.suggestion}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <button
+            className="mini-btn primary"
+            disabled={!selectedSuggestions.size}
+            onClick={() => applySuggestions(false)}
+          >
+            应用选中（{selectedSuggestions.size}）
+          </button>
         </div>
       )}
 

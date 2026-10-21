@@ -805,6 +805,16 @@ export function SettingsPanel() {
             setDraft({ ...draft, prompt: { ...draft.prompt, translate: event.target.value } })
           }
         />
+
+        <div className="settings-label">AI 优化提示词</div>
+        <textarea
+          className="settings-textarea"
+          rows={6}
+          value={draft.prompt.optimize}
+          onChange={(event) =>
+            setDraft({ ...draft, prompt: { ...draft.prompt, optimize: event.target.value } })
+          }
+        />
       </div>
 
       <div className="settings-section">

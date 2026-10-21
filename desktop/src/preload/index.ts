@@ -19,6 +19,10 @@ import type {
   TranslateProgressEvent,
   TranslateDoneEvent,
   TranslateErrorEvent,
+  OptimizeSuggestion,
+  OptimizeProgressEvent,
+  OptimizeDoneEvent,
+  OptimizeErrorEvent,
   FindResult,
   ExportPayload,
   LayoutRect,
@@ -151,6 +155,17 @@ const api: BsubApi = {
     on<TranslateDoneEvent>('translate:done', cb),
   onTranslateError: (cb: (event: TranslateErrorEvent) => void) =>
     on<TranslateErrorEvent>('translate:error', cb),
+
+  optimize: (payload: { requestId: string; lines: SubtitleLine[] }) =>
+    ipcRenderer.invoke('optimize:start', payload) as Promise<Result<{ requestId: string }>>,
+  cancelOptimize: (requestId: string) =>
+    ipcRenderer.invoke('optimize:cancel', requestId) as Promise<void>,
+  onOptimizeProgress: (cb: (event: OptimizeProgressEvent) => void) =>
+    on<OptimizeProgressEvent>('optimize:progress', cb),
+  onOptimizeDone: (cb: (event: OptimizeDoneEvent) => void) =>
+    on<OptimizeDoneEvent>('optimize:done', cb),
+  onOptimizeError: (cb: (event: OptimizeErrorEvent) => void) =>
+    on<OptimizeErrorEvent>('optimize:error', cb),
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

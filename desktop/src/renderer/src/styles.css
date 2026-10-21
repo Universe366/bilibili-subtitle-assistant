@@ -1344,6 +1344,60 @@ button:disabled {
   line-height: 1.4;
 }
 
+.opt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.opt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.opt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.opt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.opt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.opt-original {
+  color: var(--faint);
+  font-size: 11px;
+  text-decoration: line-through;
+}
+
+.opt-suggestion {
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
 .asr-progress {
   display: flex;
   flex-direction: column;

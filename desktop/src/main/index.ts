@@ -10,6 +10,7 @@ import { searchWeb } from './search';
 import { applyCorrectionToText } from './correction';
 import { transcribeFile } from './asr';
 import { translateLines } from './translate';
+import { optimizeLines } from './optimize';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -178,6 +179,37 @@ function createWindow(): void {
           console.warn('[audio-test] failed', (error as Error).message);
         }
       }, 12000);
+    }
+
+    if (process.env.BSUB_OPTIMIZE_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_OPTIMIZE || 'http://127.0.0.1:8897/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          saveSettings(settings);
+          const suggestions = await optimizeLines(
+            [
+              { start: 0, end: 1, text: '这是错别字' },
+              { start: 1, end: 2, text: '第二句' }
+            ],
+            (percent, message) => console.log('[optimize-test]', Math.round(percent), message),
+            undefined,
+            settings
+          );
+          console.log('[optimize-test] done', JSON.stringify(suggestions));
+        } catch (error) {
+          console.warn('[optimize-test] failed', (error as Error).message);
+        }
+      }, 5000);
     }
 
     if (process.env.BSUB_TRANSLATE_TEST === '1') {

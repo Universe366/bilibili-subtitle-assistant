@@ -1,0 +1,167 @@
+import { session } from 'electron';
+import type { AppSettings, OptimizeSuggestion, SubtitleLine } from '../shared/types';
+import { activePlatform, loadSettings } from './settings';
+import { glossaryTerms } from './correction';
+
+const MAX_BATCH_LINES = 30;
+const MAX_BATCH_CHARS = 5000;
+const REQUEST_TIMEOUT_MS = 180000;
+
+type Progress = (percent: number, message: string) => void;
+
+function errorForStatus(status: number, body: string): string {
+  if (status === 401 || status === 403) return 'API Key 无效或没有权限（401/403）';
+  if (status === 404) return '地址或模型不存在（404）';
+  if (status === 429) return '请求过于频繁或额度不足（429）';
+  if (status >= 500) return `服务端错误（${status}）`;
+  return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
+}
+
+function batchesOf(lines: SubtitleLine[]): SubtitleLine[][] {
+  const batches: SubtitleLine[][] = [];
+  let current: SubtitleLine[] = [];
+  let chars = 0;
+  for (const line of lines) {
+    const length = line.text.length + 8;
+    if (current.length >= MAX_BATCH_LINES || (current.length && chars + length > MAX_BATCH_CHARS)) {
+      batches.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(line);
+    chars += length;
+  }
+  if (current.length) batches.push(current);
+  return batches;
+}
+
+function parseSuggestions(raw: string, batch: SubtitleLine[]): string[] {
+  const text = String(raw || '').replace(/```(?:json)?/gi, '').trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try {
+      const json = JSON.parse(text.slice(start, end + 1));
+      if (Array.isArray(json?.lines)) {
+        return batch.map((line, index) => String(json.lines[index] ?? line.text));
+      }
+      if (Array.isArray(json?.corrections)) {
+        const byIndex = new Map<number, string>();
+        for (const item of json.corrections) {
+          const index = Number(item?.index);
+          if (Number.isFinite(index) && index >= 1) byIndex.set(index, String(item?.text || ''));
+        }
+        return batch.map((line, index) => byIndex.get(index + 1) ?? line.text);
+      }
+    } catch {
+      // 继续按行解析
+    }
+  }
+
+  const rows = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*\d+\s*[.、:：)\]]\s*/, '').trim())
+    .filter(Boolean);
+  return batch.map((line, index) => rows[index] || line.text);
+}
+
+export async function optimizeLines(
+  lines: SubtitleLine[],
+  onProgress: Progress,
+  signal?: AbortSignal,
+  settingsOverride?: AppSettings
+): Promise<OptimizeSuggestion[]> {
+  const settings = settingsOverride || loadSettings();
+  const platform = activePlatform(settings);
+  if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
+  if (!platform.model.trim()) throw new Error('请先在设置里填写模型名');
+  if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
+  if (!lines.length) throw new Error('没有可优化的字幕');
+
+  const glossary = glossaryTerms(settings);
+  const glossaryBlock = glossary.length
+    ? `\n\n术语表（必须使用以下写法）：\n${glossary
+        .slice(0, 80)
+        .map((term) => `- ${term.from} → ${term.to}${term.note ? `（${term.note}）` : ''}`)
+        .join('\n')}`
+    : '';
+
+  const batches = batchesOf(lines);
+  const suggestions: OptimizeSuggestion[] = [];
+  const base = platform.baseUrl.replace(/\/+$/, '');
+  let offset = 0;
+
+  for (let index = 0; index < batches.length; index += 1) {
+    if (signal?.aborted) throw new Error('已终止');
+    const batch = batches[index];
+    const numbered = batch.map((line, lineIndex) => `${lineIndex + 1}. ${line.text}`).join('\n');
+    onProgress(
+      (index / batches.length) * 100,
+      `校对第 ${index + 1} / ${batches.length} 批（${batch.length} 行）`
+    );
+
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new Error('校对请求超时（3 分钟）')),
+      REQUEST_TIMEOUT_MS
+    );
+    const forwardAbort = () => controller.abort();
+    signal?.addEventListener('abort', forwardAbort, { once: true });
+
+    try {
+      const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${platform.apiKey.trim()}`
+        },
+        body: JSON.stringify({
+          model: platform.model.trim(),
+          stream: false,
+          temperature: 0.1,
+          max_tokens: settings.ai.maxTokens || undefined,
+          messages: [
+            {
+              role: 'system',
+              content: `${settings.prompt.optimize}${glossaryBlock}`
+            },
+            {
+              role: 'user',
+              content: `共 ${batch.length} 条字幕，请逐条校对：\n${numbered}`
+            }
+          ]
+        }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(errorForStatus(response.status, body));
+      }
+      const json: any = await response.json();
+      const content = String(json?.choices?.[0]?.message?.content || '');
+      const rows = parseSuggestions(content, batch);
+      if (!rows.length) throw new Error('AI 没有返回可解析的结果');
+
+      for (let lineIndex = 0; lineIndex < batch.length; lineIndex += 1) {
+        const original = batch[lineIndex].text;
+        const suggestion = String(rows[lineIndex] || '').trim();
+        if (suggestion && suggestion !== original.trim()) {
+          suggestions.push({
+            index: offset + lineIndex,
+            original,
+            suggestion
+          });
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', forwardAbort);
+    }
+
+    offset += batch.length;
+  }
+
+  onProgress(100, suggestions.length ? `发现 ${suggestions.length} 处改动` : '没有发现需要修改的地方');
+  return suggestions;
+}

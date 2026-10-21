@@ -22,12 +22,17 @@ import type {
   TranslateProgressEvent,
   TranslateDoneEvent,
   TranslateErrorEvent,
+  OptimizeSuggestion,
+  OptimizeProgressEvent,
+  OptimizeDoneEvent,
+  OptimizeErrorEvent,
   ExportPayload,
   LayoutRect,
   PageInfo,
   Result,
   StoredSummary,
   SubtitleBundle,
+  SubtitleLine,
   SummarizeRequest,
   SummaryRef,
   UpdateStatus,
@@ -48,6 +53,7 @@ import { summarize } from './ai';
 import { chat } from './chat';
 import { transcribe } from './asr';
 import { translateLines } from './translate';
+import { optimizeLines } from './optimize';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -60,6 +66,7 @@ const aiControllers = new Map<string, AbortController>();
 const chatControllers = new Map<string, AbortController>();
 const asrControllers = new Map<string, AbortController>();
 const translateControllers = new Map<string, AbortController>();
+const optimizeControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
@@ -523,6 +530,48 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('translate:cancel', (_event, requestId: string) => {
     translateControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('optimize:start', async (_event, payload: { requestId: string; lines: SubtitleLine[] }): Promise<Result<{ requestId: string }>> => {
+    if (!payload || !Array.isArray(payload.lines) || payload.lines.length === 0) {
+      return { ok: false, error: '没有可优化的字幕' };
+    }
+    const requestId = payload.requestId || randomUUID();
+    const controller = new AbortController();
+    optimizeControllers.set(requestId, controller);
+
+    void (async () => {
+      try {
+        const suggestions = await optimizeLines(
+          payload.lines,
+          (percent, message) =>
+            send('optimize:progress', {
+              requestId,
+              percent,
+              message
+            } satisfies OptimizeProgressEvent),
+          controller.signal
+        );
+        send('optimize:done', {
+          requestId,
+          suggestions
+        } satisfies OptimizeDoneEvent);
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? '已终止'
+          : (error as Error)?.message || String(error);
+        console.warn('[optimize] failed:', message);
+        send('optimize:error', { requestId, error: message } satisfies OptimizeErrorEvent);
+      } finally {
+        optimizeControllers.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  });
+
+  ipcMain.handle('optimize:cancel', (_event, requestId: string) => {
+    optimizeControllers.get(requestId)?.abort();
   });
 
   ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {

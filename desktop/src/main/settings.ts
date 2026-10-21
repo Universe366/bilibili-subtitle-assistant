@@ -40,6 +40,14 @@ const DEFAULT_TRANSLATE_PROMPT = `你是专业字幕翻译。把用户给出的�
 - 每条译文单独一行，顺序和条数必须与输入完全一致。
 - 只输出 JSON：{"lines":["第1条译文","第2条译文"]}，不要 Markdown 代码块，不要解释。`;
 
+const DEFAULT_OPTIMIZE_PROMPT = `你是严谨的字幕校对员。只修正错别字、同音字、标点、明显的 ASR 识别错误和专有名词写法。
+要求：
+- 不改变原意，不润色风格，不合并或拆分条目。
+- 没有把握的地方保持原样。
+- 输出 JSON：{"lines":["第1条修正后文本","第2条修正后文本"]}
+- 条数必须与输入完全一致；不需要修改的行原样返回。
+- 不要输出 Markdown 代码块，不要解释。`;
+
 const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
   {
     id: 'brief',
@@ -109,7 +117,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     activeId: 'default',
     templates: DEFAULT_TEMPLATES,
     chat: DEFAULT_CHAT_PROMPT,
-    translate: DEFAULT_TRANSLATE_PROMPT
+    translate: DEFAULT_TRANSLATE_PROMPT,
+    optimize: DEFAULT_OPTIMIZE_PROMPT
   },
   asr: {
     activeId: 'siliconflow',
@@ -295,6 +304,9 @@ function normalize(raw: any): AppSettings {
     }
     if (typeof raw.prompt?.translate === 'string' && raw.prompt.translate.trim()) {
       base.prompt.translate = raw.prompt.translate.trim();
+    }
+    if (typeof raw.prompt?.optimize === 'string' && raw.prompt.optimize.trim()) {
+      base.prompt.optimize = raw.prompt.optimize.trim();
     }
 
     if (raw.export && typeof raw.export === 'object') {

@@ -17,6 +17,10 @@ import type {
   TranslateProgressEvent,
   TranslateDoneEvent,
   TranslateErrorEvent,
+  OptimizeSuggestion,
+  OptimizeProgressEvent,
+  OptimizeDoneEvent,
+  OptimizeErrorEvent,
   FindResult,
   LayoutRect,
   Result,
@@ -105,6 +109,12 @@ export interface BsubApi {
   onTranslateProgress(cb: (event: TranslateProgressEvent) => void): () => void;
   onTranslateDone(cb: (event: TranslateDoneEvent) => void): () => void;
   onTranslateError(cb: (event: TranslateErrorEvent) => void): () => void;
+
+  optimize(payload: { requestId: string; lines: SubtitleLine[] }): Promise<Result<{ requestId: string }>>;
+  cancelOptimize(requestId: string): Promise<void>;
+  onOptimizeProgress(cb: (event: OptimizeProgressEvent) => void): () => void;
+  onOptimizeDone(cb: (event: OptimizeDoneEvent) => void): () => void;
+  onOptimizeError(cb: (event: OptimizeErrorEvent) => void): () => void;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 
