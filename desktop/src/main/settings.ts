@@ -48,6 +48,13 @@ const DEFAULT_OPTIMIZE_PROMPT = `你是严谨的字幕校对员。只修正错�
 - 条数必须与输入完全一致；不需要修改的行原样返回。
 - 不要输出 Markdown 代码块，不要解释。`;
 
+const DEFAULT_CHAPTERS_PROMPT = `你是视频章节编辑。根据字幕把视频划分为 3 到 12 个章节，覆盖开头到结尾。
+要求：
+- 每个章节标题简洁（不超过 20 字），能概括该时间段内容。
+- 时间点尽量落在话题切换处。
+- 只输出 JSON 数组：[{"start":0,"end":120,"title":"开场"}, ...]
+- start/end 使用秒数，不要输出 Markdown 代码块或解释。`;
+
 const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
   {
     id: 'brief',
@@ -118,7 +125,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     templates: DEFAULT_TEMPLATES,
     chat: DEFAULT_CHAT_PROMPT,
     translate: DEFAULT_TRANSLATE_PROMPT,
-    optimize: DEFAULT_OPTIMIZE_PROMPT
+    optimize: DEFAULT_OPTIMIZE_PROMPT,
+    chapters: DEFAULT_CHAPTERS_PROMPT
   },
   asr: {
     activeId: 'siliconflow',
@@ -309,6 +317,9 @@ function normalize(raw: any): AppSettings {
     }
     if (typeof raw.prompt?.optimize === 'string' && raw.prompt.optimize.trim()) {
       base.prompt.optimize = raw.prompt.optimize.trim();
+    }
+    if (typeof raw.prompt?.chapters === 'string' && raw.prompt.chapters.trim()) {
+      base.prompt.chapters = raw.prompt.chapters.trim();
     }
 
     if (raw.export && typeof raw.export === 'object') {

@@ -42,6 +42,8 @@ import type {
   LibraryHistoryItem,
   BatchProgressEvent,
   BatchDoneEvent,
+  Chapter,
+  QualityReport,
   LibraryIngestResult,
   LibraryList,
   LibrarySearchResult
@@ -68,6 +70,8 @@ import { transcribe } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
+import { checkSubtitles } from './quality';
+import { generateChapters } from './chapters';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -652,6 +656,34 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return failure<{ removed: number }>(error);
     }
   });
+
+  ipcMain.handle(
+    'quality:check',
+    (_event, payload: { info: PageInfo; lines: SubtitleLine[] }): Result<QualityReport> => {
+      try {
+        if (!payload || !payload.info || !Array.isArray(payload.lines)) {
+          throw new Error('缺少字幕数据');
+        }
+        return { ok: true, data: checkSubtitles(payload.info, payload.lines) };
+      } catch (error) {
+        return failure<QualityReport>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'chapters:generate',
+    async (_event, payload: { info: PageInfo; lines: SubtitleLine[] }): Promise<Result<Chapter[]>> => {
+      try {
+        if (!payload || !payload.info || !Array.isArray(payload.lines) || !payload.lines.length) {
+          throw new Error('缺少字幕数据');
+        }
+        return { ok: true, data: await generateChapters(payload.info, payload.lines) };
+      } catch (error) {
+        return failure<Chapter[]>(error);
+      }
+    }
+  );
 
   ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {
     try {

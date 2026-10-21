@@ -24,6 +24,8 @@ import type {
   BatchProgressEvent,
   BatchDoneEvent,
   BatchErrorEvent,
+  Chapter,
+  QualityReport,
   LibraryHistoryItem,
   FindResult,
   LayoutRect,
@@ -129,6 +131,9 @@ export interface BsubApi {
   getHistory(): Promise<Result<LibraryHistoryItem[]>>;
   deleteHistory(id: number): Promise<Result<{ removed: boolean }>>;
   clearHistory(): Promise<Result<{ removed: number }>>;
+
+  checkQuality(info: PageInfo, lines: SubtitleLine[]): Promise<Result<QualityReport>>;
+  generateChapters(info: PageInfo, lines: SubtitleLine[]): Promise<Result<Chapter[]>>;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 

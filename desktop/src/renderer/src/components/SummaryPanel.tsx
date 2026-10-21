@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, Sparkles, Square } from 'lucide-react';
-import type { PageInfo, SubtitleLine, SubtitleTrack, TabInfo } from '../../../shared/types';
+import type { Chapter, PageInfo, SubtitleLine, SubtitleTrack, TabInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { ExportMenu } from './ExportMenu';
 import { pickTrack, videoKeyOf } from '../lib/video';
@@ -38,6 +38,9 @@ export function SummaryPanel({
   const [streamText, setStreamText] = useState('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [chapterError, setChapterError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef('');
   const liveRef = useRef<HTMLPreElement>(null);
@@ -59,6 +62,9 @@ export function SummaryPanel({
     setStreamText('');
     setError(null);
     setStreaming(false);
+    setChapters([]);
+    setChaptersLoading(false);
+    setChapterError(null);
   }, [activeTab?.id, videoKey]);
 
   useEffect(() => {
@@ -206,6 +212,22 @@ export function SummaryPanel({
     if (requestRef.current) void window.bsub.cancelSummary(requestRef.current);
   };
 
+  const loadChapters = async () => {
+    if (chaptersLoading) return;
+    setChaptersLoading(true);
+    setChapterError(null);
+    try {
+      const data = await ensureLines();
+      const response = await window.bsub.generateChapters(data.info, data.lines);
+      if (response.ok) setChapters(response.data);
+      else setChapterError(response.error);
+    } catch (caught) {
+      setChapterError((caught as Error).message);
+    } finally {
+      setChaptersLoading(false);
+    }
+  };
+
   const showSettingsHint =
     Boolean(error) &&
     /Key|模型|平台|设置|401|403|404/.test(error || '');
@@ -215,6 +237,14 @@ export function SummaryPanel({
       <div className="panel-toolbar">
         <div className="panel-title">总结</div>
         <div className="toolbar-actions">
+          <button
+            className="mini-btn"
+            disabled={!isVideoPage || loading || chaptersLoading || streaming}
+            title="用 AI 生成可跳转章节"
+            onClick={() => void loadChapters()}
+          >
+            {chaptersLoading ? <Loader2 size={12} className="spin" /> : '章节'}
+          </button>
           {summary && <ExportMenu info={info} track={track} lines={lines} summary={summary} />}
           {streaming ? (
             <button className="mini-btn" onClick={cancel} title="停止生成">
@@ -251,6 +281,24 @@ export function SummaryPanel({
           <div className="summary-video-meta">
             {info.owner} · {fmtTime(info.duration)}
           </div>
+        </div>
+      )}
+
+      {chapterError && <div className="settings-hint">章节生成失败：{chapterError}</div>}
+
+      {chapters.length > 0 && (
+        <div className="chapters-card">
+          <div className="chapters-head">章节</div>
+          {chapters.map((chapter) => (
+            <button
+              key={`${chapter.start}-${chapter.title}`}
+              className="chapter-row"
+              onClick={() => void window.bsub.seek(chapter.start + 0.05)}
+            >
+              <span className="chapter-time">{fmtTime(chapter.start)}</span>
+              <span className="chapter-title">{chapter.title}</span>
+            </button>
+          ))}
         </div>
       )}
 

@@ -26,6 +26,8 @@ import type {
   BatchProgressEvent,
   BatchDoneEvent,
   BatchErrorEvent,
+  Chapter,
+  QualityReport,
   LibraryHistoryItem,
   FindResult,
   ExportPayload,
@@ -187,6 +189,11 @@ const api: BsubApi = {
     ipcRenderer.invoke('history:delete', id) as Promise<Result<{ removed: boolean }>>,
   clearHistory: () =>
     ipcRenderer.invoke('history:clear') as Promise<Result<{ removed: number }>>,
+
+  checkQuality: (info: PageInfo, lines: SubtitleLine[]) =>
+    ipcRenderer.invoke('quality:check', { info, lines }) as Promise<Result<QualityReport>>,
+  generateChapters: (info: PageInfo, lines: SubtitleLine[]) =>
+    ipcRenderer.invoke('chapters:generate', { info, lines }) as Promise<Result<Chapter[]>>,
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

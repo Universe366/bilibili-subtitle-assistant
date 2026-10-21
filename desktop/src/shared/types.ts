@@ -137,6 +137,33 @@ export interface LibraryBundle {
   lines: SubtitleLine[];
 }
 
+export interface Chapter {
+  start: number;
+  end: number;
+  title: string;
+}
+
+export interface QualityIssue {
+  code: string;
+  severity: 'info' | 'warn' | 'error';
+  message: string;
+  lineIndex?: number;
+  start?: number;
+  end?: number;
+}
+
+export interface QualityStats {
+  lines: number;
+  duration: number;
+  coverage: number;
+  charsPerSecond: number;
+}
+
+export interface QualityReport {
+  issues: QualityIssue[];
+  stats: QualityStats;
+}
+
 export interface BatchProgressEvent {
   requestId: string;
   percent: number;
@@ -275,6 +302,7 @@ export interface AppSettings {
     chat: string;
     translate: string;
     optimize: string;
+    chapters: string;
   };
   search: {
     enabled: boolean;

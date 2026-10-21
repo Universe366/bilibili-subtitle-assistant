@@ -21,6 +21,8 @@ import { transcribeFile } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
+import { checkSubtitles } from './quality';
+import { generateChapters } from './chapters';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -189,6 +191,59 @@ function createWindow(): void {
           console.warn('[audio-test] failed', (error as Error).message);
         }
       }, 12000);
+    }
+
+    if (process.env.BSUB_QUALITY_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const info = {
+            kind: 'video',
+            bvid: 'BV1QA',
+            aid: 1,
+            cid: 1,
+            epId: null,
+            seasonId: null,
+            page: 1,
+            partTitle: '',
+            parts: [],
+            title: '质检测试',
+            owner: '测试UP',
+            desc: '',
+            duration: 100,
+            url: '',
+            signature: 'qa'
+          };
+          const report = checkSubtitles(info, [
+            { start: 0, end: 2, text: '第一句' },
+            { start: 1, end: 3, text: '第一句' },
+            { start: 50, end: 40, text: '坏时间' }
+          ]);
+          console.log(
+            '[quality-test]',
+            JSON.stringify({ stats: report.stats, codes: report.issues.map((item) => item.code) })
+          );
+
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_CHAPTERS || 'http://127.0.0.1:8896/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          saveSettings(settings);
+          const chapters = await generateChapters(info, [
+            { start: 0, end: 3, text: '开场内容' },
+            { start: 3, end: 6, text: '测试内容' }
+          ]);
+          console.log('[chapters-test]', JSON.stringify(chapters));
+        } catch (error) {
+          console.warn('[quality-test] failed', (error as Error).message);
+        }
+      }, 5000);
     }
 
     if (process.env.BSUB_BATCH_TEST === '1') {

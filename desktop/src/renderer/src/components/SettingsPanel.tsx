@@ -817,6 +817,16 @@ export function SettingsPanel() {
             setDraft({ ...draft, prompt: { ...draft.prompt, optimize: event.target.value } })
           }
         />
+
+        <div className="settings-label">章节提示词</div>
+        <textarea
+          className="settings-textarea"
+          rows={5}
+          value={draft.prompt.chapters}
+          onChange={(event) =>
+            setDraft({ ...draft, prompt: { ...draft.prompt, chapters: event.target.value } })
+          }
+        />
       </div>
 
       <div className="settings-section">

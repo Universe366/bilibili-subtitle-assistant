@@ -3,6 +3,7 @@ import { AlertTriangle, Eye, Loader2, RefreshCw } from 'lucide-react';
 import type {
   OptimizeSuggestion,
   PageInfo,
+  QualityReport,
   SubtitleBundle,
   SubtitleLine,
   SubtitleTrack,
@@ -59,6 +60,8 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [suggestions, setSuggestions] = useState<OptimizeSuggestion[] | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const optimizeRequestRef = useRef('');
+  const [quality, setQuality] = useState<QualityReport | null>(null);
+  const [checkingQuality, setCheckingQuality] = useState(false);
   const infoRef = useRef<PageInfo | null>(null);
   const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +99,8 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     setSuggestions(null);
     setSelectedSuggestions(new Set());
     optimizeRequestRef.current = '';
+    setQuality(null);
+    setCheckingQuality(false);
     loadedRef.current = { key: '', reload: -1 };
   }, [activeTab?.id, videoKey]);
 
@@ -253,6 +258,19 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
 
   const stopOptimize = () => {
     if (optimizeRequestRef.current) void window.bsub.cancelOptimize(optimizeRequestRef.current);
+  };
+
+  const checkQuality = async () => {
+    if (!info || !lines.length || checkingQuality) return;
+    setCheckingQuality(true);
+    setError(null);
+    try {
+      const response = await window.bsub.checkQuality(info, lines);
+      if (response.ok) setQuality(response.data);
+      else setError(response.error);
+    } finally {
+      setCheckingQuality(false);
+    }
   };
 
   const applySuggestions = (all = false) => {
@@ -467,6 +485,14 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           >
             {optimizing ? <Loader2 size={12} className="spin" /> : '优化'}
           </button>
+          <button
+            className="mini-btn"
+            disabled={!lines.length || checkingQuality}
+            title="检查时间轴、覆盖率、语速、重复等问题"
+            onClick={() => void checkQuality()}
+          >
+            {checkingQuality ? <Loader2 size={12} className="spin" /> : '质检'}
+          </button>
           {translated && (
             <select
               className="mini-select"
@@ -550,6 +576,44 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       )}
 
       {!optimizing && optimizeMessage && <div className="save-status">{optimizeMessage}</div>}
+
+      {quality && (
+        <div className="quality-card">
+          <div className="quality-head">
+            <span>质检结果</span>
+            <button className="mini-btn" onClick={() => setQuality(null)}>
+              关闭
+            </button>
+          </div>
+          <div className="quality-stats">
+            {quality.stats.lines} 行 · 覆盖 {(quality.stats.coverage * 100).toFixed(0)}% ·{' '}
+            {quality.stats.charsPerSecond.toFixed(1)} 字/秒
+          </div>
+          {quality.issues.length === 0 ? (
+            <div className="settings-hint">未发现明显问题</div>
+          ) : (
+            <div className="quality-list">
+              {quality.issues.map((issue, index) => (
+                <button
+                  key={`${issue.code}-${issue.lineIndex ?? index}`}
+                  className={`quality-issue ${issue.severity}`}
+                  onClick={() => {
+                    if (typeof issue.lineIndex === 'number') {
+                      const line = lines[issue.lineIndex];
+                      if (line) jump(line);
+                    } else if (typeof issue.start === 'number') {
+                      setCurrent(issue.start);
+                      void window.bsub.seek(issue.start + 0.05);
+                    }
+                  }}
+                >
+                  {issue.message}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {suggestions && suggestions.length > 0 && (
         <div className="opt-panel">
