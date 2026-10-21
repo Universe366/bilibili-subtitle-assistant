@@ -975,6 +975,26 @@ textarea.input {
   min-width: 0;
   word-break: break-word;
   line-height: 1.65;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-height: calc(1.65em * 2);
+}
+
+/* 长句默认最多两行；点行内「展开」才显示全文 */
+.subtitle-row[data-expanded='true'] .st-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  max-height: none;
+}
+
+.subtitle-row[data-editing='true'] .st-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  max-height: none;
 }
 
 .st-text mark,

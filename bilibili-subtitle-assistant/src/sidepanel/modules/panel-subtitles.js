@@ -19,6 +19,7 @@ const state = {
   positions: [],
   total: 0,
   rendered: new Map(),
+  expanded: new Set(),
   lastSignature: '',
   followPaused: false,
   manualScrollAt: 0,
@@ -110,6 +111,7 @@ function buildItems(st) {
   state.searchRe = q ? new RegExp(escapeRegExp(q), 'gi') : null;
   state.items = lines;
   state.rendered.clear();
+  state.expanded.clear();
   state.inner.textContent = '';
   state.tmp = null;
   lastActive = -1;
@@ -134,18 +136,19 @@ function renderWindow(force = false) {
   state.emptyShown = false;
 
   // 估算行高：编辑中或长文本行更高
-  const estimate = (line) => {
+  const estimate = (line, idx) => {
     const text = String(line.text || '');
     const width = Math.max(160, host.clientWidth - 120);
     const perChar = 12.5;
-    const rows = Math.max(1, Math.ceil((text.length * perChar) / width));
+    const fullRows = Math.max(1, Math.ceil((text.length * perChar) / width));
+    const rows = state.expanded.has(idx) ? fullRows : Math.min(2, fullRows);
     return 22 * rows + 8;
   };
   const positions = [];
   let y = 0;
   for (let i = 0; i < items.length; i += 1) {
     const realH = state.measured && state.measured.get(i);
-    const hh = realH || estimate(items[i]);
+    const hh = realH || estimate(items[i], i);
     positions.push({ top: y, height: hh });
     y += hh;
   }
@@ -225,7 +228,11 @@ function buildRow(line, index, pos) {
 
   const textEl = h('span', { class: 'st-text' });
   renderTextWithHighlight(textEl, String(line.text || ''), state.searchRe);
+  textEl.title = String(line.text || '');
   row.appendChild(textEl);
+
+  const expanded = state.expanded.has(index);
+  setBoolAttr(row, 'data-expanded', expanded);
 
   const stats = lineStats(line);
   row.appendChild(
@@ -237,6 +244,7 @@ function buildRow(line, index, pos) {
   );
 
   const actions = h('span', { class: 'st-actions' });
+  actions.appendChild(iconMini(expanded ? '⤡' : '⤢', expanded ? '收起这一句' : '展开这一句', () => toggleExpand(index)));
   actions.appendChild(iconMini('⧉', '复制这一行', () => copyLine(line)));
   actions.appendChild(iconMini('✎', '编辑这一行', () => startEdit(row, line, index)));
   actions.appendChild(iconMini('?', '就这一行问 AI', () => askAboutLine(line)));
@@ -246,6 +254,15 @@ function buildRow(line, index, pos) {
   row.addEventListener('dblclick', () => startEdit(row, line, index));
   if (state.editing === index) startEdit(row, line, index, true);
   return row;
+}
+
+function toggleExpand(index) {
+  if (state.expanded.has(index)) state.expanded.delete(index);
+  else state.expanded.add(index);
+  if (state.measured) state.measured.delete(index);
+  const row = state.rendered.get(index);
+  if (row) setBoolAttr(row, 'data-expanded', state.expanded.has(index));
+  renderWindow(true);
 }
 
 function iconMini(label, title, onClick) {
@@ -288,6 +305,7 @@ function startEdit(row, line, index, keep) {
   state.editing = index;
   const textEl = row.querySelector('.st-text');
   if (!textEl || textEl.querySelector('textarea')) return;
+  row.dataset.editing = 'true';
   const area = h('textarea', { class: 'input', style: { minHeight: '46px', width: '100%' } });
   area.value = String(line.text || '');
   // Esc = 取消。必须显式标记：render() 会移除 textarea，可能触发 blur，
