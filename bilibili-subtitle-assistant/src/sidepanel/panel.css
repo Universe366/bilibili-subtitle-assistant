@@ -500,6 +500,34 @@ body[data-tab='settings'] #actionbar {
   background: var(--bg);
 }
 
+/* 设置页搜索：粘在工具栏下方，不随分组滚动 */
+.settings-search {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.settings-search .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-search-count {
+  flex: 0 0 auto;
+  color: var(--fg-soft);
+  font-size: calc(var(--fs) * 0.78);
+  white-space: nowrap;
+}
+
+.settings-no-result {
+  display: none;
+  margin: 12px;
+}
+
 /* ------------------------------------------------------------------ */
 /* 控件                                                                */
 /* ------------------------------------------------------------------ */
@@ -712,6 +740,7 @@ textarea.input {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: var(--fs);
   font-weight: 600;
   transition: background 0.15s ease;
@@ -721,7 +750,28 @@ textarea.input {
   background: var(--bg-hover);
 }
 
+.group-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 折叠状态下也能看到「当前配了什么」 */
+.group-meta {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 52%;
+  color: var(--fg-faint);
+  font-size: calc(var(--fs) * 0.78);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .group-caret {
+  flex: 0 0 auto;
   color: var(--fg-faint);
   transition: transform 0.18s ease;
 }

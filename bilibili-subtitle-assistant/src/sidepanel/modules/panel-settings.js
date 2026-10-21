@@ -29,11 +29,35 @@ import { batchAdd, batchRemove, batchCancel, batchPause, batchClearDone, expandC
 import * as SKILLS from '../../shared/skills.js';
 import { TIME_PRESETS, normalizeTimeRange } from '../../shared/time-range.js';
 
-const state = { host: null, scrollHost: null, dirty: false, draft: null, modelCache: {} };
+const state = {
+  host: null,
+  scrollHost: null,
+  dirty: false,
+  draft: null,
+  modelCache: {},
+  // 设置页搜索：只过滤视图，不改变任何配置
+  query: '',
+  searchInput: null,
+  searchCount: null,
+  clearBtn: null,
+  noResult: null,
+  preSearchOpen: null
+};
 
 // 面板侧也需要知道「另一个站点」的地址，用于一键切换接口地址。
 // 与后台 providers.js 的 alternateHosts 保持同样的白名单。
 const DUAL_TLD_HOSTS = [/^api\.siliconflow\.(cn|com)$/i];
+
+// 「配置状态」里的 area → 设置分组 key，用于「去配置」跳转。
+const AREA_GROUP = {
+  ai: 'ai',
+  asr: 'asr',
+  search: 'search',
+  prompt: 'prompt',
+  general: 'general',
+  export: 'export',
+  mcp: 'mcp'
+};
 
 function hostOf(url) {
   try {
@@ -59,15 +83,42 @@ function alternateHostsForUi(baseUrl) {
 export function init(container) {
   const root = h('div', { class: 'pane', style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' } });
   const toolbar = h('div', { class: 'pane-toolbar' });
+  const searchBar = h('div', { class: 'settings-search' });
+  const searchInput = textInput(
+    '',
+    (v) => {
+      state.query = v;
+      applyFilter();
+    },
+    { placeholder: '搜索设置项：Key / 导出 / 超时 / MCP…' }
+  );
+  searchInput.id = 'settings-search';
+  searchInput.setAttribute('aria-label', '搜索设置项');
+  const clearBtn = button(
+    '清除',
+    () => {
+      state.query = '';
+      searchInput.value = '';
+      applyFilter();
+      searchInput.focus();
+    },
+    { small: true, title: '清空搜索，恢复全部分组' }
+  );
+  const searchCount = h('span', { class: 'settings-search-count', text: '' });
+  searchBar.append(searchInput, clearBtn, searchCount);
   const scrollHost = h('div', { class: 'scroll-host', id: 'settings-scroll' });
   const body = h('div', { id: 'settings-body' });
   scrollHost.appendChild(body);
   root.appendChild(toolbar);
+  root.appendChild(searchBar);
   root.appendChild(scrollHost);
   container.appendChild(root);
   state.host = root;
   state.scrollHost = scrollHost;
   state.body = body;
+  state.searchInput = searchInput;
+  state.clearBtn = clearBtn;
+  state.searchCount = searchCount;
 
   scrollHost.addEventListener('scroll', () => store.setScroll('settings', scrollHost.scrollTop));
   render();
@@ -128,8 +179,30 @@ export function render() {
     const inner = h('div', { class: 'group-body', style: { background: 'var(--warn-soft)' } });
     inner.appendChild(h('div', { class: 'section-title', text: '配置状态' }));
     for (const i of issues) {
-      inner.appendChild(h('div', { class: `alert ${i.level === 'error' ? 'error' : i.level === 'warn' ? 'warn' : 'info'}`, style: { marginBottom: '4px' } }, [h('div', { text: i.text })]));
+      const row = h('div', {
+        class: `alert ${i.level === 'error' ? 'error' : i.level === 'warn' ? 'warn' : 'info'}`,
+        style: { marginBottom: '4px' }
+      });
+      row.appendChild(h('div', { text: i.text }));
+      const target = AREA_GROUP[i.area];
+      if (target) {
+        row.appendChild(
+          h('span', {
+            class: 'alert-action',
+            text: '去配置 ›',
+            onclick: () => jumpToGroup(target)
+          })
+        );
+      }
+      inner.appendChild(row);
     }
+    inner.appendChild(
+      h('span', {
+        class: 'alert-action',
+        text: '打开首次向导 ›',
+        onclick: () => app.panels.wizard && app.panels.wizard.open()
+      })
+    );
     box.appendChild(inner);
     state.body.appendChild(box);
   }
@@ -149,11 +222,88 @@ export function render() {
   state.body.appendChild(pageGroup(d));
   state.body.appendChild(advancedGroup(d));
 
+  const noResult = h('div', {
+    class: 'note settings-no-result',
+    text: '没有匹配的设置项。试试「Key」「导出」「超时」「MCP」。'
+  });
+  state.body.appendChild(noResult);
+  state.noResult = noResult;
+  applyFilter();
+
   requestAnimationFrame(() => {
     if (state.scrollHost && Math.abs(state.scrollHost.scrollTop - scroll) > 4) {
       state.scrollHost.scrollTop = scroll;
     }
   });
+}
+
+function setGroupOpenEl(g, open) {
+  if (!g) return;
+  const head = g.querySelector('.group-head');
+  const body = g.querySelector('.group-body');
+  if (head) head.dataset.open = open ? 'true' : 'false';
+  if (body) {
+    body.dataset.open = open ? 'true' : 'false';
+    body.style.display = open ? 'block' : 'none';
+  }
+}
+
+function captureGroupOpen() {
+  const map = new Map();
+  for (const g of state.body.querySelectorAll('[data-group-key]')) {
+    const head = g.querySelector('.group-head');
+    map.set(g.dataset.groupKey, head && head.dataset.open === 'true');
+  }
+  return map;
+}
+
+// 搜索只过滤视图：不删分组、不改配置。
+function applyFilter() {
+  if (!state.body) return;
+  const q = String(state.query || '').trim().toLowerCase();
+  const groups = Array.from(state.body.querySelectorAll('[data-group-key]'));
+  if (q && !state.preSearchOpen) state.preSearchOpen = captureGroupOpen();
+  let shown = 0;
+  for (const g of groups) {
+    const hay = `${g.dataset.search || ''} ${g.textContent || ''}`.toLowerCase();
+    const ok = !q || hay.includes(q);
+    g.style.display = ok ? '' : 'none';
+    if (ok) {
+      shown += 1;
+      if (q) setGroupOpenEl(g, true);
+    }
+  }
+  // 清空搜索时恢复搜索前的展开状态
+  if (!q && state.preSearchOpen) {
+    for (const [key, open] of state.preSearchOpen) {
+      setGroupOpenEl(state.body.querySelector(`[data-group-key="${key}"]`), open);
+    }
+    state.preSearchOpen = null;
+  }
+  if (state.noResult) state.noResult.style.display = q && !shown ? 'block' : 'none';
+  if (state.clearBtn) state.clearBtn.disabled = !q;
+  if (state.searchCount) {
+    state.searchCount.textContent = q ? `${shown}/${groups.length} 组` : `${groups.length} 个分组`;
+  }
+}
+
+// 「去配置」：清空搜索、展开目标分组并滚动过去，优先聚焦 Key 输入框。
+function jumpToGroup(key) {
+  if (!state.body) return;
+  if (state.query) {
+    state.query = '';
+    if (state.searchInput) state.searchInput.value = '';
+  }
+  applyFilter();
+  const g = state.body.querySelector(`[data-group-key="${key}"]`);
+  if (!g) return;
+  setGroupOpenEl(g, true);
+  store.setGroupOpen(key, true);
+  if (typeof g.scrollIntoView === 'function') g.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const focusable = g.querySelector(
+    'input[type="password"], input[placeholder*="Key"], input[placeholder*="key"], select, textarea, input.input'
+  );
+  if (focusable) setTimeout(() => focusable.focus({ preventScroll: true }), 260);
 }
 
 function renderToolbar() {
@@ -175,13 +325,102 @@ function renderToolbar() {
 // 分组
 // ---------------------------------------------------------------------------
 
-function groupWrap(key, title, openDefault, bodyFn) {
+const META_BY_KEY = {
+  general: metaGeneral,
+  ai: (d) => metaPlatform(d, 'ai'),
+  asr: (d) => metaPlatform(d, 'asr'),
+  search: metaSearch,
+  export: metaExport,
+  rules: metaRules,
+  glossary: metaGlossary,
+  mcp: metaMcp,
+  skills: metaSkills,
+  prompt: metaPrompt
+};
+
+function groupWrap(key, title, openDefault, bodyFn, meta, keywords) {
+  const resolvedMeta = meta != null ? meta : META_BY_KEY[key] ? META_BY_KEY[key](draft()) : '';
   const g = collapsible(title, openDefault, bodyFn, {
     stateKey: key,
+    meta: resolvedMeta,
     isOpen: (k, def) => store.groupOpen(k, def),
     onToggle: (k, open) => store.setGroupOpen(k, open)
   });
+  // 搜索只依赖 data 属性，不拆 DOM 结构
+  g.dataset.groupKey = key;
+  g.dataset.search = [key, title, resolvedMeta, keywords].filter(Boolean).join(' ');
   return g;
+}
+
+function activePlatformOf(d, group) {
+  const cfg = (d && d[group]) || {};
+  const list = Array.isArray(cfg.platforms) ? cfg.platforms : [];
+  return list.find((p) => p.id === cfg.activeId) || list[0] || null;
+}
+
+function metaPlatform(d, group) {
+  const p = activePlatformOf(d, group);
+  if (!p) return '未选择平台';
+  const ks = platformKeyState(p, d);
+  const model = p.model ? ` · ${p.model}` : '';
+  return `${p.name || p.id} · ${ks.configured ? 'Key 已配' : 'Key 未配'}${model}`.slice(0, 64);
+}
+
+function metaGeneral(d) {
+  const g = (d && d.general) || {};
+  const theme = { system: '跟随系统', light: '浅色', dark: '深色' }[g.theme] || '跟随系统';
+  const layout = { one: '单列', two: '双列', auto: '自动' }[g.layout] || '单列';
+  return `${theme} · ${layout} · ${Math.round((Number(g.fontScale) || 1) * 100)}%`;
+}
+
+function metaSearch(d) {
+  const s = (d && d.search) || {};
+  const list = Array.isArray(s.platforms) ? s.platforms : [];
+  const p = list.find((x) => x.id === s.activeId) || list[0] || null;
+  const parts = [];
+  if (p) {
+    const ks = platformKeyState(p, d);
+    parts.push(p.name || p.id, ks.configured ? 'Key 已配' : 'Key 未配');
+  } else {
+    parts.push('未配置平台');
+  }
+  if (s.keylessFallback !== false) parts.push('免费引擎兜底');
+  return parts.join(' · ').slice(0, 64);
+}
+
+function metaExport(d) {
+  const c = (d && d.exportCfg) || {};
+  const f = EXPORT_FORMATS.find((x) => x.id === c.format);
+  const t = EXPORT_TEMPLATES.find((x) => x.id === c.template);
+  return `${f ? f.label : String(c.format || 'SRT').toUpperCase()} · ${t ? t.label : c.template || '默认'}`.slice(0, 64);
+}
+
+function metaRules(d) {
+  const o = (d && d.optimize) || {};
+  const groups = Array.isArray(o.groups) ? o.groups : [];
+  const active = groups.find((g) => g.id === o.activeGroupId) || groups[0];
+  return `${groups.length} 组${active ? ` · 当前 ${active.name || '未命名'}` : ''}`.slice(0, 64);
+}
+
+function metaGlossary(d) {
+  const list = (d && d.optimize && d.optimize.glossary) || [];
+  return `${list.length} 条术语`;
+}
+
+function metaMcp(d) {
+  const m = (d && d.mcp) || {};
+  const n = Array.isArray(m.servers) ? m.servers.length : 0;
+  return `${m.enabled ? '已启用' : '未启用'}${n ? ` · ${n} 个服务` : ''}`;
+}
+
+function metaSkills(d) {
+  const list = (d && d.skills && d.skills.items) || [];
+  return `${list.length} 个技能`;
+}
+
+function metaPrompt(d) {
+  const p = (d && d.prompt) || {};
+  return p.system === DEFAULT_SYSTEM_PROMPT ? '默认提示词' : '已自定义';
 }
 
 // ---------------------------------------------------------------------------

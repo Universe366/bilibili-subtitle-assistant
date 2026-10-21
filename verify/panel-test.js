@@ -128,7 +128,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.11.1', contentVersion: '2.11.1', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.11.2', contentVersion: '2.11.2', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -149,12 +149,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.11.1', stale: false }],
-    contentVersion: '2.11.1'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.11.2', stale: false }],
+    contentVersion: '2.11.2'
   },
   diagnostics: {
-    extensionVersion: '2.11.1',
-    contentVersion: '2.11.1',
+    extensionVersion: '2.11.2',
+    contentVersion: '2.11.2',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -170,7 +170,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.11.1', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.11.2', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -242,7 +242,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.11\.1 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.11\.2 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -482,6 +482,67 @@ async function main() {
   check('设置页含替换规则 / 术语表 / 检索 / 批量 / 历史', /替换规则组/.test(settingsText) && /术语表/.test(settingsText) && /联网检索/.test(settingsText) && /批量队列/.test(settingsText) && /历史记录/.test(settingsText));
   check('设置页含页面内功能（播放器按钮 / 画面字幕 / 跟随播放）', /播放器上显示/.test(settingsText) && /画面字幕/.test(settingsText) && /跟随播放/.test(settingsText));
   check('设置页说明密钥留空不改动', /留空保存表示「不改动」/.test(settingsText));
+
+  // 设置页搜索 / 摘要 / 去配置：只加导航，不删分组
+  const searchInput = doc.getElementById('settings-search');
+  check('设置页有搜索框', !!searchInput && /搜索设置项/.test(searchInput.placeholder), searchInput && searchInput.placeholder);
+  check(
+    '折叠分组显示当前配置摘要',
+    (() => {
+      const meta = doc.querySelector('[data-group-key="ai"] .group-meta');
+      return !!meta && /DeepSeek/.test(meta.textContent) && /Key/.test(meta.textContent);
+    })(),
+    (doc.querySelector('[data-group-key="ai"] .group-meta') || {}).textContent
+  );
+  check('配置状态提供去配置入口', doc.querySelectorAll('#settings-pane .alert-action').length > 0);
+  const visibleGroups = () =>
+    Array.from(doc.querySelectorAll('#settings-body [data-group-key]'))
+      .filter((g) => g.style.display !== 'none')
+      .map((g) => g.dataset.groupKey);
+  searchInput.value = '导出';
+  searchInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await sleep(40);
+  check(
+    '设置搜索只显示匹配分组',
+    visibleGroups().includes('export') && !visibleGroups().includes('ai'),
+    visibleGroups().join(',')
+  );
+  check(
+    '搜索会展开匹配分组',
+    doc.querySelector('[data-group-key="export"] .group-body').dataset.open === 'true',
+    ''
+  );
+  check('搜索不标记未保存', !/\*/.test(doc.querySelector('#settings-pane .pane-toolbar').textContent), '');
+  searchInput.value = 'zzzz-no-match';
+  searchInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await sleep(30);
+  check(
+    '无匹配时给出提示',
+    doc.querySelector('#settings-body .settings-no-result').style.display === 'block',
+    ''
+  );
+  searchInput.value = '';
+  searchInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await sleep(30);
+  check(
+    '清空搜索恢复全部分组',
+    visibleGroups().length === doc.querySelectorAll('#settings-body [data-group-key]').length,
+    `${visibleGroups().length}`
+  );
+  check('清空后清除按钮禁用', doc.querySelector('.settings-search button').disabled === true, '');
+
+  const goBtn = Array.from(doc.querySelectorAll('#settings-pane .alert-action')).find((el) =>
+    /去配置/.test(el.textContent)
+  );
+  if (goBtn) {
+    goBtn.click();
+    await sleep(120);
+    const firstGroup = doc.querySelector('[data-group-key="ai"] .group-head');
+    check('去配置会展开目标分组', !!firstGroup && firstGroup.dataset.open === 'true', '');
+  } else {
+    check('去配置会展开目标分组', false, 'no alert-action');
+  }
+
   const settingsSrc = fs.readFileSync(
     path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-settings.js'),
     'utf8'

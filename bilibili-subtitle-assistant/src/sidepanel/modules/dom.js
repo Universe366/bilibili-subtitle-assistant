@@ -153,6 +153,11 @@ export function collapsible(title, openDefault, bodyFn, opts = {}) {
     }
   });
   head.appendChild(h('span', { class: 'group-title', text: title }));
+  if (opts.meta) {
+    head.appendChild(
+      h('span', { class: 'group-meta', text: String(opts.meta), title: String(opts.meta) })
+    );
+  }
   head.appendChild(h('span', { class: 'group-caret', text: '▾' }));
   const body = h('div', { class: 'group-body' });
   const open = typeof opts.isOpen === 'function' ? opts.isOpen(key, openDefault) : openDefault;
