@@ -187,6 +187,9 @@ async function verifySuggestions(
       }
       row.item.verdict = verdict.verdict;
       row.item.evidence = quote.slice(0, 80);
+      if (row.item.verdict === 'support' || row.item.verdict === 'refute') {
+        row.item.consistency = (row.item.sources || 0) >= 2 ? 'multi' : 'single';
+      }
     }
   } catch {
     rows.forEach((row) => {

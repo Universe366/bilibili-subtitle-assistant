@@ -954,6 +954,17 @@ export function SettingsPanel() {
               onChange={(event) => updateAsr({ maxFileMb: Number(event.target.value) || 20 })}
             />
           </div>
+          <div className="settings-field">
+            <div className="settings-label">重叠切片（秒）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={0}
+              max={15}
+              value={draft.asr.overlapSeconds}
+              onChange={(event) => updateAsr({ overlapSeconds: Number(event.target.value) || 0 })}
+            />
+          </div>
         </div>
 
         <div className="settings-label">传输方式</div>

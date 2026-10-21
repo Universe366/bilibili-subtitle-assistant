@@ -152,52 +152,13 @@ async function downloadAudio(
   throw new Error(`音轨下载失败：${(lastError as Error)?.message || '所有候选都不可用'}`);
 }
 
-async function convertToChunks(
-  input: string,
-  format: 'm4a' | 'wav',
-  settings: AsrSettings,
+async function runFfmpeg(
+  args: string[],
   duration: number,
-  dir: string,
-  chunkSeconds: number,
   onProgress: Progress,
-  signal?: AbortSignal
-): Promise<string[]> {
-  for (const name of fs.readdirSync(dir)) {
-    if (name.startsWith('chunk-')) {
-      try {
-        fs.rmSync(path.join(dir, name), { force: true });
-      } catch {
-        // ignore
-      }
-    }
-  }
-  const ext = format === 'wav' ? 'wav' : 'm4a';
-  const pattern = path.join(dir, `chunk-%03d.${ext}`);
-  const args = [
-    '-y',
-    '-i',
-    input,
-    '-vn',
-    '-ac',
-    '1',
-    '-ar',
-    '16000',
-    ...(format === 'wav'
-      ? ['-c:a', 'pcm_s16le']
-      : ['-c:a', 'aac', '-b:a', '64k', '-segment_format', 'mp4']),
-    '-f',
-    'segment',
-    '-segment_time',
-    String(chunkSeconds),
-    '-reset_timestamps',
-    '1',
-    '-progress',
-    'pipe:1',
-    '-nostats',
-    pattern
-  ];
-
-  onProgress('convert', 0, '解码并切分音频…');
+  signal: AbortSignal | undefined,
+  label: string
+): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(ffmpegPath(), args, { windowsHide: true });
     let stderr = '';
@@ -216,7 +177,7 @@ async function convertToChunks(
       const match = /out_time_ms=(\d+)/.exec(text);
       if (match && duration > 0) {
         const percent = Math.min(99, (Number(match[1]) / 1e6 / duration) * 100);
-        onProgress('convert', percent, `解码音频 ${Math.round(percent)}%`);
+        onProgress('convert', percent, `${label} ${Math.round(percent)}%`);
       }
     });
     proc.stderr.on('data', (chunk) => {
@@ -237,6 +198,103 @@ async function convertToChunks(
       else reject(new Error(`音频转换失败（ffmpeg ${code}）：${stderr.slice(-300)}`));
     });
   });
+}
+
+async function convertToChunks(
+  input: string,
+  format: 'm4a' | 'wav',
+  settings: AsrSettings,
+  duration: number,
+  dir: string,
+  chunkSeconds: number,
+  onProgress: Progress,
+  signal?: AbortSignal
+): Promise<string[]> {
+  for (const name of fs.readdirSync(dir)) {
+    if (name.startsWith('chunk-')) {
+      try {
+        fs.rmSync(path.join(dir, name), { force: true });
+      } catch {
+        // ignore
+      }
+    }
+  }
+  const ext = format === 'wav' ? 'wav' : 'm4a';
+  const codec =
+    format === 'wav'
+      ? ['-c:a', 'pcm_s16le']
+      : ['-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart'];
+  const overlap = Math.max(
+    0,
+    Math.min(settings.overlapSeconds || 0, Math.max(0, chunkSeconds - 1))
+  );
+
+  if (overlap > 0 && duration > 0) {
+    const step = Math.max(1, chunkSeconds - overlap);
+    const count = Math.max(1, Math.ceil(duration / step));
+    for (let index = 0; index < count; index += 1) {
+      const start = index * step;
+      if (start >= duration) break;
+      const sliceDuration = Math.min(chunkSeconds, duration - start);
+      const output = path.join(dir, `chunk-${String(index).padStart(3, '0')}.${ext}`);
+      const args = [
+        '-y',
+        '-ss',
+        String(start),
+        '-i',
+        input,
+        '-t',
+        String(sliceDuration),
+        '-vn',
+        '-ac',
+        '1',
+        '-ar',
+        '16000',
+        ...codec,
+        '-progress',
+        'pipe:1',
+        '-nostats',
+        output
+      ];
+      await runFfmpeg(
+        args,
+        sliceDuration,
+        (stage, percent, message) =>
+          onProgress(
+            'convert',
+            Math.min(99, ((index + percent / 100) / count) * 100),
+            message
+          ),
+        signal,
+        `切片 ${index + 1}/${count}`
+      );
+    }
+  } else {
+    const pattern = path.join(dir, `chunk-%03d.${ext}`);
+    const args = [
+      '-y',
+      '-i',
+      input,
+      '-vn',
+      '-ac',
+      '1',
+      '-ar',
+      '16000',
+      ...codec,
+      '-f',
+      'segment',
+      '-segment_time',
+      String(chunkSeconds),
+      '-reset_timestamps',
+      '1',
+      '-progress',
+      'pipe:1',
+      '-nostats',
+      pattern
+    ];
+    onProgress('convert', 0, '解码并切分音频…');
+    await runFfmpeg(args, duration, onProgress, signal, '解码音频');
+  }
 
   const files = fs
     .readdirSync(dir)
@@ -393,15 +451,20 @@ function splitText(text: string, max = 60): string[] {
 function mergeChunks(
   results: Array<{ text: string; segments: Array<{ start: number; end: number; text: string }> }>,
   chunkSeconds: number,
-  duration: number
+  duration: number,
+  overlapSeconds = 0
 ): SubtitleLine[] {
   const lines: SubtitleLine[] = [];
+  const step = Math.max(1, chunkSeconds - Math.max(0, overlapSeconds));
   results.forEach((result, index) => {
-    const offset = index * chunkSeconds;
+    const offset = index * step;
+    const dropBefore = index > 0 ? offset + Math.max(0, overlapSeconds) * 0.5 : -1;
     if (result.segments.length) {
       for (const segment of result.segments) {
+        const start = offset + Math.max(0, segment.start);
+        if (start < dropBefore) continue;
         lines.push({
-          start: offset + Math.max(0, segment.start),
+          start,
           end: offset + Math.max(segment.start + 0.3, segment.end || segment.start + 2),
           text: segment.text
         });
@@ -502,7 +565,7 @@ export async function transcribeFile(
   await Promise.all(Array.from({ length: workers }, () => worker()));
 
   onProgress('merge', 0, '合并转写结果…');
-  const lines = mergeChunks(results, chunkSeconds, info.duration);
+  const lines = mergeChunks(results, chunkSeconds, info.duration, settings.asr.overlapSeconds);
   if (!lines.length) throw new Error('语音识别没有返回可用文本');
   onProgress('merge', 100, `转写完成，共 ${lines.length} 行`);
   return { lines, model: platform.model, duration: info.duration };

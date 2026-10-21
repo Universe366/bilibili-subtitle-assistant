@@ -198,7 +198,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     audioFormat: 'auto',
     concurrency: 1,
     timeoutSeconds: 120,
-    maxFileMb: 20
+    maxFileMb: 20,
+    overlapSeconds: 4
   },
   mcp: {
     enabled: false,
@@ -376,6 +377,10 @@ function normalize(raw: any): AppSettings {
       const maxFileMb = Number(raw.asr.maxFileMb);
       if (Number.isFinite(maxFileMb)) {
         base.asr.maxFileMb = Math.min(100, Math.max(1, Math.round(maxFileMb)));
+      }
+      const overlap = Number(raw.asr.overlapSeconds);
+      if (Number.isFinite(overlap)) {
+        base.asr.overlapSeconds = Math.min(15, Math.max(0, Math.round(overlap)));
       }
     }
 

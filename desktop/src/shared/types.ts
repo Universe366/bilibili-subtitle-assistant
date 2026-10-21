@@ -314,6 +314,7 @@ export interface AsrSettings {
   concurrency: number;
   timeoutSeconds: number;
   maxFileMb: number;
+  overlapSeconds: number;
 }
 
 export interface PromptTemplate {
@@ -570,6 +571,7 @@ export interface OptimizeSuggestion {
   verdict?: 'support' | 'refute' | 'unknown';
   evidence?: string;
   sources?: number;
+  consistency?: 'multi' | 'single';
 }
 
 export interface OptimizeProgressEvent {
