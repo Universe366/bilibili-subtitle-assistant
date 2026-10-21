@@ -1327,26 +1327,38 @@ async function commandEmbedPanel(action) {
   if (!tab || tab.id == null) {
     return { ok: false, detail: '没有找到活动标签页' };
   }
-  const payload = { type: 'bsub:embed-command', action };
-  const shape = (res) => ({
-    ok: !!(res && res.ok),
-    collapsed: !!(res && res.collapsed),
-    closed: !!(res && res.closed),
-    detail: (res && res.detail) || ''
-  });
+  const send = (act) => chrome.tabs.sendMessage(tab.id, { type: 'bsub:embed-command', action: act });
+  // 动作完成后再问一次真实状态：不依赖内容脚本/旧页面对动作响应的字段是否完整
+  const shape = async (res) => {
+    let st = null;
+    try {
+      st = await send('state');
+    } catch (err) {
+      st = null;
+    }
+    const open = st && typeof st.open === 'boolean' ? st.open : undefined;
+    return {
+      ok: !!(res && res.ok),
+      open,
+      closed: open === undefined ? !!(res && res.closed) : !open,
+      collapsed: st ? !!st.collapsed : !!(res && res.collapsed),
+      detail: (res && res.detail) || ''
+    };
+  };
   // 先直接发：内容脚本通常已经在跑。每一步都先 ensureContentScript 会再注入
   // 一份 content.js；新实例关掉面板后，旧实例的定时器又会把它打开（表现为关不掉）。
   try {
-    return shape(await chrome.tabs.sendMessage(tab.id, payload));
+    return await shape(await send(action));
   } catch (err) {
     /* 内容脚本还没注入，走下面的兜底 */
   }
   try {
     await ensureContentScript(tab.id);
-    return shape(await chrome.tabs.sendMessage(tab.id, payload));
+    return await shape(await send(action));
   } catch (err) {
     return { ok: false, detail: (err && err.message) || '页面内面板不可用' };
-  }}
+  }
+}
 
 if (chrome.commands && chrome.commands.onCommand) {
   chrome.commands.onCommand.addListener((command) => {

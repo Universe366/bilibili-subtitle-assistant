@@ -2,6 +2,13 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.14.6（2026-10-21）
+
+### 修复
+- 侧边栏不再对所有 `runtime` 消息抢答 `{ok:true}`，修复「▣」按钮拿到空响应、提示与实际状态不一致。
+- `bsub:open-embed` 动作完成后由后台回查内容脚本的 `state`，按真实 `open/collapsed` 返回并更新按钮 title。
+- 侧边栏端口在 service worker 休眠/重连后自动重连，减少「侧栏」按钮状态丢失。
+
 ## 2.14.5（2026-10-21）
 
 ### 修复

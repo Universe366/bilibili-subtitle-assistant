@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.14.5';
+  const CONTENT_VERSION = '2.14.6';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -963,6 +963,14 @@
       if (message.type === 'bsub:embed-command') {
         (async () => {
           const action = message.action || 'toggle';
+          if (action === 'state') {
+            sendResponse({
+              ok: true,
+              open: !!document.getElementById(EMBED_ID) && !state.embedClosed,
+              collapsed: !!state.embedCollapsed
+            });
+            return;
+          }
           if (action === 'toggle-close') {
             // 侧边栏按钮：已打开就直接关闭，不再打开
             if (document.getElementById(EMBED_ID) && !state.embedClosed) {

@@ -26,13 +26,27 @@ try {
 // 非内嵌 = 浏览器侧边栏。保留一个端口，让后台知道侧边栏当前是否打开，
 // 从而把「侧栏」按钮做成开关。
 let sidePanelPort = null;
-if (!IS_EMBED) {
+function connectSidePanelPort() {
+  if (IS_EMBED || !chrome.runtime || !chrome.runtime.id) return;
   try {
-    sidePanelPort = chrome.runtime.connect({ name: 'bsub:sidepanel' });
+    const port = chrome.runtime.connect({ name: 'bsub:sidepanel' });
+    sidePanelPort = port;
+    port.onDisconnect.addListener(() => {
+      void chrome.runtime.lastError;
+      sidePanelPort = null;
+      // service worker 休眠/重启会断开端口；稍后重连，恢复「侧边栏是否打开」状态
+      setTimeout(() => {
+        if (!sidePanelPort) connectSidePanelPort();
+      }, 600);
+    });
   } catch (err) {
     sidePanelPort = null;
+    setTimeout(() => {
+      if (!sidePanelPort) connectSidePanelPort();
+    }, 1000);
   }
 }
+if (!IS_EMBED) connectSidePanelPort();
 
 boot();
 
@@ -172,7 +186,7 @@ function installShell() {
       try {
         const res = await chrome.runtime.sendMessage({ type: 'bsub:open-embed', action: 'toggle-close' });
         if (res && res.ok) {
-          const closed = !!(res && res.closed);
+          const closed = res.open === false || !!res.closed;
           btnEmbed.title = closed
             ? '在 B 站页面内打开面板（Alt+Shift+B）'
             : '关闭页面内嵌面板（Alt+Shift+B）';
@@ -327,14 +341,17 @@ function renderReadiness(extra) {
 function wireRuntime() {
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || typeof msg !== 'object') return undefined;
+    // 只处理自己关心的广播，并且**不要应答**：
+    // 以前这里对所有消息都 sendResponse({ok:true})，会抢在后台前面，
+    // 导致 bsub:open-embed 等请求拿到一个没有 closed/open 字段的空响应。
     if (msg.type === 'bsub:content-event') {
       handleContentEvent(msg);
-    } else if (msg.type === 'bsub:settings-changed') {
-      refreshSettingsSoft();
-    } else if (msg.type === 'bsub:tab-closed') {
-      /* 忽略 */
+      return undefined;
     }
-    sendResponse({ ok: true });
+    if (msg.type === 'bsub:settings-changed') {
+      refreshSettingsSoft();
+      return undefined;
+    }
     return undefined;
   });
 

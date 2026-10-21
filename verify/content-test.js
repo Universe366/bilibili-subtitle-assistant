@@ -171,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.5', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.6', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.14.5' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.14.6' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
