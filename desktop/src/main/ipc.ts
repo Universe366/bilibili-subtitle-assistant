@@ -67,6 +67,21 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('tab:stop', () => {
     tabs.stop();
   });
+  ipcMain.handle('tab:zoom-in', () => {
+    tabs.zoomIn();
+  });
+  ipcMain.handle('tab:zoom-out', () => {
+    tabs.zoomOut();
+  });
+  ipcMain.handle('tab:zoom-reset', () => {
+    tabs.zoomReset();
+  });
+  ipcMain.handle('tab:find', (_event, query: string, options?: { forward?: boolean; findNext?: boolean }) => {
+    tabs.findInPage(query, options || {});
+  });
+  ipcMain.handle('tab:stop-find', () => {
+    tabs.stopFind();
+  });
   ipcMain.on('layout:set', (_event, rect: LayoutRect) => {
     tabs.setLayout(rect);
   });

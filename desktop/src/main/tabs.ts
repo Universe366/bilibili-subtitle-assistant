@@ -1,9 +1,9 @@
-import { app, BrowserWindow, session, WebContentsView } from 'electron';
-import type { WebContents } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, session, WebContentsView } from 'electron';
+import type { MenuItemConstructorOptions, WebContents } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { LayoutRect, TabInfo } from '../shared/types';
+import type { FindResult, LayoutRect, TabInfo } from '../shared/types';
 import { normalizeUrl } from './url';
 
 // 后台标签闲置多久后释放渲染进程。可用环境变量覆盖，便于本地验证。
@@ -19,6 +19,7 @@ interface TabRecord {
   favicon?: string;
   suspended: boolean;
   lastActiveAt: number;
+  zoom: number;
 }
 
 let bridgeCache: string | null = null;
@@ -50,7 +51,8 @@ export class TabManager {
 
   constructor(
     private readonly win: BrowserWindow,
-    private readonly onChanged: (tabs: TabInfo[]) => void
+    private readonly onChanged: (tabs: TabInfo[]) => void,
+    private readonly onFindResult?: (result: FindResult) => void
   ) {
     this.suspendTimer = setInterval(() => this.suspendIdle(), SUSPEND_CHECK_MS);
     this.suspendTimer.unref?.();
@@ -66,7 +68,8 @@ export class TabManager {
       url,
       loading: true,
       suspended: false,
-      lastActiveAt: Date.now()
+      lastActiveAt: Date.now(),
+      zoom: 1
     };
     this.tabs.set(id, record);
 
@@ -95,6 +98,7 @@ export class TabManager {
       });
       view.setBackgroundColor('#ffffff');
       view.setBorderRadius(10);
+      view.webContents.setZoomFactor(record.zoom || 1);
 
       record.view = view;
       record.suspended = false;
@@ -190,6 +194,81 @@ export class TabManager {
     wc.setWindowOpenHandler(({ url }) => {
       void this.create(url);
       return { action: 'deny' };
+    });
+
+    wc.on('found-in-page', (_event, result) => {
+      this.onFindResult?.({
+        tabId: record.id,
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
+        finalUpdate: result.finalUpdate
+      });
+    });
+
+    wc.on('context-menu', (_event, params) => {
+      const canBack = (() => {
+        try {
+          return wc.navigationHistory.canGoBack();
+        } catch {
+          return false;
+        }
+      })();
+      const canForward = (() => {
+        try {
+          return wc.navigationHistory.canGoForward();
+        } catch {
+          return false;
+        }
+      })();
+
+      const template: MenuItemConstructorOptions[] = [
+        {
+          label: '后退',
+          enabled: canBack,
+          click: () => wc.navigationHistory.goBack()
+        },
+        {
+          label: '前进',
+          enabled: canForward,
+          click: () => wc.navigationHistory.goForward()
+        },
+        { label: '刷新', click: () => wc.reload() },
+        { type: 'separator' },
+        {
+          label: '复制',
+          enabled: Boolean(params.selectionText),
+          click: () => clipboard.writeText(params.selectionText)
+        }
+      ];
+
+      if (params.isEditable) {
+        template.push(
+          { label: '粘贴', enabled: params.editFlags.canPaste, click: () => wc.paste() },
+          { label: '全选', click: () => wc.selectAll() }
+        );
+      }
+
+      if (params.linkURL) {
+        template.push(
+          { type: 'separator' },
+          {
+            label: '在新标签页打开链接',
+            click: () => {
+              void this.create(params.linkURL);
+            }
+          },
+          { label: '复制链接地址', click: () => clipboard.writeText(params.linkURL) }
+        );
+      }
+
+      if (!app.isPackaged) {
+        template.push(
+          { type: 'separator' },
+          { label: '检查元素', click: () => wc.inspectElement(params.x, params.y) }
+        );
+      }
+
+      Menu.buildFromTemplate(template).popup({ window: this.win });
     });
   }
 
@@ -328,6 +407,46 @@ export class TabManager {
     this.activeRecord()?.view?.webContents.stop();
   }
 
+  zoomIn(): void {
+    this.applyZoom(0.1, false);
+  }
+
+  zoomOut(): void {
+    this.applyZoom(-0.1, false);
+  }
+
+  zoomReset(): void {
+    this.applyZoom(0, true);
+  }
+
+  private applyZoom(delta: number, reset: boolean): void {
+    const record = this.activeRecord();
+    const wc = record?.view?.webContents;
+    if (!record || !wc) return;
+    const next = reset ? 1 : wc.getZoomFactor() + delta;
+    const zoom = Math.min(3, Math.max(0.5, Math.round(next * 100) / 100));
+    wc.setZoomFactor(zoom);
+    record.zoom = zoom;
+    this.emit();
+  }
+
+  findInPage(query: string, options: { forward?: boolean; findNext?: boolean } = {}): void {
+    const wc = this.activeRecord()?.view?.webContents;
+    if (!wc) return;
+    if (!query) {
+      wc.stopFindInPage('clearSelection');
+      return;
+    }
+    wc.findInPage(query, {
+      forward: options.forward !== false,
+      findNext: Boolean(options.findNext)
+    });
+  }
+
+  stopFind(): void {
+    this.activeRecord()?.view?.webContents.stopFindInPage('clearSelection');
+  }
+
   setLayout(rect: LayoutRect): void {
     const hadSize = this.bounds.width > 0 && this.bounds.height > 0;
     this.bounds = {
@@ -369,7 +488,8 @@ export class TabManager {
         canGoBack,
         canGoForward,
         favicon: record.favicon,
-        suspended: record.suspended
+        suspended: record.suspended,
+        zoom: record.zoom || 1
       };
     });
   }

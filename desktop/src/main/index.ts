@@ -126,11 +126,27 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 
-  tabManager = new TabManager(mainWindow, (tabs) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('tabs:changed', tabs);
+  tabManager = new TabManager(
+    mainWindow,
+    (tabs) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('tabs:changed', tabs);
+      }
+    },
+    (result) => {
+      if (!app.isPackaged) {
+        console.log(
+          '[find]',
+          result.tabId.slice(0, 8),
+          `${result.activeMatchOrdinal}/${result.matches}`,
+          `final=${result.finalUpdate}`
+        );
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('find:result', result);
+      }
     }
-  });
+  );
   registerIpc(mainWindow, tabManager);
 
   mainWindow.webContents.once('did-finish-load', () => {
@@ -138,8 +154,20 @@ function createWindow(): void {
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
 
-    if (process.env.BSUB_TAB_TEST === '1') {
-      setTimeout(async () => {
+    if (process.env.BSUB_UI_TEST === '1') {
+      setTimeout(() => {
+        const wc = tabManager?.activeWebContents();
+        if (!wc) return;
+        tabManager?.zoomIn();
+        console.log('[ui-test] zoom', wc.getZoomFactor());
+        tabManager?.zoomReset();
+        console.log('[ui-test] zoom reset', wc.getZoomFactor());
+        tabManager?.findInPage('视频');
+        setTimeout(() => tabManager?.findInPage('视频', { findNext: true }), 1200);
+      }, 7000);
+    }
+
+    if (process.env.BSUB_TAB_TEST === '1') {      setTimeout(async () => {
         if (!tabManager) return;
         await tabManager.create('https://www.bilibili.com/');
         await tabManager.create('https://www.bilibili.com/video/BV1xrnz6gEVD');
@@ -345,6 +373,12 @@ app.whenReady().then(() => {
   writeLog('startup.log', 'ready');
   if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
   session.defaultSession.setUserAgent(UA);
+  session.defaultSession.on('will-download', (_event, item) => {
+    item.setSaveDialogOptions({
+      title: '保存文件',
+      defaultPath: path.join(app.getPath('downloads'), item.getFilename())
+    });
+  });
   initLibrary();
   writeLog('startup.log', 'library ready');
   createWindow();

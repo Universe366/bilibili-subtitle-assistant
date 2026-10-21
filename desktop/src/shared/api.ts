@@ -5,6 +5,7 @@ import type {
   AiPlatform,
   AppSettings,
   BridgeStatus,
+  FindResult,
   LayoutRect,
   Result,
   PageInfo,
@@ -70,4 +71,11 @@ export interface BsubApi {
   onAiError(cb: (event: AiErrorEvent) => void): () => void;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
+
+  zoomIn(): Promise<void>;
+  zoomOut(): Promise<void>;
+  zoomReset(): Promise<void>;
+  findInPage(query: string, options?: { forward?: boolean; findNext?: boolean }): Promise<void>;
+  stopFind(): Promise<void>;
+  onFindResult(cb: (result: FindResult) => void): () => void;
 }

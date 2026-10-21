@@ -7,6 +7,7 @@ import type {
   AiPlatform,
   AppSettings,
   BridgeStatus,
+  FindResult,
   ExportPayload,
   LayoutRect,
   PageInfo,
@@ -42,6 +43,13 @@ const api: BsubApi = {
   forward: () => ipcRenderer.invoke('tab:forward') as Promise<void>,
   reload: () => ipcRenderer.invoke('tab:reload') as Promise<void>,
   stop: () => ipcRenderer.invoke('tab:stop') as Promise<void>,
+  zoomIn: () => ipcRenderer.invoke('tab:zoom-in') as Promise<void>,
+  zoomOut: () => ipcRenderer.invoke('tab:zoom-out') as Promise<void>,
+  zoomReset: () => ipcRenderer.invoke('tab:zoom-reset') as Promise<void>,
+  findInPage: (query: string, options?: { forward?: boolean; findNext?: boolean }) =>
+    ipcRenderer.invoke('tab:find', query, options) as Promise<void>,
+  stopFind: () => ipcRenderer.invoke('tab:stop-find') as Promise<void>,
+  onFindResult: (cb: (result: FindResult) => void) => on<FindResult>('find:result', cb),
   setLayout: (rect: LayoutRect) => ipcRenderer.send('layout:set', rect),
   onTabs: (cb: (tabs: TabInfo[]) => void) => on<TabInfo[]>('tabs:changed', cb),
 

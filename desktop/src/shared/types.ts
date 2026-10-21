@@ -8,6 +8,14 @@ export interface TabInfo {
   canGoForward: boolean;
   favicon?: string;
   suspended: boolean;
+  zoom: number;
+}
+
+export interface FindResult {
+  tabId: string;
+  activeMatchOrdinal: number;
+  matches: number;
+  finalUpdate: boolean;
 }
 
 export interface LayoutRect {

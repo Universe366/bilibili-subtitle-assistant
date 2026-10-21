@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Globe, Home, RotateCw, X } from 'lucide-react';
 import type { TabInfo } from '../../../shared/types';
 
-export function AddressBar({ tab }: { tab: TabInfo | null }) {
+export function AddressBar({ tab, focusSignal = 0 }: { tab: TabInfo | null; focusSignal?: number }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -10,6 +10,12 @@ export function AddressBar({ tab }: { tab: TabInfo | null }) {
   useEffect(() => {
     if (!editing) setValue(tab?.url ?? '');
   }, [tab?.url, editing]);
+
+  useEffect(() => {
+    if (!focusSignal) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [focusSignal]);
 
   const submit = () => {
     const text = value.trim();
@@ -76,6 +82,14 @@ export function AddressBar({ tab }: { tab: TabInfo | null }) {
           }}
         />
       </div>
+
+      <button
+        className="zoom-btn"
+        title="重置缩放（Ctrl+0）"
+        onClick={() => void window.bsub.zoomReset()}
+      >
+        {Math.round((tab?.zoom ?? 1) * 100)}%
+      </button>
 
       <button
         className="nav-btn"
