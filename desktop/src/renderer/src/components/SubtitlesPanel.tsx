@@ -8,6 +8,7 @@ import type {
   TabInfo
 } from '../../../shared/types';
 import { pickTrack, videoKeyOf } from '../lib/video';
+import { setAsrResult } from '../lib/asrStore';
 import { ExportMenu } from './ExportMenu';
 
 function fmtTime(seconds: number): string {
@@ -38,12 +39,20 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [asrRunning, setAsrRunning] = useState(false);
+  const [asrProgress, setAsrProgress] = useState(0);
+  const [asrMessage, setAsrMessage] = useState('');
+  const asrRequestRef = useRef('');
+  const infoRef = useRef<PageInfo | null>(null);
+  const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
   const loadedRef = useRef<{ key: string; reload: number }>({ key: '', reload: -1 });
 
   const refresh = useCallback(() => setReloadKey((value) => value + 1), []);
   const videoKey = videoKeyOf(activeTab?.url);
   const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
+  infoRef.current = info;
+  videoKeyRef.current = videoKey;
 
   // 切换视频时先清空，避免短暂显示上一个视频的字幕
   useEffect(() => {
@@ -54,8 +63,52 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     setCurrent(0);
     setError(null);
     setLoading(false);
+    setAsrRunning(false);
+    setAsrProgress(0);
+    setAsrMessage('');
+    asrRequestRef.current = '';
     loadedRef.current = { key: '', reload: -1 };
   }, [activeTab?.id, videoKey]);
+
+  useEffect(() => {
+    const offProgress = window.bsub.onAsrProgress((event) => {
+      if (event.requestId !== asrRequestRef.current) return;
+      setAsrProgress(event.percent);
+      setAsrMessage(event.message);
+    });
+    const offDone = window.bsub.onAsrDone((event) => {
+      if (event.requestId !== asrRequestRef.current) return;
+      asrRequestRef.current = '';
+      setLines(event.lines);
+      setBundle(null);
+      setTrack({
+        lan: 'asr',
+        lanDoc: '语音转录',
+        url: 'asr://local',
+        isAi: false,
+        aiStatus: null,
+        source: 'asr'
+      });
+      setAsrRunning(false);
+      setAsrProgress(100);
+      setAsrMessage(`转写完成 · ${event.lines.length} 行`);
+      if (infoRef.current) {
+        setAsrResult(videoKeyRef.current, infoRef.current, event.lines);
+      }
+    });
+    const offError = window.bsub.onAsrError((event) => {
+      if (event.requestId !== asrRequestRef.current) return;
+      asrRequestRef.current = '';
+      setAsrRunning(false);
+      setAsrMessage('');
+      setError(event.error);
+    });
+    return () => {
+      offProgress();
+      offDone();
+      offError();
+    };
+  }, []);
 
   // 页面加载完成后读取视频信息与字幕轨
   useEffect(() => {
@@ -108,6 +161,7 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       setLines([]);
       return;
     }
+    if (track.source === 'asr') return;
     let cancelled = false;
     setLoadingLines(true);
     window.bsub
@@ -167,6 +221,33 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     void window.bsub.seek(line.start + 0.05);
   };
 
+  const startAsr = async () => {
+    if (!info || asrRunning) return;
+    const requestId = (() => {
+      try {
+        return crypto.randomUUID();
+      } catch {
+        return `asr_${Date.now()}`;
+      }
+    })();
+    asrRequestRef.current = requestId;
+    setAsrRunning(true);
+    setAsrProgress(0);
+    setAsrMessage('准备音轨…');
+    setError(null);
+    const started = await window.bsub.transcribe(requestId);
+    if (!started.ok) {
+      asrRequestRef.current = '';
+      setAsrRunning(false);
+      setAsrMessage('');
+      setError(started.error);
+    }
+  };
+
+  const stopAsr = () => {
+    if (asrRequestRef.current) void window.bsub.cancelTranscribe(asrRequestRef.current);
+  };
+
   const ingest = async () => {
     if (!info || !track || !lines.length || saving) return;
     setSaving(true);
@@ -195,6 +276,14 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           >
             {saving ? <Loader2 size={12} className="spin" /> : '入库'}
           </button>
+          <button
+            className="mini-btn"
+            disabled={!info || asrRunning}
+            title="没有官方字幕时，用视频音轨做语音转录"
+            onClick={() => void startAsr()}
+          >
+            {asrRunning ? <Loader2 size={12} className="spin" /> : '转写'}
+          </button>
           <ExportMenu info={info} track={track} lines={lines} />
           <button
             className={`mini-btn${follow ? ' is-active' : ''}`}
@@ -210,6 +299,22 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       </div>
 
       {saveMessage && <div className="save-status">{saveMessage}</div>}
+
+      {asrRunning && (
+        <div className="asr-progress">
+          <div className="asr-progress-head">
+            <span>{asrMessage || '准备音轨…'}</span>
+            <button className="mini-btn" onClick={stopAsr}>
+              停止
+            </button>
+          </div>
+          <div className="asr-bar">
+            <span style={{ width: `${Math.max(2, asrProgress)}%` }} />
+          </div>
+        </div>
+      )}
+
+      {!asrRunning && asrMessage && <div className="save-status">{asrMessage}</div>}
 
       {!activeTab && <div className="panel-empty">打开一个 B 站视频后显示字幕</div>}
 

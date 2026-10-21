@@ -15,6 +15,9 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatRequest,
+  AsrDoneEvent,
+  AsrErrorEvent,
+  AsrProgressEvent,
   ExportPayload,
   LayoutRect,
   PageInfo,
@@ -39,6 +42,7 @@ import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
 import { chat } from './chat';
+import { transcribe } from './asr';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -49,6 +53,7 @@ function failure<T>(error: unknown): Result<T> {
 
 const aiControllers = new Map<string, AbortController>();
 const chatControllers = new Map<string, AbortController>();
+const asrControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
@@ -427,6 +432,47 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('chat:cancel', (_event, requestId: string) => {
     chatControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('asr:transcribe', async (_event, payload: { requestId: string }): Promise<Result<{ requestId: string }>> => {
+    const wc = tabs.activeWebContents();
+    if (!wc) return { ok: false, error: '当前没有活动页面' };
+    const requestId = payload?.requestId || randomUUID();
+    const controller = new AbortController();
+    asrControllers.set(requestId, controller);
+
+    void (async () => {
+      try {
+        const info = await getPageInfo(wc);
+        const result = await transcribe(
+          wc,
+          info,
+          (stage, percent, message) =>
+            send('asr:progress', { requestId, stage, percent, message } satisfies AsrProgressEvent),
+          controller.signal
+        );
+        send('asr:done', {
+          requestId,
+          lines: result.lines,
+          model: result.model,
+          duration: result.duration
+        } satisfies AsrDoneEvent);
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? '已终止'
+          : (error as Error)?.message || String(error);
+        console.warn('[asr] failed:', message);
+        send('asr:error', { requestId, error: message } satisfies AsrErrorEvent);
+      } finally {
+        asrControllers.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  });
+
+  ipcMain.handle('asr:cancel', (_event, requestId: string) => {
+    asrControllers.get(requestId)?.abort();
   });
 
   ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type {
   AiPlatform,
+  AsrPlatform,
   AppSettings,
   BridgeStatus,
   CorrectionRule,
@@ -115,6 +116,11 @@ export function SettingsPanel() {
       draft.prompt.templates[0] ||
       null
     : null;
+  const activeAsr = draft
+    ? draft.asr.platforms.find((platform) => platform.id === draft.asr.activeId) ||
+      draft.asr.platforms[0] ||
+      null
+    : null;
 
   const updateGeneral = (patch: Partial<AppSettings['general']>) => {
     if (!draft) return;
@@ -133,6 +139,46 @@ export function SettingsPanel() {
 
   const uid = (prefix: string) =>
     `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const updateAsr = (patch: Partial<AppSettings['asr']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, asr: { ...draft.asr, ...patch } });
+  };
+
+  const updateAsrPlatform = (patch: Partial<AsrPlatform>) => {
+    if (!draft || !activeAsr) return;
+    setDraft({
+      ...draft,
+      asr: {
+        ...draft.asr,
+        platforms: draft.asr.platforms.map((platform) =>
+          platform.id === activeAsr.id ? { ...platform, ...patch } : platform
+        )
+      }
+    });
+  };
+
+  const addAsrPlatform = () => {
+    if (!draft) return;
+    const id = uid('asr');
+    setDraft({
+      ...draft,
+      asr: {
+        ...draft.asr,
+        activeId: id,
+        platforms: [
+          ...draft.asr.platforms,
+          { id, name: '自定义语音识别', baseUrl: '', apiKey: '', model: '' }
+        ]
+      }
+    });
+  };
+
+  const removeAsrPlatform = () => {
+    if (!draft || !activeAsr || draft.asr.platforms.length <= 1) return;
+    const platforms = draft.asr.platforms.filter((platform) => platform.id !== activeAsr.id);
+    setDraft({ ...draft, asr: { ...draft.asr, activeId: platforms[0].id, platforms } });
+  };
 
   const updateCorrection = (patch: Partial<AppSettings['correction']>) => {
     if (!draft) return;
@@ -405,7 +451,7 @@ export function SettingsPanel() {
     if (status.ok) setBridge(status.data);
   };
 
-  if (!draft || !active || !activeTemplate) {
+  if (!draft || !active || !activeTemplate || !activeAsr) {
     return (
       <div className="panel">
         <div className="panel-title">设置</div>
@@ -564,6 +610,139 @@ export function SettingsPanel() {
           {testing ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />} 测试连接
         </button>
         <div className="settings-hint">关闭流式后会等完整响应再显示。</div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">语音识别（ASR）</div>
+        <div className="settings-inline">
+          <select
+            className="settings-input"
+            value={draft.asr.activeId}
+            onChange={(event) => updateAsr({ activeId: event.target.value })}
+          >
+            {draft.asr.platforms.map((platform) => (
+              <option key={platform.id} value={platform.id}>
+                {platform.name}
+              </option>
+            ))}
+          </select>
+          <button className="mini-btn" title="新增平台" onClick={addAsrPlatform}>
+            <Plus size={12} />
+          </button>
+          <button
+            className="mini-btn"
+            title="删除当前平台"
+            disabled={draft.asr.platforms.length <= 1}
+            onClick={removeAsrPlatform}
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+
+        <div className="settings-label">名称</div>
+        <input
+          className="settings-input"
+          value={activeAsr.name}
+          onChange={(event) => updateAsrPlatform({ name: event.target.value })}
+        />
+
+        <div className="settings-label">Base URL</div>
+        <input
+          className="settings-input"
+          value={activeAsr.baseUrl}
+          spellCheck={false}
+          onChange={(event) => updateAsrPlatform({ baseUrl: event.target.value })}
+        />
+
+        <div className="settings-label">模型</div>
+        <input
+          className="settings-input"
+          value={activeAsr.model}
+          spellCheck={false}
+          onChange={(event) => updateAsrPlatform({ model: event.target.value })}
+        />
+
+        <div className="settings-label">API Key</div>
+        <input
+          className="settings-input"
+          type="password"
+          value={activeAsr.apiKey}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => updateAsrPlatform({ apiKey: event.target.value })}
+        />
+
+        <div className="settings-inline">
+          <div className="settings-field">
+            <div className="settings-label">语言</div>
+            <select
+              className="settings-input"
+              value={draft.asr.language}
+              onChange={(event) => updateAsr({ language: event.target.value })}
+            >
+              <option value="auto">自动</option>
+              <option value="zh">中文</option>
+              <option value="en">英文</option>
+              <option value="ja">日文</option>
+            </select>
+          </div>
+          <div className="settings-field">
+            <div className="settings-label">切片（秒）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={30}
+              max={300}
+              value={draft.asr.chunkSeconds}
+              onChange={(event) => updateAsr({ chunkSeconds: Number(event.target.value) || 120 })}
+            />
+          </div>
+        </div>
+
+        <div className="settings-inline">
+          <div className="settings-field">
+            <div className="settings-label">音频格式</div>
+            <select
+              className="settings-input"
+              value={draft.asr.audioFormat}
+              onChange={(event) =>
+                updateAsr({ audioFormat: event.target.value as AppSettings['asr']['audioFormat'] })
+              }
+            >
+              <option value="auto">自动</option>
+              <option value="m4a">M4A</option>
+              <option value="wav">WAV</option>
+            </select>
+          </div>
+          <div className="settings-field">
+            <div className="settings-label">并发</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={1}
+              max={3}
+              value={draft.asr.concurrency}
+              onChange={(event) => updateAsr({ concurrency: Number(event.target.value) || 1 })}
+            />
+          </div>
+        </div>
+
+        <div className="settings-label">传输方式</div>
+        <select
+          className="settings-input"
+          value={draft.asr.transport}
+          onChange={(event) =>
+            updateAsr({ transport: event.target.value as AppSettings['asr']['transport'] })
+          }
+        >
+          <option value="auto">自动（失败自动换一种）</option>
+          <option value="multipart">multipart /audio/transcriptions</option>
+          <option value="base64-json">base64 JSON</option>
+          <option value="chat-audio">chat + input_audio</option>
+        </select>
+        <div className="settings-hint">
+          SenseVoice 只吃 M4A；带时间戳的中文模型通常只吃 WAV。格式选「自动」会按模型判断。
+        </div>
       </div>
 
       <div className="settings-section">

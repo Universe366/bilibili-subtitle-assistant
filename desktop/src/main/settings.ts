@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   AiPlatform,
+  AsrPlatform,
   AppSettings,
   ExportFormat,
   PromptTemplate,
@@ -102,6 +103,44 @@ export const DEFAULT_SETTINGS: AppSettings = {
     templates: DEFAULT_TEMPLATES,
     chat: DEFAULT_CHAT_PROMPT
   },
+  asr: {
+    activeId: 'siliconflow',
+    platforms: [
+      {
+        id: 'siliconflow',
+        name: '硅基流动（SiliconFlow）',
+        baseUrl: 'https://api.siliconflow.cn/v1',
+        apiKey: '',
+        model: 'FunAudioLLM/SenseVoiceSmall'
+      },
+      {
+        id: 'groq',
+        name: 'Groq',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        apiKey: '',
+        model: 'whisper-large-v3-turbo'
+      },
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: '',
+        model: 'whisper-1'
+      },
+      {
+        id: 'custom-asr',
+        name: '自定义（OpenAI 兼容）',
+        baseUrl: '',
+        apiKey: '',
+        model: ''
+      }
+    ],
+    language: 'auto',
+    chunkSeconds: 120,
+    transport: 'auto',
+    audioFormat: 'auto',
+    concurrency: 1
+  },
   search: {
     enabled: false,
     provider: 'exa',
@@ -181,6 +220,43 @@ function normalize(raw: any): AppSettings {
       base.ai.maxTokens = Math.min(64000, Math.max(256, Math.round(maxTokens)));
     }
     base.ai.stream = raw.ai?.stream !== false;
+
+    if (raw.asr && typeof raw.asr === 'object') {
+      const asrIncoming = Array.isArray(raw.asr.platforms) ? raw.asr.platforms : [];
+      if (asrIncoming.length) {
+        const platforms: AsrPlatform[] = [];
+        const seenAsr = new Set<string>();
+        for (const item of asrIncoming) {
+          if (!item || typeof item !== 'object') continue;
+          const id = String(item.id || '').trim();
+          if (!id || seenAsr.has(id)) continue;
+          seenAsr.add(id);
+          platforms.push({
+            id,
+            name: String(item.name || id),
+            baseUrl: String(item.baseUrl || ''),
+            apiKey: String(item.apiKey || ''),
+            model: String(item.model || '')
+          });
+        }
+        if (platforms.length) base.asr.platforms = platforms;
+      }
+      const asrActive = String(raw.asr.activeId || '');
+      base.asr.activeId = base.asr.platforms.some((platform) => platform.id === asrActive)
+        ? asrActive
+        : base.asr.platforms[0].id;
+      if (typeof raw.asr.language === 'string') base.asr.language = raw.asr.language.trim() || 'auto';
+      const chunk = Number(raw.asr.chunkSeconds);
+      if (Number.isFinite(chunk)) base.asr.chunkSeconds = Math.min(300, Math.max(30, Math.round(chunk)));
+      const transports = ['auto', 'multipart', 'base64-json', 'chat-audio'];
+      base.asr.transport = transports.includes(raw.asr.transport) ? raw.asr.transport : 'auto';
+      const formats = ['auto', 'm4a', 'wav'];
+      base.asr.audioFormat = formats.includes(raw.asr.audioFormat) ? raw.asr.audioFormat : 'auto';
+      const concurrency = Number(raw.asr.concurrency);
+      if (Number.isFinite(concurrency)) {
+        base.asr.concurrency = Math.min(3, Math.max(1, Math.round(concurrency)));
+      }
+    }
 
     const templates: PromptTemplate[] = [];
     const rawTemplates = Array.isArray(raw.prompt?.templates) ? raw.prompt.templates : [];

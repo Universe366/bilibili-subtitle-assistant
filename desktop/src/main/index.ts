@@ -4,10 +4,11 @@ import path from 'node:path';
 import { TabManager } from './tabs';
 import { registerIpc } from './ipc';
 import { closeLibrary, getSummaryFor, ingestVideo, initLibrary, listLibrary, saveSummary, searchLibrary } from './library';
-import { getPageInfo, getSubtitles, getTrackBody } from './page';
+import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
 import { searchWeb } from './search';
 import { applyCorrectionToText } from './correction';
+import { transcribeFile } from './asr';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -156,6 +157,105 @@ function createWindow(): void {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
+
+    if (process.env.BSUB_AUDIO_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const wc = tabManager?.activeWebContents();
+          if (!wc) return;
+          const info = await getPageInfo(wc);
+          const candidates = await getAudioCandidates(wc, info);
+          console.log(
+            '[audio-test] candidates',
+            candidates.length,
+            candidates[0].source,
+            candidates[0].url.slice(0, 80)
+          );
+          const part = await fetchAudioRange(wc, candidates[0].url, 0, 1023);
+          console.log('[audio-test] range', part.bytes.length, part.contentRange, part.contentType);
+        } catch (error) {
+          console.warn('[audio-test] failed', (error as Error).message);
+        }
+      }, 12000);
+    }
+
+    if (process.env.BSUB_ASR_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'asr-test-'));
+          const input = path.join(dir, 'test.wav');
+          const rate = 16000;
+          const samples = rate * 5;
+          const pcm = Buffer.alloc(samples * 2);
+          for (let index = 0; index < samples; index += 1) {
+            const value = Math.sin((2 * Math.PI * 440 * index) / rate) * 0.2;
+            pcm.writeInt16LE(Math.round(value * 32767), index * 2);
+          }
+          const header = Buffer.alloc(44);
+          header.write('RIFF', 0);
+          header.writeUInt32LE(36 + pcm.length, 4);
+          header.write('WAVE', 8);
+          header.write('fmt ', 12);
+          header.writeUInt32LE(16, 16);
+          header.writeUInt16LE(1, 20);
+          header.writeUInt16LE(1, 22);
+          header.writeUInt32LE(rate, 24);
+          header.writeUInt32LE(rate * 2, 28);
+          header.writeUInt16LE(2, 32);
+          header.writeUInt16LE(16, 34);
+          header.write('data', 36);
+          header.writeUInt32LE(pcm.length, 40);
+          fs.writeFileSync(input, Buffer.concat([header, pcm]));
+
+          const settings = loadSettings();
+          settings.asr.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_ASR || 'http://127.0.0.1:8899/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.asr.activeId = 'mock';
+          settings.asr.chunkSeconds = 2;
+          settings.asr.audioFormat = process.env.BSUB_ASR_FORMAT === 'm4a' ? 'm4a' : 'wav';
+          settings.asr.concurrency = 1;
+          saveSettings(settings);
+
+          const result = await transcribeFile(
+            input,
+            {
+              kind: 'video',
+              bvid: 'BV1',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '测试视频',
+              owner: '测试UP',
+              desc: '',
+              duration: 5,
+              url: '',
+              signature: 'test'
+            },
+            (stage, percent, message) =>
+              console.log('[asr-test]', stage, Math.round(percent), message),
+            undefined,
+            settings
+          );
+          console.log('[asr-test] done', result.lines.length, JSON.stringify(result.lines.slice(0, 4)));
+          writeLog('asr-test.log', `done lines=${result.lines.length}`);
+          fs.rmSync(dir, { recursive: true, force: true });
+        } catch (error) {
+          console.warn('[asr-test] failed', (error as Error).message);
+          writeLog('asr-test.log', `failed: ${(error as Error).message}`);
+        }
+      }, 5000);
+    }
 
     if (process.env.BSUB_CHAT_TEST === '1') {
       setTimeout(async () => {

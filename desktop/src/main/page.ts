@@ -222,3 +222,67 @@ export async function getTime(wc: WebContents): Promise<{ currentTime: number; d
 export async function seek(wc: WebContents, time: number): Promise<void> {
   await callPage(wc, 'seek', { time }, 8000);
 }
+
+export interface AudioCandidate {
+  url: string;
+  bandwidth?: number;
+  mimeType?: string;
+  source?: string;
+  backupUrl?: string[];
+}
+
+export async function getAudioCandidates(
+  wc: WebContents,
+  info: PageInfo
+): Promise<AudioCandidate[]> {
+  const raw = await callPage<any>(
+    wc,
+    'getAudioCandidates',
+    {
+      aid: info.aid,
+      bvid: info.bvid,
+      cid: info.cid,
+      signature: info.signature
+    },
+    45000
+  );
+  if (!raw || raw.ok === false) {
+    throw new Error(raw?.reason || '没有可用的音轨');
+  }
+  const candidates: AudioCandidate[] = (Array.isArray(raw.candidates) ? raw.candidates : [])
+    .filter((item: any) => item && item.url)
+    .map((item: any) => ({
+      url: String(item.url),
+      bandwidth: Number(item.bandwidth) || undefined,
+      mimeType: item.mimeType ? String(item.mimeType) : undefined,
+      source: item.source ? String(item.source) : undefined,
+      backupUrl: Array.isArray(item.backupUrl)
+        ? item.backupUrl.filter((url: any) => typeof url === 'string' && url)
+        : undefined
+    }));
+  if (!candidates.length) throw new Error('没有可用的音轨候选');
+  return candidates;
+}
+
+export async function fetchAudioRange(
+  wc: WebContents,
+  url: string,
+  start: number,
+  end: number
+): Promise<{ bytes: Buffer; contentType: string; contentRange: string }> {
+  const raw = await callPage<any>(wc, 'fetchAudioRange', { url, start, end }, 120000);
+  if (!raw || raw.ok === false) {
+    const reason =
+      raw?.reason === 'html'
+        ? '防盗链拦截（返回了 HTML）'
+        : raw?.status
+          ? `HTTP ${raw.status}`
+          : raw?.message || raw?.reason || '音轨请求失败';
+    throw new Error(`音轨下载失败：${reason}`);
+  }
+  return {
+    bytes: Buffer.from(String(raw.base64 || ''), 'base64'),
+    contentType: String(raw.contentType || ''),
+    contentRange: String(raw.contentRange || '')
+  };
+}

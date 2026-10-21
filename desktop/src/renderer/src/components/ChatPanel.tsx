@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, Send, Square, Trash2 } from 'lucide-react';
 import type { ChatMessage, PageInfo, SubtitleLine, TabInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { pickTrack, videoKeyOf } from '../lib/video';
+import { getAsrResult } from '../lib/asrStore';
 
 const SUGGESTIONS = [
   '这个视频的核心观点是什么？',
@@ -96,10 +97,26 @@ export function ChatPanel({
     const subtitles = await window.bsub.getSubtitles();
     if (!subtitles.ok) throw new Error(subtitles.error);
     const track = pickTrack(subtitles.data.tracks, info);
-    if (!track) throw new Error('当前视频没有可用字幕，无法对话');
+    const fallback = () => {
+      const cached = getAsrResult(videoKey);
+      if (!cached) return null;
+      const context = { info: cached.info, lines: cached.lines };
+      contextRef.current = context;
+      return context;
+    };
+
+    if (!track) {
+      const cached = fallback();
+      if (cached) return cached;
+      throw new Error('当前视频没有可用字幕，无法对话');
+    }
 
     const body = await window.bsub.getTrackBody(track.url);
-    if (!body.ok) throw new Error(body.error);
+    if (!body.ok) {
+      const cached = fallback();
+      if (cached) return cached;
+      throw new Error(body.error);
+    }
     const context = { info, lines: body.data.lines };
     contextRef.current = context;
     return context;

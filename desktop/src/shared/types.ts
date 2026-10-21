@@ -152,6 +152,27 @@ export interface AiPlatform {
   model: string;
 }
 
+export interface AsrPlatform {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export type AsrTransport = 'auto' | 'multipart' | 'base64-json' | 'chat-audio';
+export type AsrFormat = 'auto' | 'm4a' | 'wav';
+
+export interface AsrSettings {
+  activeId: string;
+  platforms: AsrPlatform[];
+  language: string;
+  chunkSeconds: number;
+  transport: AsrTransport;
+  audioFormat: AsrFormat;
+  concurrency: number;
+}
+
 export interface PromptTemplate {
   id: string;
   name: string;
@@ -204,6 +225,7 @@ export interface AppSettings {
     maxTokens: number;
     stream: boolean;
   };
+  asr: AsrSettings;
   prompt: {
     activeId: string;
     templates: PromptTemplate[];
@@ -324,6 +346,27 @@ export interface ChatDoneEvent {
 }
 
 export interface ChatErrorEvent {
+  requestId: string;
+  error: string;
+}
+
+export type AsrStage = 'prepare' | 'download' | 'convert' | 'transcribe' | 'merge';
+
+export interface AsrProgressEvent {
+  requestId: string;
+  stage: AsrStage;
+  percent: number;
+  message: string;
+}
+
+export interface AsrDoneEvent {
+  requestId: string;
+  lines: SubtitleLine[];
+  model: string;
+  duration: number;
+}
+
+export interface AsrErrorEvent {
   requestId: string;
   error: string;
 }

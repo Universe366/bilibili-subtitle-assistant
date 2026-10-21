@@ -4,6 +4,7 @@ import type { PageInfo, SubtitleLine, SubtitleTrack, TabInfo } from '../../../sh
 import { Markdown } from './Markdown';
 import { ExportMenu } from './ExportMenu';
 import { pickTrack, videoKeyOf } from '../lib/video';
+import { getAsrResult } from '../lib/asrStore';
 
 function newRequestId(): string {
   try {
@@ -141,10 +142,35 @@ export function SummaryPanel({
     if (!subtitles.ok) throw new Error(subtitles.error);
 
     const chosen = pickTrack(subtitles.data.tracks, currentInfo);
-    if (!chosen) throw new Error('没有找到字幕轨');
+    const fallback = () => {
+      const cached = getAsrResult(videoKey);
+      if (!cached) return null;
+      const asrTrack: SubtitleTrack = {
+        lan: 'asr',
+        lanDoc: '语音转录',
+        url: 'asr://local',
+        isAi: false,
+        aiStatus: null,
+        source: 'asr'
+      };
+      setInfo(cached.info);
+      setTrack(asrTrack);
+      setLines(cached.lines);
+      return { info: cached.info, track: asrTrack, lines: cached.lines };
+    };
+
+    if (!chosen) {
+      const cached = fallback();
+      if (cached) return cached;
+      throw new Error('没有找到字幕轨');
+    }
 
     const body = await window.bsub.getTrackBody(chosen.url);
-    if (!body.ok) throw new Error(body.error);
+    if (!body.ok) {
+      const cached = fallback();
+      if (cached) return cached;
+      throw new Error(body.error);
+    }
 
     setInfo(currentInfo);
     setTrack(chosen);

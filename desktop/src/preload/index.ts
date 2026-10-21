@@ -12,6 +12,9 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatRequest,
+  AsrDoneEvent,
+  AsrErrorEvent,
+  AsrProgressEvent,
   FindResult,
   ExportPayload,
   LayoutRect,
@@ -125,6 +128,14 @@ const api: BsubApi = {
   onChatDelta: (cb: (event: ChatDeltaEvent) => void) => on<ChatDeltaEvent>('chat:delta', cb),
   onChatDone: (cb: (event: ChatDoneEvent) => void) => on<ChatDoneEvent>('chat:done', cb),
   onChatError: (cb: (event: ChatErrorEvent) => void) => on<ChatErrorEvent>('chat:error', cb),
+
+  transcribe: (requestId: string) =>
+    ipcRenderer.invoke('asr:transcribe', { requestId }) as Promise<Result<{ requestId: string }>>,
+  cancelTranscribe: (requestId: string) =>
+    ipcRenderer.invoke('asr:cancel', requestId) as Promise<void>,
+  onAsrProgress: (cb: (event: AsrProgressEvent) => void) => on<AsrProgressEvent>('asr:progress', cb),
+  onAsrDone: (cb: (event: AsrDoneEvent) => void) => on<AsrDoneEvent>('asr:done', cb),
+  onAsrError: (cb: (event: AsrErrorEvent) => void) => on<AsrErrorEvent>('asr:error', cb),
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

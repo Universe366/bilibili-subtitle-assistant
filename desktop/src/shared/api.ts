@@ -10,6 +10,9 @@ import type {
   ChatDoneEvent,
   ChatErrorEvent,
   ChatRequest,
+  AsrDoneEvent,
+  AsrErrorEvent,
+  AsrProgressEvent,
   FindResult,
   LayoutRect,
   Result,
@@ -86,6 +89,12 @@ export interface BsubApi {
   onChatDelta(cb: (event: ChatDeltaEvent) => void): () => void;
   onChatDone(cb: (event: ChatDoneEvent) => void): () => void;
   onChatError(cb: (event: ChatErrorEvent) => void): () => void;
+
+  transcribe(requestId: string): Promise<Result<{ requestId: string }>>;
+  cancelTranscribe(requestId: string): Promise<void>;
+  onAsrProgress(cb: (event: AsrProgressEvent) => void): () => void;
+  onAsrDone(cb: (event: AsrDoneEvent) => void): () => void;
+  onAsrError(cb: (event: AsrErrorEvent) => void): () => void;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 
