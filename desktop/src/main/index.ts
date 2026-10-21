@@ -745,6 +745,52 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_TOOLBAR_AUDIT === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          const rows = await win.webContents.executeJavaScript(`
+            (async () => {
+              const labels = ['字幕', '对话', '总结', '库', '批量', '历史', '设置'];
+              const out = [];
+              for (const label of labels) {
+                const button = [...document.querySelectorAll('button')].find((item) =>
+                  (item.textContent || '').trim() === label
+                );
+                if (!button) continue;
+                button.click();
+                await new Promise((resolve) => setTimeout(resolve, 350));
+                const bar = document.querySelector('.panel-toolbar');
+                if (!bar) continue;
+                const title = bar.querySelector('.panel-title');
+                const actions = bar.querySelector('.toolbar-actions');
+                const rect = (el) => (el ? el.getBoundingClientRect() : null);
+                const t = rect(title);
+                const a = rect(actions);
+                out.push({
+                  label,
+                  barWidth: Math.round(bar.getBoundingClientRect().width),
+                  barScroll: bar.scrollWidth,
+                  titleWidth: t ? Math.round(t.width) : 0,
+                  actionsWidth: a ? Math.round(a.width) : 0,
+                  actionsScroll: actions ? actions.scrollWidth : 0,
+                  actionsLeft: a ? Math.round(a.left) : 0,
+                  titleRight: t ? Math.round(t.right) : 0,
+                  overlap: Boolean(t && a && t.right > a.left - 2),
+                  buttons: actions ? actions.querySelectorAll('button').length : 0
+                });
+              }
+              return out;
+            })()
+          `);
+          console.log('[toolbar-audit]', JSON.stringify(rows));
+        } catch (error) {
+          console.warn('[toolbar-audit] failed', (error as Error).message);
+        }
+      }, 6000);
+    }
+
     if (process.env.BSUB_SETTINGS_SHOT === '1') {
       setTimeout(async () => {
         try {

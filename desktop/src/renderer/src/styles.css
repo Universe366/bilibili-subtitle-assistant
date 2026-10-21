@@ -538,12 +538,23 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.panel-title {
+  flex-shrink: 0;
 }
 
 .toolbar-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
+  min-width: 0;
+  margin-left: auto;
 }
 
 .icon-btn {
@@ -2134,6 +2145,15 @@ button:disabled {
 
 .settings-section-title::-webkit-details-marker {
   display: none;
+}
+
+.settings-section-title::marker {
+  content: '';
+  display: none;
+}
+
+.settings-section-title {
+  list-style: none;
 }
 
 .settings-section-title::after {
