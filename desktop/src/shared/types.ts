@@ -363,6 +363,7 @@ export interface AppSettings {
     suspendMinutes: number;
     cacheSubtitles: boolean;
     fontScale: number;
+    sidebarWidth: number;
   };
   ai: {
     activeId: string;
@@ -571,7 +572,9 @@ export interface OptimizeSuggestion {
   verdict?: 'support' | 'refute' | 'unknown';
   evidence?: string;
   sources?: number;
-  consistency?: 'multi' | 'single';
+  supportCount?: number;
+  refuteCount?: number;
+  consistency?: 'multi' | 'single' | 'conflict';
 }
 
 export interface OptimizeProgressEvent {

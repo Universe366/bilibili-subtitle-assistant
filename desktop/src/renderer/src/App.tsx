@@ -25,6 +25,7 @@ export default function App() {
   const [findQuery, setFindQuery] = useState('');
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const [fontScale, setFontScale] = useState(1);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
 
   const active = useMemo(() => tabs.find((tab) => tab.active) ?? null, [tabs]);
 
@@ -47,11 +48,15 @@ export default function App() {
 
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
-      if (response.ok) setFontScale(response.data.settings.general.fontScale || 1);
+      if (response.ok) {
+        setFontScale(response.data.settings.general.fontScale || 1);
+        setSidebarWidth(response.data.settings.general.sidebarWidth || 320);
+      }
     });
-    return window.bsub.onSettingsChanged((snapshot) =>
-      setFontScale(snapshot.settings.general.fontScale || 1)
-    );
+    return window.bsub.onSettingsChanged((snapshot) => {
+      setFontScale(snapshot.settings.general.fontScale || 1);
+      setSidebarWidth(snapshot.settings.general.sidebarWidth || 320);
+    });
   }, []);
 
   useEffect(() => {
@@ -176,6 +181,7 @@ export default function App() {
           activeTab={active}
           tabCount={tabs.length}
           fontScale={fontScale}
+          sidebarWidth={sidebarWidth}
         />
         <BrowserStage hasTab={Boolean(active)} />
       </div>

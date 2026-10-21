@@ -35,13 +35,15 @@ export function Sidebar({
   onSelect,
   activeTab,
   tabCount,
-  fontScale = 1
+  fontScale = 1,
+  sidebarWidth = 320
 }: {
   section: Section;
   onSelect: (section: Section) => void;
   activeTab: TabInfo | null;
   tabCount: number;
   fontScale?: number;
+  sidebarWidth?: number;
 }) {
   const [version, setVersion] = useState('');
   useEffect(() => {
@@ -51,7 +53,7 @@ export function Sidebar({
   }, []);
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width: sidebarWidth }}>
       <div className="brand">
         <div className="brand-mark">字</div>
         <div className="brand-text">

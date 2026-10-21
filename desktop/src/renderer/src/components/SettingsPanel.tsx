@@ -673,6 +673,18 @@ export function SettingsPanel() {
           onChange={(event) => updateGeneral({ fontScale: Number(event.target.value) })}
         />
 
+        <div className="settings-label">侧栏宽度</div>
+        <select
+          className="settings-input"
+          value={draft.general.sidebarWidth || 320}
+          onChange={(event) => updateGeneral({ sidebarWidth: Number(event.target.value) })}
+        >
+          <option value={280}>窄（280px）</option>
+          <option value={320}>标准（320px）</option>
+          <option value={400}>宽（400px）</option>
+          <option value={480}>超宽（480px）</option>
+        </select>
+
         <div className="settings-label">后台标签休眠（分钟）</div>
         <input
           className="settings-input"

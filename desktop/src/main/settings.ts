@@ -84,7 +84,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     closeToTray: true,
     suspendMinutes: 5,
     cacheSubtitles: true,
-    fontScale: 1
+    fontScale: 1,
+    sidebarWidth: 320
   },
   ai: {
     activeId: 'deepseek',
@@ -281,6 +282,10 @@ function normalize(raw: any): AppSettings {
       const fontScale = Number(raw.general.fontScale);
       if (Number.isFinite(fontScale)) {
         base.general.fontScale = Math.min(1.6, Math.max(0.8, Math.round(fontScale * 100) / 100));
+      }
+      const sidebarWidth = Number(raw.general.sidebarWidth);
+      if (Number.isFinite(sidebarWidth)) {
+        base.general.sidebarWidth = Math.min(520, Math.max(280, Math.round(sidebarWidth)));
       }
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {

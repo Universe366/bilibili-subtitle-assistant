@@ -803,11 +803,13 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
                             ? '证据反对'
                             : '未核实'}
                         {item.sources ? ` · ${item.sources} 源` : ''}
-                        {item.consistency === 'multi'
-                          ? ' · 多源'
-                          : item.consistency === 'single'
-                            ? ' · 单源'
-                            : ''}
+                        {item.consistency === 'conflict'
+                          ? ' · 有冲突'
+                          : item.consistency === 'multi'
+                            ? ' · 多源'
+                            : item.consistency === 'single'
+                              ? ' · 单源'
+                              : ''}
                       </span>
                     )}
                   </div>

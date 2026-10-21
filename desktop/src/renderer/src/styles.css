@@ -1468,6 +1468,10 @@ button:disabled {
   color: #d9534f;
 }
 
+.opt-verdict.conflict {
+  color: #c77700;
+}
+
 .opt-evidence {
   margin-top: 2px;
   font-size: 9.5px;

@@ -145,9 +145,9 @@ async function verifySuggestions(
           {
             role: 'system',
             content:
-              '你是事实核查员。对每条字幕修改判断网络证据：support=支持修改，refute=反对修改，unknown=证据不足或无关。' +
+              '你是事实核查员。对每条字幕修改，统计 evidence 中支持/反对修改的条数，并给出 overall verdict：support=支持，refute=反对，unknown=证据不足或冲突无法判断。' +
               '必须从 evidence 中逐字引用 4-50 字作为 quote；找不到就输出 unknown。' +
-              '只输出 JSON 数组：[{"index":0,"verdict":"support","quote":"证据原文"}]，不要解释。'
+              '只输出 JSON 数组：[{"index":0,"verdict":"support","support":2,"refute":0,"quote":"证据原文"}]，不要解释。'
           },
           {
             role: 'user',
@@ -187,8 +187,14 @@ async function verifySuggestions(
       }
       row.item.verdict = verdict.verdict;
       row.item.evidence = quote.slice(0, 80);
-      if (row.item.verdict === 'support' || row.item.verdict === 'refute') {
-        row.item.consistency = (row.item.sources || 0) >= 2 ? 'multi' : 'single';
+      const sources = row.item.sources || 0;
+      const support = Math.max(0, Math.min(sources, Number(verdict.support) || 0));
+      const refute = Math.max(0, Math.min(sources, Number(verdict.refute) || 0));
+      row.item.supportCount = support;
+      row.item.refuteCount = refute;
+      if (support > 0 && refute > 0) row.item.consistency = 'conflict';
+      else if (row.item.verdict === 'support' || row.item.verdict === 'refute') {
+        row.item.consistency = sources >= 2 ? 'multi' : 'single';
       }
     }
   } catch {
