@@ -606,7 +606,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         const built = buildExport({
           ...payload,
           includeTimestamps: payload.includeTimestamps ?? settings.export.includeTimestamps,
-          filenamePattern: payload.filenamePattern || settings.export.filenamePattern
+          filenamePattern: payload.filenamePattern || settings.export.filenamePattern,
+          template: payload.template || settings.export.template,
+          assFontSize: payload.assFontSize || settings.export.assFontSize
         });
         let target = payload.savePath;
 

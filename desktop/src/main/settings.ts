@@ -68,7 +68,7 @@ const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', 
   }
 ];
 
-const EXPORT_FORMATS: ExportFormat[] = ['md', 'srt', 'txt', 'json'];
+const EXPORT_FORMATS: ExportFormat[] = ['md', 'srt', 'vtt', 'ass', 'txt', 'json'];
 const THEME_MODES: ThemeMode[] = ['system', 'light', 'dark'];
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -177,7 +177,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   export: {
     format: 'md',
     includeTimestamps: true,
-    filenamePattern: '{title}'
+    filenamePattern: '{title}',
+    template: 'timestamped',
+    assFontSize: 28
   },
   bridge: { enabled: true, port: 47821, token: '' },
   update: { autoCheck: false, feedUrl: '' },
@@ -314,6 +316,14 @@ function normalize(raw: any): AppSettings {
       base.export.includeTimestamps = raw.export.includeTimestamps !== false;
       const pattern = String(raw.export.filenamePattern || '').trim();
       base.export.filenamePattern = pattern || '{title}';
+      const templates = ['plain', 'timestamped', 'notes', 'meeting'];
+      base.export.template = templates.includes(raw.export.template)
+        ? raw.export.template
+        : 'timestamped';
+      const fontSize = Number(raw.export.assFontSize);
+      if (Number.isFinite(fontSize)) {
+        base.export.assFontSize = Math.min(96, Math.max(12, Math.round(fontSize)));
+      }
     }
 
     if (raw.search && typeof raw.search === 'object') {

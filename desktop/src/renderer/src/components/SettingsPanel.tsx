@@ -55,6 +55,8 @@ function updateText(status: UpdateStatus | null): string {
 const EXPORT_LABELS: Record<ExportFormat, string> = {
   md: 'Markdown',
   srt: 'SRT 字幕',
+  vtt: 'WebVTT',
+  ass: 'ASS 字幕',
   txt: '纯文本',
   json: 'JSON'
 };
@@ -1168,6 +1170,38 @@ export function SettingsPanel() {
           />
           Markdown / TXT 保留时间戳
         </label>
+
+        <div className="settings-label">Markdown 模板</div>
+        <select
+          className="settings-input"
+          value={draft.export.template}
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              export: { ...draft.export, template: event.target.value as AppSettings['export']['template'] }
+            })
+          }
+        >
+          <option value="timestamped">带时间戳</option>
+          <option value="plain">纯内容</option>
+          <option value="notes">学习笔记</option>
+          <option value="meeting">会议纪要</option>
+        </select>
+
+        <div className="settings-label">ASS 字号</div>
+        <input
+          className="settings-input"
+          type="number"
+          min={12}
+          max={96}
+          value={draft.export.assFontSize}
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              export: { ...draft.export, assFontSize: Number(event.target.value) || 28 }
+            })
+          }
+        />
 
         <div className="settings-label">文件名模板</div>
         <input

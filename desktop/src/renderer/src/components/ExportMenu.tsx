@@ -5,6 +5,8 @@ import type { ExportFormat, PageInfo, SubtitleLine, SubtitleTrack } from '../../
 const FORMATS: Array<{ id: ExportFormat; label: string }> = [
   { id: 'md', label: 'Markdown (.md)' },
   { id: 'srt', label: '字幕 (.srt)' },
+  { id: 'vtt', label: 'WebVTT (.vtt)' },
+  { id: 'ass', label: 'ASS (.ass)' },
   { id: 'txt', label: '纯文本 (.txt)' },
   { id: 'json', label: 'JSON (.json)' }
 ];

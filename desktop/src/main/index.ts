@@ -181,6 +181,73 @@ function createWindow(): void {
       }, 12000);
     }
 
+    if (process.env.BSUB_EXPORT_TEST === '1') {
+      setTimeout(() => {
+        try {
+          const info = {
+            kind: 'video',
+            bvid: 'BV1TEST',
+            aid: 1,
+            cid: 1,
+            epId: null,
+            seasonId: null,
+            page: 1,
+            partTitle: '',
+            parts: [],
+            title: '测试视频',
+            owner: '测试UP',
+            desc: '',
+            duration: 10,
+            url: 'https://www.bilibili.com/video/BV1TEST',
+            signature: 'test'
+          };
+          const lines = [
+            { start: 0, end: 2, text: '第一句字幕' },
+            { start: 2, end: 4, text: '第二句字幕' }
+          ];
+          const translatedLines = [
+            { start: 0, end: 2, text: 'First subtitle' },
+            { start: 2, end: 4, text: 'Second subtitle' }
+          ];
+          const vtt = buildExport({
+            format: 'vtt',
+            info,
+            track: null,
+            lines,
+            translatedLines,
+            translationLanguage: 'English'
+          });
+          const ass = buildExport({
+            format: 'ass',
+            info,
+            track: null,
+            lines,
+            assFontSize: 32
+          });
+          const notes = buildExport({
+            format: 'md',
+            info,
+            track: null,
+            lines,
+            summary: '测试总结',
+            template: 'notes'
+          });
+          console.log('[export-test] vtt', vtt.content.split(/\n/).slice(0, 6).join(' | '));
+          console.log(
+            '[export-test] assStyle',
+            ass.content.split(/\n/).find((line) => line.startsWith('Style:'))
+          );
+          console.log(
+            '[export-test] assDialogue',
+            ass.content.split(/\n/).find((line) => line.startsWith('Dialogue:'))
+          );
+          console.log('[export-test] notes', notes.content.slice(0, 120).replace(/\n/g, ' | '));
+        } catch (error) {
+          console.warn('[export-test] failed', (error as Error).message);
+        }
+      }, 3000);
+    }
+
     if (process.env.BSUB_OPTIMIZE_TEST === '1') {
       setTimeout(async () => {
         try {

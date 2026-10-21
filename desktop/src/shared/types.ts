@@ -253,6 +253,8 @@ export interface AppSettings {
     format: ExportFormat;
     includeTimestamps: boolean;
     filenamePattern: string;
+    template: ExportTemplate;
+    assFontSize: number;
   };
   bridge: {
     enabled: boolean;
@@ -301,7 +303,8 @@ export interface SettingsSnapshot {
   version: string;
 }
 
-export type ExportFormat = 'md' | 'srt' | 'txt' | 'json';
+export type ExportFormat = 'md' | 'srt' | 'vtt' | 'ass' | 'txt' | 'json';
+export type ExportTemplate = 'plain' | 'timestamped' | 'notes' | 'meeting';
 
 export interface ExportPayload {
   format: ExportFormat;
@@ -314,6 +317,8 @@ export interface ExportPayload {
   filenamePattern?: string;
   translatedLines?: SubtitleLine[];
   translationLanguage?: string;
+  template?: ExportTemplate;
+  assFontSize?: number;
 }
 
 export interface AiDeltaEvent {
