@@ -163,3 +163,33 @@
   opacity: 1;
   background: #00aeec;
 }
+
+/* 内嵌时挤压页面，而不是盖住页面 */
+html.bsub-embed-dock body {
+  padding-right: var(--bsub-embed-width, 400px) !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+}
+
+html.bsub-embed-dock #app {
+  box-sizing: border-box !important;
+  width: calc(100vw - var(--bsub-embed-width, 400px)) !important;
+  max-width: calc(100vw - var(--bsub-embed-width, 400px)) !important;
+  min-width: 0 !important;
+}
+
+html.bsub-embed-dock .bili-header,
+html.bsub-embed-dock #biliMainHeader,
+html.bsub-embed-dock .bili-header__bar {
+  box-sizing: border-box !important;
+  width: calc(100vw - var(--bsub-embed-width, 400px)) !important;
+  max-width: calc(100vw - var(--bsub-embed-width, 400px)) !important;
+}
+
+html.bsub-embed-dock #mirror-vdcon,
+html.bsub-embed-dock .video-container-v1,
+html.bsub-embed-dock .video-page-container,
+html.bsub-embed-dock .bpx-player-container {
+  width: 100% !important;
+  max-width: 100% !important;
+}

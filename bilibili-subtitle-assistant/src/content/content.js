@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.0';
+  const CONTENT_VERSION = '2.13.1';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -344,6 +344,26 @@
   function removeEmbedPanel() {
     const el = document.getElementById(EMBED_ID);
     if (el && el.parentNode) el.parentNode.removeChild(el);
+    clearEmbedDock();
+  }
+
+  // 真正的「内嵌」：给页面右侧预留一列，内容整体缩到左侧，而不是覆盖。
+  function applyEmbedDock(width) {
+    try {
+      document.documentElement.classList.add('bsub-embed-dock');
+      document.documentElement.style.setProperty('--bsub-embed-width', `${Math.round(width)}px`);
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function clearEmbedDock() {
+    try {
+      document.documentElement.classList.remove('bsub-embed-dock');
+      document.documentElement.style.removeProperty('--bsub-embed-width');
+    } catch (err) {
+      /* ignore */
+    }
   }
 
   function removeEmbedTab() {
@@ -379,9 +399,10 @@
     const startX = ev.clientX;
     const startW = wrap.getBoundingClientRect().width || 400;
     const move = (e) => {
-      const max = Math.max(320, Math.min(640, (window.innerWidth || 1280) - 16));
+      const max = Math.max(320, Math.min(640, (window.innerWidth || 1280) - 360));
       const width = Math.max(320, Math.min(max, startW + (startX - e.clientX)));
       wrap.style.width = `${Math.round(width)}px`;
+      applyEmbedDock(width);
     };
     const up = () => {
       document.removeEventListener('pointermove', move);
@@ -442,17 +463,26 @@
       return;
     }
     removeEmbedTab();
-    if (document.getElementById(EMBED_ID)) return;
+    const existing = document.getElementById(EMBED_ID);
+    if (existing) {
+      applyEmbedDock(existing.getBoundingClientRect().width || 400);
+      return;
+    }
 
     const storedWidth = await readEmbedWidth();
     if (!canEmbed()) return;
-    if (document.getElementById(EMBED_ID)) return;
+    const raced = document.getElementById(EMBED_ID);
+    if (raced) {
+      applyEmbedDock(raced.getBoundingClientRect().width || 400);
+      return;
+    }
 
-    const max = Math.max(320, Math.min(640, (window.innerWidth || 1280) - 16));
+    const max = Math.max(320, Math.min(640, (window.innerWidth || 1280) - 360));
     const wrap = document.createElement('div');
     wrap.id = EMBED_ID;
     wrap.className = 'bsub-embed';
-    wrap.style.width = `${Math.max(320, Math.min(max, storedWidth))}px`;
+    const width = Math.max(320, Math.min(max, storedWidth));
+    wrap.style.width = `${width}px`;
 
     const bar = document.createElement('div');
     bar.className = 'bsub-embed-bar';
@@ -495,6 +525,7 @@
     wrap.appendChild(frame);
     wrap.appendChild(handle);
     (document.body || document.documentElement).appendChild(wrap);
+    applyEmbedDock(width);
   }
 
   // ---------------------------------------------------------------------------
