@@ -181,7 +181,18 @@ export async function getSubtitles(wc: WebContents): Promise<SubtitleBundle> {
     tracks,
     sources: Array.isArray(raw && raw.sources) ? raw.sources : [],
     errors: Array.isArray(raw && raw.errors) ? raw.errors : [],
-    identity: raw && raw.identity && raw.identity.signature ? String(raw.identity.signature) : undefined
+    identity: raw && raw.identity && raw.identity.signature ? String(raw.identity.signature) : undefined,
+    diagnostics: {
+      groups: Array.isArray(raw?.groups) ? raw.groups.map(String) : [],
+      sniffed: Array.isArray(raw?.sniffed) ? raw.sniffed : [],
+      foreignTracks: Array.isArray(raw?.foreignTracks) ? raw.foreignTracks : [],
+      sniffCount: Number(raw?.sniffCount) || 0,
+      staleSniffCount: Number(raw?.staleSniffCount) || 0,
+      signatureChanged: Boolean(raw?.signatureChanged),
+      identityMismatch: Boolean(raw?.identityMismatch),
+      identityUnstable: Boolean(raw?.identityUnstable),
+      reason: raw?.reason ? String(raw.reason) : ''
+    }
   };
 }
 

@@ -1606,6 +1606,50 @@ button:disabled {
   border-color: var(--accent);
 }
 
+.sub-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.sub-diagnostics summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.diag-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  word-break: break-all;
+}
+
+.diag-row code {
+  font-size: 9px;
+  color: var(--faint);
+}
+
+.diag-errors {
+  color: #b8860b;
+  word-break: break-all;
+}
+
+.diag-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diag-track {
+  font-size: 10px;
+  color: var(--faint);
+}
+
 .asr-progress {
   display: flex;
   flex-direction: column;

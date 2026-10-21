@@ -388,7 +388,8 @@ function normalize(raw: any): AppSettings {
                       .map(([key, value]) => [String(key), String(value)])
                   )
                 : {},
-            enabled: server.enabled !== false
+            enabled: server.enabled !== false,
+            transport: server.transport === 'sse' ? 'sse' : 'http'
           }));
       }
     }

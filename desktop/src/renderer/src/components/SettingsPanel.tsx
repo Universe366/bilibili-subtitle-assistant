@@ -166,7 +166,8 @@ export function SettingsPanel() {
           url: '',
           token: '',
           headers: {},
-          enabled: true
+          enabled: true,
+          transport: 'http'
         }
       ]
     });
@@ -1473,6 +1474,18 @@ export function SettingsPanel() {
               spellCheck={false}
               onChange={(event) => updateMcpServer(server.id, { url: event.target.value })}
             />
+            <select
+              className="settings-input"
+              value={server.transport}
+              onChange={(event) =>
+                updateMcpServer(server.id, {
+                  transport: event.target.value as McpServer['transport']
+                })
+              }
+            >
+              <option value="http">HTTP JSON-RPC</option>
+              <option value="sse">SSE 传输</option>
+            </select>
             <input
               className="settings-input"
               type="password"

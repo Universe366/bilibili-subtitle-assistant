@@ -260,6 +260,25 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     if (optimizeRequestRef.current) void window.bsub.cancelOptimize(optimizeRequestRef.current);
   };
 
+  const copyDiagnostics = () => {
+    if (!bundle) return;
+    const lines = [
+      `identity: ${bundle.identity || '未知'}`,
+      `needLogin: ${bundle.needLogin}`,
+      `sources: ${bundle.sources.join(', ')}`,
+      `groups: ${(bundle.diagnostics?.groups || []).join(', ')}`,
+      `tracks: ${bundle.tracks.length}`,
+      `sniffed: ${bundle.diagnostics?.sniffCount || 0}`,
+      `staleSniffed: ${bundle.diagnostics?.staleSniffCount || 0}`,
+      `foreignTracks: ${(bundle.diagnostics?.foreignTracks || []).length}`,
+      `reason: ${bundle.diagnostics?.reason || ''}`,
+      `errors: ${bundle.errors.join('；')}`
+    ];
+    void window.bsub.writeClipboard(lines.join('\n'));
+    setSaveMessage('诊断信息已复制');
+    window.setTimeout(() => setSaveMessage(''), 3000);
+  };
+
   const checkQuality = async () => {
     if (!info || !lines.length || checkingQuality) return;
     setCheckingQuality(true);
@@ -735,6 +754,45 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
             </button>
           </div>
         </div>
+      )}
+
+      {bundle && (
+        <details className="sub-diagnostics">
+          <summary>
+            字幕诊断 · {bundle.sources.length} 来源 / {bundle.tracks.length} 轨
+          </summary>
+          <div className="diag-row">
+            身份 <code>{bundle.identity || '未知'}</code>
+          </div>
+          <div className="diag-row">来源：{bundle.sources.join(' · ') || '无'}</div>
+          <div className="diag-row">
+            分组：{(bundle.diagnostics?.groups || []).join(' · ') || '无'}
+          </div>
+          <div className="diag-row">
+            嗅探 {bundle.diagnostics?.sniffCount || 0} 条 · 过期{' '}
+            {bundle.diagnostics?.staleSniffCount || 0} 条
+          </div>
+          <div className="diag-row">
+            丢弃外来轨：{(bundle.diagnostics?.foreignTracks || []).length}
+          </div>
+          {bundle.diagnostics?.reason && (
+            <div className="diag-row">{bundle.diagnostics.reason}</div>
+          )}
+          {bundle.errors.length > 0 && (
+            <div className="diag-errors">{bundle.errors.join('；')}</div>
+          )}
+          <div className="diag-tracks">
+            {bundle.tracks.map((item) => (
+              <div key={`${item.lan}-${item.url}`} className="diag-track">
+                {item.lanDoc || item.lan || '未知'} · {item.source || '未知来源'}
+                {item.isAi ? ' · AI' : ''}
+              </div>
+            ))}
+          </div>
+          <button className="mini-btn" onClick={copyDiagnostics}>
+            复制诊断
+          </button>
+        </details>
       )}
 
       {bundle?.needLogin && (

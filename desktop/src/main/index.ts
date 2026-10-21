@@ -218,7 +218,8 @@ function createWindow(): void {
               url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
               token: '',
               headers: {},
-              enabled: true
+              enabled: true,
+              transport: 'http' as 'http' | 'sse'
             }
           ];
           saveSettings(settings);
@@ -250,6 +251,27 @@ function createWindow(): void {
       }, 5000);
     }
 
+    if (process.env.BSUB_MCP_SSE_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const server = {
+            id: 'mock-sse',
+            name: 'Mock SSE',
+            url: process.env.BSUB_MOCK_MCP_SSE || 'http://127.0.0.1:8893/sse',
+            token: '',
+            headers: {},
+            enabled: true,
+            transport: 'sse' as 'http' | 'sse'
+          };
+          const tools = await listMcpTools(server);
+          const result = await callMcpTool(server, 'echo', { text: 'hello-sse' });
+          console.log('[mcp-sse-test]', JSON.stringify({ tools: tools.map((tool) => tool.name), result }));
+        } catch (error) {
+          console.warn('[mcp-sse-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
     if (process.env.BSUB_MCP_TEST === '1') {
       setTimeout(async () => {
         try {
@@ -259,7 +281,8 @@ function createWindow(): void {
             url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
             token: '',
             headers: {},
-            enabled: true
+            enabled: true,
+            transport: 'http' as 'http' | 'sse'
           };
           const tools = await listMcpTools(server);
           const result = await callMcpTool(server, 'echo', { text: 'hello' });

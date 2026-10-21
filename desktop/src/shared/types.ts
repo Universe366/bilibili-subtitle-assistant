@@ -72,12 +72,25 @@ export interface SubtitleTrack {
   source: string;
 }
 
+export interface SubtitleDiagnostics {
+  groups?: string[];
+  sniffed?: unknown[];
+  foreignTracks?: Array<{ cid?: string; source?: string; url?: string }>;
+  sniffCount?: number;
+  staleSniffCount?: number;
+  signatureChanged?: boolean;
+  identityMismatch?: boolean;
+  identityUnstable?: boolean;
+  reason?: string;
+}
+
 export interface SubtitleBundle {
   needLogin: boolean;
   tracks: SubtitleTrack[];
   sources: string[];
   errors: Array<{ source?: string; message?: string }>;
   identity?: string;
+  diagnostics?: SubtitleDiagnostics;
 }
 
 export interface SubtitleLine {
@@ -229,6 +242,7 @@ export interface McpServer {
   token: string;
   headers: Record<string, string>;
   enabled: boolean;
+  transport: 'http' | 'sse';
 }
 
 export interface McpTool {
