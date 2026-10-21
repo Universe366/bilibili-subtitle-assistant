@@ -265,6 +265,39 @@ body[data-tab='settings'] .tab[data-tab-btn='settings'] {
   flex: 0 0 auto;
 }
 
+/* 发现新版本：提醒先备份设置 */
+.update-banner {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: calc(var(--fs) * 0.94);
+}
+
+.update-banner[data-visible='false'] {
+  display: none;
+}
+
+.update-banner-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-banner-text {
+  line-height: 1.5;
+}
+
+.update-banner-close {
+  flex: 0 0 auto;
+}
+
 .jobs {
   flex: 0 0 auto;
   padding: 8px 10px;

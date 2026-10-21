@@ -22,6 +22,7 @@ async function boot() {
     /* ignore */
   }
   installShell();
+  window.addEventListener('bsub:update-state', (e) => applyUpdateBadge(e && e.detail));
   jobs.setJobsHost(document.getElementById('jobs'));
 
   // 面板挂载
@@ -89,6 +90,53 @@ export function applyUpdateBadge(out) {
       btn.setAttribute('title', '设置');
     }
   }
+
+  // 顶部常驻提醒：更新前先备份设置，避免换目录后 chrome.storage 读不到旧配置。
+  const banner = document.getElementById('update-banner');
+  if (!banner) return;
+  if (!on) {
+    clear(banner);
+    banner.dataset.visible = 'false';
+    banner.dataset.version = '';
+    return;
+  }
+  const version = String((out && out.latest) || '');
+  // 同一版本只渲染一次；用户点 × 收起后不再反复弹。
+  if (banner.dataset.version === version) return;
+  banner.dataset.version = version;
+  clear(banner);
+  banner.appendChild(
+    h('div', { class: 'update-banner-main' }, [
+      h('div', {
+        class: 'update-banner-text',
+        text: `发现新版本 v${version}。更新前建议先备份设置，避免换目录后设置丢失。`
+      }),
+      h('div', { class: 'row tight' }, [
+        button('备份设置', () => settingsPanel.exportSettingsBackup(), { small: true, primary: true }),
+        button(
+          '查看更新',
+          () => {
+            store.setGroupOpen('advanced', true);
+            switchTab('settings');
+            settingsPanel.jumpToGroup('advanced');
+          },
+          { small: true }
+        )
+      ])
+    ])
+  );
+  banner.appendChild(
+    h('button', {
+      class: 'btn icon-btn update-banner-close',
+      type: 'button',
+      text: '×',
+      title: '收起提醒',
+      onclick: () => {
+        banner.dataset.visible = 'false';
+      }
+    })
+  );
+  banner.dataset.visible = 'true';
 }
 
 function installShell() {

@@ -288,7 +288,7 @@ function applyFilter() {
 }
 
 // 「去配置」：清空搜索、展开目标分组并滚动过去，优先聚焦 Key 输入框。
-function jumpToGroup(key) {
+export function jumpToGroup(key) {
   if (!state.body) return;
   if (state.query) {
     state.query = '';
@@ -2164,6 +2164,12 @@ function updateSection(d) {
       pre.textContent = '该版本没有填写说明。';
       details.style.display = '';
     }
+    // 让 app.js 的全局提示条同步（只在设置页检查到新版本时也能提醒备份）
+    try {
+      window.dispatchEvent(new CustomEvent('bsub:update-state', { detail: out }));
+    } catch (err) {
+      /* 旧环境不支持 CustomEvent 时忽略 */
+    }
   }
 
   async function load(manual) {
@@ -2344,7 +2350,7 @@ function resetAll() {
 // 覆盖原目录更新时 ID 不变，设置会保留；如果解压到新目录再加载，ID 变了，
 // 旧设置就读不到。导出/导入是这种情况下的兜底，也方便换机器。
 
-async function exportSettingsBackup() {
+export async function exportSettingsBackup() {
   confirmDialog(
     '导出设置备份',
     '备份文件包含 API Key 明文，请只保存在本机，不要上传到公开位置。确定导出？',

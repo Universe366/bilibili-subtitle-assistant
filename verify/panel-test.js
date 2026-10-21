@@ -41,6 +41,7 @@ const skeleton = `<!DOCTYPE html>
     <div id="fingerprint" class="fingerprint">构建信息加载中…</div>
   </header>
   <div id="readiness" class="readiness" data-visible="true"></div>
+  <div id="update-banner" class="update-banner" data-visible="false"></div>
   <div id="jobs" class="jobs" data-visible="false" style="display:none"></div>
   <div id="alerts" class="alerts"></div>
   <main id="main">
@@ -128,7 +129,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.12.0', contentVersion: '2.12.0', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.12.1', contentVersion: '2.12.1', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -149,12 +150,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.12.0', stale: false }],
-    contentVersion: '2.12.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.12.1', stale: false }],
+    contentVersion: '2.12.1'
   },
   diagnostics: {
-    extensionVersion: '2.12.0',
-    contentVersion: '2.12.0',
+    extensionVersion: '2.12.1',
+    contentVersion: '2.12.1',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -170,7 +171,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.12.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.12.1', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -242,7 +243,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.12\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.12\.1 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -494,6 +495,22 @@ async function main() {
       Array.from(doc.querySelectorAll('#settings-pane button')).some((b) => /导入设置/.test(b.textContent)),
     ''
   );
+
+  // 发现新版本时的全局提醒：先备份，再更新
+  window.dispatchEvent(
+    new window.CustomEvent('bsub:update-state', { detail: { hasUpdate: true, latest: '9.9.9' } })
+  );
+  await sleep(30);
+  const updateBanner = doc.getElementById('update-banner');
+  check(
+    '发现新版本时提示先备份设置',
+    updateBanner.dataset.visible === 'true' &&
+      /v9\.9\.9/.test(updateBanner.textContent) &&
+      /备份设置/.test(updateBanner.textContent),
+    updateBanner.textContent
+  );
+  updateBanner.querySelector('.update-banner-close').click();
+  check('更新提醒可收起', updateBanner.dataset.visible === 'false', '');
 
   // 设置页搜索 / 摘要 / 去配置：只加导航，不删分组
   const searchInput = doc.getElementById('settings-search');
