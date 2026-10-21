@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.13.8（2026-10-21）
+
+### 修复
+- 内嵌面板的 `page.*` 请求改为**直接 postMessage 给父页面的内容脚本**，不再绕后台「选标签页 + 注入内容脚本」；彻底避开内嵌 iframe 选错 tab / 注入失败的问题。
+- 保留 tabId 与诊断信息，后台路径仍作为侧边栏使用。
+
 ## 2.13.7（2026-10-21）
 
 ### 修复

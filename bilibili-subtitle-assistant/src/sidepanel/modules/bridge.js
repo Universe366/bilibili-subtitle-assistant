@@ -17,6 +17,69 @@ const EMBED_TAB_ID = (() => {
   }
 })();
 
+// 内嵌面板直接和父页面的内容脚本通信，不再绕后台选标签页。
+const EMBED_RPC_METHODS = new Set([
+  'page.info',
+  'page.subtitles',
+  'page.time',
+  'page.audio',
+  'page.seek',
+  'page.call'
+]);
+const embedPending = new Map();
+let embedSeq = 0;
+
+if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+  window.addEventListener('message', (ev) => {
+    const data = ev && ev.data;
+    if (!data || data.type !== 'bsub:embed-rpc-result') return;
+    if (ev.source !== window.parent) return;
+    const rec = embedPending.get(data.id);
+    if (!rec) return;
+    embedPending.delete(data.id);
+    clearTimeout(rec.timer);
+    if (data.ok) rec.resolve(data.data);
+    else
+      rec.reject(
+        Object.assign(new Error((data.error && data.error.title) || '页面读取失败'), {
+          payload: data.error || { title: '页面读取失败', detail: '' }
+        })
+      );
+  });
+}
+
+function callEmbedParent(method, params, timeout) {
+  const id = `e${Date.now().toString(36)}${(embedSeq += 1).toString(36)}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (!embedPending.has(id)) return;
+      embedPending.delete(id);
+      reject(
+        Object.assign(new Error('页面内桥超时'), {
+          payload: {
+            kind: 'timeout',
+            title: '页面内桥超时',
+            detail: `${method} 在 ${Math.round(timeout / 1000)} 秒内没有返回。`,
+            action: '请刷新 B 站页面后重试。'
+          }
+        })
+      );
+    }, timeout);
+    embedPending.set(id, { resolve, reject, timer });
+    try {
+      window.parent.postMessage({ type: 'bsub:embed-rpc', id, method, params: params || {} }, '*');
+    } catch (err) {
+      clearTimeout(timer);
+      embedPending.delete(id);
+      reject(
+        Object.assign(err, {
+          payload: { title: '页面内桥不可用', detail: String((err && err.message) || err) }
+        })
+      );
+    }
+  });
+}
+
 // 查询后台（service worker）实际在跑的版本。
 // 用途：MV3 里 SW 与面板是两份独立更新的代码 —— 只刷新扩展时，
 // 面板会立刻用上新代码，而**旧的 SW 可能仍在运行**，于是出现
@@ -50,6 +113,9 @@ export function backgroundVersion(timeoutMs = 3000) {
 }
 
 export function call(method, params = {}, opts = {}) {  const timeout = opts.timeoutMs || METHOD_TIMEOUT[method] || DEFAULT_RPC_TIMEOUT;
+  if (EMBED_TAB_ID && EMBED_RPC_METHODS.has(method)) {
+    return callEmbedParent(method, params, timeout);
+  }
   const id = newId();
   return new Promise((resolve, reject) => {
     let settled = false;

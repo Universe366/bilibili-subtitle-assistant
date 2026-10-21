@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.7';
+  const CONTENT_VERSION = '2.13.8';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -39,7 +39,8 @@
     lastIndex: -1,
     overlayLines: [],
     bridgeReady: false,
-    embedClosed: false
+    embedClosed: false,
+    embedFrame: null
   };
 
   const log = (...a) => {
@@ -512,6 +513,7 @@
 
     wrap.appendChild(bar);
     wrap.appendChild(frame);
+    state.embedFrame = frame;
 
     // 插到右侧栏的 UP 主卡片之后、推荐列表之前；没有就放最前面
     const upPanel = host.querySelector('.up-panel-container');
@@ -520,6 +522,75 @@
 
     syncEmbedHeight();
     return true;
+  }
+
+  // 内嵌面板与父页面的直连 RPC。
+  // 面板就在 B 站页面里，没必要再绕后台「选标签页 + 注入内容脚本」；
+  // 那条路一旦选错 tab 或页面未就绪，就会报「内容脚本无法运行」。
+  const EMBED_RPC_MAP = {
+    'page.info': 'getInfo',
+    'page.subtitles': 'getSubtitles',
+    'page.time': 'getTime',
+    'page.audio': 'getAudio',
+    'page.seek': 'seek'
+  };
+
+  function installEmbedRpc() {
+    window.addEventListener('message', (ev) => {
+      const data = ev && ev.data;
+      if (!data || data.type !== 'bsub:embed-rpc') return;
+      const frame = state.embedFrame;
+      if (!frame || ev.source !== frame.contentWindow) return;
+      if (!/^chrome-extension:\/\//.test(String(ev.origin || ''))) return;
+
+      let method = data.method;
+      let params = data.params || {};
+      if (method === 'page.call') {
+        method = params.name;
+        params = params.params || {};
+      } else if (EMBED_RPC_MAP[method]) {
+        method = EMBED_RPC_MAP[method];
+      } else {
+        try {
+          ev.source.postMessage(
+            {
+              type: 'bsub:embed-rpc-result',
+              id: data.id,
+              ok: false,
+              error: { title: '不支持的页面方法', detail: String(data.method) }
+            },
+            '*'
+          );
+        } catch (err) {
+          /* ignore */
+        }
+        return;
+      }
+
+      handle(method, params)
+        .then((out) => {
+          try {
+            ev.source.postMessage({ type: 'bsub:embed-rpc-result', id: data.id, ok: true, data: out }, '*');
+          } catch (err) {
+            /* ignore */
+          }
+        })
+        .catch((err) => {
+          try {
+            ev.source.postMessage(
+              {
+                type: 'bsub:embed-rpc-result',
+                id: data.id,
+                ok: false,
+                error: err.payload || { title: '页面读取失败', detail: String((err && err.message) || err) }
+              },
+              '*'
+            );
+          } catch (e2) {
+            /* ignore */
+          }
+        });
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -786,6 +857,7 @@
     log('检测到更新版本的脚本已接管，本实例退出');
   } else {
     listenRuntime();
+    installEmbedRpc();
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init, { once: true });
     } else {
