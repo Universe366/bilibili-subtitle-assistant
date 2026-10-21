@@ -4,11 +4,11 @@
     "description": "Extension name"
   },
   "extensionShortName": {
-    "message": "Subtitle Assistant",
-    "description": "Extension short name"
+    "message": "BiliSubs",
+    "description": "Extension short name (max 12 characters)"
   },
   "extensionDescription": {
-    "message": "Grab Bilibili subtitles, transcribe audio, summarize with AI, chat about the video, and export. All settings live in the side panel.",
+    "message": "Grab Bilibili subtitles, transcribe audio, summarize with AI, chat about videos, and export. All settings live in the side panel.",
     "description": "Extension description shown in the browser and store listing"
   }
 }

@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.12.3（2026-10-21）
+
+### 修复
+- 修正 Edge 包验证警告：英文 `short_name` 从 `Subtitle Assistant`（18 字符）改为 `BiliSubs`（8 字符），满足商店 12 字符上限。
+- 英文描述同步压缩到 129 字符，避免接近 132 字符上限。
+
 ## 2.12.2（2026-10-21）
 
 ### 改进
