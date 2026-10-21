@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.12.2（2026-10-21）
+
+### 改进
+- `manifest.json` 改用 `_locales/zh_CN` + `_locales/en` 与 `__MSG_` 占位符，并声明 `default_locale`；Edge Partner Center 才能识别中文 / 英文列表语言并添加「中文（简体）」。
+- 商店包补充 `_locales/`；英文名称、短名称与描述同步提供。
+
 ## 2.12.1（2026-10-21）
 
 ### 改进

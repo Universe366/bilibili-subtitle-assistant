@@ -129,7 +129,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.12.1', contentVersion: '2.12.1', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.12.2', contentVersion: '2.12.2', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -150,12 +150,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.12.1', stale: false }],
-    contentVersion: '2.12.1'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.12.2', stale: false }],
+    contentVersion: '2.12.2'
   },
   diagnostics: {
-    extensionVersion: '2.12.1',
-    contentVersion: '2.12.1',
+    extensionVersion: '2.12.2',
+    contentVersion: '2.12.2',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -171,7 +171,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.12.1', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.12.2', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -243,7 +243,30 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.12\.1 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.12\.2 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+
+  // Edge / Chrome 商店语言检测依赖 _locales + __MSG_ 占位符
+  const manifestJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+  const msgKeys = ['name', 'short_name', 'description'].map((field) => {
+    const m = /^__MSG_([A-Za-z0-9_]+)__$/.exec(manifestJson[field] || '');
+    return m ? m[1] : '';
+  });
+  const zhMessages = JSON.parse(
+    fs.readFileSync(path.join(ROOT, '_locales', 'zh_CN', 'messages.json'), 'utf8')
+  );
+  const enMessages = JSON.parse(
+    fs.readFileSync(path.join(ROOT, '_locales', 'en', 'messages.json'), 'utf8')
+  );
+  check(
+    'manifest 使用 i18n 占位符并声明 default_locale',
+    manifestJson.default_locale === 'zh_CN' && msgKeys.every(Boolean),
+    `${manifestJson.default_locale} / ${msgKeys.join(',')}`
+  );
+  check(
+    '中英文 locale 均包含名称、短名称、描述',
+    msgKeys.every((k) => zhMessages[k] && zhMessages[k].message && enMessages[k] && enMessages[k].message),
+    msgKeys.join(',')
+  );
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {

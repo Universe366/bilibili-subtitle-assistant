@@ -1,4 +1,4 @@
-# Edge Add-ons 提交材料（2.12.1）
+# Edge Add-ons 提交材料（2.12.2）
 
 > 官方流程：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/publish-extension>
 > 开发者注册：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/create-dev-account>（免费，需要 Microsoft 账号 + Partner Center）
@@ -9,8 +9,8 @@ Edge 使用与 Chrome 相同的 MV3 包。**zip 根目录必须直接有 `manife
 
 ```bash
 cd repo
-git archive --format=zip -o edge-2.12.1.zip HEAD:bilibili-subtitle-assistant \
-  manifest.json rules.json src vendor icons LICENSE THIRD-PARTY-NOTICES.md LICENSES
+git archive --format=zip -o edge-2.12.2.zip HEAD:bilibili-subtitle-assistant \
+  manifest.json rules.json src vendor icons _locales LICENSE THIRD-PARTY-NOTICES.md LICENSES
 ```
 
 只打运行时文件，不包含 `docs/`、`AGENTS.md`、`CHANGELOG.md`、`README.md`、`verify/`、`_metadata/`。
@@ -18,13 +18,14 @@ git archive --format=zip -o edge-2.12.1.zip HEAD:bilibili-subtitle-assistant \
 上传前检查：
 
 ```bash
-unzip -l edge-2.12.1.zip | head
-unzip -p edge-2.12.1.zip manifest.json | head
+unzip -l edge-2.12.2.zip | head
+unzip -p edge-2.12.2.zip manifest.json | head
 ```
 
-- 版本：**2.12.1**
+- 版本：**2.12.2**
 - 运行时文件约 11 MB（主要是 `vendor/ffmpeg/ffmpeg-core.wasm`，31 MB 未压缩）
 - `rules.json` 是静态 DNR 规则；`src/background/header-rules.js` 会在会话中为 TokenRhythm 动态加规则
+- 包含 `_locales/zh_CN` 与 `_locales/en`，Partner Center 才能识别中文/英文列表语言
 - 包含 `LICENSES/GPL-2.0.txt` 与 `THIRD-PARTY-NOTICES.md`，满足 FFmpeg GPL 构建的分发说明
 
 ## 2. Microsoft Store 一览文案
@@ -58,7 +59,7 @@ unzip -p edge-2.12.1.zip manifest.json | head
 
 **类别**：Productivity（生产力）；备选 Utilities
 
-**语言**：中文（简体）。如需英文列表，再单独添加 en-US，并在包内补 `_locales`。
+**语言**：中文（简体）为主；包内已含 `_locales/zh_CN` 与 `_locales/en`，Partner Center 的 Add language 应能看到中文（简体）和 English。
 
 **搜索词**（最多 7 个，总计不超过 21 个字符）：`B站`、`字幕`、`哔哩哔哩`、`语音转文字`、`AI总结`、`字幕导出`
 
@@ -147,7 +148,7 @@ python verify/tools/fit-store-screenshot.py 你的截图.png --size 1280x800 --m
 ## 7. 提交步骤
 
 1. 注册 Partner Center → Microsoft Edge 计划（免费）。
-2. **Create new extension** → 上传 `edge-2.12.1.zip`。
+2. **Create new extension** → 上传 `edge-2.12.2.zip`。
 3. **Availability**：Public；市场默认全部（或按需选择）。
 4. **Properties**：类别 Productivity；网站填 GitHub 仓库；支持链接填 Issues。
 5. **Privacy**：按第 4、5 节填写 Single purpose、权限理由、Remote code=No、Data usage、Privacy URL。
