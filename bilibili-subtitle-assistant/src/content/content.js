@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.3';
+  const CONTENT_VERSION = '2.13.4';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -691,13 +691,19 @@
       if (!message || typeof message !== 'object') return undefined;
       // 已退休的旧脚本不再应答，避免把旧版本号/旧能力报回后台
       if (state.retired) return undefined;
-      if (message.type === 'bsub:ping') {
+      if (message.type === 'bsub:ping' || message.type === 'bsub:ping2') {
         // 每收到一次 ping 都重新检查一次：后台可能刚刚写入新的「期望版本」
         if (shouldRetire()) {
           state.retired = true;
           return undefined;
         }
-        sendResponse({ ok: true, version: CONTENT_VERSION, href: location.href });
+        sendResponse({
+          ok: true,
+          version: CONTENT_VERSION,
+          // ping2 是新版专用握手：旧脚本不认识它，不会抢答
+          protocol: message.type === 'bsub:ping2' ? 2 : 1,
+          href: location.href
+        });
         return undefined;
       }
       if (message.type === 'bsub:to-content') {

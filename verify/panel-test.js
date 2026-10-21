@@ -129,7 +129,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.13.3', contentVersion: '2.13.3', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.13.4', contentVersion: '2.13.4', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -150,12 +150,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.13.3', stale: false }],
-    contentVersion: '2.13.3'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.13.4', stale: false }],
+    contentVersion: '2.13.4'
   },
   diagnostics: {
-    extensionVersion: '2.13.3',
-    contentVersion: '2.13.3',
+    extensionVersion: '2.13.4',
+    contentVersion: '2.13.4',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -171,7 +171,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.13.3', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.13.4', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -243,7 +243,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.13\.3 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.13\.4 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
 
   // Edge / Chrome 商店语言检测依赖 _locales + __MSG_ 占位符
   const manifestJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));

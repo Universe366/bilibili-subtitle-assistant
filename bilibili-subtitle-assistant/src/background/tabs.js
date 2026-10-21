@@ -164,8 +164,10 @@ export async function injectContentScripts(tabId) {
 
 async function pingTab(tabId, timeoutMs = 1500) {
   try {
-    const res = await withTimeout(chrome.tabs.sendMessage(tabId, { type: 'bsub:ping' }), timeoutMs);
-    if (res && res.ok) return res;
+    // 新版专用握手：旧内容脚本不认识 ping2，不会用「未知版本」抢答。
+    // 如果页面里只有旧脚本，这里会拿不到响应，随后走重新注入流程。
+    const res = await withTimeout(chrome.tabs.sendMessage(tabId, { type: 'bsub:ping2' }), timeoutMs);
+    if (res && res.ok && res.version) return res;
     return null;
   } catch (err) {
     return null;

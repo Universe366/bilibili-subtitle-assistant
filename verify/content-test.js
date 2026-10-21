@@ -167,7 +167,13 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.3', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.4', JSON.stringify(ping));
+  const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
+  check(
+    '新版 ping2 握手返回版本与协议号',
+    ping2 && ping2.ok && ping2.version === '2.13.4' && ping2.protocol === 2,
+    JSON.stringify(ping2)
+  );
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
