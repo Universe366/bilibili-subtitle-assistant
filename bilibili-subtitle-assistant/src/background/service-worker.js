@@ -969,6 +969,12 @@ const methods = {
       permissions = {};
     }
     const mb = await chrome.runtime.getManifest();
+    let pageInfo = null;
+    try {
+      pageInfo = await rpcPage('getInfo', {}, {});
+    } catch (err) {
+      pageInfo = { error: (err && err.message) || '读取页面信息失败' };
+    }
     return {
       app: APP_NAME,
       extensionVersion: mb.version,
@@ -980,6 +986,7 @@ const methods = {
       readiness: CFG.computeReadiness(s),
       cache: stats,
       permissions,
+      pageInfo,
       platformSummary: {
         ai: s.ai.platforms.map((p) => ({ id: p.id, name: p.name, active: p.id === s.ai.activeId, keySet: CFG.hasSecret(p.apiKey), model: p.model, baseUrl: p.baseUrl })),
         asr: s.asr.platforms.map((p) => ({ id: p.id, name: p.name, active: p.id === s.asr.activeId, keySet: CFG.hasSecret(p.apiKey), model: p.model, baseUrl: p.baseUrl })),

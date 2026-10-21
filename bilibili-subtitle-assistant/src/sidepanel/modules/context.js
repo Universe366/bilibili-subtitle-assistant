@@ -88,8 +88,24 @@ export async function pushPageOptions(settings) {
 export async function loadVideo(opts = {}) {
   const tab = jobs.beginTask('读取视频信息', { detail: '' });
   try {
-    const info = await call('page.info', {}, { timeoutMs: 20000 });
-    if (!info || !info.signature) throw new Error('页面没有返回视频信息');
+    // 内嵌面板可能在 B 站页面刚加载/刚切 P 时立即读取：
+    // page.info 这时可能返回空对象。重试几次，比直接报“没有视频信息”稳。
+    let info = null;
+    let lastErr = null;
+    for (let i = 0; i < 3; i += 1) {
+      try {
+        info = await call('page.info', {}, { timeoutMs: 20000 });
+      } catch (err) {
+        lastErr = err;
+        info = null;
+      }
+      if (info && info.signature) break;
+      if (i < 2) await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    if (!info || !info.signature) {
+      if (lastErr) throw lastErr;
+      throw new Error('页面没有返回视频信息（已重试 3 次；请刷新 B 站页面后重试）');
+    }
     const attempt = await call('page.call', { name: 'getSubtitles', params: {} }, { timeoutMs: 20000 });
     const detail = (attempt && attempt.data) || {};
     const video = {
