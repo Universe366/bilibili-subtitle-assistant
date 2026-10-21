@@ -225,7 +225,7 @@ function normalize(raw: any): AppSettings {
       }
       const sidebarWidth = Number(raw.general.sidebarWidth);
       if (Number.isFinite(sidebarWidth)) {
-        base.general.sidebarWidth = Math.min(520, Math.max(280, Math.round(sidebarWidth)));
+        base.general.sidebarWidth = Math.min(560, Math.max(260, Math.round(sidebarWidth)));
       }
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
@@ -616,6 +616,13 @@ function mergeSecrets(next: AppSettings, current: AppSettings): AppSettings {
     );
   }
   return merged;
+}
+
+export function setSidebarWidth(width: number): AppSettings {
+  const settings = loadSettings();
+  const value = Math.min(560, Math.max(260, Math.round(width)));
+  settings.general.sidebarWidth = value;
+  return saveSettings(settings);
 }
 
 export function saveSettings(next: AppSettings): AppSettings {

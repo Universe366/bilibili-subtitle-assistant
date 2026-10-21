@@ -27,6 +27,13 @@ export default function App() {
   const [fontScale, setFontScale] = useState(1);
   const [sidebarWidth, setSidebarWidth] = useState(320);
 
+  const commitSidebarWidth = (width: number) => {
+    setSidebarWidth(width);
+    void window.bsub.setSidebarWidth(width).then((response) => {
+      if (response.ok) setSidebarWidth(response.data.settings.general.sidebarWidth);
+    });
+  };
+
   const active = useMemo(() => tabs.find((tab) => tab.active) ?? null, [tabs]);
 
   useEffect(() => {
@@ -182,6 +189,8 @@ export default function App() {
           tabCount={tabs.length}
           fontScale={fontScale}
           sidebarWidth={sidebarWidth}
+          onWidthChange={setSidebarWidth}
+          onWidthCommit={commitSidebarWidth}
         />
         <BrowserStage hasTab={Boolean(active)} />
       </div>

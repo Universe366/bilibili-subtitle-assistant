@@ -761,6 +761,33 @@ function createWindow(): void {
             })()
           `);
           await new Promise((resolve) => setTimeout(resolve, 1600));
+          const metrics = await win.webContents.executeJavaScript(`
+            (() => {
+              const panel = document.querySelector('.settings-panel');
+              const sidebar = document.querySelector('.sidebar');
+              const sticky = document.querySelector('.settings-sticky');
+              const sections = [...document.querySelectorAll('.settings-section')];
+              const overflow = [...document.querySelectorAll('.settings-panel *')]
+                .filter((el) => el.scrollWidth > el.clientWidth + 2)
+                .slice(0, 12)
+                .map((el) => ({
+                  tag: el.tagName,
+                  cls: String(el.className || '').slice(0, 40),
+                  sw: el.scrollWidth,
+                  cw: el.clientWidth
+                }));
+              return {
+                sidebar: sidebar ? sidebar.getBoundingClientRect().width : 0,
+                panel: panel ? panel.getBoundingClientRect().width : 0,
+                panelScroll: panel ? panel.scrollWidth : 0,
+                sticky: sticky ? sticky.getBoundingClientRect().height : 0,
+                sections: sections.length,
+                open: sections.filter((item) => item.open).length,
+                overflow
+              };
+            })()
+          `);
+          console.log('[settings-metrics]', JSON.stringify(metrics));
           const image = await win.webContents.capturePage();
           const file = path.join(app.getPath('temp'), 'bsub-settings-shot.png');
           fs.writeFileSync(file, image.toPNG());

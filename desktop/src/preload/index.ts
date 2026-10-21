@@ -102,6 +102,8 @@ const api: BsubApi = {
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),
 
   getSettings: () => ipcRenderer.invoke('settings:get') as Promise<Result<SettingsSnapshot>>,
+  setSidebarWidth: (width: number) =>
+    ipcRenderer.invoke('settings:sidebar-width', width) as Promise<Result<SettingsSnapshot>>,
   saveSettings: (next: AppSettings) =>
     ipcRenderer.invoke('settings:set', next) as Promise<Result<SettingsSnapshot>>,
   exportSettings: () =>

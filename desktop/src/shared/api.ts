@@ -84,6 +84,7 @@ export interface BsubApi {
 
   getSettings(): Promise<Result<SettingsSnapshot>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
+  setSidebarWidth(width: number): Promise<Result<SettingsSnapshot>>;
   exportSettings(): Promise<Result<{ canceled: boolean; path?: string }>>;
   importSettings(): Promise<Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>>;
   onSettingsChanged(cb: (snapshot: SettingsSnapshot) => void): () => void;

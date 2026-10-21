@@ -36,7 +36,9 @@ export function Sidebar({
   activeTab,
   tabCount,
   fontScale = 1,
-  sidebarWidth = 320
+  sidebarWidth = 320,
+  onWidthChange,
+  onWidthCommit
 }: {
   section: Section;
   onSelect: (section: Section) => void;
@@ -44,6 +46,8 @@ export function Sidebar({
   tabCount: number;
   fontScale?: number;
   sidebarWidth?: number;
+  onWidthChange?: (width: number) => void;
+  onWidthCommit?: (width: number) => void;
 }) {
   const [version, setVersion] = useState('');
   useEffect(() => {
@@ -51,6 +55,28 @@ export function Sidebar({
       if (response.ok) setVersion(response.data.version);
     });
   }, []);
+
+  const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const move = (moveEvent: MouseEvent) => {
+      const width = Math.min(560, Math.max(260, startWidth + moveEvent.clientX - startX));
+      onWidthChange?.(width);
+    };
+    const up = (upEvent: MouseEvent) => {
+      const width = Math.min(560, Math.max(260, startWidth + upEvent.clientX - startX));
+      onWidthCommit?.(width);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
 
   return (
     <aside className="sidebar" style={{ width: sidebarWidth }}>
@@ -76,6 +102,7 @@ export function Sidebar({
         ))}
       </nav>
 
+      <div className="sidebar-resizer" onMouseDown={startResize} title="拖动调整侧栏宽度" />
       <div className="side-content" style={{ zoom: fontScale }}>
         {section === 'subtitles' && <SubtitlesPanel activeTab={activeTab} />}
 

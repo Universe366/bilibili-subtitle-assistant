@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Download,
   FolderOpen,
@@ -30,6 +31,40 @@ import type {
   UpdateStatus,
   WebReference
 } from '../../../shared/types';
+
+function SettingsSection({
+  title,
+  defaultOpen = false,
+  children
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const storageKey = `bsub.settings.section.${title}`;
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const stored = localStorage.getItem(storageKey);
+    ref.current.open = stored === null ? defaultOpen : stored === '1';
+  }, [defaultOpen, storageKey]);
+  return (
+    <details
+      ref={ref}
+      className="settings-section"
+      onToggle={(event) => {
+        try {
+          localStorage.setItem(storageKey, event.currentTarget.open ? '1' : '0');
+        } catch {
+          // ignore
+        }
+      }}
+    >
+      <summary className="settings-section-title">{title}</summary>
+      <div className="settings-section-body">{children}</div>
+    </details>
+  );
+}
 
 function updateText(status: UpdateStatus | null): string {
   if (!status) return '尚未检查';
@@ -143,7 +178,10 @@ export function SettingsPanel() {
       const match =
         !query || (section.textContent || '').toLowerCase().includes(query);
       section.style.display = match ? '' : 'none';
-      if (match) count += 1;
+      if (match) {
+        count += 1;
+        if (query) (section as HTMLDetailsElement).open = true;
+      }
     }
     setVisibleSections(count);
   }, [settingsQuery, draft]);
@@ -742,9 +780,12 @@ export function SettingsPanel() {
       document.querySelectorAll<HTMLElement>('.settings-section')
     );
     const target = sections.find((section) =>
-      (section.querySelector('.settings-label')?.textContent || '').includes(label)
+      (section.querySelector('.settings-section-title')?.textContent || '').includes(label)
     );
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (target) {
+      (target as HTMLDetailsElement).open = true;
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   useEffect(() => {
@@ -814,8 +855,7 @@ export function SettingsPanel() {
         )}
       </div>
 
-      <div className="settings-section">
-        <div className="settings-label">通用</div>
+      <SettingsSection title="通用" defaultOpen={true}>
         <div className="settings-label">主题</div>
         <select
           className="settings-input"
@@ -858,17 +898,20 @@ export function SettingsPanel() {
           onChange={(event) => updateGeneral({ fontScale: Number(event.target.value) })}
         />
 
-        <div className="settings-label">侧栏宽度</div>
-        <select
+        <div className="settings-label">侧栏宽度（px，也可直接拖动侧栏边缘）</div>
+        <input
           className="settings-input"
+          type="number"
+          min={260}
+          max={560}
+          step={10}
           value={draft.general.sidebarWidth || 320}
-          onChange={(event) => updateGeneral({ sidebarWidth: Number(event.target.value) })}
-        >
-          <option value={280}>窄（280px）</option>
-          <option value={320}>标准（320px）</option>
-          <option value={400}>宽（400px）</option>
-          <option value={480}>超宽（480px）</option>
-        </select>
+          onChange={(event) =>
+            updateGeneral({
+              sidebarWidth: Math.min(560, Math.max(260, Number(event.target.value) || 320))
+            })
+          }
+        />
 
         <div className="settings-label">后台标签休眠（分钟）</div>
         <input
@@ -882,10 +925,9 @@ export function SettingsPanel() {
           }
         />
         <div className="settings-hint">1–120 分钟；正在出声的标签不会被回收。</div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">AI 平台</div>
+      <SettingsSection title="AI 平台" defaultOpen={true}>
         <div className="settings-inline">
           <select
             className="settings-input"
@@ -1107,10 +1149,9 @@ export function SettingsPanel() {
           {testing ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />} 测试连接
         </button>
         <div className="settings-hint">关闭流式后会等完整响应再显示。</div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">语音识别（ASR）</div>
+      <SettingsSection title="语音识别（ASR）" defaultOpen={false}>
         <div className="settings-inline">
           <select
             className="settings-input"
@@ -1416,10 +1457,9 @@ export function SettingsPanel() {
         <div className="settings-hint">
           SenseVoice 只吃 M4A；带时间戳的中文模型通常只吃 WAV。格式选「自动」会按模型判断。
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">提示词模板</div>
+      <SettingsSection title="提示词模板" defaultOpen={false}>
         <div className="settings-inline">
           <select
             className="settings-input"
@@ -1498,10 +1538,9 @@ export function SettingsPanel() {
             setDraft({ ...draft, prompt: { ...draft.prompt, chapters: event.target.value } })
           }
         />
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">联网检索</div>
+      <SettingsSection title="联网检索" defaultOpen={false}>
         <label className="settings-check">
           <input
             type="checkbox"
@@ -1780,10 +1819,9 @@ export function SettingsPanel() {
         <div className="settings-hint">
           Exa / AnySearch / SearXNG 免 Key；DeepSeek 搜索可复用 AI 平台 Key。测试使用已保存配置。
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">字幕校对与术语表</div>
+      <SettingsSection title="字幕校对与术语表" defaultOpen={false}>
         <label className="settings-check">
           <input
             type="checkbox"
@@ -1944,10 +1982,9 @@ export function SettingsPanel() {
         <div className="settings-hint">
           规则按组顺序执行，术语替换在规则之后；非法正则自动跳过。
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">插件桥（外部浏览器推送）</div>
+      <SettingsSection title="插件桥（外部浏览器推送）" defaultOpen={false}>
         <label className="settings-check">
           <input
             type="checkbox"
@@ -1995,10 +2032,9 @@ export function SettingsPanel() {
           {' · '}
           POST /v1/ingest
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">导出默认值</div>
+      <SettingsSection title="导出默认值" defaultOpen={false}>
         <div className="settings-label">默认格式</div>
         <select
           className="settings-input"
@@ -2091,10 +2127,9 @@ export function SettingsPanel() {
           }
         />
         <div className="settings-hint">可用变量：{'{title}'}、{'{bvid}'}、{'{lang}'}、{'{date}'}。</div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">版本更新</div>
+      <SettingsSection title="版本更新" defaultOpen={false}>
         <div className="settings-row">
           <span>当前版本</span>
           <code>v{version}</code>
@@ -2163,10 +2198,9 @@ export function SettingsPanel() {
         <div className="settings-hint">
           自动检查与更新源修改后下次启动生效；未签名时 SmartScreen 仍会提示。
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">MCP 服务</div>
+      <SettingsSection title="MCP 服务" defaultOpen={false}>
         <label className="settings-check">
           <input
             type="checkbox"
@@ -2274,10 +2308,9 @@ export function SettingsPanel() {
         <div className="settings-hint">
           点击工具名用上方参数调用。当前是手动调用；自动接入 AI 工具循环待补。
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">Skills</div>
+      <SettingsSection title="Skills" defaultOpen={false}>
         <label className="settings-check">
           <input
             type="checkbox"
@@ -2331,10 +2364,9 @@ export function SettingsPanel() {
           </div>
         ))}
         <div className="settings-hint">启用后会注入总结和对话的系统提示词。</div>
-      </div>
+      </SettingsSection>
 
-      <div className="settings-section">
-        <div className="settings-label">数据与备份</div>
+      <SettingsSection title="数据与备份" defaultOpen={false}>
         <div className="settings-row">
           <span>数据目录</span>
         </div>
@@ -2359,7 +2391,7 @@ export function SettingsPanel() {
         <div className="settings-hint">
           导出文件包含 API Key 与桥 Token；日志在数据目录的 startup.log / fatal.log。
         </div>
-      </div>
+      </SettingsSection>
 
       {(message || error) && (
         <div

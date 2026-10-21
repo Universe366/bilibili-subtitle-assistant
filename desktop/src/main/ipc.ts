@@ -76,6 +76,7 @@ import {
   isMaskedSecret,
   loadSettings,
   saveSettings,
+  setSidebarWidth,
   settingsSnapshot,
   testPlatform
 } from './settings';
@@ -431,6 +432,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         if (saved) target = { ...target, apiKey: saved.apiKey };
       }
       return { ok: true, data: await testPlatform(target) };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  ipcMain.handle('settings:sidebar-width', (_event, width: number) => {
+    try {
+      setSidebarWidth(Number(width));
+      const snapshot = settingsSnapshot();
+      send('settings:changed', snapshot);
+      return { ok: true, data: snapshot };
     } catch (error) {
       return failure(error);
     }
