@@ -250,15 +250,92 @@ export async function restoreFromHistory(video, opts = {}) {
 // 字幕抓取
 // ---------------------------------------------------------------------------
 
-export async function harvest(opts = {}) {
-  const s = store.get().settings;
+// 把当前字幕翻译成目标语言。按批提交，保留每行时间轴；任何一批失败则不写回，
+// 避免出现“一半原文一半译文”的状态。
+export async function translateSubtitles(targetLang, opts = {}) {
+  const st = store.get();
+  const lines = st.subtitles || [];
+  if (!lines.length) throw new Error('当前没有字幕可翻译');
+  const target = String(targetLang || '').trim();
+  if (!target) throw new Error('请选择目标语言');
+  const task = jobs.beginTask('翻译字幕', { detail: `目标语言：${target}` });
+  const next = lines.map((l) => ({ ...l }));
+  try {
+    const BATCH = 30;
+    for (let start = 0; start < lines.length; start += BATCH) {
+      const slice = lines.slice(start, start + BATCH);
+      task.set(Math.round((start / lines.length) * 100), `翻译第 ${start + 1}-${Math.min(lines.length, start + BATCH)} 句`);
+      const payload = slice.map((l, i) => ({ i: start + i, text: String(l.text || '') }));
+      const res = await call(
+        'ai.chat',
+        {
+          messages: [
+            {
+              role: 'system',
+              content:
+                `你是字幕翻译器。把用户给出的 JSON 数组中每条的 text 翻译成「${target}」，` +
+                '保留 i 字段、不要改时间轴。只输出 JSON 数组，格式为 [{"i":0,"text":"译文"}]，不要解释、不要 Markdown。'
+            },
+            { role: 'user', content: JSON.stringify(payload) }
+          ],
+          temperature: 0.1,
+          maxTokens: 6000
+        },
+        { timeoutMs: 300000 }
+      );
+      const text = String((res && res.text) || '');
+      const arr = extractJsonArray(text);
+      if (!Array.isArray(arr) || !arr.length) throw new Error('AI 没有返回可解析的翻译结果');
+      for (const item of arr) {
+        const idx = Number(item && item.i);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= next.length) continue;
+        const value = item && item.text;
+        if (typeof value === 'string' && value.trim()) next[idx].text = value.trim();
+      }
+    }
+    const translated = next.filter((l, i) => l.text !== lines[i].text).length;
+    const video = {
+      ...(st.video || {}),
+      subtitleMeta: {
+        ...((st.video && st.video.subtitleMeta) || {}),
+        translatedTo: target
+      }
+    };
+    store.set({
+      subtitles: next,
+      video,
+      subtitlesRevision: (store.get().subtitlesRevision || 0) + 1
+    });
+    await syncOverlayLines().catch(() => {});
+    await saveHistory().catch(() => {});
+    toast({ title: `已翻译 ${translated} 句`, detail: `目标语言：${target}` }, 'ok');
+    return next;
+  } finally {
+    task.end();
+    renderPanels();
+  }
+}
+
+function extractJsonArray(text) {
+  const raw = String(text || '').trim();
+  const start = raw.indexOf('[');
+  const end = raw.lastIndexOf(']');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function harvest(opts = {}) {  const s = store.get().settings;
   const video = store.get().video || (await loadVideo());
   if (!video) return null;
   const task = jobs.beginTask(TASK_LABEL.harvest, { detail: '选择候选字幕轨' });
   try {
     const result = await harvestSubtitles(video, s, {
       onProgress: (p) => task.set(p.percent, p.detail)
-    });
+    }, { lang: opts.lang || '' });
     const attempts = result.attempts || [];
     const diagnostic = result.diagnostic || null;
     if (!result.ok) {

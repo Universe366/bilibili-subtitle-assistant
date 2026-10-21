@@ -3,7 +3,7 @@
 
 import { h, clear, button, fmtTime, toast, copyText, escapeRegExp, debounce, setBoolAttr } from './dom.js';
 import { store } from './store.js';
-import { app, clearSubtitles, updateLine, exportSubtitles, copyAllSubtitles, applyCorrection, applyAllCorrections, generateChapters, runQualityCheck, transcribe } from './context.js';
+import { app, clearSubtitles, updateLine, exportSubtitles, copyAllSubtitles, applyCorrection, applyAllCorrections, generateChapters, runQualityCheck, transcribe, harvest, translateSubtitles } from './context.js';
 import { call } from './bridge.js';
 import { lineStats, overallStats, langLabel } from './subtitles.js';
 import { FORMATTERS } from './exporter.js';
@@ -455,6 +455,40 @@ function renderToolbar() {
     bar.appendChild(button('清除', () => store.setUi({ search: '' }), { small: true }));
   }
 
+  // 多语言字幕轨切换（同一视频同时有中/英/日等）
+  const trackMap = new Map();
+  const addTrack = (t) => {
+    if (!t || !t.lan) return;
+    const key = String(t.lan);
+    if (!trackMap.has(key)) trackMap.set(key, { lan: key, label: t.label || langLabel(key), isAi: !!t.isAi });
+  };
+  for (const t of (st.video && st.video.subtitleTracks) || []) addTrack(t);
+  for (const t of (st.subtitleDiagnostic && st.subtitleDiagnostic.pageTracks) || []) addTrack(t);
+  for (const t of (st.subtitleDiagnostic && st.subtitleDiagnostic.apiTracks) || []) addTrack(t);
+  const currentLang = (st.video && st.video.subtitleMeta && st.video.subtitleMeta.lang) || '';
+  if (trackMap.size > 1 || (currentLang && trackMap.size === 1)) {
+    const select = h('select', {
+      class: 'input',
+      title: '切换字幕语言',
+      style: { maxWidth: '150px', flex: '0 0 auto' },
+      onchange: async (e) => {
+        const lang = e.target.value;
+        if (!lang) return;
+        const ok = await harvest({ lang });
+        if (!ok) renderToolbar();
+      }
+    });
+    if (currentLang && !trackMap.has(currentLang)) {
+      trackMap.set(currentLang, { lan: currentLang, label: langLabel(currentLang), isAi: false });
+    }
+    for (const t of trackMap.values()) {
+      const opt = h('option', { value: t.lan, text: `${t.label}${t.isAi ? '（AI）' : ''}` });
+      select.appendChild(opt);
+    }
+    select.value = currentLang || Array.from(trackMap.keys())[0];
+    bar.appendChild(select);
+  }
+
   bar.appendChild(
     button(`${st.followPaused ? '恢复' : '暂停'}跟随`, () => {
       state.followPaused = !state.followPaused;
@@ -465,11 +499,15 @@ function renderToolbar() {
   // 次要操作收进「⋯」：复制/导出/统计/章节/自检 都是低频动作，
   // 平铺出来会让工具栏变得很长。
   const hasLinesNow = (store.get().subtitles || []).length > 0;
+  if (hasLinesNow) {
+    bar.appendChild(button('译', () => translateDialog(), { small: true, title: '用 AI 翻译当前字幕' }));
+  }
   bar.appendChild(
     popoverMenu(
       [
         { icon: '📋', label: '复制全部字幕', onClick: () => copyAllSubtitles(), disabled: !hasLinesNow },
         { icon: '⬇️', label: '导出字幕', onClick: () => exportDialog(), disabled: !hasLinesNow },
+        { icon: '🌐', label: '翻译字幕…', title: '用 AI 把当前字幕翻译成指定语言', onClick: () => translateDialog(), disabled: !hasLinesNow },
         { icon: '📊', label: '字幕统计', onClick: () => statsDialog(), disabled: !hasLinesNow },
         { divider: true },
         { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段，可点击跳转', onClick: () => generateChapters(), disabled: !hasLinesNow },
@@ -537,7 +575,9 @@ function renderToolbar() {
     bar.appendChild(
       h('span', {
         class: 'pill pill-brand',
-        text: `${m.from === 'asr' ? '语音转录' : langLabel(m.lang)}${m.cached ? ' · 缓存' : ''}`
+        text: `${m.from === 'asr' ? '语音转录' : langLabel(m.lang)}${m.cached ? ' · 缓存' : ''}${
+          m.translatedTo ? ` · 已译为 ${m.translatedTo}` : ''
+        }`
       })
     );
   }
@@ -786,8 +826,57 @@ export function exportDialog() {
   ]);
 }
 
-export function statsDialog() {
-  const st = store.get();
+function translateDialog() {
+  const body = h('div');
+  const langs = [
+    ['中文（简体）', 'zh-CN'],
+    ['中文（繁體）', 'zh-TW'],
+    ['English', 'en'],
+    ['日本語', 'ja'],
+    ['한국어', 'ko'],
+    ['Español', 'es'],
+    ['Français', 'fr'],
+    ['Deutsch', 'de'],
+    ['Русский', 'ru'],
+    ['Português', 'pt']
+  ];
+  const select = h('select', { class: 'input', style: { width: '100%' } });
+  for (const [label, value] of langs) select.appendChild(h('option', { value: label, text: label }));
+  const custom = h('input', {
+    class: 'input',
+    type: 'text',
+    placeholder: '或输入自定义目标语言，例如：粤语 / 文言文',
+    style: { width: '100%', marginTop: '6px' }
+  });
+  body.appendChild(h('div', { class: 'section-title', text: '目标语言' }));
+  body.appendChild(select);
+  body.appendChild(custom);
+  body.appendChild(
+    h('div', {
+      class: 'note',
+      text: 'AI 只翻译文本，保留原字幕时间轴；会覆盖当前字幕内容（原句仍保存在每一行的 original 字段）。'
+    })
+  );
+  app.overlays.translate = openOverlay('翻译字幕', body, [
+    { label: '取消', onClick: () => closeOverlays() },
+    {
+      label: '开始翻译',
+      primary: true,
+      onClick: () => {
+        const target = String(custom.value || '').trim() || select.value;
+        closeOverlays();
+        translateSubtitles(target).catch((err) => {
+          toast(
+            { title: '翻译失败', detail: (err && err.payload && err.payload.detail) || String((err && err.message) || err) },
+            'warn'
+          );
+        });
+      }
+    }
+  ]);
+}
+
+export function statsDialog() {  const st = store.get();
   const s = overallStats(st.subtitles || []);
   const body = h('div');
   const rows = [

@@ -337,7 +337,7 @@ function expectFor(video) {
 }
 
 // 返回 { ok, lines, meta, attempts, diagnostic }
-export async function harvestSubtitles(video, settings, hooks = {}) {
+export async function harvestSubtitles(video, settings, hooks = {}, opts = {}) {
   const { onProgress, signal } = hooks;
   const attempts = [];
   const diagnostic = {
@@ -513,7 +513,20 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
     const key = t.lan || t.id || t.url;
     if (!byLang.has(key)) byLang.set(key, t);
   }
-  const cands = sortCandidates(Array.from(byLang.values()));
+  const candsAll = sortCandidates(Array.from(byLang.values()));
+  const wantLang = String((opts && opts.lang) || '').trim();
+  const cands = wantLang ? candsAll.filter((c) => String(c.lan) === wantLang) : candsAll;
+  if (wantLang && !cands.length) {
+    return {
+      ok: false,
+      attempts,
+      diagnostic,
+      reason: {
+        title: '没有找到所选语言的字幕',
+        detail: `当前可用：${candsAll.map((c) => langLabel(c.lan)).join('、') || '无'}`
+      }
+    };
+  }
   if (!cands.length) {
     return {
       ok: false,
