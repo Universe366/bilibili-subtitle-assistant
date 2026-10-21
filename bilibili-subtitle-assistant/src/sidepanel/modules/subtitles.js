@@ -566,7 +566,10 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
       if (settings.behavior?.useLocalCache !== false) {
         try {
           const cache = await call('subtitle.cache.get', cacheParams);
-          if (cache.hit && cache.row && Array.isArray(cache.row.payload?.lines) && cache.row.payload.lines.length) {
+          const cacheSig = cache.row && cache.row.meta && cache.row.meta.signature;
+          // 旧缓存没有签名（或签名不是当前视频）一律不用：
+          // 否则一次错误写入会“稳定地”反复返回别的视频字幕。
+          if (cache.hit && cacheSig === video.signature && cache.row && Array.isArray(cache.row.payload?.lines) && cache.row.payload.lines.length) {
             const cached = cache.row.payload.lines.map((l) => ({ from: l.from, to: l.to, text: l.text }));
             // 缓存也要校验：否则一旦某次把错误内容写进缓存，
             // 之后每次都会「稳定地」返回错内容（用户报的
@@ -643,7 +646,12 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
           await call('subtitle.cache.put', {
             ...cacheParams,
             payload: { lines },
-            meta: { langLabel: langLabel(cand.lan), count: lines.length, duration: video.duration }
+            meta: {
+              langLabel: langLabel(cand.lan),
+              count: lines.length,
+              duration: video.duration,
+              signature: video.signature
+            }
           });
         } catch (err) {
           /* ignore */

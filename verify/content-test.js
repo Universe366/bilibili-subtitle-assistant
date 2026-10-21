@@ -171,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.8', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.9', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.14.8' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.14.9' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
@@ -503,7 +503,11 @@ async function main() {
     check('freshSniffed 按签名过滤', /\.filter\(\(s\) => s && s\.sig && s\.sig === curSig\)/.test(bridgeSrc), '');
     check('等待新字幕用 freshSniffed（不会被旧残留误判）', /if \(freshSniffed\(\)\.length\) break;/.test(bridgeSrc), '');
     // 关键：候选取的是过滤后的结果，而不是整个 Map
-    check('候选取过滤后的 sniffed', /const sniffedAll = Array\.from\(subtitleSniff\.items\.values\(\)\);\s*\n\s*const sniffed = freshSniffed\(\);/.test(bridgeSrc), '');
+    check(
+      '候选取过滤后的 sniffed',
+      /const sniffedAll = Array\.from\(subtitleSniff\.items\.values\(\)\);[\s\S]{0,600}const sniffed = freshSniff\.filter/.test(bridgeSrc),
+      ''
+    );
     check('对外报告残留条数以便诊断', /staleSniffCount/.test(bridgeSrc), '');
     check('没有签名的旧条目一律排除', /s && s\.sig && s\.sig === curSig/.test(bridgeSrc), '');
 
@@ -538,6 +542,12 @@ async function main() {
     );
     check('采集开始/结束时各取一次签名', /const sigAtStart = currentSignature\(\);/.test(bridgeSrc) && /const sigAtEnd = currentSignature\(\);/.test(bridgeSrc), '');
     check('签名不一致时整批作废', /sigAtStart !== sigAtEnd[\s\S]{0,500}signatureChanged: true/.test(bridgeSrc), '');
+    check(
+      '网络嗅探正文只保留当前轨路径',
+      /const knownPaths = new Set\(\)/.test(bridgeSrc) &&
+        /knownPaths\.has\(subtitlePathKey\(s\.url\)\)/.test(bridgeSrc),
+      ''
+    );
     check('对外报告 foreignTracks 供诊断', /foreignTracks: foreign/.test(bridgeSrc), '');
 
     // ---- 身份绑定：「标题对、内容错」的根治 ----

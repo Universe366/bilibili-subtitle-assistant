@@ -1079,7 +1079,18 @@
     // 上一个视频的字幕若混进来，就会显示成「与当前视频不一样的字幕」。
     // 没有签名（老条目）的一律排除 —— 宁可少一条候选，也不能给错内容。
     const sniffedAll = Array.from(subtitleSniff.items.values());
-    const sniffed = freshSniffed();
+    // 当前视频的已知字幕地址（API / 播放器 / 页面状态）。
+    // 网络嗅探只保留路径能对上的正文：播放器可能在上一个视频的请求返回后
+    // 才被卸载，单看“请求时签名”仍可能把旧正文贴成当前视频。
+    const knownPaths = new Set();
+    for (const list of [groups.player, groups.playerV2, groups.wbiV2, groups.initialState]) {
+      for (const t of list || []) if (t && t.url) knownPaths.add(subtitlePathKey(t.url));
+    }
+    const freshSniff = freshSniffed();
+    const sniffed = freshSniff.filter((s) => !knownPaths.size || knownPaths.has(subtitlePathKey(s.url)));
+    for (const s of freshSniff) {
+      if (!sniffed.includes(s)) foreign.push({ from: 'network-sniff', lan: '', url: String(s.url || '').slice(0, 120) });
+    }
     const staleSniffed = sniffedAll.length - sniffed.length;
     if (sniffed.length) {
       groups.sniffed = sniffed.map((s, i) => ({
@@ -2233,7 +2244,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '2.14.8',
+    version: '2.14.9',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
