@@ -1,7 +1,7 @@
 import { session } from 'electron';
 import type { AiPlatform, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
-import { buildSearchQuery, searchWeb } from './search';
+import { buildSearchQuery, rankReferences, searchWeb } from './search';
 import { glossaryTerms } from './correction';
 import { skillPrompt } from './skills';
 
@@ -83,7 +83,8 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
   if (settings.search.enabled) {
     options.onStatus?.('正在联网检索参考资料…');
     try {
-      const references = await searchWeb(settings, buildSearchQuery(info.title, info.owner));
+      const searchQuery = buildSearchQuery(info.title, info.owner);
+      const references = rankReferences(searchQuery, await searchWeb(settings, searchQuery));
       if (references.length) {
         let budget = 6000;
         const rows: string[] = [];

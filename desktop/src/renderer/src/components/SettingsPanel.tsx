@@ -1031,6 +1031,15 @@ export function SettingsPanel() {
           包含网页正文（Tavily）
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.verify}
+            onChange={(event) => updateSearch({ verify: event.target.checked })}
+          />
+          AI 优化时联网核对改动（较慢，消耗检索与 AI 额度）
+        </label>
+
         <div className="settings-inline">
           <input
             className="settings-input"

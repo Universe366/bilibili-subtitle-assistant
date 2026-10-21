@@ -1,7 +1,13 @@
 import { session } from 'electron';
-import type { AppSettings, OptimizeSuggestion, SubtitleLine } from '../shared/types';
+import type {
+  AppSettings,
+  OptimizeSuggestion,
+  SubtitleLine,
+  WebReference
+} from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
 import { glossaryTerms } from './correction';
+import { rankReferences, searchWeb } from './search';
 
 const MAX_BATCH_LINES = 30;
 const MAX_BATCH_CHARS = 5000;
@@ -63,6 +69,115 @@ function parseSuggestions(raw: string, batch: SubtitleLine[]): string[] {
     .map((line) => line.replace(/^\s*\d+\s*[.、:：)\]]\s*/, '').trim())
     .filter(Boolean);
   return batch.map((line, index) => rows[index] || line.text);
+}
+
+async function verifySuggestions(
+  settings: AppSettings,
+  platform: ReturnType<typeof activePlatform>,
+  suggestions: OptimizeSuggestion[],
+  signal?: AbortSignal
+): Promise<void> {
+  const targets = suggestions.slice(0, 6);
+  const rows: Array<{ item: OptimizeSuggestion; refs: WebReference[] }> = [];
+
+  for (const item of targets) {
+    if (signal?.aborted) return;
+    try {
+      const query = item.suggestion.slice(0, 80);
+      const found = await searchWeb(
+        { ...settings, search: { ...settings.search, enabled: true } },
+        query
+      );
+      rows.push({ item, refs: rankReferences(query, found).slice(0, 2) });
+    } catch {
+      rows.push({ item, refs: [] });
+    }
+  }
+
+  const withEvidence = rows.filter((row) => row.refs.length);
+  if (!withEvidence.length) {
+    suggestions.forEach((item) => {
+      if (!item.verdict) item.verdict = 'unknown';
+    });
+    return;
+  }
+
+  const payload = withEvidence.map((row) => ({
+    index: row.item.index,
+    original: row.item.original,
+    suggestion: row.item.suggestion,
+    evidence: row.refs.map((ref) => ({
+      title: ref.title,
+      url: ref.url,
+      snippet: ref.snippet.slice(0, 600)
+    }))
+  }));
+
+  try {
+    const base = platform.baseUrl.replace(/\/+$/, '');
+    const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${platform.apiKey.trim()}`
+      },
+      body: JSON.stringify({
+        model: platform.model.trim(),
+        stream: false,
+        temperature: 0,
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'system',
+            content:
+              '你是事实核查员。对每条字幕修改判断网络证据：support=支持修改，refute=反对修改，unknown=证据不足或无关。' +
+              '必须从 evidence 中逐字引用 4-50 字作为 quote；找不到就输出 unknown。' +
+              '只输出 JSON 数组：[{"index":0,"verdict":"support","quote":"证据原文"}]，不要解释。'
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(payload)
+          }
+        ]
+      }),
+      signal
+    });
+    if (!response.ok) throw new Error(`核对请求失败 HTTP ${response.status}`);
+    const json: any = await response.json();
+    const content = String(json?.choices?.[0]?.message?.content || '');
+    const start = content.indexOf('[');
+    const end = content.lastIndexOf(']');
+    const parsed = start >= 0 && end > start ? JSON.parse(content.slice(start, end + 1)) : [];
+    const byIndex = new Map<number, any>();
+    if (Array.isArray(parsed)) {
+      for (const row of parsed) {
+        const index = Number(row?.index);
+        if (Number.isFinite(index)) byIndex.set(index, row);
+      }
+    }
+
+    for (const row of rows) {
+      const verdict = byIndex.get(row.item.index);
+      if (!verdict || !['support', 'refute', 'unknown'].includes(verdict.verdict)) {
+        row.item.verdict = 'unknown';
+        continue;
+      }
+      const quote = String(verdict.quote || '').trim();
+      const evidenceText = row.refs
+        .map((ref) => `${ref.title}\n${ref.snippet}`)
+        .join('\n');
+      if (verdict.verdict !== 'unknown' && (!quote || !evidenceText.includes(quote))) {
+        row.item.verdict = 'unknown';
+        continue;
+      }
+      row.item.verdict = verdict.verdict;
+      row.item.evidence = quote.slice(0, 80);
+    }
+  } catch {
+    rows.forEach((row) => {
+      row.item.verdict = 'unknown';
+    });
+  }
 }
 
 export async function optimizeLines(
@@ -160,6 +275,11 @@ export async function optimizeLines(
     }
 
     offset += batch.length;
+  }
+
+  if (settings.search.enabled && settings.search.verify && suggestions.length) {
+    onProgress(95, '联网核对改动…');
+    await verifySuggestions(settings, platform, suggestions, signal);
   }
 
   onProgress(100, suggestions.length ? `发现 ${suggestions.length} 处改动` : '没有发现需要修改的地方');

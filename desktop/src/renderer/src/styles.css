@@ -1392,6 +1392,31 @@ button:disabled {
   text-decoration: line-through;
 }
 
+.opt-verdict {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.opt-verdict.support {
+  color: #2e7d32;
+}
+
+.opt-verdict.refute {
+  color: #d9534f;
+}
+
+.opt-evidence {
+  margin-top: 2px;
+  font-size: 9.5px;
+  color: var(--faint);
+  line-height: 1.4;
+}
+
 .opt-suggestion {
   color: var(--text);
   font-size: 11.5px;

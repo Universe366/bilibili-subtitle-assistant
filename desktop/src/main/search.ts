@@ -279,6 +279,41 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
   throw new Error(`检索失败：${(lastError as Error)?.message || '没有可用结果'}`);
 }
 
+function queryTerms(query: string): string[] {
+  const text = String(query || '').toLowerCase();
+  const terms = new Set<string>();
+  for (const word of text.match(/[a-z0-9][a-z0-9._-]{2,}/g) || []) terms.add(word);
+  const cjk = text.match(/[㐀-鿿]+/g) || [];
+  for (const run of cjk) {
+    if (run.length === 1) terms.add(run);
+    for (let index = 0; index < run.length - 1; index += 1) {
+      terms.add(run.slice(index, index + 2));
+    }
+  }
+  return [...terms];
+}
+
+export function rankReferences(query: string, references: WebReference[]): WebReference[] {
+  const terms = queryTerms(query);
+  if (!terms.length) return references;
+  const scored = references.map((reference, index) => {
+    const title = reference.title.toLowerCase();
+    const snippet = reference.snippet.toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      if (title.includes(term)) score += 3;
+      if (snippet.includes(term)) score += 1;
+    }
+    if (title.includes(query.toLowerCase())) score += 5;
+    return { reference, score, index };
+  });
+  const positive = scored.filter((item) => item.score > 0);
+  if (!positive.length) return references;
+  return positive
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((item) => item.reference);
+}
+
 export async function testSearch(
   settings: AppSettings,
   query: string

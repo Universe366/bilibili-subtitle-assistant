@@ -668,7 +668,19 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
                 />
                 <div className="opt-text">
                   <div className="opt-original">{item.original}</div>
-                  <div className="opt-suggestion">{item.suggestion}</div>
+                  <div className="opt-suggestion">
+                    {item.suggestion}
+                    {item.verdict && (
+                      <span className={`opt-verdict ${item.verdict}`}>
+                        {item.verdict === 'support'
+                          ? '证据支持'
+                          : item.verdict === 'refute'
+                            ? '证据反对'
+                            : '未核实'}
+                      </span>
+                    )}
+                  </div>
+                  {item.evidence && <div className="opt-evidence">证据：{item.evidence}</div>}
                 </div>
               </label>
             ))}

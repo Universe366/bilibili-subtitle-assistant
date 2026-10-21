@@ -26,6 +26,7 @@ import { generateChapters } from './chapters';
 import { callMcpTool, listMcpTools } from './mcp';
 import { skillPrompt } from './skills';
 import { chat } from './chat';
+import { rankReferences } from './search';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -249,6 +250,17 @@ function createWindow(): void {
           console.warn('[mcp-chat-test] failed', (error as Error).message);
         }
       }, 5000);
+    }
+
+    if (process.env.BSUB_RANK_TEST === '1') {
+      setTimeout(() => {
+        const ranked = rankReferences('OpenAI GPT-5', [
+          { title: '今日天气', url: 'https://a', snippet: '晴朗' },
+          { title: 'OpenAI 发布 GPT-5', url: 'https://b', snippet: '新模型发布' },
+          { title: 'GPT-5 评测', url: 'https://c', snippet: 'OpenAI 新模型实测' }
+        ]);
+        console.log('[rank-test]', JSON.stringify(ranked.map((item) => item.title)));
+      }, 3000);
     }
 
     if (process.env.BSUB_MCP_SSE_TEST === '1') {

@@ -205,7 +205,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     apiKey: '',
     maxResults: 5,
     includeContent: true,
-    timeRange: 'any'
+    timeRange: 'any',
+    verify: false
   },
   correction: {
     enabled: true,
@@ -422,6 +423,7 @@ function normalize(raw: any): AppSettings {
       base.search.includeContent = raw.search.includeContent !== false;
       const ranges = ['any', 'year', 'month', 'week'];
       base.search.timeRange = ranges.includes(raw.search.timeRange) ? raw.search.timeRange : 'any';
+      base.search.verify = raw.search.verify === true;
     }
 
     if (raw.correction && typeof raw.correction === 'object') {

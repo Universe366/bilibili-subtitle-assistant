@@ -357,6 +357,7 @@ export interface AppSettings {
     maxResults: number;
     includeContent: boolean;
     timeRange: SearchTimeRange;
+    verify: boolean;
   };
   correction: {
     enabled: boolean;
@@ -524,6 +525,8 @@ export interface OptimizeSuggestion {
   index: number;
   original: string;
   suggestion: string;
+  verdict?: 'support' | 'refute' | 'unknown';
+  evidence?: string;
 }
 
 export interface OptimizeProgressEvent {
