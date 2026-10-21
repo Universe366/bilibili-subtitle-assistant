@@ -1,6 +1,6 @@
 {
   "name": "bsub-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "B站字幕助手桌面端",
   "author": "bsub",
@@ -14,7 +14,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "dist": "npm run build && electron-builder --win",
-    "dist:dir": "npm run build && electron-builder --win --dir"
+    "dist:dir": "npm run build && electron-builder --win --dir",
+    "release:notes": "node scripts/release.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -68,7 +69,7 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "B站字幕助手-${version}-setup.${ext}",
+      "artifactName": "bsub-desktop-setup-${version}.${ext}",
       "shortcutName": "B站字幕助手"
     },
     "asar": true,

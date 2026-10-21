@@ -1,6 +1,6 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **M5：可打包（0.1.0）**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.2.0**。
 
 ## 运行
 
@@ -66,10 +66,27 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/B站字幕助手-0.1.0-setup.exe` | NSIS 安装包，可选安装目录 |
-| `release/B站字幕助手-0.1.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.2.0.exe` | NSIS 安装包，可选安装目录 |
+| `release/B站字幕助手-0.2.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/latest.yml` | 自动更新元数据 |
 
-未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。自动更新尚未接入。
+未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。自动更新尚未接入时请手动替换。
+
+### 发布
+
+1. 更新 `CHANGELOG.md` 和版本号（`npm version 0.2.1 --no-git-tag-version`）。
+2. `npm run dist` 本地确认能构建。
+3. `npm run release:notes` 生成发布说明。
+4. 打 tag 并推送：
+
+```bash
+git tag desktop-v0.2.0
+git push origin desktop-v0.2.0
+```
+
+GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner 上重新构建，
+并创建 Release，资产包含 setup / `latest.yml` / blockmap / 绿色 zip。
+自动更新读取的是**带 `latest.yml` 的最新 Release**。
 
 ## 数据
 
