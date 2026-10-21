@@ -144,6 +144,14 @@ button:disabled {
   background: var(--surface);
 }
 
+.tab.is-suspended .tab-title {
+  opacity: 0.55;
+}
+
+.tab.is-suspended .tab-icon {
+  color: var(--faint);
+}
+
 .tab-icon {
   display: grid;
   place-items: center;

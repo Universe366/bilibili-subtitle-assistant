@@ -47,8 +47,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('tab:close', (_event, id: string) => {
     tabs.close(id);
   });
-  ipcMain.handle('tab:activate', (_event, id: string) => {
-    tabs.activate(id);
+  ipcMain.handle('tab:activate', async (_event, id: string) => {
+    await tabs.activate(id);
   });
   ipcMain.handle('tab:navigate', (_event, url: string) => {
     tabs.navigate(url);

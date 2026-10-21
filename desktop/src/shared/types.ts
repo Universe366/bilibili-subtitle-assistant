@@ -7,6 +7,7 @@ export interface TabInfo {
   canGoBack: boolean;
   canGoForward: boolean;
   favicon?: string;
+  suspended: boolean;
 }
 
 export interface LayoutRect {

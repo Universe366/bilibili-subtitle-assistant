@@ -137,6 +137,43 @@ function createWindow(): void {
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
 
+    if (process.env.BSUB_TAB_TEST === '1') {
+      setTimeout(async () => {
+        if (!tabManager) return;
+        await tabManager.create('https://www.bilibili.com/');
+        await tabManager.create('https://www.bilibili.com/video/BV1xrnz6gEVD');
+        setTimeout(() => {
+          const list = tabManager?.list() || [];
+          const total = app
+            .getAppMetrics()
+            .reduce(
+              (sum, metric) => sum + Math.round(((metric.memory && metric.memory.workingSetSize) || 0) / 1024),
+              0
+            );
+          console.log(
+            '[tabs-test]',
+            JSON.stringify(list.map((tab) => ({ title: tab.title, suspended: tab.suspended, active: tab.active }))),
+            `memMB=${total}`
+          );
+
+          const target = list.find((tab) => tab.suspended);
+          if (target && tabManager) {
+            void tabManager.activate(target.id).then(() => {
+              setTimeout(() => {
+                const after = tabManager?.list() || [];
+                console.log(
+                  '[tabs-test] resumed',
+                  JSON.stringify(
+                    after.map((tab) => ({ title: tab.title, suspended: tab.suspended, active: tab.active }))
+                  )
+                );
+              }, 4000);
+            });
+          }
+        }, 10000);
+      }, 4000);
+    }
+
     if (process.env.BSUB_M4_TEST === '1') {
       setTimeout(async () => {
         const wc = tabManager?.activeWebContents();
