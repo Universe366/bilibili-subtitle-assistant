@@ -171,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.6', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.7', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.14.6' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.14.7' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
@@ -528,9 +528,14 @@ async function main() {
     // 而 B 站是单页应用，切视频的瞬间实例还没换过来。
     check('有 subtitleOwnerOf 从 URL 抽归属', /function subtitleOwnerOf\(/.test(bridgeSrc), '');
     check('有 trackBelongsToVideo 归属判断', /function trackBelongsToVideo\(/.test(bridgeSrc), '');
-    check('播放器实例的轨也过归属校验', /const list = keepOwn\(raw, 'player\.getSubtitle'\)/.test(bridgeSrc), '');
-    check('__INITIAL_STATE__ 的轨也过归属校验', /keepOwn\(raw, '__INITIAL_STATE__'\)/.test(bridgeSrc), '');
-    check('抽不到标识时放行（避免误杀）', /if \(own\.bvid && wantBvid && own\.bvid !== wantBvid\) return false;/.test(bridgeSrc), '');
+    check('播放器实例的轨也过归属校验', /keepOwn\(raw, 'player\.getSubtitle'(?:, [^)]+)?\)/.test(bridgeSrc), '');
+    check('__INITIAL_STATE__ 的轨也过归属校验', /keepOwn\(raw, '__INITIAL_STATE__'(?:, [^)]+)?\)/.test(bridgeSrc), '');
+    check('抽不到标识且来源身份未验证时丢弃', /if \(!own\.bvid && !own\.cid && !own\.aid\) return !!allowUnknown;/.test(bridgeSrc), '');
+    check(
+      '播放器/状态来源 cid 一致才允许无标识轨',
+      /sameCid\)/.test(bridgeSrc) && /sameStateCid\)/.test(bridgeSrc),
+      ''
+    );
     check('采集开始/结束时各取一次签名', /const sigAtStart = currentSignature\(\);/.test(bridgeSrc) && /const sigAtEnd = currentSignature\(\);/.test(bridgeSrc), '');
     check('签名不一致时整批作废', /sigAtStart !== sigAtEnd[\s\S]{0,500}signatureChanged: true/.test(bridgeSrc), '');
     check('对外报告 foreignTracks 供诊断', /foreignTracks: foreign/.test(bridgeSrc), '');

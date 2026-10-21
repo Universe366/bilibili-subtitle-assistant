@@ -106,11 +106,17 @@ export async function loadVideo(opts = {}) {
       if (lastErr) throw lastErr;
       throw new Error('页面没有返回视频信息（已重试 5 次；请刷新 B 站页面后重试）');
     }
-    const attempt = await call('page.call', { name: 'getSubtitles', params: {} }, { timeoutMs: 20000 });
-    const detail = (attempt && attempt.data) || {};
+    // 首次读取也走带签名守卫的 bundle：不能再用无参数的 getSubtitles，
+    // 否则播放器实例/__INITIAL_STATE__ 里上一条视频的字幕轨会被当成当前视频。
+    const attempt = await call(
+      'page.call',
+      { name: 'getSubtitleBundle', params: { expectSignature: info.signature } },
+      { timeoutMs: 45000 }
+    );
+    const detail = (attempt && attempt.data) || attempt || {};
     const video = {
       ...info,
-      subtitleTracks: detail.subtitles || [],
+      subtitleTracks: detail.tracks || [],
       subSources: detail.sources || [],
       subtitleDetail: detail
     };

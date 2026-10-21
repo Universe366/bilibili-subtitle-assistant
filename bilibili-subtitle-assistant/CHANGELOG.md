@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.14.7（2026-10-21）
+
+### 修复
+- **字幕取成别的视频**：首次读取视频时改用带 `expectSignature` 的 `getSubtitleBundle`，不再走无守卫的 `getSubtitles`。
+- `player.getSubtitle()` / `__INITIAL_STATE__` 的字幕 URL 不含 bvid/cid 时，只有来源自身 cid 与当前一致才采用；无法证明归属的旧轨直接丢弃，宁可少一条也不显示错内容。
+
 ## 2.14.6（2026-10-21）
 
 ### 修复

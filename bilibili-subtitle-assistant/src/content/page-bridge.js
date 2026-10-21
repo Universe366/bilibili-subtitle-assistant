@@ -967,10 +967,10 @@
     const expect = { aid, bvid, cid };
     // 被判定为「上一个视频残留」的轨，记下来供诊断
     const foreign = [];
-    const keepOwn = (list, label) => {
+    const keepOwn = (list, label, allowUnknown) => {
       const ok = [];
       for (const t of list || []) {
-        if (trackBelongsToVideo(t, expect)) ok.push(t);
+        if (trackBelongsToVideo(t, expect, allowUnknown)) ok.push(t);
         else foreign.push({ from: label, lan: t.lan, url: String(t.url || '').slice(0, 120) });
       }
       return ok;
@@ -984,8 +984,16 @@
     try {
       const player = getPlayer();
       if (player && typeof player.getSubtitle === 'function') {
+        let playerCid = null;
+        try {
+          const vmsg = typeof player.getVideoMessage === 'function' ? player.getVideoMessage() : null;
+          playerCid = (vmsg && vmsg.cid) || null;
+        } catch (err) {
+          playerCid = null;
+        }
+        const sameCid = !!(playerCid && cid && String(playerCid) === String(cid));
         const raw = normalizeSubtitleList(player.getSubtitle());
-        const list = keepOwn(raw, 'player.getSubtitle');
+        const list = keepOwn(raw, 'player.getSubtitle', sameCid);
         if (list.length) {
           groups.player = list;
           sources.push('player.getSubtitle');
@@ -1047,8 +1055,14 @@
         (st && st.subtitle) ||
         null;
       // 同样要过滤：SPA 切视频时 __INITIAL_STATE__ 也可能还是旧的
+      const stCid =
+        (st && st.videoData && st.videoData.cid) ||
+        (st && st.videoInfo && st.videoInfo.cid) ||
+        null;
+      // 状态自身的 cid 与当前一致，才允许「无标识字幕地址」通过
+      const sameStateCid = !!(stCid && cid && String(stCid) === String(cid));
       const raw = normalizeSubtitleList(cand);
-      const list = keepOwn(raw, '__INITIAL_STATE__');
+      const list = keepOwn(raw, '__INITIAL_STATE__', sameStateCid);
       if (list.length) {
         groups.initialState = list;
         sources.push('__INITIAL_STATE__');
@@ -1156,10 +1170,13 @@
   //
   // 判据只用**确定性**证据：URL 里明确写了别的 bvid / cid。
   // 抽不到信息的一律放行（宁可放过，不可误杀 —— 有些地址不带标识）。
-  function trackBelongsToVideo(track, expect) {
+  function trackBelongsToVideo(track, expect, allowUnknown) {
     const own = subtitleOwnerOf(track && track.url);
     const wantBvid = String((expect && expect.bvid) || '');
     const wantCid = String((expect && expect.cid) || '');
+    // 地址里没有任何归属信息时，只有调用方用「来源自身的 cid」证明过
+    // 这条轨来自当前视频，才允许通过；否则宁可丢掉，也不能显示别人的字幕。
+    if (!own.bvid && !own.cid && !own.aid) return !!allowUnknown;
     if (own.bvid && wantBvid && own.bvid !== wantBvid) return false;
     if (own.cid && wantCid && own.cid !== wantCid) return false;
     return true;
@@ -2216,7 +2233,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '2.14.6',
+    version: '2.14.7',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
