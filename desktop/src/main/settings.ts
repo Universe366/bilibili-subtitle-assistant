@@ -83,7 +83,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     theme: 'system',
     closeToTray: true,
     suspendMinutes: 5,
-    cacheSubtitles: true
+    cacheSubtitles: true,
+    fontScale: 1
   },
   ai: {
     activeId: 'deepseek',
@@ -244,6 +245,10 @@ function normalize(raw: any): AppSettings {
       base.general.theme = THEME_MODES.includes(theme) ? theme : 'system';
       base.general.closeToTray = raw.general.closeToTray !== false;
       base.general.cacheSubtitles = raw.general.cacheSubtitles !== false;
+      const fontScale = Number(raw.general.fontScale);
+      if (Number.isFinite(fontScale)) {
+        base.general.fontScale = Math.min(1.6, Math.max(0.8, Math.round(fontScale * 100) / 100));
+      }
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
         base.general.suspendMinutes = Math.min(120, Math.max(1, Math.round(minutes)));
@@ -489,8 +494,47 @@ export function loadSettings(): AppSettings {
   }
 }
 
+function maskSecret(value: string): string {
+  const text = String(value || '');
+  if (!text) return '';
+  if (text.length <= 6) return '••••';
+  return `••••${text.slice(-4)}`;
+}
+
+export function isMaskedSecret(value: string): boolean {
+  return /^••••/.test(String(value || ''));
+}
+
+function maskSettings(settings: AppSettings): AppSettings {
+  const clone: AppSettings = JSON.parse(JSON.stringify(settings));
+  for (const platform of clone.ai.platforms) platform.apiKey = maskSecret(platform.apiKey);
+  for (const platform of clone.asr.platforms) platform.apiKey = maskSecret(platform.apiKey);
+  clone.search.apiKey = maskSecret(clone.search.apiKey);
+  return clone;
+}
+
+function mergeSecrets(next: AppSettings, current: AppSettings): AppSettings {
+  const merged: AppSettings = JSON.parse(JSON.stringify(next));
+  for (const platform of merged.ai.platforms) {
+    if (isMaskedSecret(platform.apiKey)) {
+      platform.apiKey =
+        current.ai.platforms.find((item) => item.id === platform.id)?.apiKey || '';
+    }
+  }
+  for (const platform of merged.asr.platforms) {
+    if (isMaskedSecret(platform.apiKey)) {
+      platform.apiKey =
+        current.asr.platforms.find((item) => item.id === platform.id)?.apiKey || '';
+    }
+  }
+  if (isMaskedSecret(merged.search.apiKey)) {
+    merged.search.apiKey = current.search.apiKey;
+  }
+  return merged;
+}
+
 export function saveSettings(next: AppSettings): AppSettings {
-  const normalized = normalize(next);
+  const normalized = normalize(mergeSecrets(next, loadSettings()));
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(normalized, null, 2), 'utf8');
   return normalized;
@@ -513,7 +557,7 @@ export function activePrompt(settings: AppSettings = loadSettings()): PromptTemp
 
 export function settingsSnapshot(): SettingsSnapshot {
   return {
-    settings: loadSettings(),
+    settings: maskSettings(loadSettings()),
     dataDir: app.getPath('userData'),
     version: app.getVersion()
   };

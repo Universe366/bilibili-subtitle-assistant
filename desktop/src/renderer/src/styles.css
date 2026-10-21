@@ -1826,7 +1826,16 @@ button:disabled {
   gap: 6px;
 }
 
-.settings-inline > .settings-input {
+.settings-inline > .settings-search {
+  margin-bottom: 6px;
+}
+
+.settings-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.settings-input {
   flex: 1;
   min-width: 0;
 }

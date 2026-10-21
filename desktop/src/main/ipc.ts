@@ -69,7 +69,14 @@ import {
   saveSummary,
   searchLibrary
 } from './library';
-import { activePlatform, loadSettings, saveSettings, settingsSnapshot, testPlatform } from './settings';
+import {
+  activePlatform,
+  isMaskedSecret,
+  loadSettings,
+  saveSettings,
+  settingsSnapshot,
+  testPlatform
+} from './settings';
 import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
@@ -294,7 +301,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       nativeTheme.themeSource = saved.general.theme;
       tabs.setSuspendMinutes(saved.general.suspendMinutes);
       await restartBridge(win);
-      return { ok: true, data: settingsSnapshot() };
+      const snapshot = settingsSnapshot();
+      send('settings:changed', snapshot);
+      return { ok: true, data: snapshot };
     } catch (error) {
       return failure(error);
     }
@@ -385,7 +394,11 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('settings:test', async (_event, platform?: AiPlatform) => {
     try {
-      const target = platform || activePlatform();
+      let target = platform || activePlatform();
+      if (isMaskedSecret(target.apiKey)) {
+        const saved = loadSettings().ai.platforms.find((item) => item.id === target.id);
+        if (saved) target = { ...target, apiKey: saved.apiKey };
+      }
       return { ok: true, data: await testPlatform(target) };
     } catch (error) {
       return failure(error);

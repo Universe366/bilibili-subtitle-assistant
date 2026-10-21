@@ -34,12 +34,14 @@ export function Sidebar({
   section,
   onSelect,
   activeTab,
-  tabCount
+  tabCount,
+  fontScale = 1
 }: {
   section: Section;
   onSelect: (section: Section) => void;
   activeTab: TabInfo | null;
   tabCount: number;
+  fontScale?: number;
 }) {
   const [version, setVersion] = useState('');
   useEffect(() => {
@@ -72,7 +74,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="side-content">
+      <div className="side-content" style={{ zoom: fontScale }}>
         {section === 'subtitles' && <SubtitlesPanel activeTab={activeTab} />}
 
         {section === 'chat' && (

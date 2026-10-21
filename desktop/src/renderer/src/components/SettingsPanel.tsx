@@ -82,6 +82,8 @@ export function SettingsPanel() {
   const [mcpTesting, setMcpTesting] = useState('');
   const [mcpArgs, setMcpArgs] = useState('{}');
   const [mcpResult, setMcpResult] = useState('');
+  const [settingsQuery, setSettingsQuery] = useState('');
+  const [visibleSections, setVisibleSections] = useState(0);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
@@ -116,6 +118,21 @@ export function SettingsPanel() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    const query = settingsQuery.trim().toLowerCase();
+    const sections = Array.from(
+      document.querySelectorAll<HTMLElement>('.settings-section')
+    );
+    let count = 0;
+    for (const section of sections) {
+      const match =
+        !query || (section.textContent || '').toLowerCase().includes(query);
+      section.style.display = match ? '' : 'none';
+      if (match) count += 1;
+    }
+    setVisibleSections(count);
+  }, [settingsQuery, draft]);
 
   const active = draft
     ? draft.ai.platforms.find((platform) => platform.id === draft.ai.activeId) || draft.ai.platforms[0]
@@ -601,6 +618,17 @@ export function SettingsPanel() {
         </div>
       </div>
 
+      <input
+        className="settings-input settings-search"
+        placeholder="搜索设置（Key / 导出 / 超时…）"
+        value={settingsQuery}
+        spellCheck={false}
+        onChange={(event) => setSettingsQuery(event.target.value)}
+      />
+      {settingsQuery && (
+        <div className="settings-hint">匹配 {visibleSections} 个分组</div>
+      )}
+
       <div className="settings-section">
         <div className="settings-label">通用</div>
         <div className="settings-label">主题</div>
@@ -631,6 +659,19 @@ export function SettingsPanel() {
           />
           缓存字幕正文（30 分钟，最多 100 条）
         </label>
+
+        <div className="settings-label">
+          界面字号（{Math.round((draft.general.fontScale || 1) * 100)}%）
+        </div>
+        <input
+          className="settings-range"
+          type="range"
+          min={0.8}
+          max={1.6}
+          step={0.05}
+          value={draft.general.fontScale || 1}
+          onChange={(event) => updateGeneral({ fontScale: Number(event.target.value) })}
+        />
 
         <div className="settings-label">后台标签休眠（分钟）</div>
         <input

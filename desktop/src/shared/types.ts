@@ -359,6 +359,7 @@ export interface AppSettings {
     closeToTray: boolean;
     suspendMinutes: number;
     cacheSubtitles: boolean;
+    fontScale: number;
   };
   ai: {
     activeId: string;

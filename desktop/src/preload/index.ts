@@ -108,6 +108,8 @@ const api: BsubApi = {
     ipcRenderer.invoke('settings:import') as Promise<
       Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>
     >,
+  onSettingsChanged: (cb: (snapshot: SettingsSnapshot) => void) =>
+    on<SettingsSnapshot>('settings:changed', cb),
   testSearch: (query: string) =>
     ipcRenderer.invoke('search:test', query) as Promise<Result<WebReference[]>>,
   previewCorrection: (text: string, settings?: AppSettings) =>

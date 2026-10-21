@@ -84,6 +84,7 @@ export interface BsubApi {
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
   exportSettings(): Promise<Result<{ canceled: boolean; path?: string }>>;
   importSettings(): Promise<Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>>;
+  onSettingsChanged(cb: (snapshot: SettingsSnapshot) => void): () => void;
   testSearch(query: string): Promise<Result<WebReference[]>>;
   previewCorrection(text: string, settings?: AppSettings): Promise<Result<string>>;
   testAi(platform?: AiPlatform): Promise<Result<{ latencyMs: number; message: string }>>;

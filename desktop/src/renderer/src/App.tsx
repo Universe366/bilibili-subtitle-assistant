@@ -24,6 +24,7 @@ export default function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState('');
   const [findResult, setFindResult] = useState<FindResult | null>(null);
+  const [fontScale, setFontScale] = useState(1);
 
   const active = useMemo(() => tabs.find((tab) => tab.active) ?? null, [tabs]);
 
@@ -42,6 +43,15 @@ export default function App() {
       alive = false;
       off();
     };
+  }, []);
+
+  useEffect(() => {
+    void window.bsub.getSettings().then((response) => {
+      if (response.ok) setFontScale(response.data.settings.general.fontScale || 1);
+    });
+    return window.bsub.onSettingsChanged((snapshot) =>
+      setFontScale(snapshot.settings.general.fontScale || 1)
+    );
   }, []);
 
   useEffect(() => {
@@ -160,7 +170,13 @@ export default function App() {
         />
       )}
       <div className="app-body">
-        <Sidebar section={section} onSelect={setSection} activeTab={active} tabCount={tabs.length} />
+        <Sidebar
+          section={section}
+          onSelect={setSection}
+          activeTab={active}
+          tabCount={tabs.length}
+          fontScale={fontScale}
+        />
         <BrowserStage hasTab={Boolean(active)} />
       </div>
     </div>
