@@ -3,7 +3,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TabManager } from './tabs';
 import { registerIpc } from './ipc';
-import { closeLibrary, getSummaryFor, ingestVideo, initLibrary, listLibrary, saveSummary, searchLibrary } from './library';
+import {
+  closeLibrary,
+  getSummaryFor,
+  ingestVideo,
+  initLibrary,
+  listHistory,
+  listLibrary,
+  saveSummary,
+  searchLibrary
+} from './library';
 import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
 import { searchWeb } from './search';
@@ -11,6 +20,7 @@ import { applyCorrectionToText } from './correction';
 import { transcribeFile } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
+import { batchSummarize } from './batch';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -179,6 +189,74 @@ function createWindow(): void {
           console.warn('[audio-test] failed', (error as Error).message);
         }
       }, 12000);
+    }
+
+    if (process.env.BSUB_BATCH_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          saveSettings(settings);
+          ingestVideo({
+            info: {
+              kind: 'video',
+              bvid: 'BV1BATCH',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '批量测试视频',
+              owner: '测试UP',
+              desc: '',
+              duration: 10,
+              url: 'https://www.bilibili.com/video/BV1BATCH',
+              signature: 'batch'
+            },
+            track: {
+              lan: 'zh',
+              lanDoc: '中文',
+              url: 'asr://batch',
+              isAi: false,
+              aiStatus: null,
+              source: 'asr'
+            },
+            lines: [
+              { start: 0, end: 2, text: '第一句测试字幕' },
+              { start: 2, end: 4, text: '第二句测试字幕' }
+            ]
+          });
+          const list = listLibrary();
+          const id = list.videos[0]?.id;
+          if (!id) throw new Error('库内没有视频');
+          const result = await batchSummarize([id], (percent, message) =>
+            console.log('[batch-test]', Math.round(percent), message)
+          );
+          const history = listHistory();
+          console.log(
+            '[batch-test] done',
+            JSON.stringify({
+              succeeded: result.succeeded,
+              failed: result.failed.length,
+              history: history.length,
+              first: history[0]?.title
+            })
+          );
+        } catch (error) {
+          console.warn('[batch-test] failed', (error as Error).message);
+        }
+      }, 5000);
     }
 
     if (process.env.BSUB_EXPORT_TEST === '1') {

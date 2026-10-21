@@ -1398,6 +1398,106 @@ button:disabled {
   line-height: 1.45;
 }
 
+.batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.batch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.batch-row.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.batch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.batch-title {
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-meta {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.history-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.history-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.history-meta {
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+.history-details summary {
+  cursor: pointer;
+  font-size: 10.5px;
+  color: var(--accent);
+}
+
+.history-content {
+  margin-top: 5px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
 .asr-progress {
   display: flex;
   flex-direction: column;

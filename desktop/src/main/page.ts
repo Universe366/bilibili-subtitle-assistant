@@ -60,6 +60,15 @@ function bridgeScript(method: string, params: unknown, helperTimeoutMs: number):
 // 页面桥只有一个 DOM 信箱：并发请求会互相覆盖，必须按 webContents 串行。
 const pageQueues = new WeakMap<WebContents, Promise<unknown>>();
 
+const TRACK_CACHE_TTL = 30 * 60 * 1000;
+const TRACK_CACHE_MAX = 100;
+const trackCache = new Map<string, { at: number; lines: SubtitleLine[] }>();
+
+function trackCacheKey(url: string): string {
+  const parsed = new URL(url);
+  return `${parsed.origin}${parsed.pathname}`;
+}
+
 async function rawCall<T>(
   wc: WebContents,
   method: string,
@@ -185,6 +194,12 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     throw new Error(`字幕地址不在允许的域名内：${parsed.hostname}`);
   }
 
+  const cacheKey = trackCacheKey(url);
+  const cached = trackCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < TRACK_CACHE_TTL) {
+    return { lines: cached.lines.map((line) => ({ ...line })) };
+  }
+
   const res = await fetch(url, {
     headers: { 'user-agent': UA, referer: REFERER },
     signal: AbortSignal.timeout(25000)
@@ -208,7 +223,13 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     text: String((line && line.content) || '')
   }));
 
-  return { lines };
+  const result = { lines };
+  trackCache.set(cacheKey, { at: Date.now(), lines });
+  if (trackCache.size > TRACK_CACHE_MAX) {
+    const oldest = trackCache.keys().next().value;
+    if (oldest) trackCache.delete(oldest);
+  }
+  return result;
 }
 
 export async function getTime(wc: WebContents): Promise<{ currentTime: number; duration: number }> {

@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
+  LibraryBundle,
+  LibraryHistoryItem,
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
@@ -446,4 +448,93 @@ export function getSummaryFor(ref: SummaryRef): StoredSummary | null {
     model: String(row.model || ''),
     updatedAt: toNumber(row.updated_at)
   };
+}
+
+
+export function libraryVideoBundle(videoId: number): LibraryBundle {
+  const database = requireDb();
+  const video = database
+    .prepare('SELECT * FROM videos WHERE id = ?')
+    .get(videoId) as Record<string, unknown> | undefined;
+  if (!video) throw new Error('视频不存在');
+  const trackRow = database
+    .prepare(
+      'SELECT * FROM tracks WHERE video_id = ? ORDER BY line_count DESC, updated_at DESC LIMIT 1'
+    )
+    .get(videoId) as Record<string, unknown> | undefined;
+  if (!trackRow) throw new Error('视频没有字幕轨');
+  const rows = database
+    .prepare('SELECT start_ms, end_ms, text FROM segments WHERE track_id = ? ORDER BY start_ms')
+    .all(Number(trackRow.id)) as Array<Record<string, unknown>>;
+
+  const info: PageInfo = {
+    kind: 'video',
+    bvid: video.bvid ? String(video.bvid) : null,
+    aid: null,
+    cid: video.cid == null ? null : Number(video.cid),
+    epId: video.ep_id == null ? null : Number(video.ep_id),
+    seasonId: null,
+    page: 1,
+    partTitle: '',
+    parts: [],
+    title: String(video.title || ''),
+    owner: String(video.owner || ''),
+    desc: '',
+    duration: Number(video.duration) || 0,
+    url: String(video.url || ''),
+    signature: String(video.signature || '')
+  };
+
+  return {
+    info,
+    track: {
+      lan: String(trackRow.lan || ''),
+      lanDoc: String(trackRow.lan_doc || trackRow.lan || ''),
+      url: String(trackRow.url || ''),
+      isAi: Boolean(trackRow.is_ai),
+      aiStatus: null,
+      source: String(trackRow.source || '')
+    },
+    lines: rows.map((row) => ({
+      start: toNumber(row.start_ms) / 1000,
+      end: toNumber(row.end_ms) / 1000,
+      text: String(row.text || '')
+    }))
+  };
+}
+
+export function listHistory(limit = 100): LibraryHistoryItem[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT s.id, s.video_id, v.bvid, v.cid, v.title, v.owner, v.url, s.model, s.content_md, s.updated_at
+       FROM summaries s JOIN videos v ON v.id = s.video_id
+       ORDER BY s.updated_at DESC
+       LIMIT ?`
+    )
+    .all(Math.min(500, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: Number(row.id),
+    videoId: Number(row.video_id),
+    bvid: row.bvid ? String(row.bvid) : null,
+    cid: row.cid == null ? null : Number(row.cid),
+    title: String(row.title || ''),
+    owner: String(row.owner || ''),
+    url: String(row.url || ''),
+    model: String(row.model || ''),
+    content: String(row.content_md || ''),
+    updatedAt: toNumber(row.updated_at)
+  }));
+}
+
+export function deleteHistoryItem(id: number): boolean {
+  const database = requireDb();
+  const result = database.prepare('DELETE FROM summaries WHERE id = ?').run(Number(id));
+  return Number(result.changes) > 0;
+}
+
+export function clearHistory(): number {
+  const database = requireDb();
+  const result = database.prepare('DELETE FROM summaries').run();
+  return Number(result.changes) || 0;
 }

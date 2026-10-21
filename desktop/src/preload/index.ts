@@ -23,6 +23,10 @@ import type {
   OptimizeProgressEvent,
   OptimizeDoneEvent,
   OptimizeErrorEvent,
+  BatchProgressEvent,
+  BatchDoneEvent,
+  BatchErrorEvent,
+  LibraryHistoryItem,
   FindResult,
   ExportPayload,
   LayoutRect,
@@ -166,6 +170,23 @@ const api: BsubApi = {
     on<OptimizeDoneEvent>('optimize:done', cb),
   onOptimizeError: (cb: (event: OptimizeErrorEvent) => void) =>
     on<OptimizeErrorEvent>('optimize:error', cb),
+
+  batchSummarize: (videoIds: number[]) =>
+    ipcRenderer.invoke('batch:summarize', { videoIds }) as Promise<
+      Result<{ requestId: string }>
+    >,
+  cancelBatch: (requestId: string) =>
+    ipcRenderer.invoke('batch:cancel', requestId) as Promise<void>,
+  onBatchProgress: (cb: (event: BatchProgressEvent) => void) =>
+    on<BatchProgressEvent>('batch:progress', cb),
+  onBatchDone: (cb: (event: BatchDoneEvent) => void) => on<BatchDoneEvent>('batch:done', cb),
+  onBatchError: (cb: (event: BatchErrorEvent) => void) => on<BatchErrorEvent>('batch:error', cb),
+
+  getHistory: () => ipcRenderer.invoke('history:list') as Promise<Result<LibraryHistoryItem[]>>,
+  deleteHistory: (id: number) =>
+    ipcRenderer.invoke('history:delete', id) as Promise<Result<{ removed: boolean }>>,
+  clearHistory: () =>
+    ipcRenderer.invoke('history:clear') as Promise<Result<{ removed: number }>>,
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

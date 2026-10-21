@@ -21,6 +21,10 @@ import type {
   OptimizeProgressEvent,
   OptimizeDoneEvent,
   OptimizeErrorEvent,
+  BatchProgressEvent,
+  BatchDoneEvent,
+  BatchErrorEvent,
+  LibraryHistoryItem,
   FindResult,
   LayoutRect,
   Result,
@@ -115,6 +119,16 @@ export interface BsubApi {
   onOptimizeProgress(cb: (event: OptimizeProgressEvent) => void): () => void;
   onOptimizeDone(cb: (event: OptimizeDoneEvent) => void): () => void;
   onOptimizeError(cb: (event: OptimizeErrorEvent) => void): () => void;
+
+  batchSummarize(videoIds: number[]): Promise<Result<{ requestId: string }>>;
+  cancelBatch(requestId: string): Promise<void>;
+  onBatchProgress(cb: (event: BatchProgressEvent) => void): () => void;
+  onBatchDone(cb: (event: BatchDoneEvent) => void): () => void;
+  onBatchError(cb: (event: BatchErrorEvent) => void): () => void;
+
+  getHistory(): Promise<Result<LibraryHistoryItem[]>>;
+  deleteHistory(id: number): Promise<Result<{ removed: boolean }>>;
+  clearHistory(): Promise<Result<{ removed: number }>>;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 

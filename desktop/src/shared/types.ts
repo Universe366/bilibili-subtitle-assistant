@@ -25,7 +25,14 @@ export interface LayoutRect {
   height: number;
 }
 
-export type Section = 'subtitles' | 'chat' | 'summary' | 'library' | 'settings';
+export type Section =
+  | 'subtitles'
+  | 'chat'
+  | 'summary'
+  | 'library'
+  | 'batch'
+  | 'history'
+  | 'settings';
 
 export interface VideoPart {
   index: number;
@@ -109,6 +116,42 @@ export interface LibraryStats {
 export interface LibraryList {
   videos: LibraryVideo[];
   stats: LibraryStats;
+}
+
+export interface LibraryHistoryItem {
+  id: number;
+  videoId: number;
+  bvid: string | null;
+  cid: number | null;
+  title: string;
+  owner: string;
+  url: string;
+  model: string;
+  content: string;
+  updatedAt: number;
+}
+
+export interface LibraryBundle {
+  info: PageInfo;
+  track: SubtitleTrack;
+  lines: SubtitleLine[];
+}
+
+export interface BatchProgressEvent {
+  requestId: string;
+  percent: number;
+  message: string;
+}
+
+export interface BatchDoneEvent {
+  requestId: string;
+  succeeded: number;
+  failed: Array<{ videoId: number; title: string; error: string }>;
+}
+
+export interface BatchErrorEvent {
+  requestId: string;
+  error: string;
 }
 
 export interface LibraryIngestPayload {

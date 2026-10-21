@@ -39,13 +39,26 @@ import type {
   TrackBody,
   WebReference,
   LibraryIngestPayload,
+  LibraryHistoryItem,
+  BatchProgressEvent,
+  BatchDoneEvent,
   LibraryIngestResult,
   LibraryList,
   LibrarySearchResult
 } from '../shared/types';
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek } from './page';
-import { getSummaryFor, ingestVideo, listLibrary, removeVideo, saveSummary, searchLibrary } from './library';
+import {
+  clearHistory,
+  deleteHistoryItem,
+  getSummaryFor,
+  ingestVideo,
+  listHistory,
+  listLibrary,
+  removeVideo,
+  saveSummary,
+  searchLibrary
+} from './library';
 import { activePlatform, loadSettings, saveSettings, settingsSnapshot, testPlatform } from './settings';
 import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
@@ -54,6 +67,7 @@ import { chat } from './chat';
 import { transcribe } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
+import { batchSummarize } from './batch';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -67,6 +81,7 @@ const chatControllers = new Map<string, AbortController>();
 const asrControllers = new Map<string, AbortController>();
 const translateControllers = new Map<string, AbortController>();
 const optimizeControllers = new Map<string, AbortController>();
+const batchControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
@@ -572,6 +587,70 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('optimize:cancel', (_event, requestId: string) => {
     optimizeControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('batch:summarize', async (_event, payload: { requestId: string; videoIds: number[] }): Promise<Result<{ requestId: string }>> => {
+    if (!payload || !Array.isArray(payload.videoIds) || !payload.videoIds.length) {
+      return { ok: false, error: '没有选择视频' };
+    }
+    const requestId = payload.requestId || randomUUID();
+    const controller = new AbortController();
+    batchControllers.set(requestId, controller);
+
+    void (async () => {
+      try {
+        const result = await batchSummarize(
+          payload.videoIds,
+          (percent, message) =>
+            send('batch:progress', {
+              requestId,
+              percent,
+              message
+            } satisfies BatchProgressEvent),
+          controller.signal
+        );
+        send('batch:done', { requestId, ...result } satisfies BatchDoneEvent);
+        send('library:changed', null);
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? '已终止'
+          : (error as Error)?.message || String(error);
+        console.warn('[batch] failed:', message);
+        send('batch:error', { requestId, error: message });
+      } finally {
+        batchControllers.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  });
+
+  ipcMain.handle('batch:cancel', (_event, requestId: string) => {
+    batchControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('history:list', (): Result<LibraryHistoryItem[]> => {
+    try {
+      return { ok: true, data: listHistory() };
+    } catch (error) {
+      return failure<LibraryHistoryItem[]>(error);
+    }
+  });
+
+  ipcMain.handle('history:delete', (_event, id: number): Result<{ removed: boolean }> => {
+    try {
+      return { ok: true, data: { removed: deleteHistoryItem(id) } };
+    } catch (error) {
+      return failure<{ removed: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle('history:clear', (): Result<{ removed: number }> => {
+    try {
+      return { ok: true, data: { removed: clearHistory() } };
+    } catch (error) {
+      return failure<{ removed: number }>(error);
+    }
   });
 
   ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {
