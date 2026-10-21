@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.6';
+  const CONTENT_VERSION = '2.13.7';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -384,6 +384,27 @@
     if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
+  function getEmbedTabId() {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (v) => {
+        if (settled) return;
+        settled = true;
+        resolve(v);
+      };
+      setTimeout(() => done(null), 500);
+      try {
+        chrome.runtime.sendMessage({ type: 'bsub:get-tab-id' }, (res) => {
+          void chrome.runtime.lastError;
+          const id = res && res.ok && res.tabId != null ? Number(res.tabId) : null;
+          done(Number.isFinite(id) && id > 0 ? id : null);
+        });
+      } catch (err) {
+        done(null);
+      }
+    });
+  }
+
   function openSidePanelFromEmbed() {
     try {
       chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res) => {
@@ -448,6 +469,11 @@
     }
     if (wrap) wrap.remove();
 
+    // 把当前 tabId 传给内嵌面板：它后续所有 page.* 请求都显式指定这个标签页，
+    // 不再依赖「当前活动标签页」——侧边栏能读、内嵌不能读的根因就在这里。
+    const tabId = await getEmbedTabId();
+    if (!canEmbed()) return false;
+
     wrap = document.createElement('div');
     wrap.id = EMBED_ID;
     wrap.className = 'bsub-embed';
@@ -481,7 +507,7 @@
     frame.className = 'bsub-embed-frame';
     frame.title = 'B站字幕助手';
     frame.setAttribute('allow', 'clipboard-read; clipboard-write');
-    frame.src = `${chrome.runtime.getURL('src/sidepanel/panel.html')}?embed=1`;
+    frame.src = `${chrome.runtime.getURL('src/sidepanel/panel.html')}?embed=1${tabId ? `&tabId=${tabId}` : ''}`;
     frame.addEventListener('error', () => showPanelHint('页面内嵌面板加载失败，请点工具栏图标用浏览器侧边栏。'));
 
     wrap.appendChild(bar);

@@ -490,12 +490,14 @@ const methods = {
   },
 
   // ---- 页面 ----
-  'page.info': async (_p, sender) => rpcPage('getInfo', {}, sender),
-  'page.subtitles': async (_p, sender) => rpcPage('getSubtitles', {}, sender),
-  'page.time': async (_p, sender) => rpcPage('getTime', {}, sender),
-  'page.seek': async (params, sender) => rpcPage('seek', { time: params.time }, sender),
-  'page.audio': async (_p, sender) => rpcPage('getAudio', {}, sender),
-  'page.call': async (params, sender) => rpcPage(params.name, params.params || {}, sender),
+  'page.info': async (params, sender) => rpcPage('getInfo', params || {}, sender),
+  'page.subtitles': async (params, sender) => rpcPage('getSubtitles', params || {}, sender),
+  'page.time': async (params, sender) => rpcPage('getTime', params || {}, sender),
+  'page.seek': async (params, sender) =>
+    rpcPage('seek', { ...(params || {}), time: params.time }, sender),
+  'page.audio': async (params, sender) => rpcPage('getAudio', params || {}, sender),
+  'page.call': async (params, sender) =>
+    rpcPage(params.name, { ...(params.params || {}), ...(params.tabId != null ? { tabId: params.tabId } : {}) }, sender),
 
   'page.options': async (params) => {
     // 把界面选项推给页面（按钮开关 / 覆盖字幕 / 跟随播放）
@@ -959,7 +961,7 @@ const methods = {
     return { ok: true };
   },
 
-  diagnostics: async () => {
+  diagnostics: async (params, sender) => {
     const s = await ST.loadSettings();
     const stats = await ST.cacheStats();
     let permissions = {};
@@ -971,9 +973,13 @@ const methods = {
     const mb = await chrome.runtime.getManifest();
     let pageInfo = null;
     try {
-      pageInfo = await rpcPage('getInfo', {}, {});
+      const diagTabId = params?.tabId != null ? params.tabId : sender?.tab?.id;
+      pageInfo = await rpcPage('getInfo', diagTabId != null ? { tabId: diagTabId } : {}, sender);
     } catch (err) {
-      pageInfo = { error: (err && err.message) || '读取页面信息失败' };
+      pageInfo = {
+        error: (err && err.message) || '读取页面信息失败',
+        extra: err && err.extra ? err.extra : null
+      };
     }
     return {
       app: APP_NAME,
@@ -987,6 +993,13 @@ const methods = {
       cache: stats,
       permissions,
       pageInfo,
+      senderInfo: sender
+        ? {
+            tabId: sender.tab?.id ?? null,
+            frameId: sender.frameId ?? null,
+            url: String(sender.url || '')
+          }
+        : null,
       platformSummary: {
         ai: s.ai.platforms.map((p) => ({ id: p.id, name: p.name, active: p.id === s.ai.activeId, keySet: CFG.hasSecret(p.apiKey), model: p.model, baseUrl: p.baseUrl })),
         asr: s.asr.platforms.map((p) => ({ id: p.id, name: p.name, active: p.id === s.asr.activeId, keySet: CFG.hasSecret(p.apiKey), model: p.model, baseUrl: p.baseUrl })),
@@ -1308,6 +1321,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     }
     sendResponse({ ok: true });
+    return undefined;
+  }
+  if (message.type === 'bsub:get-tab-id') {
+    sendResponse({ ok: true, tabId: sender?.tab?.id ?? null });
     return undefined;
   }
   if (message.type === 'bsub:request-options') {

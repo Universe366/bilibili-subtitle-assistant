@@ -101,6 +101,10 @@ async function main() {
       getURL: (p) => `chrome-extension://test-ext/${p}`,
       sendMessage: (msg, cb) => {
         toBackground.push(msg);
+        if (msg && msg.type === 'bsub:get-tab-id') {
+          if (cb) cb({ ok: true, tabId: 42 });
+          return;
+        }
         if (cb) cb({ ok: true });
       },
       onMessage: {
@@ -167,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.6', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.7', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.13.6' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.13.7' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
@@ -212,6 +216,11 @@ async function main() {
       !!embed.previousElementSibling &&
       embed.previousElementSibling.classList.contains('up-panel-container'),
     embed && embed.parentElement ? embed.parentElement.className : '未挂载'
+  );
+  check(
+    '内嵌 iframe 带上当前 tabId（避免后台选错标签页）',
+    !!embedFrame && /[?&]tabId=42(?:&|$)/.test(embedFrame.src),
+    embedFrame ? embedFrame.src : ''
   );
   check(
     '内嵌面板高度已同步',

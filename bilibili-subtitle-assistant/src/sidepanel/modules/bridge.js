@@ -6,6 +6,17 @@ function newId() {
   return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// 页面内嵌面板由内容脚本带上当前 tabId；所有 page.* 请求显式指定它，
+// 避免后台按「当前活动标签页」猜错，出现侧边栏能读、内嵌读不到的情况。
+const EMBED_TAB_ID = (() => {
+  try {
+    const n = Number(new URLSearchParams(location.search).get('tabId'));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch (err) {
+    return 0;
+  }
+})();
+
 // 查询后台（service worker）实际在跑的版本。
 // 用途：MV3 里 SW 与面板是两份独立更新的代码 —— 只刷新扩展时，
 // 面板会立刻用上新代码，而**旧的 SW 可能仍在运行**，于是出现
@@ -59,7 +70,11 @@ export function call(method, params = {}, opts = {}) {  const timeout = opts.tim
 
     let sendError = null;
     try {
-      chrome.runtime.sendMessage({ kind: RPC.KIND_REQ, id, method, params }, (res) => {
+      const finalParams =
+        EMBED_TAB_ID && (method.startsWith('page.') || method === 'diagnostics')
+          ? { ...(params || {}), tabId: EMBED_TAB_ID }
+          : params;
+      chrome.runtime.sendMessage({ kind: RPC.KIND_REQ, id, method, params: finalParams }, (res) => {
         const lastErr = chrome.runtime.lastError;
         if (lastErr) {
           sendError = lastErr.message || '无法连接后台';
