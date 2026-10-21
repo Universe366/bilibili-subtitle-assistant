@@ -98,6 +98,26 @@ function transcriptBlocks(
   return blocks.join('\n');
 }
 
+function estimateTimes(lines: SubtitleLine[]): SubtitleLine[] {
+  let cursor = 0;
+  return lines.map((line) => {
+    const start = Number(line.start);
+    const end = Number(line.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start) {
+      cursor = Math.max(cursor, end);
+      return line;
+    }
+    const duration = Math.max(0.8, String(line.text || '').length / 5);
+    const next = {
+      ...line,
+      start: cursor,
+      end: cursor + duration
+    };
+    cursor += duration;
+    return next;
+  });
+}
+
 function toMarkdown(payload: ExportPayload): string {
   const template = payload.template || 'timestamped';
   const timestamps = payload.includeTimestamps !== false && template !== 'plain';
@@ -202,32 +222,36 @@ export function buildExport(payload: ExportPayload): {
   const filename = filenameFor(payload);
   const template = payload.template || 'timestamped';
   const includeTimestamps = payload.includeTimestamps !== false && template !== 'plain';
+  const normalized: ExportPayload =
+    payload.estimateTimestamps !== false
+      ? { ...payload, lines: estimateTimes(payload.lines) }
+      : payload;
 
   switch (payload.format) {
     case 'srt':
       return {
-        content: toSrt(payload.lines, payload.translatedLines),
+        content: toSrt(normalized.lines, payload.translatedLines),
         ext: 'srt',
         mime: 'application/x-subrip',
         filename
       };
     case 'vtt':
       return {
-        content: toVtt(payload.lines, payload.translatedLines),
+        content: toVtt(normalized.lines, payload.translatedLines),
         ext: 'vtt',
         mime: 'text/vtt',
         filename
       };
     case 'ass':
       return {
-        content: toAss(payload),
+        content: toAss(normalized),
         ext: 'ass',
         mime: 'text/x-ssa',
         filename
       };
     case 'txt':
       return {
-        content: toTxt(payload.lines, includeTimestamps, payload.translatedLines),
+        content: toTxt(normalized.lines, includeTimestamps, payload.translatedLines),
         ext: 'txt',
         mime: 'text/plain',
         filename
@@ -239,7 +263,7 @@ export function buildExport(payload: ExportPayload): {
             video: payload.info,
             track: payload.track,
             summary: payload.summary || '',
-            lines: payload.lines,
+            lines: normalized.lines,
             translation: payload.translatedLines
               ? {
                   language: payload.translationLanguage || '',
@@ -257,7 +281,7 @@ export function buildExport(payload: ExportPayload): {
       };
     case 'md':
     default:
-      return { content: toMarkdown(payload), ext: 'md', mime: 'text/markdown', filename };
+      return { content: toMarkdown(normalized), ext: 'md', mime: 'text/markdown', filename };
   }
 }
 

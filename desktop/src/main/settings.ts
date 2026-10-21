@@ -82,7 +82,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   general: {
     theme: 'system',
     closeToTray: true,
-    suspendMinutes: 5
+    suspendMinutes: 5,
+    cacheSubtitles: true
   },
   ai: {
     activeId: 'deepseek',
@@ -221,7 +222,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     includeTimestamps: true,
     filenamePattern: '{title}',
     template: 'timestamped',
-    assFontSize: 28
+    assFontSize: 28,
+    estimateTimestamps: true
   },
   bridge: { enabled: true, port: 47821, token: '' },
   update: { autoCheck: false, feedUrl: '' },
@@ -241,6 +243,7 @@ function normalize(raw: any): AppSettings {
       const theme = raw.general.theme;
       base.general.theme = THEME_MODES.includes(theme) ? theme : 'system';
       base.general.closeToTray = raw.general.closeToTray !== false;
+      base.general.cacheSubtitles = raw.general.cacheSubtitles !== false;
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
         base.general.suspendMinutes = Math.min(120, Math.max(1, Math.round(minutes)));
@@ -369,6 +372,7 @@ function normalize(raw: any): AppSettings {
       if (Number.isFinite(fontSize)) {
         base.export.assFontSize = Math.min(96, Math.max(12, Math.round(fontSize)));
       }
+      base.export.estimateTimestamps = raw.export.estimateTimestamps !== false;
     }
 
     if (raw.mcp && typeof raw.mcp === 'object') {

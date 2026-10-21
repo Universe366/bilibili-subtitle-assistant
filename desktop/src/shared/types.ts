@@ -144,6 +144,18 @@ export interface LibraryHistoryItem {
   updatedAt: number;
 }
 
+export interface LibraryTranscriptionItem {
+  videoId: number;
+  bvid: string | null;
+  title: string;
+  owner: string;
+  url: string;
+  trackCount: number;
+  lineCount: number;
+  updatedAt: number;
+  lanDoc: string;
+}
+
 export interface LibraryBundle {
   info: PageInfo;
   track: SubtitleTrack;
@@ -346,6 +358,7 @@ export interface AppSettings {
     theme: ThemeMode;
     closeToTray: boolean;
     suspendMinutes: number;
+    cacheSubtitles: boolean;
   };
   ai: {
     activeId: string;
@@ -394,6 +407,7 @@ export interface AppSettings {
     filenamePattern: string;
     template: ExportTemplate;
     assFontSize: number;
+    estimateTimestamps: boolean;
   };
   bridge: {
     enabled: boolean;
@@ -458,6 +472,7 @@ export interface ExportPayload {
   translationLanguage?: string;
   template?: ExportTemplate;
   assFontSize?: number;
+  estimateTimestamps?: boolean;
 }
 
 export interface AiDeltaEvent {

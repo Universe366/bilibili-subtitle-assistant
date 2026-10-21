@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron';
 import type { PageInfo, SubtitleBundle, SubtitleLine, SubtitleTrack, TrackBody } from '../shared/types';
+import { loadSettings } from './settings';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -205,8 +206,9 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     throw new Error(`字幕地址不在允许的域名内：${parsed.hostname}`);
   }
 
+  const cacheEnabled = loadSettings().general.cacheSubtitles !== false;
   const cacheKey = trackCacheKey(url);
-  const cached = trackCache.get(cacheKey);
+  const cached = cacheEnabled ? trackCache.get(cacheKey) : undefined;
   if (cached && Date.now() - cached.at < TRACK_CACHE_TTL) {
     return { lines: cached.lines.map((line) => ({ ...line })) };
   }
@@ -235,10 +237,12 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
   }));
 
   const result = { lines };
-  trackCache.set(cacheKey, { at: Date.now(), lines });
-  if (trackCache.size > TRACK_CACHE_MAX) {
-    const oldest = trackCache.keys().next().value;
-    if (oldest) trackCache.delete(oldest);
+  if (cacheEnabled) {
+    trackCache.set(cacheKey, { at: Date.now(), lines });
+    if (trackCache.size > TRACK_CACHE_MAX) {
+      const oldest = trackCache.keys().next().value;
+      if (oldest) trackCache.delete(oldest);
+    }
   }
   return result;
 }

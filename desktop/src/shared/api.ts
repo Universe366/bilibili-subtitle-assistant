@@ -33,6 +33,7 @@ import type {
   McpTool,
   SkillItem,
   LibraryHistoryItem,
+  LibraryTranscriptionItem,
   FindResult,
   LayoutRect,
   Result,
@@ -130,6 +131,9 @@ export interface BsubApi {
 
   batchSummarize(videoIds: number[]): Promise<Result<{ requestId: string }>>;
   cancelBatch(requestId: string): Promise<void>;
+  pauseBatch(requestId: string): Promise<void>;
+  resumeBatch(requestId: string): Promise<void>;
+  removeBatchItem(requestId: string, videoId: number): Promise<void>;
   onBatchProgress(cb: (event: BatchProgressEvent) => void): () => void;
   onBatchDone(cb: (event: BatchDoneEvent) => void): () => void;
   onBatchError(cb: (event: BatchErrorEvent) => void): () => void;
@@ -141,6 +145,7 @@ export interface BsubApi {
   onUrlBatchError(cb: (event: UrlBatchErrorEvent) => void): () => void;
 
   getHistory(): Promise<Result<LibraryHistoryItem[]>>;
+  getTranscriptions(): Promise<Result<LibraryTranscriptionItem[]>>;
   deleteHistory(id: number): Promise<Result<{ removed: boolean }>>;
   clearHistory(): Promise<Result<{ removed: number }>>;
 

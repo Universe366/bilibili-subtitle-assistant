@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type {
   LibraryBundle,
   LibraryHistoryItem,
+  LibraryTranscriptionItem,
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
@@ -537,4 +538,32 @@ export function clearHistory(): number {
   const database = requireDb();
   const result = database.prepare('DELETE FROM summaries').run();
   return Number(result.changes) || 0;
+}
+
+
+export function listTranscriptions(limit = 200): LibraryTranscriptionItem[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT v.id, v.bvid, v.title, v.owner, v.url, v.updated_at,
+              COUNT(t.id) AS track_count,
+              COALESCE(SUM(t.line_count), 0) AS line_count,
+              COALESCE(MAX(t.lan_doc), '') AS lan_doc
+       FROM videos v JOIN tracks t ON t.video_id = v.id
+       GROUP BY v.id
+       ORDER BY v.updated_at DESC
+       LIMIT ?`
+    )
+    .all(Math.min(500, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    videoId: Number(row.id),
+    bvid: row.bvid ? String(row.bvid) : null,
+    title: String(row.title || ''),
+    owner: String(row.owner || ''),
+    url: String(row.url || ''),
+    trackCount: Number(row.track_count) || 0,
+    lineCount: Number(row.line_count) || 0,
+    updatedAt: toNumber(row.updated_at),
+    lanDoc: String(row.lan_doc || '')
+  }));
 }

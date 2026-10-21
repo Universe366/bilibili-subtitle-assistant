@@ -11,6 +11,7 @@ export function BatchPanel() {
   const [videos, setVideos] = useState<LibraryVideo[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [running, setRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -44,6 +45,7 @@ export function BatchPanel() {
       if (event.requestId !== requestRef.current) return;
       requestRef.current = '';
       setRunning(false);
+      setPaused(false);
       setProgress(100);
       setResult(event);
       setMessage(`完成：成功 ${event.succeeded}，失败 ${event.failed.length}`);
@@ -88,6 +90,7 @@ export function BatchPanel() {
   const start = async () => {
     if (running || !selected.size) return;
     setRunning(true);
+    setPaused(false);
     setProgress(0);
     setMessage('准备批量总结…');
     setError('');
@@ -99,6 +102,15 @@ export function BatchPanel() {
       setRunning(false);
       setError(response.error);
     }
+  };
+
+  const togglePause = () => {
+    if (!requestRef.current) return;
+    const next = !paused;
+    void (next
+      ? window.bsub.pauseBatch(requestRef.current)
+      : window.bsub.resumeBatch(requestRef.current));
+    setPaused(next);
   };
 
   const cancel = () => {
@@ -168,9 +180,14 @@ export function BatchPanel() {
                 清空
               </button>
               {running ? (
-                <button className="mini-btn" onClick={cancel}>
-                  <Square size={11} /> 停止
-                </button>
+                <>
+                  <button className="mini-btn" onClick={togglePause}>
+                    {paused ? '继续' : '暂停'}
+                  </button>
+                  <button className="mini-btn" onClick={cancel}>
+                    <Square size={11} /> 停止
+                  </button>
+                </>
               ) : (
                 <button
                   className="mini-btn primary"

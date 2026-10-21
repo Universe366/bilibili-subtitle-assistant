@@ -2,6 +2,11 @@ import type { PageInfo } from '../shared/types';
 import { libraryVideoBundle, saveSummary } from './library';
 import { summarize } from './ai';
 
+export interface BatchControl {
+  paused: boolean;
+  removed: Set<number>;
+}
+
 export interface BatchResult {
   succeeded: number;
   failed: Array<{ videoId: number; title: string; error: string }>;
@@ -10,7 +15,8 @@ export interface BatchResult {
 export async function batchSummarize(
   videoIds: number[],
   onProgress: (percent: number, message: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  control?: BatchControl
 ): Promise<BatchResult> {
   const ids = [...new Set(videoIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (!ids.length) throw new Error('没有选择视频');
@@ -19,8 +25,13 @@ export async function batchSummarize(
   const failed: BatchResult['failed'] = [];
 
   for (let index = 0; index < ids.length; index += 1) {
+    while (control?.paused) {
+      if (signal?.aborted) throw new Error('已终止');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
     if (signal?.aborted) throw new Error('已终止');
     const videoId = ids[index];
+    if (control?.removed.has(videoId)) continue;
     let title = `#${videoId}`;
     onProgress((index / ids.length) * 100, `准备第 ${index + 1} / ${ids.length} 个视频…`);
 

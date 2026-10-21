@@ -623,6 +623,15 @@ export function SettingsPanel() {
           关闭窗口时缩到托盘
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.general.cacheSubtitles !== false}
+            onChange={(event) => updateGeneral({ cacheSubtitles: event.target.checked })}
+          />
+          缓存字幕正文（30 分钟，最多 100 条）
+        </label>
+
         <div className="settings-label">后台标签休眠（分钟）</div>
         <input
           className="settings-input"
@@ -1346,6 +1355,20 @@ export function SettingsPanel() {
             })
           }
         />
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.export.estimateTimestamps !== false}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                export: { ...draft.export, estimateTimestamps: event.target.checked }
+              })
+            }
+          />
+          缺少时间戳时自动估算
+        </label>
 
         <div className="settings-label">文件名模板</div>
         <input

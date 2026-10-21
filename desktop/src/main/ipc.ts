@@ -40,6 +40,7 @@ import type {
   WebReference,
   LibraryIngestPayload,
   LibraryHistoryItem,
+  LibraryTranscriptionItem,
   BatchProgressEvent,
   BatchDoneEvent,
   UrlBatchProgressEvent,
@@ -62,6 +63,7 @@ import {
   getSummaryFor,
   ingestVideo,
   listHistory,
+  listTranscriptions,
   listLibrary,
   removeVideo,
   saveSummary,
@@ -76,6 +78,7 @@ import { transcribe } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
+import type { BatchControl } from './batch';
 import { batchUrls, parseVideoUrls } from './urlbatch';
 import { checkSubtitles } from './quality';
 import { generateChapters } from './chapters';
@@ -95,6 +98,7 @@ const asrControllers = new Map<string, AbortController>();
 const translateControllers = new Map<string, AbortController>();
 const optimizeControllers = new Map<string, AbortController>();
 const batchControllers = new Map<string, AbortController>();
+const batchControls = new Map<string, BatchControl>();
 const urlBatchControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
@@ -610,6 +614,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     const requestId = payload.requestId || randomUUID();
     const controller = new AbortController();
     batchControllers.set(requestId, controller);
+    const control: BatchControl = { paused: false, removed: new Set() };
+    batchControls.set(requestId, control);
 
     void (async () => {
       try {
@@ -621,7 +627,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
               percent,
               message
             } satisfies BatchProgressEvent),
-          controller.signal
+          controller.signal,
+          control
         );
         send('batch:done', { requestId, ...result } satisfies BatchDoneEvent);
         send('library:changed', null);
@@ -633,10 +640,26 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         send('batch:error', { requestId, error: message });
       } finally {
         batchControllers.delete(requestId);
+        batchControls.delete(requestId);
       }
     })();
 
     return { ok: true, data: { requestId } };
+  });
+
+  ipcMain.handle('batch:pause', (_event, requestId: string) => {
+    const control = batchControls.get(requestId);
+    if (control) control.paused = true;
+  });
+
+  ipcMain.handle('batch:resume', (_event, requestId: string) => {
+    const control = batchControls.get(requestId);
+    if (control) control.paused = false;
+  });
+
+  ipcMain.handle('batch:remove', (_event, payload: { requestId: string; videoId: number }) => {
+    const control = batchControls.get(payload.requestId);
+    if (control) control.removed.add(Number(payload.videoId));
   });
 
   ipcMain.handle('batch:cancel', (_event, requestId: string) => {
@@ -709,6 +732,14 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return { ok: true, data: { removed: deleteHistoryItem(id) } };
     } catch (error) {
       return failure<{ removed: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle('history:transcriptions', (): Result<LibraryTranscriptionItem[]> => {
+    try {
+      return { ok: true, data: listTranscriptions() };
+    } catch (error) {
+      return failure<LibraryTranscriptionItem[]>(error);
     }
   });
 
@@ -820,7 +851,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           includeTimestamps: payload.includeTimestamps ?? settings.export.includeTimestamps,
           filenamePattern: payload.filenamePattern || settings.export.filenamePattern,
           template: payload.template || settings.export.template,
-          assFontSize: payload.assFontSize || settings.export.assFontSize
+          assFontSize: payload.assFontSize || settings.export.assFontSize,
+          estimateTimestamps:
+            payload.estimateTimestamps ?? settings.export.estimateTimestamps
         });
         let target = payload.savePath;
 

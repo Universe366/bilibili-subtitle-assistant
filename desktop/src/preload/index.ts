@@ -35,6 +35,7 @@ import type {
   McpTool,
   SkillItem,
   LibraryHistoryItem,
+  LibraryTranscriptionItem,
   FindResult,
   ExportPayload,
   LayoutRect,
@@ -185,6 +186,12 @@ const api: BsubApi = {
     >,
   cancelBatch: (requestId: string) =>
     ipcRenderer.invoke('batch:cancel', requestId) as Promise<void>,
+  pauseBatch: (requestId: string) =>
+    ipcRenderer.invoke('batch:pause', requestId) as Promise<void>,
+  resumeBatch: (requestId: string) =>
+    ipcRenderer.invoke('batch:resume', requestId) as Promise<void>,
+  removeBatchItem: (requestId: string, videoId: number) =>
+    ipcRenderer.invoke('batch:remove', { requestId, videoId }) as Promise<void>,
   onBatchProgress: (cb: (event: BatchProgressEvent) => void) =>
     on<BatchProgressEvent>('batch:progress', cb),
   onBatchDone: (cb: (event: BatchDoneEvent) => void) => on<BatchDoneEvent>('batch:done', cb),
@@ -204,6 +211,8 @@ const api: BsubApi = {
     on<UrlBatchErrorEvent>('urlbatch:error', cb),
 
   getHistory: () => ipcRenderer.invoke('history:list') as Promise<Result<LibraryHistoryItem[]>>,
+  getTranscriptions: () =>
+    ipcRenderer.invoke('history:transcriptions') as Promise<Result<LibraryTranscriptionItem[]>>,
   deleteHistory: (id: number) =>
     ipcRenderer.invoke('history:delete', id) as Promise<Result<{ removed: boolean }>>,
   clearHistory: () =>
