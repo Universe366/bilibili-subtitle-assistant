@@ -2078,6 +2078,41 @@ function updateSection(d) {
   );
   skipBtn.style.display = 'none';
 
+  const backupBtn = button('先备份设置', () => exportSettingsBackup(), {
+    small: true,
+    title: '导出当前全部设置（含 API Key 明文），更新后可按需导入'
+  });
+
+  // 手动加载的扩展不会自动更新。更新方式直接决定设置会不会丢：
+  // 覆盖原目录 → 扩展 ID 不变 → chrome.storage 里的设置还在；
+  // 解压到新目录 → ID 变化 → 旧设置读不到。这里把步骤写在界面上。
+  const howto = h('details', { class: 'update-notes', style: { marginTop: '6px' } });
+  howto.appendChild(h('summary', { text: '更新步骤（不丢设置）' }));
+  howto.appendChild(
+    h('ol', { style: { margin: '6px 0 0 18px', padding: '0' } }, [
+      h('li', { text: '先点「先备份设置」，保存导出的 JSON（含 API Key 明文，请妥善保管）。' }),
+      h('li', {
+        text: '下载 zip，解压并覆盖原来的 bilibili-subtitle-assistant 目录（manifest.json 所在层）；不要加载到新文件夹。'
+      }),
+      h('li', { text: '打开 chrome://extensions，点扩展卡片上的刷新；不要移除扩展。' }),
+      h('li', { text: '刷新所有已打开的 B 站页面。' }),
+      h('li', {
+        text: '如果确实换了目录导致设置丢失，到「诊断与关于 → 设置备份」导入刚才的 JSON。'
+      })
+    ])
+  );
+
+  const updateNote = h('div', {
+    class: 'note',
+    text:
+      '手动加载的扩展不会自动更新。覆盖原目录时扩展 ID 不变，chrome.storage 里的设置会保留；' +
+      '加载到新目录会改变扩展 ID，旧设置将读不到。'
+  });
+  const idLine = h('div', {
+    class: 'muted',
+    text: `当前扩展 ID：${(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) || '-'}`
+  });
+
   function renderState(out) {
     if (!out) {
       status.textContent = '尚未检查';
@@ -2145,7 +2180,9 @@ function updateSection(d) {
         toast(
           {
             title: out.hasUpdate ? `发现新版本 v${out.latest}` : '已是最新版本',
-            detail: out.hasUpdate ? '可点「打开下载页」查看说明并下载。' : ''
+            detail: out.hasUpdate
+              ? '更新前建议先备份设置，并覆盖原目录；可点「打开下载页」查看说明并下载。'
+              : ''
           },
           out.hasUpdate ? 'ok' : 'info',
           4000
@@ -2162,7 +2199,9 @@ function updateSection(d) {
     h('div', { class: 'section-title', text: '版本更新' }),
     status,
     meta,
-    h('div', { class: 'row tight', style: { marginTop: '6px' } }, [checkBtn, skipBtn, openBtn]),
+    idLine,
+    updateNote,
+    h('div', { class: 'row tight', style: { marginTop: '6px' } }, [checkBtn, skipBtn, openBtn, backupBtn]),
     checkbox(
       (d.update && d.update.autoCheck) !== false,
       (v) => {
@@ -2172,7 +2211,8 @@ function updateSection(d) {
       },
       '自动检查更新（每天一次，保存设置后生效）'
     ),
-    details
+    details,
+    howto
   ]);
 
   load(false);
@@ -2184,6 +2224,7 @@ function advancedGroup(d) {
     const st = store.get();
     const b = st.build;
     body.appendChild(updateSection(d));
+    body.appendChild(settingsBackupSection());
     body.appendChild(
       h('div', { class: 'kv' }, [
         h('span', { class: 'kv-key', text: '构建指纹' }),
@@ -2293,6 +2334,95 @@ function resetAll() {
     render();
     toast({ title: '已重置为默认设置' }, 'ok');
   });
+}
+
+// ---------------------------------------------------------------------------
+// 设置备份 / 恢复
+// ---------------------------------------------------------------------------
+//
+// 背景：手动加载的扩展，chrome.storage.local 是按扩展 ID 存的。
+// 覆盖原目录更新时 ID 不变，设置会保留；如果解压到新目录再加载，ID 变了，
+// 旧设置就读不到。导出/导入是这种情况下的兜底，也方便换机器。
+
+async function exportSettingsBackup() {
+  confirmDialog(
+    '导出设置备份',
+    '备份文件包含 API Key 明文，请只保存在本机，不要上传到公开位置。确定导出？',
+    async () => {
+      try {
+        const out = await call('settings.export', {}, { timeoutMs: 15000 });
+        const stamp = new Date().toISOString().slice(0, 10);
+        downloadFile(`bsub-settings-${stamp}.json`, JSON.stringify(out, null, 2), 'application/json');
+        toast(
+          {
+            title: '已导出设置备份',
+            detail: '文件包含 API Key 明文，请妥善保存。'
+          },
+          'warn',
+          6500
+        );
+      } catch (err) {
+        showError(err, '导出设置失败');
+      }
+    }
+  );
+}
+
+function importSettingsBackup() {
+  const input = h('input', {
+    type: 'file',
+    accept: '.json,application/json',
+    style: { display: 'none' }
+  });
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const backup = data && data.kind === 'bsub-settings-backup' ? data : { settings: data };
+      if (!backup.settings || typeof backup.settings !== 'object' || Array.isArray(backup.settings)) {
+        throw new Error('文件里没有可识别的设置数据');
+      }
+      confirmDialog(
+        '导入设置备份',
+        '会覆盖当前设置；备份里没有的 API Key 会保留当前值。确定继续？',
+        async () => {
+          try {
+            const saved = await call('settings.import', { backup }, { timeoutMs: 20000 });
+            state.draft = structuredCloneSafe(saved);
+            state.dirty = false;
+            store.set({ settings: saved, readiness: saved.__readiness || { ok: {}, issues: [] } });
+            render();
+            toast({ title: '设置已导入', detail: 'API Key 只保存在本机。' }, 'ok', 4000);
+          } catch (err) {
+            showError(err, '导入设置失败');
+          }
+        }
+      );
+    } catch (err) {
+      showError(err, '导入设置失败');
+    } finally {
+      input.value = '';
+    }
+  });
+  document.body.appendChild(input);
+  input.click();
+  setTimeout(() => input.remove(), 60000);
+}
+
+function settingsBackupSection() {
+  return h('div', {}, [
+    h('div', { class: 'section-title', text: '设置备份（更新前建议导出）' }),
+    h('div', {
+      class: 'note',
+      text: '导出文件包含 API Key 明文，只保存在本机；导入会覆盖当前设置，备份里没有的 Key 会保留。'
+    }),
+    h('div', { class: 'row tight' }, [
+      button('导出设置', () => exportSettingsBackup(), { small: true }),
+      button('导入设置', () => importSettingsBackup(), { small: true })
+    ])
+  ]);
 }
 
 // ---------------------------------------------------------------------------

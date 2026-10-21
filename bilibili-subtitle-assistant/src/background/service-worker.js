@@ -390,6 +390,40 @@ const methods = {
     return settingsForUi();
   },
 
+  // 设置备份：手动加载的扩展更新时可能换扩展 ID，chrome.storage 会读不到旧数据。
+  // 导出包含 API Key 明文，只由用户主动下载到本机。
+  'settings.export': async () => {
+    const s = await ST.loadSettings();
+    return {
+      kind: 'bsub-settings-backup',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      extensionVersion: chrome.runtime.getManifest().version,
+      settings: s
+    };
+  },
+
+  'settings.import': async (params) => {
+    const backup = params && params.backup;
+    const raw = (backup && backup.settings) || (params && params.settings);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new AppError(
+        'badargs',
+        '设置备份内容无效',
+        '',
+        '请选择由本扩展「导出设置」生成的 JSON 文件。'
+      );
+    }
+    const stored = await ST.loadSettings();
+    // 备份里有的 Key 用备份的；备份里没有的 Key 保留当前值（allowBlank=false 语义）
+    const merged = CFG.migrateSettings(CFG.mergeSecrets(raw, stored));
+    delete merged.__readiness;
+    const saved = await ST.saveSettings(merged);
+    await broadcast({ type: 'bsub:settings-changed' });
+    await pushPageOptions(saved);
+    return settingsForUi();
+  },
+
   'platform.test': async (params) => {
     const s = await ST.loadSettings();
     const kind = params.kind;

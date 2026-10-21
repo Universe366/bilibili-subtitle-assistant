@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '2.11.2', manifest_version: 3 }),
+    getManifest: () => ({ version: '2.12.0', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '2.11.2' };
+      if (msg && msg.type === 'bsub:ping') return { ok: true, version: '2.12.0' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -418,6 +418,32 @@ async function main() {
   check('保存后返回掩码（末四位）', save.data.ai.platforms.find((p) => p.id === 'deepseek').apiKey === '••••••••abcd');
   check('保存后返回 apiKeySet=true', save.data.ai.platforms.find((p) => p.id === 'deepseek').apiKeySet === true);
 
+  // ---- 2.1 设置备份 / 恢复（更新换目录时兜底） ----
+  const exported = await rpc('settings.export', {});
+  check(
+    'settings.export 返回备份且包含原始 Key',
+    exported.ok &&
+      exported.data.kind === 'bsub-settings-backup' &&
+      exported.data.settings.ai.platforms.find((p) => p.id === 'deepseek').apiKey === 'sk-test-1234567890abcd',
+    JSON.stringify(exported.error)
+  );
+  await rpc('settings.reset', {});
+  check(
+    'settings.reset 后备份前的 Key 已清空',
+    storageData[settingsKey].ai.platforms.find((p) => p.id === 'deepseek').apiKey === ''
+  );
+  const imported = await rpc('settings.import', { backup: exported.data });
+  check(
+    'settings.import 恢复原始 Key',
+    imported.ok &&
+      storageData[settingsKey].ai.platforms.find((p) => p.id === 'deepseek').apiKey === 'sk-test-1234567890abcd',
+    JSON.stringify(imported.error)
+  );
+  check(
+    'settings.import 返回给界面的仍是掩码',
+    imported.ok && imported.data.ai.platforms.find((p) => p.id === 'deepseek').apiKey === '••••••••abcd'
+  );
+
   const blank = JSON.parse(JSON.stringify(save.data));
   blank.ai.platforms.find((p) => p.id === 'deepseek').apiKey = '';
   await rpc('settings.set', { settings: blank });
@@ -749,7 +775,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '2.11.2' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '2.12.0' && !!res.data.platformSummary && !!res.data.permissions);
   check('诊断信息不回传明文密钥', JSON.stringify(res.data).indexOf('sk-test-1234567890abcd') === -1);
   res = await rpc('history.put', { video: { bvid: 'BV1', cid: 1, page: 1, title: 'T' }, entry: { lines: [{ from: 0, to: 1, text: 'x' }] } });
   check('历史写入成功', res.ok);
