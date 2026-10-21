@@ -11,6 +11,10 @@ import type {
   AiPlatform,
   AppSettings,
   BridgeStatus,
+  ChatDeltaEvent,
+  ChatDoneEvent,
+  ChatErrorEvent,
+  ChatRequest,
   ExportPayload,
   LayoutRect,
   PageInfo,
@@ -34,6 +38,7 @@ import { activePlatform, loadSettings, saveSettings, settingsSnapshot, testPlatf
 import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
+import { chat } from './chat';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -43,6 +48,7 @@ function failure<T>(error: unknown): Result<T> {
 }
 
 const aiControllers = new Map<string, AbortController>();
+const chatControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
@@ -383,6 +389,44 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('ai:cancel', (_event, requestId: string) => {
     aiControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('chat:send', async (_event, payload: ChatRequest): Promise<Result<{ requestId: string }>> => {
+    if (!payload || !payload.info || !Array.isArray(payload.lines) || payload.lines.length === 0) {
+      return { ok: false, error: '没有可用的字幕内容' };
+    }
+    if (!Array.isArray(payload.messages) || payload.messages.length === 0) {
+      return { ok: false, error: '没有对话内容' };
+    }
+
+    const requestId = payload.requestId || randomUUID();
+    const controller = new AbortController();
+    chatControllers.set(requestId, controller);
+
+    void (async () => {
+      try {
+        const result = await chat({
+          info: payload.info,
+          lines: payload.lines,
+          messages: payload.messages,
+          signal: controller.signal,
+          onDelta: (delta) => send('chat:delta', { requestId, delta } satisfies ChatDeltaEvent)
+        });
+        send('chat:done', { requestId, text: result.text, model: result.model } satisfies ChatDoneEvent);
+      } catch (error) {
+        const message = controller.signal.aborted ? '已取消' : (error as Error)?.message || String(error);
+        console.warn('[chat] failed:', message);
+        send('chat:error', { requestId, error: message } satisfies ChatErrorEvent);
+      } finally {
+        chatControllers.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  });
+
+  ipcMain.handle('chat:cancel', (_event, requestId: string) => {
+    chatControllers.get(requestId)?.abort();
   });
 
   ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {

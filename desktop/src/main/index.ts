@@ -9,7 +9,7 @@ import { summarize } from './ai';
 import { searchWeb } from './search';
 import { applyCorrectionToText } from './correction';
 import { buildExport } from './exporters';
-import { loadSettings, settingsSnapshot } from './settings';
+import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
 
@@ -156,6 +156,57 @@ function createWindow(): void {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
+
+    if (process.env.BSUB_CHAT_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!mainWindow) return;
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          saveSettings(settings);
+
+          const result = await mainWindow.webContents.executeJavaScript(`new Promise(async (resolve) => {
+            const info = { title: '测试视频', owner: '测试UP', duration: 60, bvid: 'BV1', cid: 1, url: '' };
+            const lines = [
+              { start: 0, end: 5, text: '这是第一句字幕。' },
+              { start: 5, end: 10, text: '这是第二句字幕。' }
+            ];
+            let text = '';
+            const offD = window.bsub.onChatDelta((e) => { text += e.delta; });
+            const offDone = window.bsub.onChatDone((e) => {
+              offD(); offDone(); offErr();
+              resolve({ ok: true, len: e.text.length, text: e.text.slice(0, 40) });
+            });
+            const offErr = window.bsub.onChatError((e) => {
+              offD(); offDone(); offErr();
+              resolve({ ok: false, error: e.error });
+            });
+            const started = await window.bsub.chat({
+              requestId: 'chat-test',
+              info,
+              lines,
+              messages: [{ role: 'user', content: '这个视频讲了什么？' }]
+            });
+            if (!started.ok) {
+              offD(); offDone(); offErr();
+              resolve({ ok: false, error: started.error });
+            }
+          })`);
+          console.log('[chat-test]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[chat-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
 
     if (process.env.BSUB_CORRECTION_TEST === '1') {
       setTimeout(() => {

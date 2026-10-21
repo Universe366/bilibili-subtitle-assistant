@@ -6,6 +6,10 @@ import type {
   AiPlatform,
   AppSettings,
   BridgeStatus,
+  ChatDeltaEvent,
+  ChatDoneEvent,
+  ChatErrorEvent,
+  ChatRequest,
   FindResult,
   LayoutRect,
   Result,
@@ -76,6 +80,12 @@ export interface BsubApi {
   onAiDone(cb: (event: AiDoneEvent) => void): () => void;
   onAiError(cb: (event: AiErrorEvent) => void): () => void;
   onAiStatus(cb: (event: AiStatusEvent) => void): () => void;
+
+  chat(payload: ChatRequest): Promise<Result<{ requestId: string }>>;
+  cancelChat(requestId: string): Promise<void>;
+  onChatDelta(cb: (event: ChatDeltaEvent) => void): () => void;
+  onChatDone(cb: (event: ChatDoneEvent) => void): () => void;
+  onChatError(cb: (event: ChatErrorEvent) => void): () => void;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 

@@ -10,7 +10,11 @@ export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
   const [section, setSection] = useState<Section>(() => {
     const value = new URLSearchParams(window.location.search).get('section');
-    return value === 'summary' || value === 'library' || value === 'settings' || value === 'subtitles'
+    return value === 'chat' ||
+      value === 'summary' ||
+      value === 'library' ||
+      value === 'settings' ||
+      value === 'subtitles'
       ? value
       : 'subtitles';
   });

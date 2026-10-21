@@ -25,7 +25,7 @@ export interface LayoutRect {
   height: number;
 }
 
-export type Section = 'subtitles' | 'summary' | 'library' | 'settings';
+export type Section = 'subtitles' | 'chat' | 'summary' | 'library' | 'settings';
 
 export interface VideoPart {
   index: number;
@@ -207,6 +207,7 @@ export interface AppSettings {
   prompt: {
     activeId: string;
     templates: PromptTemplate[];
+    chat: string;
   };
   search: {
     enabled: boolean;
@@ -297,6 +298,34 @@ export interface AiDeltaEvent {
 export interface AiStatusEvent {
   requestId: string;
   status: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatRequest {
+  requestId: string;
+  info: PageInfo;
+  lines: SubtitleLine[];
+  messages: ChatMessage[];
+}
+
+export interface ChatDeltaEvent {
+  requestId: string;
+  delta: string;
+}
+
+export interface ChatDoneEvent {
+  requestId: string;
+  text: string;
+  model: string;
+}
+
+export interface ChatErrorEvent {
+  requestId: string;
+  error: string;
 }
 
 export interface SummarizeRequest {

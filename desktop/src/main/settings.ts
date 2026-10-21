@@ -27,8 +27,12 @@ export const DEFAULT_PROMPT = `你是一个严谨的中文视频笔记助手。�
 
 要求：不要编造字幕里没有的信息；不确定的地方标注「不确定」。`;
 
-const DEFAULT_TEMPLATES: PromptTemplate[] = [
-  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
+const DEFAULT_CHAT_PROMPT = `你是一个严谨的中文视频助手。请只依据提供的字幕回答用户的问题。
+- 字幕里没有的信息，明确说「字幕里没有提到」，不要编造。
+- 回答用 Markdown，先给结论，再给依据。
+- 引用字幕时尽量带上 [mm:ss]。`;
+
+const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
   {
     id: 'brief',
     name: '精简',
@@ -95,7 +99,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   prompt: {
     activeId: 'default',
-    templates: DEFAULT_TEMPLATES
+    templates: DEFAULT_TEMPLATES,
+    chat: DEFAULT_CHAT_PROMPT
   },
   search: {
     enabled: false,
@@ -199,6 +204,10 @@ function normalize(raw: any): AppSettings {
       // 旧版本只有单条 prompt.summary，迁移成默认模板。
       base.prompt.templates = [{ id: 'default', name: '默认', text: raw.prompt.summary.trim() }];
       base.prompt.activeId = 'default';
+    }
+
+    if (typeof raw.prompt?.chat === 'string' && raw.prompt.chat.trim()) {
+      base.prompt.chat = raw.prompt.chat.trim();
     }
 
     if (raw.export && typeof raw.export === 'object') {

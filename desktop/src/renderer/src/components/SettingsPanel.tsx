@@ -606,6 +606,16 @@ export function SettingsPanel() {
           value={activeTemplate.text}
           onChange={(event) => updateTemplate({ text: event.target.value })}
         />
+
+        <div className="settings-label">对话提示词</div>
+        <textarea
+          className="settings-textarea"
+          rows={5}
+          value={draft.prompt.chat}
+          onChange={(event) =>
+            setDraft({ ...draft, prompt: { ...draft.prompt, chat: event.target.value } })
+          }
+        />
       </div>
 
       <div className="settings-section">

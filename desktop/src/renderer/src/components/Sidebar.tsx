@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
-import { Captions, Library, Settings, Sparkles } from 'lucide-react';
+import { Captions, Library, MessageSquare, Settings, Sparkles } from 'lucide-react';
 import type { Section, TabInfo } from '../../../shared/types';
 import { SubtitlesPanel } from './SubtitlesPanel';
+import { ChatPanel } from './ChatPanel';
 import { LibraryPanel } from './LibraryPanel';
 import { SummaryPanel } from './SummaryPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -11,6 +12,7 @@ type IconComponent = ComponentType<{ size?: number | string; className?: string 
 
 const items: Array<{ id: Section; label: string; icon: IconComponent; hint: string }> = [
   { id: 'subtitles', label: '字幕', icon: Captions, hint: '当前视频的字幕与翻译' },
+  { id: 'chat', label: '对话', icon: MessageSquare, hint: '基于字幕向 AI 提问' },
   { id: 'summary', label: '总结', icon: Sparkles, hint: 'AI 总结、章节与问答' },
   { id: 'library', label: '库', icon: Library, hint: '已入库的视频与笔记' },
   { id: 'settings', label: '设置', icon: Settings, hint: '平台、Key、提示词' }
@@ -40,7 +42,7 @@ export function Sidebar({
         <div className="brand-mark">字</div>
         <div className="brand-text">
           <div className="brand-name">字幕助手</div>
-          <div className="brand-sub">Desktop · M5</div>
+          <div className="brand-sub">Desktop</div>
         </div>
       </div>
 
@@ -60,6 +62,10 @@ export function Sidebar({
 
       <div className="side-content">
         {section === 'subtitles' && <SubtitlesPanel activeTab={activeTab} />}
+
+        {section === 'chat' && (
+          <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+        )}
 
         {section === 'summary' && (
           <SummaryPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />

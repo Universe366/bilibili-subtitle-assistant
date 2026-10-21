@@ -8,6 +8,10 @@ import type {
   AiPlatform,
   AppSettings,
   BridgeStatus,
+  ChatDeltaEvent,
+  ChatDoneEvent,
+  ChatErrorEvent,
+  ChatRequest,
   FindResult,
   ExportPayload,
   LayoutRect,
@@ -113,6 +117,14 @@ const api: BsubApi = {
   onAiDone: (cb: (event: AiDoneEvent) => void) => on<AiDoneEvent>('ai:done', cb),
   onAiError: (cb: (event: AiErrorEvent) => void) => on<AiErrorEvent>('ai:error', cb),
   onAiStatus: (cb: (event: AiStatusEvent) => void) => on<AiStatusEvent>('ai:status', cb),
+
+  chat: (payload: ChatRequest) =>
+    ipcRenderer.invoke('chat:send', payload) as Promise<Result<{ requestId: string }>>,
+  cancelChat: (requestId: string) =>
+    ipcRenderer.invoke('chat:cancel', requestId) as Promise<void>,
+  onChatDelta: (cb: (event: ChatDeltaEvent) => void) => on<ChatDeltaEvent>('chat:delta', cb),
+  onChatDone: (cb: (event: ChatDoneEvent) => void) => on<ChatDoneEvent>('chat:done', cb),
+  onChatError: (cb: (event: ChatErrorEvent) => void) => on<ChatErrorEvent>('chat:error', cb),
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<
