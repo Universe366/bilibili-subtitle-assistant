@@ -27,6 +27,7 @@ import { callMcpTool, listMcpTools } from './mcp';
 import { skillPrompt } from './skills';
 import { chat } from './chat';
 import { rankReferences } from './search';
+import { batchUrls } from './urlbatch';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -248,6 +249,25 @@ function createWindow(): void {
           console.log('[mcp-chat-test]', JSON.stringify(result));
         } catch (error) {
           console.warn('[mcp-chat-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_URLBATCH_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!tabManager) return;
+          const url = process.env.BSUB_URLBATCH_URL || 'https://www.bilibili.com/video/BV1xrnz6gEVD';
+          const result = await batchUrls(
+            tabManager,
+            [url],
+            false,
+            (index, total, currentUrl, title, stage, percent) =>
+              console.log('[urlbatch-test]', index + 1, total, stage, Math.round(percent), title)
+          );
+          console.log('[urlbatch-test] done', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[urlbatch-test] failed', (error as Error).message);
         }
       }, 5000);
     }

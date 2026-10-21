@@ -25,6 +25,9 @@ import type {
   OptimizeErrorEvent,
   BatchProgressEvent,
   BatchDoneEvent,
+  UrlBatchProgressEvent,
+  UrlBatchDoneEvent,
+  UrlBatchErrorEvent,
   BatchErrorEvent,
   Chapter,
   QualityReport,
@@ -186,6 +189,19 @@ const api: BsubApi = {
     on<BatchProgressEvent>('batch:progress', cb),
   onBatchDone: (cb: (event: BatchDoneEvent) => void) => on<BatchDoneEvent>('batch:done', cb),
   onBatchError: (cb: (event: BatchErrorEvent) => void) => on<BatchErrorEvent>('batch:error', cb),
+
+  batchUrls: (urls: string[], summarize: boolean) =>
+    ipcRenderer.invoke('urlbatch:start', { urls, summarize }) as Promise<
+      Result<{ requestId: string }>
+    >,
+  cancelUrlBatch: (requestId: string) =>
+    ipcRenderer.invoke('urlbatch:cancel', requestId) as Promise<void>,
+  onUrlBatchProgress: (cb: (event: UrlBatchProgressEvent) => void) =>
+    on<UrlBatchProgressEvent>('urlbatch:progress', cb),
+  onUrlBatchDone: (cb: (event: UrlBatchDoneEvent) => void) =>
+    on<UrlBatchDoneEvent>('urlbatch:done', cb),
+  onUrlBatchError: (cb: (event: UrlBatchErrorEvent) => void) =>
+    on<UrlBatchErrorEvent>('urlbatch:error', cb),
 
   getHistory: () => ipcRenderer.invoke('history:list') as Promise<Result<LibraryHistoryItem[]>>,
   deleteHistory: (id: number) =>

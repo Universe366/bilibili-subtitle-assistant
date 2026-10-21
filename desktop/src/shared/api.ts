@@ -23,6 +23,9 @@ import type {
   OptimizeErrorEvent,
   BatchProgressEvent,
   BatchDoneEvent,
+  UrlBatchProgressEvent,
+  UrlBatchDoneEvent,
+  UrlBatchErrorEvent,
   BatchErrorEvent,
   Chapter,
   QualityReport,
@@ -130,6 +133,12 @@ export interface BsubApi {
   onBatchProgress(cb: (event: BatchProgressEvent) => void): () => void;
   onBatchDone(cb: (event: BatchDoneEvent) => void): () => void;
   onBatchError(cb: (event: BatchErrorEvent) => void): () => void;
+
+  batchUrls(urls: string[], summarize: boolean): Promise<Result<{ requestId: string }>>;
+  cancelUrlBatch(requestId: string): Promise<void>;
+  onUrlBatchProgress(cb: (event: UrlBatchProgressEvent) => void): () => void;
+  onUrlBatchDone(cb: (event: UrlBatchDoneEvent) => void): () => void;
+  onUrlBatchError(cb: (event: UrlBatchErrorEvent) => void): () => void;
 
   getHistory(): Promise<Result<LibraryHistoryItem[]>>;
   deleteHistory(id: number): Promise<Result<{ removed: boolean }>>;

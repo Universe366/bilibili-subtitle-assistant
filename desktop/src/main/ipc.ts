@@ -42,6 +42,9 @@ import type {
   LibraryHistoryItem,
   BatchProgressEvent,
   BatchDoneEvent,
+  UrlBatchProgressEvent,
+  UrlBatchDoneEvent,
+  UrlBatchErrorEvent,
   Chapter,
   QualityReport,
   McpServer,
@@ -73,6 +76,7 @@ import { transcribe } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
+import { batchUrls, parseVideoUrls } from './urlbatch';
 import { checkSubtitles } from './quality';
 import { generateChapters } from './chapters';
 import { callMcpTool, listMcpTools } from './mcp';
@@ -91,6 +95,7 @@ const asrControllers = new Map<string, AbortController>();
 const translateControllers = new Map<string, AbortController>();
 const optimizeControllers = new Map<string, AbortController>();
 const batchControllers = new Map<string, AbortController>();
+const urlBatchControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
@@ -636,6 +641,59 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('batch:cancel', (_event, requestId: string) => {
     batchControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle(
+    'urlbatch:start',
+    async (
+      _event,
+      payload: { requestId: string; urls: string[]; summarize: boolean }
+    ): Promise<Result<{ requestId: string }>> => {
+      const urls = (Array.isArray(payload?.urls) ? payload.urls : [])
+        .flatMap((item) => parseVideoUrls(item))
+        .filter((item, index, all) => all.indexOf(item) === index);
+      if (!urls.length) return { ok: false, error: '没有解析到 B 站视频链接' };
+      const requestId = payload.requestId || randomUUID();
+      const controller = new AbortController();
+      urlBatchControllers.set(requestId, controller);
+
+      void (async () => {
+        try {
+          const result = await batchUrls(
+            tabs,
+            urls,
+            payload.summarize !== false,
+            (index, total, url, title, stage, percent) =>
+              send('urlbatch:progress', {
+                requestId,
+                index,
+                total,
+                url,
+                title,
+                stage,
+                percent
+              } satisfies UrlBatchProgressEvent),
+            controller.signal
+          );
+          send('urlbatch:done', { requestId, ...result } satisfies UrlBatchDoneEvent);
+          send('library:changed', null);
+        } catch (error) {
+          const message = controller.signal.aborted
+            ? '已终止'
+            : (error as Error)?.message || String(error);
+          console.warn('[urlbatch] failed:', message);
+          send('urlbatch:error', { requestId, error: message } satisfies UrlBatchErrorEvent);
+        } finally {
+          urlBatchControllers.delete(requestId);
+        }
+      })();
+
+      return { ok: true, data: { requestId } };
+    }
+  );
+
+  ipcMain.handle('urlbatch:cancel', (_event, requestId: string) => {
+    urlBatchControllers.get(requestId)?.abort();
   });
 
   ipcMain.handle('history:list', (): Result<LibraryHistoryItem[]> => {

@@ -20,6 +20,7 @@ interface TabRecord {
   suspended: boolean;
   lastActiveAt: number;
   zoom: number;
+  loadPromise?: Promise<void>;
 }
 
 let bridgeCache: string | null = null;
@@ -72,7 +73,10 @@ export class TabManager {
     this.startSuspendTimer();
   }
 
-  async create(input = 'https://www.bilibili.com/'): Promise<string> {
+  async create(
+    input = 'https://www.bilibili.com/',
+    options: { activate?: boolean; wait?: boolean } = {}
+  ): Promise<string> {
     const id = randomUUID();
     const url = normalizeUrl(input);
     const record: TabRecord = {
@@ -88,9 +92,20 @@ export class TabManager {
     this.tabs.set(id, record);
 
     await this.ensureView(record);
-    this.setActive(id);
+    if (options.activate === false) {
+      try {
+        record.view?.setVisible(false);
+      } catch {
+        // ignore
+      }
+    } else {
+      this.setActive(id);
+    }
     console.log('[tab] created', id, url, `suspendAfter=${this.suspendAfterMs}ms`);
     this.emit();
+    if (options.wait && record.loadPromise) {
+      await record.loadPromise.catch(() => undefined);
+    }
     return id;
   }
 
@@ -478,6 +493,10 @@ export class TabManager {
 
   activeWebContents(): WebContents | null {
     return this.activeRecord()?.view?.webContents ?? null;
+  }
+
+  webContentsOf(id: string): WebContents | null {
+    return this.tabs.get(id)?.view?.webContents ?? null;
   }
 
   list(): TabInfo[] {

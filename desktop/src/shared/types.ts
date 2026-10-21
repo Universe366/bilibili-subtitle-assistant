@@ -194,6 +194,27 @@ export interface BatchErrorEvent {
   error: string;
 }
 
+export interface UrlBatchProgressEvent {
+  requestId: string;
+  index: number;
+  total: number;
+  url: string;
+  title: string;
+  stage: string;
+  percent: number;
+}
+
+export interface UrlBatchDoneEvent {
+  requestId: string;
+  succeeded: number;
+  failed: Array<{ url: string; title?: string; error: string }>;
+}
+
+export interface UrlBatchErrorEvent {
+  requestId: string;
+  error: string;
+}
+
 export interface LibraryIngestPayload {
   info: PageInfo;
   track: SubtitleTrack;

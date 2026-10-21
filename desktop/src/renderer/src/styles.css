@@ -1423,6 +1423,12 @@ button:disabled {
   line-height: 1.45;
 }
 
+.url-batch-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .batch-list {
   display: flex;
   flex-direction: column;
