@@ -1510,6 +1510,15 @@ button:disabled {
   background: var(--accent-soft);
 }
 
+.batch-row.is-removed {
+  opacity: 0.45;
+}
+
+.batch-row > .mini-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .batch-text {
   display: flex;
   flex-direction: column;

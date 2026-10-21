@@ -783,6 +783,15 @@ export function SettingsPanel() {
           流式输出
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.ai.preProofread === true}
+            onChange={(event) => updateAi({ preProofread: event.target.checked })}
+          />
+          总结前先 AI 校对字幕（更慢，消耗额度）
+        </label>
+
         <button className="mini-btn" disabled={testing} onClick={() => void test()}>
           {testing ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />} 测试连接
         </button>

@@ -12,6 +12,7 @@ export function BatchPanel() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -91,6 +92,7 @@ export function BatchPanel() {
     if (running || !selected.size) return;
     setRunning(true);
     setPaused(false);
+    setRemovedIds(new Set());
     setProgress(0);
     setMessage('准备批量总结…');
     setError('');
@@ -102,6 +104,12 @@ export function BatchPanel() {
       setRunning(false);
       setError(response.error);
     }
+  };
+
+  const removeItem = (id: number) => {
+    if (!requestRef.current) return;
+    void window.bsub.removeBatchItem(requestRef.current, id);
+    setRemovedIds((previous) => new Set(previous).add(id));
   };
 
   const togglePause = () => {
@@ -300,11 +308,16 @@ export function BatchPanel() {
       {mode === 'library' && (
       <div className="batch-list">
         {videos.map((video) => (
-          <label key={video.id} className={`batch-row${selected.has(video.id) ? ' is-selected' : ''}`}>
+          <label
+            key={video.id}
+            className={`batch-row${selected.has(video.id) ? ' is-selected' : ''}${
+              removedIds.has(video.id) ? ' is-removed' : ''
+            }`}
+          >
             <input
               type="checkbox"
               checked={selected.has(video.id)}
-              disabled={running}
+              disabled={running || removedIds.has(video.id)}
               onChange={() => toggle(video.id)}
             />
             <div className="batch-text">
@@ -316,6 +329,18 @@ export function BatchPanel() {
                 {video.duration ? ` · ${Math.round(video.duration / 60)} 分钟` : ''}
               </div>
             </div>
+            {running && !removedIds.has(video.id) && (
+              <button
+                className="mini-btn"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  removeItem(video.id);
+                }}
+              >
+                移除
+              </button>
+            )}
           </label>
         ))}
       </div>

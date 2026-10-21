@@ -367,6 +367,7 @@ export interface AppSettings {
     temperature: number;
     maxTokens: number;
     stream: boolean;
+    preProofread: boolean;
   };
   asr: AsrSettings;
   prompt: {

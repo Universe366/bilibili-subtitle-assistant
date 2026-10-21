@@ -91,6 +91,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     temperature: 0.3,
     maxTokens: 8192,
     stream: true,
+    preProofread: false,
     platforms: [
       {
         id: 'deepseek',
@@ -112,6 +113,34 @@ export const DEFAULT_SETTINGS: AppSettings = {
         baseUrl: 'https://api.openai.com/v1',
         apiKey: '',
         model: 'gpt-4o-mini'
+      },
+      {
+        id: 'moonshot',
+        name: 'Moonshot Kimi',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        apiKey: '',
+        model: 'moonshot-v1-8k'
+      },
+      {
+        id: 'zhipu',
+        name: '智谱 GLM',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        apiKey: '',
+        model: 'glm-4-flash'
+      },
+      {
+        id: 'openrouter',
+        name: 'OpenRouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        apiKey: '',
+        model: 'openai/gpt-4o-mini'
+      },
+      {
+        id: 'groq',
+        name: 'Groq',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        apiKey: '',
+        model: 'llama-3.3-70b-versatile'
       },
       {
         id: 'custom',
@@ -289,6 +318,7 @@ function normalize(raw: any): AppSettings {
       base.ai.maxTokens = Math.min(64000, Math.max(256, Math.round(maxTokens)));
     }
     base.ai.stream = raw.ai?.stream !== false;
+    base.ai.preProofread = raw.ai?.preProofread === true;
 
     if (raw.asr && typeof raw.asr === 'object') {
       const asrIncoming = Array.isArray(raw.asr.platforms) ? raw.asr.platforms : [];

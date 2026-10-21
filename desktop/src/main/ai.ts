@@ -4,6 +4,7 @@ import { activePlatform, activePrompt, loadSettings } from './settings';
 import { buildSearchQuery, rankReferences, searchWeb } from './search';
 import { glossaryTerms } from './correction';
 import { skillPrompt } from './skills';
+import { optimizeLines } from './optimize';
 
 const MAX_TRANSCRIPT_CHARS = 30000;
 const REQUEST_TIMEOUT_MS = 300000;
@@ -66,7 +67,27 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
   if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
 
   const info = options.info;
-  const transcript = buildTranscript(info, options.lines);
+  let workingLines = options.lines;
+  if (settings.ai.preProofread) {
+    options.onStatus?.('先校对字幕…');
+    try {
+      const suggestions = await optimizeLines(options.lines, () => undefined, options.signal, settings);
+      if (suggestions.length) {
+        const byIndex = new Map(suggestions.map((item) => [item.index, item.suggestion]));
+        workingLines = options.lines.map((line, index) =>
+          byIndex.has(index) ? { ...line, text: byIndex.get(index) || line.text } : line
+        );
+        options.onStatus?.(`已校对 ${suggestions.length} 处`);
+      } else {
+        options.onStatus?.('校对完成，未发现改动');
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      options.onStatus?.('校对失败，改用原字幕');
+    }
+  }
+
+  const transcript = buildTranscript(info, workingLines);
   if (!transcript.trim()) throw new Error('没有可用的字幕内容');
 
   const userContent = [
