@@ -555,23 +555,29 @@ function maskSettings(settings: AppSettings): AppSettings {
   return clone;
 }
 
+const CLEAR_SECRET = '__CLEAR__';
+
+function resolveSecret(incoming: string, current: string): string {
+  if (incoming === CLEAR_SECRET) return '';
+  if (!incoming || isMaskedSecret(incoming)) return current || '';
+  return incoming;
+}
+
 function mergeSecrets(next: AppSettings, current: AppSettings): AppSettings {
   const merged: AppSettings = JSON.parse(JSON.stringify(next));
   for (const platform of merged.ai.platforms) {
-    if (isMaskedSecret(platform.apiKey)) {
-      platform.apiKey =
-        current.ai.platforms.find((item) => item.id === platform.id)?.apiKey || '';
-    }
+    platform.apiKey = resolveSecret(
+      platform.apiKey,
+      current.ai.platforms.find((item) => item.id === platform.id)?.apiKey || ''
+    );
   }
   for (const platform of merged.asr.platforms) {
-    if (isMaskedSecret(platform.apiKey)) {
-      platform.apiKey =
-        current.asr.platforms.find((item) => item.id === platform.id)?.apiKey || '';
-    }
+    platform.apiKey = resolveSecret(
+      platform.apiKey,
+      current.asr.platforms.find((item) => item.id === platform.id)?.apiKey || ''
+    );
   }
-  if (isMaskedSecret(merged.search.apiKey)) {
-    merged.search.apiKey = current.search.apiKey;
-  }
+  merged.search.apiKey = resolveSecret(merged.search.apiKey, current.search.apiKey);
   return merged;
 }
 

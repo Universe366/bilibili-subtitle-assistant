@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Loader2, Send, Square, Trash2 } from 'lucide-react';
+import { AlertTriangle, ImagePlus, Loader2, Send, Square, Trash2, X } from 'lucide-react';
 import type { ChatMessage, PageInfo, SubtitleLine, TabInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { pickTrack, videoKeyOf } from '../lib/video';
@@ -33,6 +33,8 @@ export function ChatPanel({
   const [streamText, setStreamText] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef('');
   const contextRef = useRef<{ info: PageInfo; lines: SubtitleLine[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,7 @@ export function ChatPanel({
     setStatus('');
     setError(null);
     setStreaming(false);
+    setImages([]);
   }, [activeTab?.id, videoKey]);
 
   useEffect(() => {
@@ -87,6 +90,30 @@ export function ChatPanel({
     const element = scrollRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   }, [messages, streamText, status]);
+
+  const addImages = async (files: File[]) => {
+    const selected = files.filter((file) => file.type.startsWith('image/'));
+    if (!selected.length) return;
+    let next = [...images];
+    for (const file of selected) {
+      if (next.length >= 2) {
+        setError('最多附带 2 张图片');
+        break;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError('图片不能超过 5MB');
+        continue;
+      }
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      }).catch(() => '');
+      if (data) next = [...next, data];
+    }
+    setImages(next.slice(0, 2));
+  };
 
   const ensureContext = async () => {
     if (contextRef.current) return contextRef.current;
@@ -124,7 +151,7 @@ export function ChatPanel({
 
   const send = async (preset?: string) => {
     const content = String(preset ?? input).trim();
-    if (!content || streaming) return;
+    if ((!content && !images.length) || streaming) return;
 
     setInput('');
     setError(null);
@@ -132,8 +159,12 @@ export function ChatPanel({
     setStreamText('');
     setStatus('读取字幕…');
 
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content }];
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      { role: 'user', content, ...(images.length ? { images } : {}) }
+    ];
     setMessages(nextMessages);
+    setImages([]);
 
     try {
       const context = await ensureContext();
@@ -163,6 +194,7 @@ export function ChatPanel({
     if (requestRef.current) void window.bsub.cancelChat(requestRef.current);
     requestRef.current = '';
     setMessages([]);
+    setImages([]);
     setStreamText('');
     setStatus('');
     setError(null);
@@ -227,7 +259,21 @@ export function ChatPanel({
                 {message.role === 'assistant' ? (
                   <Markdown content={message.content} />
                 ) : (
-                  message.content
+                  <>
+                    {message.images?.length ? (
+                      <div className="chat-images">
+                        {message.images.map((src, imageIndex) => (
+                          <img
+                            key={`${imageIndex}-${src.slice(-12)}`}
+                            className="chat-image"
+                            src={src}
+                            alt=""
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    <div>{message.content}</div>
+                  </>
                 )}
               </div>
             </div>
@@ -265,7 +311,50 @@ export function ChatPanel({
         </div>
       )}
 
-      <div className="chat-composer">
+      {images.length > 0 && (
+        <div className="chat-image-preview">
+          {images.map((src, index) => (
+            <div key={`${index}-${src.slice(-12)}`} className="chat-thumb">
+              <img src={src} alt="" />
+              <button
+                className="chat-thumb-remove"
+                title="移除图片"
+                onClick={() => setImages(images.filter((_, item) => item !== index))}
+              >
+                <X size={9} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div
+        className="chat-composer"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          void addImages(Array.from(event.dataTransfer.files));
+        }}
+      >
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            void addImages(Array.from(event.target.files || []));
+            event.target.value = '';
+          }}
+        />
+        <button
+          className="icon-btn"
+          title="添加图片（也可粘贴/拖入）"
+          disabled={!isVideoPage || streaming || images.length >= 2}
+          onClick={() => imageInputRef.current?.click()}
+        >
+          <ImagePlus size={14} />
+        </button>
         <textarea
           className="chat-input"
           rows={2}
@@ -273,6 +362,13 @@ export function ChatPanel({
           placeholder={isVideoPage ? '基于本片字幕提问…（Enter 发送）' : '打开 B 站视频后可用'}
           disabled={!isVideoPage}
           onChange={(event) => setInput(event.target.value)}
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData.files || []);
+            if (files.some((file) => file.type.startsWith('image/'))) {
+              event.preventDefault();
+              void addImages(files);
+            }
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
@@ -282,7 +378,7 @@ export function ChatPanel({
         />
         <button
           className="mini-btn primary"
-          disabled={!isVideoPage || !input.trim() || streaming}
+          disabled={!isVideoPage || (!input.trim() && !images.length) || streaming}
           onClick={() => void send()}
           title="发送"
         >

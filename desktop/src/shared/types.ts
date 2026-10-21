@@ -491,6 +491,7 @@ export interface AiStatusEvent {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  images?: string[];
 }
 
 export interface ChatRequest {

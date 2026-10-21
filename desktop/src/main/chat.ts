@@ -55,12 +55,22 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
     .filter(Boolean)
     .join('\n\n');
 
-  const history = options.messages
-    .slice(-MAX_HISTORY)
-    .map((message) => ({
-      role: message.role,
-      content: String(message.content || '').slice(0, 4000)
-    }));
+  const history = options.messages.slice(-MAX_HISTORY).map((message) => {
+    const text = String(message.content || '').slice(0, 4000);
+    if (message.role === 'user' && Array.isArray(message.images) && message.images.length) {
+      return {
+        role: 'user',
+        content: [
+          { type: 'text', text },
+          ...message.images.slice(0, 3).map((url) => ({
+            type: 'image_url',
+            image_url: { url }
+          }))
+        ]
+      };
+    }
+    return { role: message.role, content: text };
+  });
 
   const messages = [
     { role: 'system', content: system },

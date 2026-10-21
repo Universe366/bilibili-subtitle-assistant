@@ -738,14 +738,23 @@ export function SettingsPanel() {
         />
 
         <div className="settings-label">API Key</div>
-        <input
-          className="settings-input"
-          type="password"
-          value={active.apiKey}
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(event) => updatePlatform({ apiKey: event.target.value })}
-        />
+        <div className="settings-inline">
+          <input
+            className="settings-input"
+            type="password"
+            value={active.apiKey === '__CLEAR__' ? '' : active.apiKey}
+            placeholder="留空保存不改动"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => updatePlatform({ apiKey: event.target.value })}
+          />
+          <button
+            className="mini-btn"
+            onClick={() => updatePlatform({ apiKey: '__CLEAR__' })}
+          >
+            清除
+          </button>
+        </div>
 
         <div className="settings-inline">
           <div className="settings-field">
@@ -849,14 +858,23 @@ export function SettingsPanel() {
         />
 
         <div className="settings-label">API Key</div>
-        <input
-          className="settings-input"
-          type="password"
-          value={activeAsr.apiKey}
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(event) => updateAsrPlatform({ apiKey: event.target.value })}
-        />
+        <div className="settings-inline">
+          <input
+            className="settings-input"
+            type="password"
+            value={activeAsr.apiKey === '__CLEAR__' ? '' : activeAsr.apiKey}
+            placeholder="留空保存不改动"
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => updateAsrPlatform({ apiKey: event.target.value })}
+          />
+          <button
+            className="mini-btn"
+            onClick={() => updateAsrPlatform({ apiKey: '__CLEAR__' })}
+          >
+            清除
+          </button>
+        </div>
 
         <div className="settings-inline">
           <div className="settings-field">
@@ -1041,14 +1059,23 @@ export function SettingsPanel() {
         {(draft.search.provider === 'tavily' || draft.search.provider === 'brave') && (
           <>
             <div className="settings-label">检索 API Key</div>
-            <input
-              className="settings-input"
-              type="password"
-              value={draft.search.apiKey}
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(event) => updateSearch({ apiKey: event.target.value })}
-            />
+            <div className="settings-inline">
+              <input
+                className="settings-input"
+                type="password"
+                value={draft.search.apiKey === '__CLEAR__' ? '' : draft.search.apiKey}
+                placeholder="留空保存不改动"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => updateSearch({ apiKey: event.target.value })}
+              />
+              <button
+                className="mini-btn"
+                onClick={() => updateSearch({ apiKey: '__CLEAR__' })}
+              >
+                清除
+              </button>
+            </div>
           </>
         )}
 
