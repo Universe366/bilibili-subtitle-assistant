@@ -171,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.8', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.9', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.13.8' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.13.9' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
@@ -194,19 +194,23 @@ async function main() {
   }
 
   // ---- 页面内嵌面板（不点扩展图标；仍保留侧边栏） ----
+  // 内容脚本会等 B 站首屏稳定约 2.2s 再挂载，避免打断评论区渲染
+  await sleep(2400);
   res = await rpc('applyOptions', { embedPanel: true, playerButton: false, overlay: false });
   await sleep(250);
   const embed = doc.getElementById('__bsub_embed_panel__');
-  const embedFrame = embed && embed.querySelector('iframe');
+  const embedRoot = embed && embed.shadowRoot;
+  const embedFrame = embedRoot && embedRoot.querySelector('iframe');
   check(
     '开启页面内嵌后注入面板与 iframe',
     !!embed && !!embedFrame && /panel\.html/.test(embedFrame.src) && /embed=1/.test(embedFrame.src),
     embedFrame ? embedFrame.src : '未注入'
   );
+  check('内嵌面板使用 Shadow DOM（避免干扰 B 站脚本）', !!embedRoot, embed ? '无 shadowRoot' : '未注入');
   check(
     '内嵌面板有收起与打开侧边栏按钮',
-    !!embed && !!embed.querySelector('.bsub-embed-close') && /侧栏/.test(embed.textContent),
-    embed ? embed.textContent.slice(0, 80) : ''
+    !!embedRoot && !!embedRoot.querySelector('.bsub-embed-close') && /侧栏/.test(embedRoot.textContent),
+    embedRoot ? embedRoot.textContent.slice(0, 80) : ''
   );
   check(
     '内嵌面板挂进 B 站右侧栏（不是覆盖层）',
@@ -227,20 +231,19 @@ async function main() {
     !!embed && Number.parseInt(embed.style.height, 10) >= 300,
     embed ? embed.style.height : ''
   );
-  const embedCss = fs.readFileSync(path.join(EXT, 'src/content/content.css'), 'utf8');
+  const embedJs = fs.readFileSync(path.join(EXT, 'src/content/content.js'), 'utf8');
   check(
     '内嵌头部为白色（与页面一致）',
-    /#__bsub_embed_panel__ \.bsub-embed-bar\s*\{[\s\S]{0,240}background:\s*#fff/.test(embedCss),
+    /\.bsub-embed-bar\s*\{[\s\S]{0,240}background:\s*#fff/.test(embedJs),
     ''
   );
   check(
-    '内嵌面板与 iframe 强制可点击',
-    /#__bsub_embed_panel__\s*\{[\s\S]{0,240}pointer-events:\s*auto/.test(embedCss) &&
-      /\.bsub-embed-frame\s*\{[\s\S]{0,160}pointer-events:\s*auto/.test(embedCss),
+    '内嵌 iframe 强制可点击',
+    /\.bsub-embed-frame\s*\{[\s\S]{0,200}pointer-events:\s*auto/.test(embedJs),
     ''
   );
-  if (embed) {
-    embed.querySelector('.bsub-embed-close').click();
+  if (embedRoot) {
+    embedRoot.querySelector('.bsub-embed-close').click();
     await sleep(80);
     check('收起后显示右侧「字幕」标签', !doc.getElementById('__bsub_embed_panel__') && !!doc.getElementById('__bsub_embed_tab__'));
   }

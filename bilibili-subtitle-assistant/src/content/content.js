@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.8';
+  const CONTENT_VERSION = '2.13.9';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -40,7 +40,9 @@
     overlayLines: [],
     bridgeReady: false,
     embedClosed: false,
-    embedFrame: null
+    embedFrame: null,
+    // B 站首屏/切页时还在做 DOM 初始化，过早插入会打断它自己的渲染
+    embedMountAfter: Date.now() + 2200
   };
 
   const log = (...a) => {
@@ -209,6 +211,9 @@
         if (sig && sig !== state.signature) {
           state.signature = sig;
           state.overlayLines = [];
+          // 切页后 B 站会重建右侧栏，等它渲染完再挂，避免打断评论区
+          state.embedMountAfter = Date.now() + 1800;
+          removeEmbedPanel();
           sendEvent('navigate', { signature: sig, info });
           log('导航签名变化', sig);
         }
@@ -338,6 +343,62 @@
   const EMBED_ID = '__bsub_embed_panel__';
   const EMBED_TAB_ID = '__bsub_embed_tab__';
 
+  // Shadow DOM 的样式：B 站脚本只会看到 host，不会遍历到我们的按钮/iframe。
+  const EMBED_SHADOW_CSS = `
+    :host {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    .bsub-embed-bar {
+      flex: 0 0 auto;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      background: #fff;
+      color: #18191c;
+      border-bottom: 1px solid #e3e5e7;
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+    .bsub-embed-title {
+      flex: 1 1 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .bsub-embed-btn {
+      flex: 0 0 auto;
+      appearance: none;
+      border: 1px solid #e3e5e7;
+      background: #f6f7f8;
+      color: #18191c;
+      border-radius: 5px;
+      font-size: 12px;
+      line-height: 1;
+      padding: 4px 7px;
+      cursor: pointer;
+    }
+    .bsub-embed-btn:hover { background: #eef0f2; }
+    .bsub-embed-frame {
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 0;
+      border: 0;
+      background: #fff;
+      pointer-events: auto !important;
+    }
+  `;
+
   function isVideoPage() {
     return /^\/(video|bangumi\/play|list)\//.test(location.pathname);
   }
@@ -455,6 +516,8 @@
       ensureEmbedTab();
       return false;
     }
+    // 等 B 站首屏渲染稳定后再插入；否则它的 vdom 会抛错并卸载评论区
+    if (!force && Date.now() < state.embedMountAfter) return false;
     removeEmbedTab();
 
     const host = findEmbedHost();
@@ -478,6 +541,15 @@
     wrap = document.createElement('div');
     wrap.id = EMBED_ID;
     wrap.className = 'bsub-embed';
+
+    // 关键：面板内部全部放进 Shadow DOM。
+    // B 站右侧栏脚本会遍历 light DOM 子节点并调用 setAttribute；
+    // 之前把按钮/iframe 直接挂进去会让它抛 HierarchyRequestError，
+    // 连带把评论区组件卸载。Shadow DOM 对页面只暴露一个空 host div。
+    const root = wrap.attachShadow({ mode: 'open' });
+    const styleEl = document.createElement('style');
+    styleEl.textContent = EMBED_SHADOW_CSS;
+    root.appendChild(styleEl);
 
     const bar = document.createElement('div');
     bar.className = 'bsub-embed-bar';
@@ -511,8 +583,8 @@
     frame.src = `${chrome.runtime.getURL('src/sidepanel/panel.html')}?embed=1${tabId ? `&tabId=${tabId}` : ''}`;
     frame.addEventListener('error', () => showPanelHint('页面内嵌面板加载失败，请点工具栏图标用浏览器侧边栏。'));
 
-    wrap.appendChild(bar);
-    wrap.appendChild(frame);
+    root.appendChild(bar);
+    root.appendChild(frame);
     state.embedFrame = frame;
 
     // 插到右侧栏的 UP 主卡片之后、推荐列表之前；没有就放最前面

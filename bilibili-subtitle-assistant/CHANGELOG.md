@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.13.9（2026-10-21）
+
+### 修复
+- 内嵌面板内部改用 **Shadow DOM**：B 站右侧栏脚本不会再遍历到面板按钮/iframe，修复其抛 `HierarchyRequestError` 导致**评论区被卸载、页面部分点击失效**。
+- 内嵌面板延迟到 B 站首屏渲染稳定后再挂载（约 2.2s），切 P/切视频后也延迟 1.8s 重挂，避免打断 B 站自己的 DOM 初始化。
+
 ## 2.13.8（2026-10-21）
 
 ### 修复
