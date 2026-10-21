@@ -4,6 +4,7 @@
 import { call } from './bridge.js';
 import { SEARCH_ENGINES } from '../../shared/constants.js';
 import { wrapUntrusted, UNTRUSTED_NOTICE } from '../../shared/untrusted.js';
+import { isRelevantToQuery } from '../../shared/verify.js';
 
 export function engineUrl(engineId, query) {
   const e = SEARCH_ENGINES.find((x) => x.id === engineId) || SEARCH_ENGINES[0];
@@ -22,13 +23,18 @@ export function engineLabel(engineId) {
 // 所以「装了扩展但没配检索 Key」也能真的联网。
 export async function runProviderSearch(settings, query, hooks = {}) {
   const plat = (settings.search.platforms || []).find((p) => p.id === settings.search.activeId) || null;
+  // 逐条核对时只想要 3 条，不能再用设置里的全局条数（默认 6）。
+  const maxResults = Number(hooks.maxResults) > 0 ? Number(hooks.maxResults) : settings.search.maxResults;
+  // 核对流程明确要求「不抓正文」时，不能被设置里的开关覆盖。
+  const fetchPageContent =
+    hooks.fetchPageContent !== undefined ? !!hooks.fetchPageContent : !!settings.search.fetchPageContent;
   const out = await call(
     'search.provider',
     {
       id: plat ? plat.id : undefined,
       query,
-      maxResults: settings.search.maxResults,
-      fetchPageContent: settings.search.fetchPageContent,
+      maxResults,
+      fetchPageContent,
       timeRange: hooks.timeRange !== undefined ? hooks.timeRange : settings.search.timeRange,
       // 原问题用于「查询理解」（DeepSeek 官方搜索的 ori_question）
       oriQuestion: hooks.oriQuestion || query,
@@ -48,7 +54,7 @@ export async function runProviderSearch(settings, query, hooks = {}) {
   }
   if (out.note && hooks.onNote) hooks.onNote(out.note);
 
-  if (settings.search.fetchPageContent && results.length) {
+  if (fetchPageContent && results.length) {
     for (const r of results.slice(0, 4)) {
       // DeepSeek 官方搜索在 need_content=true 时已直接带回正文，不用再抓一次
       if (r.content && r.content.length > 200) continue;
@@ -108,9 +114,18 @@ export function countCitations(text, results) {
   return { counts, total };
 }
 
-export function searchContextBlock(results, counts) {
-  if (!results || !results.length) return '';
-  const rows = results.map((r, i) => {
+export function searchContextBlock(results, counts, query) {
+  let list = Array.isArray(results) ? results : [];
+  if (query) {
+    const hit = list.filter((r) => isRelevantToQuery(r, query));
+    if (!hit.length) {
+      // 搜到了东西但全都对不上：宁可如实说「没找到」，也不要把无关网页塞给模型。
+      return '【联网检索】本次检索结果与当前问题相关性较低，已省略。不要基于不存在的检索结果作答。';
+    }
+    list = hit;
+  }
+  if (!list.length) return '';
+  const rows = list.map((r, i) => {
     const cited = counts ? counts[r.url] || 0 : 0;
     // 优先用 summary（DeepSeek 官方搜索会给 600~800 字、面向模型的摘要），
     // 其次才是正文/短摘要。以前只看 content/snippet，等于把最好的字段丢了。
@@ -131,8 +146,8 @@ export function searchContextBlock(results, counts) {
 // 带「不可信外部数据」边界的安全版本。
 // 网页正文里可能藏着「忽略之前的指令」这类提示注入，直接拼进提示词有风险。
 // 这里把整块内容框进边界，并剥离正文自带的同名标记（防止提前闭合）。
-export function searchContextBlockGuarded(results, counts) {
-  const block = searchContextBlock(results, counts);
+export function searchContextBlockGuarded(results, counts, query) {
+  const block = searchContextBlock(results, counts, query);
   if (!block) return '';
   return `${UNTRUSTED_NOTICE}\n\n${wrapUntrusted(block)}`;
 }

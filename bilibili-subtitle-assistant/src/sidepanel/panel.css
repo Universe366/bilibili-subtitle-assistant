@@ -2673,3 +2673,68 @@ body[data-tab='settings'] .tab[data-tab-btn='settings'] {
 .verify-link:hover {
   text-decoration: underline;
 }
+
+/* 检索词对应的字幕原句与证据摘要：让用户能判断「这条证据有没有用」 */
+.verify-context,
+.verify-snippet {
+  margin: 2px 0 0 8px;
+  color: var(--fg-soft);
+  font-size: calc(var(--fs) * 0.82);
+  line-height: 1.5;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.verify-context {
+  font-style: italic;
+}
+
+/* 语义判定与来源强度 */
+.verify-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: calc(var(--fs) * 0.74);
+  line-height: 1.65;
+  color: var(--fg-soft);
+  vertical-align: 1px;
+}
+
+.verify-badge.is-multi {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.verify-badge.is-conflict {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.verify-verdict {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: calc(var(--fs) * 0.78);
+  color: var(--fg-soft);
+}
+
+.verify-verdict.is-support {
+  color: var(--ok);
+}
+
+.verify-verdict.is-refute {
+  color: var(--danger);
+}
+
+.verify-note {
+  margin: 2px 0 0 8px;
+  font-size: calc(var(--fs) * 0.82);
+  line-height: 1.5;
+  color: var(--fg);
+}

@@ -119,7 +119,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.10.0', contentVersion: '2.10.0', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.11.0', contentVersion: '2.11.0', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +140,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.10.0', stale: false }],
-    contentVersion: '2.10.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.11.0', stale: false }],
+    contentVersion: '2.11.0'
   },
   diagnostics: {
-    extensionVersion: '2.10.0',
-    contentVersion: '2.10.0',
+    extensionVersion: '2.11.0',
+    contentVersion: '2.11.0',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +161,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.10.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.11.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +233,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.10\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.11\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -882,6 +882,194 @@ async function main() {
       check('空标题空摘要判为不相关',
         V.isRelevantToQuery({ title: '', snippet: '' }, 'DeepSeek V4') === false, '');
 
+      // 中文没有空格：不能再把整句当一个词（旧实现要么全丢、要么全放）
+      check('中文检索词：词头实体命中才保留',
+        V.isRelevantToQuery({ title: '达摩院发布新一代开源模型', snippet: '达摩院发布新一代开源模型' }, '达摩院 新模型') === true, '');
+      check('中文检索词：只共享「发布/模型」的网页被丢弃',
+        V.isRelevantToQuery({ title: '阿里发布新模型', snippet: '阿里发布新模型' }, '达摩院 新模型') === false, '');
+      check('连字符 / 下划线不影响匹配',
+        V.isRelevantToQuery({ title: 'DeepSeek-V4 技术报告', snippet: '' }, 'deepseek_v4') === true, '');
+      check('summary 字段参与相关性判断',
+        V.isRelevantToQuery({ title: '某页', summary: 'DeepSeek V4 于 2026 年发布，参数量 6710 亿', snippet: '' }, 'DeepSeek V4') === true, '');
+
+      // 只查实体名时，必须再沾一点字幕里的具体说法，否则搜回来只是「提到这个名字」
+      const ctxLine = 'DeepSeek V4 在 2026 年 3 月发布，参数量达到 6710 亿';
+      check('上下文能过滤「只提到名字」的网页',
+        V.isRelevantToQuery({ title: 'DeepSeek 公司介绍', snippet: 'DeepSeek 是一家 AI 公司' }, 'DeepSeek', ctxLine) === false, '');
+      check('上下文里出现具体说法时保留',
+        V.isRelevantToQuery({ title: 'DeepSeek V4 正式发布', snippet: '2026 年 3 月发布，6710 亿参数' }, 'DeepSeek', ctxLine) === true, '');
+      check('能在字幕里找到检索词所在行',
+        V.contextLineForQuery(
+          [{ text: '今天天气不错' }, { text: ctxLine }, { text: '就讲到这里' }],
+          'DeepSeek V4 发布时间'
+        ).includes('2026'),
+        ''
+      );
+      check('上下文窗口会带上相邻字幕行',
+        V.contextWindowForQuery(
+          [
+            { text: 'DeepSeek V4 是深度求索发布的模型' },
+            { text: '参数量达到 6710 亿' },
+            { text: '价格非常便宜' }
+          ],
+          '6710 亿'
+        ).includes('DeepSeek V4'),
+        ''
+      );
+      check('优化流程导入了 verify 模块（否则核对会静默跳过）',
+        /from '\.\.\/\.\.\/shared\/verify\.js'/.test(fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/context.js'), 'utf8')),
+        '');
+      check('检索词里的实体必须在视频原文里出现过',
+        V.isQueryGroundedIn('OpenAI GPT-5 发布时间', 'DeepSeek V4 在 2026 年发布') === false, '');
+      check('有据可依的检索词会保留',
+        V.isQueryGroundedIn('DeepSeek V4 发布时间', 'DeepSeek V4 在 2026 年发布') === true, '');
+      check('中文检索词的依据来自字幕',
+        V.isQueryGroundedIn('达摩院开源模型', '达摩院今天开源了新模型') === true, '');
+
+      const vt = await V.verifyItems(
+        ['DeepSeek V4'],
+        async () => ({
+          results: [
+            { title: 'DeepSeek V4 正式发布', url: 'https://example.com/a', summary: 'DeepSeek V4 于 2026 年发布，参数量 6710 亿' },
+            { title: '日历网', url: 'https://example.com/b', summary: '今日黄历宜忌查询' }
+          ]
+        }),
+        { maxItems: 2, perItem: 2 }
+      );
+      check(
+        '核对只保留相关结果，并能读取 summary',
+        vt.length === 1 && vt[0].evidence.length === 1 && /6710/.test(vt[0].evidence[0].text),
+        JSON.stringify(vt)
+      );
+
+      const vtContext = await V.verifyItems(
+        ['DeepSeek'],
+        async () => ({
+          results: [
+            { title: 'DeepSeek 公司介绍', url: 'https://example.com/c', summary: 'DeepSeek 是一家 AI 公司' },
+            { title: 'DeepSeek V4 正式发布', url: 'https://example.com/d', summary: '2026 年 3 月发布，6710 亿参数' }
+          ]
+        }),
+        { maxItems: 2, perItem: 2, contextOf: () => 'DeepSeek V4 在 2026 年 3 月发布，参数量达到 6710 亿' }
+      );
+      check(
+        '核对会按字幕上下文过滤「只提到名字」的结果',
+        vtContext.length === 1 && vtContext[0].evidence.length === 1 && /2026/.test(vtContext[0].evidence[0].text),
+        JSON.stringify(vtContext)
+      );
+
+      // 检索词要带上字幕原句的语境，而不是孤立数字/短语
+      const ctxSentence = 'DeepSeek V4 在 2026 年 3 月发布，参数量达到 6710 亿';
+      check(
+        '孤立数字会还原成字幕原句',
+        V.contextualQuery('6710 亿', ctxSentence) === ctxSentence,
+        V.contextualQuery('6710 亿', ctxSentence)
+      );
+      check(
+        'AI 的改写查询也会落到字幕原句上',
+        V.contextualQuery('DeepSeek V4 发布时间', ctxSentence) === ctxSentence,
+        V.contextualQuery('DeepSeek V4 发布时间', ctxSentence)
+      );
+      const claims = V.buildVerifyClaims(
+        [
+          { text: '今天天气不错' },
+          { text: ctxSentence },
+          { text: '它的价格是每百万 token 一元钱' }
+        ],
+        8
+      );
+      check(
+        '按字幕原句生成带语境的检索项',
+        claims.length > 0 &&
+          claims.some((c) => c.query.includes('2026 年 3 月')) &&
+          claims.every((c) => c.query && c.context),
+        JSON.stringify(claims)
+      );
+
+      let sentQuery = '';
+      const vObjects = await V.verifyItems(
+        [{ label: 'DeepSeek', query: ctxSentence, context: ctxSentence }],
+        async (q) => {
+          sentQuery = q;
+          return {
+            results: [
+              { title: 'DeepSeek V4 正式发布', url: 'https://example.com/e', summary: '2026 年 3 月发布，6710 亿参数' }
+            ]
+          };
+        },
+        { maxItems: 2, perItem: 2 }
+      );
+      check(
+        '核对发出的是带语境的 query，而不是 label',
+        /2026 年 3 月/.test(sentQuery) && vObjects.length === 1 && vObjects[0].item === 'DeepSeek',
+        sentQuery
+      );
+
+      // 语义判定：来源强度按独立域名计算
+      const agree = api.panelAi.agreementOf([
+        { url: 'https://a.example/x', verdict: 'support' },
+        { url: 'https://b.example/y', verdict: 'support' },
+        { url: 'https://a.example/z', verdict: 'support' }
+      ]);
+      check('多来源一致按独立域名计算', agree.agreement === 'multi' && agree.support === 2, JSON.stringify(agree));
+      const conflict = api.panelAi.agreementOf([
+        { url: 'https://a.example/x', verdict: 'support' },
+        { url: 'https://b.example/y', verdict: 'refute' }
+      ]);
+      check('来源冲突能识别', conflict.agreement === 'conflict', JSON.stringify(conflict));
+      check(
+        '单一来源不算多来源',
+        api.panelAi.agreementOf([{ url: 'https://a.example/x', verdict: 'support' }]).agreement === 'single',
+        ''
+      );
+      check(
+        '证据判定 JSON 能解析（含代码块）',
+        api.panelAi.parseVerdictJson('```json\n{"verdicts":[{"claim":1,"evidence":1,"verdict":"support"}]}\n```').length === 1,
+        ''
+      );
+
+      // 并发核对：保持原始顺序
+      const conc = await V.verifyItems(
+        ['DeepSeek', 'MoE', '6710 亿'],
+        async (q) => {
+          await new Promise((r) => setTimeout(r, 10));
+          return {
+            results: [
+              {
+                title: `${q} 官方信息`,
+                url: `https://${encodeURIComponent(q)}.example/1`,
+                summary: `${q} 的详细说明与背景`
+              }
+            ]
+          };
+        },
+        { maxItems: 3, perItem: 1, concurrency: 3 }
+      );
+      check(
+        '并发核对保持原始顺序',
+        conc.map((x) => x.item).join(',') === 'DeepSeek,MoE,6710 亿',
+        JSON.stringify(conc.map((x) => x.item))
+      );
+
+      check(
+        '对话检索上下文会过滤不相关来源',
+        !/日历网/.test(api.search.searchContextBlock([{ title: '日历网', snippet: '今日黄历', url: 'https://x' }], {}, 'DeepSeek V4')),
+        ''
+      );
+      check(
+        '对话检索上下文保留相关来源',
+        /DeepSeek V4 正式发布/.test(
+          api.search.searchContextBlock([{ title: 'DeepSeek V4 正式发布', snippet: '参数量 6710 亿', url: 'https://y' }], {}, 'DeepSeek V4')
+        ),
+        ''
+      );
+      check(
+        '只有明确问「这些来源」才复用上一轮结果',
+        api.panelAi.referencesPreviousSearch('总结一下这些来源') === true &&
+          api.panelAi.referencesPreviousSearch('今天有什么 AI 新闻') === false,
+        ''
+      );
+
       // 长字幕要按前/中/后段抽样，不能只取开头反复出现的术语
       const longLines = [];
       for (let i = 0; i < 24; i += 1) {
@@ -965,7 +1153,7 @@ async function main() {
     check(
       '校对优先用 AI 生成查询，失败回退规则',
       /buildSearchQueries\(lines, settings/.test(fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/panel-ai.js'), 'utf8')) &&
-        /extractVerifyItems\(lines, verifyLimit\)/.test(fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/panel-ai.js'), 'utf8')),
+        /buildVerifyClaims\(lines, cap\)/.test(fs.readFileSync(path.join(ROOT, 'src/sidepanel/modules/panel-ai.js'), 'utf8')),
       ''
     );
 
@@ -995,7 +1183,7 @@ async function main() {
     check('优化提示词禁止把资料写进字幕', /不要把参考资料里的内容写进字幕/.test(optSrc), '');
     check('优化结果解析 kind 字段', /kind: KINDS\.includes/.test(optSrc), '');
     check('kind 归一到五个类别', /const KINDS = \['错别字', '术语', '时间', '数据', '逻辑'\]/.test(optSrc), '');
-    check('优化流程用逐条核对而不是整篇搜', /extractVerifyItems\(lines/.test(ctxSrc), '');
+    check('优化流程用逐条核对而不是整篇搜', /buildVerifyClaims\(lines/.test(ctxSrc), '');
     check('优化核对走 ephemeral（不冲掉检索面板）', /ephemeral: true/.test(ctxSrc), '');
 
     // ② 侧边栏打开的失败必须报出来

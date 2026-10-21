@@ -11,6 +11,7 @@ import * as OPT from './optimize.js';
 import * as SEARCH from './search.js';
 import { buildExport, safeFilename } from './exporter.js';
 import { DEFAULT_SYSTEM_PROMPT, TASK_LABEL, METHOD_TIMEOUT } from '../../shared/constants.js';
+import { buildVerifyClaims, verifyItems, contextWindowForQuery, annotateEvidenceAgreement } from '../../shared/verify.js';
 
 export const app = {
   panels: {},
@@ -492,13 +493,21 @@ export async function optimizeWithAi(opts = {}) {
     if (s.optimize.useSearch) {
       task.detail('联网核对字幕里的术语与事实…');
       try {
-        const items = extractVerifyItems(lines, s.optimize.verifyItemCount || 8);
+        const items = buildVerifyClaims(lines, s.optimize.verifyItemCount || 8);
         if (items.length) {
           verify = await verifyItems(
             items,
             (q, o) => doProviderSearch(q, { ...o, quiet: true, ephemeral: true }),
-            { maxItems: s.optimize.verifyItemCount || 8, perItem: 3 }
+            {
+              maxItems: s.optimize.verifyItemCount || 8,
+              perItem: 3,
+              concurrency: 2,
+              // 用字幕原句作为上下文，过滤只是提到名字、没谈这件事的网页
+              contextOf: (q) => contextWindowForQuery(lines, q)
+            }
           );
+          // 手动优化没有单独的语义判定调用，这里只按独立域名粗标来源强度
+          annotateEvidenceAgreement(verify);
           task.detail(`已核对 ${verify.length} 条`);
         }
       } catch (err) {
@@ -669,7 +678,8 @@ export async function doProviderSearch(query, opts = {}) {
       onLog: (m) => task && task.detail(m),
       oriQuestion: opts.oriQuestion || query,
       rid: opts.rid,
-      ...(opts.fetchPageContent === false ? { fetchPageContent: false } : {})
+      ...(Number(opts.maxResults) > 0 ? { maxResults: Number(opts.maxResults) } : {}),
+      ...(opts.fetchPageContent !== undefined ? { fetchPageContent: !!opts.fetchPageContent } : {})
     });
     if (out && out.results && !opts.ephemeral) {
       const current = store.get().search || {};

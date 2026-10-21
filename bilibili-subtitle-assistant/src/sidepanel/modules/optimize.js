@@ -91,7 +91,22 @@ export function buildOptimizeMessages({ lines, glossary, verify, searchResults, 
     evidenceText = verify
       .map((v, i) => {
         const ev = v.evidence.map((e) => `    · ${e.title}｜${e.text}`).join('\n');
-        return `[待核实 ${i + 1}] ${v.item}\n${ev}`;
+        // 把「这句话」放在前面，而不是只给一个孤立术语：
+        // 模型需要知道这个数字/术语在字幕里到底是什么说法，才能判断证据是否对得上。
+        const claim = String(v.context || v.item || '').slice(0, 180);
+        // 证据强度标签：模型据此决定能不能改数字/时间/事实
+        const tag = v.judged
+          ? v.agreement === 'multi'
+            ? '多来源一致'
+            : v.agreement === 'conflict'
+              ? '来源冲突'
+              : v.agreement === 'single'
+                ? '单一来源'
+                : '未判定'
+          : v.agreement === 'multi'
+            ? '多来源（未语义核对）'
+            : '未语义核对';
+        return `[待核实 ${i + 1}]（${tag}）${claim}\n${ev}`;
       })
       .join('\n\n');
   } else if (useSearch && searchResults && searchResults.length) {
@@ -115,7 +130,9 @@ export function buildOptimizeMessages({ lines, glossary, verify, searchResults, 
     '4. 只输出 JSON，不要任何解释、不要用 Markdown 代码块包裹。',
     '5. 格式：{"corrections":[{"wrong":"原始错误文本","right":"修正文本","reason":"原因","kind":"错别字|术语|时间|数据|逻辑","line":行号}]}',
     '6. wrong 必须是字幕里出现过的原文片段（尽量短，只含错误部分）。',
-    '7. 没有发现问题就返回 {"corrections":[]}。'
+    '7. 证据开头的标签表示来源强度：只有「多来源一致」可以较有把握地修改具体数字 / 时间 / 事实；',
+    '   「单一来源」「来源冲突」「未语义核对」只能参考，不要据此改动，除非是明显的错别字 / 术语或字幕前后自相矛盾。',
+    '8. 没有发现问题就返回 {"corrections":[]}。'
   ].join('\n');
 
   const user = [
