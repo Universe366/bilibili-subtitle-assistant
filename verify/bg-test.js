@@ -50,7 +50,7 @@ const chromeStub = {
   runtime: {
     id: 'test-ext',
     lastError: null,
-    getManifest: () => ({ version: '2.13.5', manifest_version: 3 }),
+    getManifest: () => ({ version: '2.13.6', manifest_version: 3 }),
     getURL: (p) => `chrome-extension://test-ext/${p}`,
     onInstalled: onEvent('onInstalled'),
     onStartup: onEvent('onStartup'),
@@ -81,7 +81,7 @@ const chromeStub = {
     get: async (id) => (id === fakeTab.id ? fakeTab : Promise.reject(new Error('no tab'))),
     sendMessage: async (tabId, msg) => {
       tabMessages.push({ tabId, msg });
-      if (msg && (msg.type === 'bsub:ping' || msg.type === 'bsub:ping2')) return { ok: true, version: '2.13.5' };
+      if (msg && (msg.type === 'bsub:ping' || msg.type === 'bsub:ping2')) return { ok: true, version: '2.13.6' };
       if (msg && msg.type === 'bsub:to-content') {
         if (tabMessageHandler) return tabMessageHandler(msg);
         // 模拟内容脚本：返回 {ok, data} 信封（后台 rpcPage 会拆开）
@@ -775,7 +775,7 @@ async function main() {
 
   // ---- 15. 诊断 / 历史 / 缓存 ----
   res = await rpc('diagnostics', {});
-  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '2.13.5' && !!res.data.platformSummary && !!res.data.permissions);
+  check('诊断信息包含版本 / 平台 / 权限', res.ok && res.data.extensionVersion === '2.13.6' && !!res.data.platformSummary && !!res.data.permissions);
   check(
     '诊断信息包含页面信息（成功签名或失败原因）',
     res.ok && !!res.data.pageInfo && ('signature' in res.data.pageInfo || 'error' in res.data.pageInfo),

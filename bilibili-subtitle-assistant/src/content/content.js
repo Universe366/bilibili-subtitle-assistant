@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.5';
+  const CONTENT_VERSION = '2.13.6';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -723,14 +723,9 @@
   // ---------------------------------------------------------------------------
 
   async function init() {
-    if (!claimIsolatedVersion()) {
-      log('检测到更新版本的脚本已接管，本实例退出');
-      return;
-    }
     ensureChannel();
     watchPageChannel();
     patchHistory();
-    listenRuntime();
     startFollow();
     // 主动要一次页面选项：页面内嵌面板默认开启，不能等侧边栏打开才推送
     try {
@@ -758,9 +753,17 @@
     }, 1500);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
+  // 监听必须**在注入时立刻注册**，不能等 DOMContentLoaded。
+  // 否则内嵌面板在 B 站页面还没加载完时请求 page.info，后台会误判
+  // 「注入后没有响应」；侧边栏通常是页面加载完后手动打开的，所以不复现。
+  if (!claimIsolatedVersion()) {
+    log('检测到更新版本的脚本已接管，本实例退出');
   } else {
-    init();
+    listenRuntime();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+      init();
+    }
   }
 })();

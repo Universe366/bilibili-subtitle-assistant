@@ -2,6 +2,12 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 2.13.6（2026-10-21）
+
+### 修复
+- 内容脚本的 `onMessage` 监听改为**注入时立刻注册**，不再等 DOMContentLoaded；修复内嵌面板在页面尚未加载完时请求 `page.info` 得到「注入后没有响应」。
+- 读取视频信息重试次数从 3 次提高到 5 次（间隔 500ms），覆盖 B 站首屏较慢的情况。
+
 ## 2.13.5（2026-10-21）
 
 ### 修复
