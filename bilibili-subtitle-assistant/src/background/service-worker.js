@@ -1327,19 +1327,26 @@ async function commandEmbedPanel(action) {
   if (!tab || tab.id == null) {
     return { ok: false, detail: '没有找到活动标签页' };
   }
+  const payload = { type: 'bsub:embed-command', action };
+  const shape = (res) => ({
+    ok: !!(res && res.ok),
+    collapsed: !!(res && res.collapsed),
+    closed: !!(res && res.closed),
+    detail: (res && res.detail) || ''
+  });
+  // 先直接发：内容脚本通常已经在跑。每一步都先 ensureContentScript 会再注入
+  // 一份 content.js；新实例关掉面板后，旧实例的定时器又会把它打开（表现为关不掉）。
+  try {
+    return shape(await chrome.tabs.sendMessage(tab.id, payload));
+  } catch (err) {
+    /* 内容脚本还没注入，走下面的兜底 */
+  }
   try {
     await ensureContentScript(tab.id);
-    const res = await chrome.tabs.sendMessage(tab.id, { type: 'bsub:embed-command', action });
-    return {
-      ok: !!(res && res.ok),
-      collapsed: !!(res && res.collapsed),
-      closed: !!(res && res.closed),
-      detail: (res && res.detail) || ''
-    };
+    return shape(await chrome.tabs.sendMessage(tab.id, payload));
   } catch (err) {
     return { ok: false, detail: (err && err.message) || '页面内面板不可用' };
-  }
-}
+  }}
 
 if (chrome.commands && chrome.commands.onCommand) {
   chrome.commands.onCommand.addListener((command) => {
@@ -1389,9 +1396,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return undefined;
   }
   if (message.type === 'bsub:open-embed') {
-    commandEmbedPanel(message.action || 'open')
+    // 兼容旧侧边栏页面：旧版按钮发 action='open'，但行为也应是开关。
+    const action = !message.action || message.action === 'open' ? 'toggle-close' : message.action;
+    commandEmbedPanel(action)
       .then((res) => sendResponse(res))
-      .catch((err) => sendResponse({ ok: false, detail: (err && err.message) || '打开失败' }));
+      .catch((err) => sendResponse({ ok: false, detail: (err && err.message) || '切换失败' }));
     return true;
   }
   if (message.type === 'bsub:request-options') {

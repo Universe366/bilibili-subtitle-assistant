@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.14.3';
+  const CONTENT_VERSION = '2.14.4';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -748,6 +748,12 @@
   async function syncOverlay() {
     if (!state.options.overlay) {
       await callPage('setOverlay', { visible: false }, 4000).catch(() => {});
+      // 页面桥刚重连时消息可能丢一次；稍后补发一条，确保关闭可靠
+      setTimeout(() => {
+        if (!state.options.overlay) {
+          callPage('setOverlay', { visible: false }, 4000).catch(() => {});
+        }
+      }, 300);
       return;
     }
     await callPage(

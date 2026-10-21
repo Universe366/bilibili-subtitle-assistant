@@ -1,6 +1,6 @@
 {
   "name": "bilibili-subtitle-assistant-verify",
-  "version": "2.14.3",
+  "version": "2.14.4",
   "private": true,
   "description": "B站字幕助手的自动化验证套件（不属于扩展运行时）",
   "type": "commonjs",
