@@ -167,7 +167,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.2', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.3', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -211,6 +211,18 @@ async function main() {
     '内嵌面板高度已同步',
     !!embed && Number.parseInt(embed.style.height, 10) >= 300,
     embed ? embed.style.height : ''
+  );
+  const embedCss = fs.readFileSync(path.join(EXT, 'src/content/content.css'), 'utf8');
+  check(
+    '内嵌头部为白色（与页面一致）',
+    /#__bsub_embed_panel__ \.bsub-embed-bar\s*\{[\s\S]{0,240}background:\s*#fff/.test(embedCss),
+    ''
+  );
+  check(
+    '内嵌面板与 iframe 强制可点击',
+    /#__bsub_embed_panel__\s*\{[\s\S]{0,240}pointer-events:\s*auto/.test(embedCss) &&
+      /\.bsub-embed-frame\s*\{[\s\S]{0,160}pointer-events:\s*auto/.test(embedCss),
+    ''
   );
   if (embed) {
     embed.querySelector('.bsub-embed-close').click();
