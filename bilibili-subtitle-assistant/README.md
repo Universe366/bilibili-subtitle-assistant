@@ -341,6 +341,10 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 | [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
 | [`../verify/README.md`](../verify/README.md) | 自动化测试套件：25 个套件（21 个 node + 4 个真实浏览器），以及每个套件覆盖什么 |
 
+## 作者的话
+
+> 此插件是本人 vibe coding 作品，有 bug 不代表本人能修；本人是新手，请各位大佬高抬贵手。遇到问题欢迎提 Issue，但请温柔一点 🙏
+
 ---
 
 ## 十、开发与测试

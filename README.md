@@ -114,6 +114,10 @@ npm run test:browser  # 4 个真实浏览器套件（需要 Chrome/Edge）
 - 非 M4A 平台的语音转录会把音频解码进侧边栏内存，长视频转录时请保持侧边栏打开。
 - DeepSeek 官方搜索按**成功请求**计费（$0.75 / 1000 次），可在设置中换回免费引擎。
 
+## 作者的话
+
+> 此插件是本人 vibe coding 作品，有 bug 不代表本人能修；本人是新手，请各位大佬高抬贵手。遇到问题欢迎提 Issue，但请温柔一点 🙏
+
 ## License
 
 本项目代码使用 [MIT](LICENSE)。内置 FFmpeg core 为 GPL-2.0-or-later 构建，详见 [`THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md)。

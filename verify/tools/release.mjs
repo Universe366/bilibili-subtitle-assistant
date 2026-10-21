@@ -39,7 +39,11 @@ export function buildReleaseBody(version, section) {
     '',
     '1. 下载下方 zip 并解压（`manifest.json` 在根目录）',
     '2. `chrome://extensions` / `edge://extensions` → 开发者模式 → 加载已解压的扩展程序',
-    '3. 已安装用户：下载覆盖后刷新扩展，并刷新 B 站页面'
+    '3. 已安装用户：下载覆盖后刷新扩展，并刷新 B 站页面',
+    '',
+    '### 作者的话',
+    '',
+    '> 此插件是本人 vibe coding 作品，有 bug 不代表本人能修；本人是新手，请各位大佬高抬贵手。遇到问题欢迎提 Issue，但请温柔一点 🙏'
   ].join('\n');
 }
 
