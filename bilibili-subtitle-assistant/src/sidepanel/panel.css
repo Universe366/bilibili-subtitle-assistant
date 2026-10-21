@@ -2738,3 +2738,12 @@ body[data-tab='settings'] .tab[data-tab-btn='settings'] {
   line-height: 1.5;
   color: var(--fg);
 }
+
+.verify-quote {
+  margin: 2px 0 0 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+  font-size: calc(var(--fs) * 0.8);
+  line-height: 1.5;
+  color: var(--fg-soft);
+}

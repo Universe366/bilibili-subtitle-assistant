@@ -199,7 +199,9 @@ export async function restoreFromHistory(video, opts = {}) {
       subtitles: nextSubtitles,
       summary: nextSummary,
       verifyQueries: [],
-      verifyEvidence: []
+      verifyEvidence: [],
+      verifyFailures: [],
+      verifyJudged: false
     });
     recordTimeline('载入历史结果', `${hasLines ? `${row.lines.length} 行字幕` : ''}${hasLines && hasSummary ? ' + ' : ''}${hasSummary ? '总结' : ''}`);
     renderPanels();
@@ -1010,7 +1012,7 @@ async function runBatchQueue() {
         syncQueue();
         // 不要无脑清空 summary —— 那样会把历史里已生成的总结覆盖成空字符串
         // （用户报的「字幕出来了但总结没出来」的一个来源）。
-        store.set({ video, subtitles: [], summary: '', verifyQueries: [], verifyEvidence: [] });
+        store.set({ video, subtitles: [], summary: '', verifyQueries: [], verifyEvidence: [], verifyFailures: [], verifyJudged: false });
         const batchKey = [video.bvid || '-', video.cid || '-', video.page == null ? '-' : String(video.page)].join('|');
         let restoredSummary = '';
         try {

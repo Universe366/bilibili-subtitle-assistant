@@ -86,7 +86,16 @@ function serve() {
       res.writeHead(404);
       res.end('nf');
     });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+    // jsdom 拒绝访问部分「不安全端口」（例如 6000）。随机端口偶尔会撞上，
+    // 撞上就换一个，避免测试因为端口号随机崩溃。
+    const UNSAFE_PORTS = new Set([6000]);
+    server.listen(0, '127.0.0.1', () => {
+      if (UNSAFE_PORTS.has(server.address().port)) {
+        server.close(() => resolve(serve()));
+        return;
+      }
+      resolve(server);
+    });
   });
 }
 
@@ -119,7 +128,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.11.0', contentVersion: '2.11.0', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.11.1', contentVersion: '2.11.1', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -140,12 +149,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.11.0', stale: false }],
-    contentVersion: '2.11.0'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.11.1', stale: false }],
+    contentVersion: '2.11.1'
   },
   diagnostics: {
-    extensionVersion: '2.11.0',
-    contentVersion: '2.11.0',
+    extensionVersion: '2.11.1',
+    contentVersion: '2.11.1',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -161,7 +170,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.11.0', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.11.1', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -233,7 +242,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.11\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.11\.1 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
   check('配置状态常驻提示可见且说明原因', doc.getElementById('readiness').getAttribute('data-visible') === 'true' && /API Key/.test(doc.getElementById('readiness').textContent));
   // ---- 操作区：主流程按钮必须精简，次要操作收进「⋯」菜单 ----
   {
@@ -1049,6 +1058,82 @@ async function main() {
         '并发核对保持原始顺序',
         conc.map((x) => x.item).join(',') === 'DeepSeek,MoE,6710 亿',
         JSON.stringify(conc.map((x) => x.item))
+      );
+
+      // 来源归一：子域不能算独立来源
+      check(
+        '同主域不同子域归一',
+        V.domainOfUrl('https://finance.sina.com.cn/a') === 'sina.com.cn' &&
+          V.domainOfUrl('https://tech.sina.com.cn/b') === 'sina.com.cn',
+        `${V.domainOfUrl('https://finance.sina.com.cn/a')} / ${V.domainOfUrl('https://tech.sina.com.cn/b')}`
+      );
+      check('多级公共后缀归一', V.domainOfUrl('https://sub.a.co.uk/x') === 'a.co.uk', V.domainOfUrl('https://sub.a.co.uk/x'));
+      check(
+        '不同主域仍算两个来源',
+        V.domainOfUrl('https://a.example/x') !== V.domainOfUrl('https://b.example/y'),
+        ''
+      );
+      check(
+        '同主域的子域不构成多来源',
+        api.panelAi.agreementOf([
+          { url: 'https://finance.sina.com.cn/a', verdict: 'support' },
+          { url: 'https://tech.sina.com.cn/b', verdict: 'support' }
+        ]).agreement === 'single',
+        ''
+      );
+
+      // 转载近似文本合并
+      const dupText = 'DeepSeek V4 在 2026 年 3 月正式发布，参数量达到 6710 亿，价格是每百万 token 一元钱。';
+      const dedup = V.dedupeNearDuplicates([
+        { title: 'A 站报道', text: dupText, url: 'https://a.example/1', verdict: 'support' },
+        { title: 'B 站转载', text: dupText, url: 'https://b.example/2', verdict: 'support' }
+      ]);
+      check('近似转载合并为一条', dedup.length === 1, JSON.stringify(dedup.map((x) => x.title)));
+      const dedup2 = V.dedupeNearDuplicates([
+        { title: 'A', text: dupText, url: 'https://a.example/1' },
+        { title: 'B', text: '另一家公司的产品在 2025 年发布了完全不同的功能，价格和参数都不一样，这里只是用来做不相似文本的对照。', url: 'https://b.example/2' }
+      ]);
+      check('不同文本不会被合并', dedup2.length === 2, '');
+
+      // 判定引用必须能在证据原文里找到
+      check(
+        '判定引用必须逐字出现在证据里',
+        api.panelAi.quoteMatches('2026 年 3 月发布', 'DeepSeek V4 在 2026 年 3 月发布，参数量 6710 亿') === true,
+        ''
+      );
+      check(
+        '编造的引用会被拒绝',
+        api.panelAi.quoteMatches('OpenAI 在 2025 年发布', 'DeepSeek V4 在 2026 年 3 月发布') === false,
+        ''
+      );
+
+      // 失败重试与失败记录
+      let attempts = 0;
+      const retried = await V.verifyItems(
+        ['DeepSeek'],
+        async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('429');
+          return {
+            results: [
+              { title: 'DeepSeek 官方信息', url: 'https://a.example/1', summary: 'DeepSeek 的详细说明与背景' }
+            ]
+          };
+        },
+        { maxItems: 1, perItem: 1, retries: 1, retryDelayMs: 0 }
+      );
+      check('失败会重试一次并成功', attempts === 2 && retried.length === 1, `attempts=${attempts}`);
+      const failed = await V.verifyItems(
+        ['DeepSeek'],
+        async () => {
+          throw new Error('boom');
+        },
+        { maxItems: 1, perItem: 1, retries: 0, retryDelayMs: 0 }
+      );
+      check(
+        '失败项记录到 failures',
+        failed.length === 0 && failed.failures.length === 1 && /boom/.test(failed.failures[0].message),
+        JSON.stringify(failed.failures)
       );
 
       check(

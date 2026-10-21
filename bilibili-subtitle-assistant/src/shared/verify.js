@@ -466,6 +466,10 @@ export async function verifyItems(items, searchFn, opts = {}) {
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
   const shouldAbort = typeof opts.shouldAbort === 'function' ? opts.shouldAbort : null;
   const contextOf = typeof opts.contextOf === 'function' ? opts.contextOf : null;
+  // 单条检索失败默认重试一次：429 / 瞬时网络错误很常见，静默丢掉会让用户以为「没搜到」。
+  const retries = Math.max(0, Math.min(2, Number(opts.retries != null ? opts.retries : 1)));
+  const retryDelayMs = Math.max(0, Number(opts.retryDelayMs != null ? opts.retryDelayMs : 250));
+  const failures = [];
   const abortError = () => Object.assign(new Error('已终止'), { name: 'AbortError' });
   const list = items.slice(0, maxItems);
   // 逐条核对是网络往返，串行会等到天荒地老。
@@ -497,7 +501,31 @@ export async function verifyItems(items, searchFn, opts = {}) {
     // 报告进度，让界面能显示「正在核对 3/6」
     if (onProgress) onProgress(i, list.length, label);
     try {
-      const res = await searchFn(searchQuery, { maxResults: perItem, fetchPageContent: false });
+      let res = null;
+      let lastErr = null;
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        if (shouldAbort && shouldAbort()) throw abortError();
+        try {
+          res = await searchFn(searchQuery, { maxResults: perItem, fetchPageContent: false });
+          lastErr = null;
+          break;
+        } catch (err) {
+          if (err && err.name === 'AbortError') throw err;
+          lastErr = err;
+          if (attempt < retries) {
+            if (shouldAbort && shouldAbort()) throw abortError();
+            if (retryDelayMs) await new Promise((resolve) => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+          }
+        }
+      }
+      if (lastErr || !res) {
+        failures.push({
+          item: label,
+          message: String((lastErr && lastErr.message) || lastErr || '检索失败').slice(0, 160),
+          attempts: retries + 1
+        });
+        return null;
+      }
       if (shouldAbort && shouldAbort()) throw abortError();
       const found = (res && res.results) || [];
       // 相关性过滤 —— 这是防污染的关键一步
@@ -530,7 +558,11 @@ export async function verifyItems(items, searchFn, opts = {}) {
     } catch (err) {
       // 终止信号必须向上抛：吞掉的话「停止」会被当成单条检索失败继续跑
       if (err && err.name === 'AbortError') throw err;
-      /* 单条失败不影响其它 */
+      failures.push({
+        item: label,
+        message: String((err && err.message) || err || '核对失败').slice(0, 160),
+        attempts: 1
+      });
       return null;
     }
   };
@@ -557,21 +589,97 @@ export async function verifyItems(items, searchFn, opts = {}) {
   for (let w = 0; w < Math.min(concurrency, list.length); w += 1) workers.push(worker());
   await Promise.all(workers);
   if (onProgress) onProgress(list.length, list.length, null);
-  return results.filter(Boolean);
+  const out = results.filter(Boolean);
+  // 用数组属性携带失败明细：调用方仍可像以前一样当数组用。
+  out.failures = failures;
+  return out;
 }
 
-function domainOfUrl(url) {
+// 可注册域（eTLD+1）归一。
+// 只去掉 www 不够：finance.sina.com.cn 与 tech.sina.com.cn 是同一家，
+// 不能因为它们子域不同就当成两个独立来源。
+const MULTI_LABEL_SUFFIXES = new Set([
+  'com.cn', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn',
+  'co.uk', 'org.uk', 'ac.uk', 'gov.uk',
+  'com.hk', 'com.tw', 'com.sg', 'com.au', 'net.au', 'org.au',
+  'co.jp', 'ne.jp', 'or.jp', 'co.kr', 'or.kr', 'co.in', 'co.nz', 'co.za',
+  'com.br', 'com.mx',
+  // 常见托管后缀：每个用户一个子域，但内容来源并不是独立站点
+  'github.io', 'blogspot.com', 'wordpress.com', 'tumblr.com',
+  'pages.dev', 'vercel.app', 'netlify.app', 'notion.site'
+]);
+
+export function registrableDomain(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/\.$/, '');
+  if (!host || host === 'localhost') return host;
+  // IP / IPv6 原样返回
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
+  const parts = host.split('.').filter(Boolean);
+  if (parts.length <= 2) return host;
+  const last2 = parts.slice(-2).join('.');
+  if (MULTI_LABEL_SUFFIXES.has(last2)) return parts.slice(-3).join('.');
+  return last2;
+}
+
+export function domainOfUrl(url) {
   try {
-    return new URL(String(url || '')).hostname.replace(/^www\./, '');
+    return registrableDomain(new URL(String(url || '')).hostname);
   } catch (err) {
     return '';
   }
+}
+
+function shingleSet(text, n = 8) {
+  const s = normalizeMatchText(text).replace(/\s+/g, '');
+  if (!s) return new Set();
+  if (s.length <= n) return new Set([s]);
+  const set = new Set();
+  for (let i = 0; i + n <= s.length; i += 1) set.add(s.slice(i, i + n));
+  return set;
+}
+
+// 0~1：字符 8-gram 的 Jaccard 相似度。
+// 用于识别「同一篇稿子被转载到不同站点」，避免把它算成两个独立来源。
+export function textSimilarity(a, b) {
+  const left = normalizeMatchText(a).replace(/\s+/g, '');
+  const right = normalizeMatchText(b).replace(/\s+/g, '');
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  // 太短的文本（标题、一句话摘要）不做近似合并，避免误杀
+  if (left.length < 40 || right.length < 40) return 0;
+  const A = shingleSet(left);
+  const B = shingleSet(right);
+  if (!A.size || !B.size) return 0;
+  let hit = 0;
+  for (const x of A) if (B.has(x)) hit += 1;
+  return hit / (A.size + B.size - hit);
+}
+
+// 同一 claim 内合并近似转载：保留判定更强、正文更长的一条。
+export function dedupeNearDuplicates(evidence) {
+  const rank = (v) => (v === 'support' || v === 'refute' ? 2 : v === 'unknown' ? 1 : 0);
+  const kept = [];
+  for (const e of evidence || []) {
+    const text = `${e.title || ''} ${e.text || ''}`;
+    const idx = kept.findIndex((k) => textSimilarity(`${k.title || ''} ${k.text || ''}`, text) >= 0.82);
+    if (idx < 0) {
+      kept.push(e);
+      continue;
+    }
+    const old = kept[idx];
+    if (rank(e.verdict) > rank(old.verdict) || (rank(e.verdict) === rank(old.verdict) && String(e.text || '').length > String(old.text || '').length)) {
+      kept[idx] = e;
+    }
+  }
+  return kept;
 }
 
 // 没有做语义判定时的退路：只按「独立域名数」标注来源强弱。
 // 同一站点的两篇文章不能算两个独立来源。
 export function annotateEvidenceAgreement(verify) {
   for (const v of verify || []) {
+    // 没有语义判定时也合并近似转载，避免把同一篇稿子算成多个来源
+    v.evidence = dedupeNearDuplicates(v.evidence || []);
     const domains = new Set();
     for (const e of (v && v.evidence) || []) {
       const d = domainOfUrl(e.url) || String(e.site || '');
