@@ -331,6 +331,8 @@ export interface SearchSettings {
   includeContent: boolean;
   timeRange: SearchTimeRange;
   verify: boolean;
+  keylessFallback: boolean;
+  cacheMinutes: number;
 }
 
 export type AsrTransport = 'auto' | 'multipart' | 'base64-json' | 'chat-audio';
@@ -403,6 +405,7 @@ export interface AppSettings {
     maxTokens: number;
     stream: boolean;
     preProofread: boolean;
+    sendOnEnter: boolean;
     presetVersion: number;
   };
   asr: AsrSettings;

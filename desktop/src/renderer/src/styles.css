@@ -1891,7 +1891,20 @@ button:disabled {
   gap: 6px;
 }
 
-.settings-inline > .settings-search {
+.settings-inline > .settings-advanced {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.settings-advanced summary {
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.settings-search {
   margin-bottom: 6px;
 }
 

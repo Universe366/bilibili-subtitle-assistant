@@ -9,6 +9,8 @@ import type {
   AiErrorEvent,
   AiStatusEvent,
   AiPlatform,
+  SearchPlatform,
+  AsrPlatform,
   AppSettings,
   BridgeStatus,
   ChatDeltaEvent,
@@ -92,6 +94,7 @@ import { generateChapters } from './chapters';
 import { callMcpTool, listMcpTools } from './mcp';
 import { readSkillFile } from './skills';
 import { testSearch } from './search';
+import { probePlatformModels, testPlatformConnection } from './platform';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
 
@@ -391,6 +394,34 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('update:install', () => {
     installUpdate();
   });
+
+  ipcMain.handle(
+    'platform:models',
+    async (_event, payload: { kind: 'ai' | 'asr'; platform: AiPlatform | AsrPlatform }) => {
+      try {
+        return { ok: true, data: await probePlatformModels(payload.kind, payload.platform) };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'platform:test',
+    async (
+      _event,
+      payload: {
+        kind: 'ai' | 'asr' | 'search';
+        platform: AiPlatform | AsrPlatform | SearchPlatform;
+      }
+    ) => {
+      try {
+        return { ok: true, data: await testPlatformConnection(payload.kind, payload.platform) };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
 
   ipcMain.handle('settings:test', async (_event, platform?: AiPlatform) => {
     try {

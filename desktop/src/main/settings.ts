@@ -110,6 +110,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: 8192,
     stream: true,
     preProofread: false,
+    sendOnEnter: true,
     presetVersion: AI_PRESET_VERSION,
     platforms: AI_PRESETS.map((platform) => ({
       ...platform,
@@ -179,7 +180,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxResults: 5,
     includeContent: true,
     timeRange: 'any',
-    verify: false
+    verify: false,
+    keylessFallback: true,
+    cacheMinutes: 5
   },
   correction: {
     enabled: true,
@@ -291,6 +294,7 @@ function normalize(raw: any): AppSettings {
     }
     base.ai.stream = raw.ai?.stream !== false;
     base.ai.preProofread = raw.ai?.preProofread === true;
+    base.ai.sendOnEnter = raw.ai?.sendOnEnter !== false;
 
     if (raw.asr && typeof raw.asr === 'object') {
       const asrIncoming = Array.isArray(raw.asr.platforms) ? raw.asr.platforms : [];
@@ -328,18 +332,18 @@ function normalize(raw: any): AppSettings {
         : base.asr.platforms[0].id;
       if (typeof raw.asr.language === 'string') base.asr.language = raw.asr.language.trim() || 'auto';
       const chunk = Number(raw.asr.chunkSeconds);
-      if (Number.isFinite(chunk)) base.asr.chunkSeconds = Math.min(300, Math.max(30, Math.round(chunk)));
+      if (Number.isFinite(chunk)) base.asr.chunkSeconds = Math.min(600, Math.max(45, Math.round(chunk)));
       const transports = ['auto', 'multipart', 'base64-json', 'chat-audio'];
       base.asr.transport = transports.includes(raw.asr.transport) ? raw.asr.transport : 'auto';
       const formats = ['auto', 'm4a', 'wav'];
       base.asr.audioFormat = formats.includes(raw.asr.audioFormat) ? raw.asr.audioFormat : 'auto';
       const concurrency = Number(raw.asr.concurrency);
       if (Number.isFinite(concurrency)) {
-        base.asr.concurrency = Math.min(3, Math.max(1, Math.round(concurrency)));
+        base.asr.concurrency = Math.min(8, Math.max(1, Math.round(concurrency)));
       }
       const timeout = Number(raw.asr.timeoutSeconds);
       if (Number.isFinite(timeout)) {
-        base.asr.timeoutSeconds = Math.min(600, Math.max(30, Math.round(timeout)));
+        base.asr.timeoutSeconds = Math.min(1800, Math.max(30, Math.round(timeout)));
       }
       const maxFileMb = Number(raw.asr.maxFileMb);
       if (Number.isFinite(maxFileMb)) {
@@ -347,7 +351,7 @@ function normalize(raw: any): AppSettings {
       }
       const overlap = Number(raw.asr.overlapSeconds);
       if (Number.isFinite(overlap)) {
-        base.asr.overlapSeconds = Math.min(15, Math.max(0, Math.round(overlap)));
+        base.asr.overlapSeconds = Math.min(30, Math.max(0, Math.round(overlap)));
       }
     }
 
@@ -498,6 +502,11 @@ function normalize(raw: any): AppSettings {
         ? raw.search.timeRange
         : 'any';
       base.search.verify = raw.search.verify === true;
+      base.search.keylessFallback = raw.search.keylessFallback !== false;
+      const cacheMinutes = Number(raw.search.cacheMinutes);
+      if (Number.isFinite(cacheMinutes)) {
+        base.search.cacheMinutes = Math.min(60, Math.max(0, Math.round(cacheMinutes)));
+      }
     }
 
     if (raw.correction && typeof raw.correction === 'object') {

@@ -34,6 +34,7 @@ export function ChatPanel({
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [sendOnEnter, setSendOnEnter] = useState(true);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef('');
   const contextRef = useRef<{ info: PageInfo; lines: SubtitleLine[] } | null>(null);
@@ -359,7 +360,7 @@ export function ChatPanel({
           className="chat-input"
           rows={2}
           value={input}
-          placeholder={isVideoPage ? '基于本片字幕提问…（Enter 发送）' : '打开 B 站视频后可用'}
+          placeholder={isVideoPage ? `基于本片字幕提问…（${sendOnEnter ? 'Enter' : 'Ctrl+Enter'} 发送）` : '打开 B 站视频后可用'}
           disabled={!isVideoPage}
           onChange={(event) => setInput(event.target.value)}
           onPaste={(event) => {
@@ -370,7 +371,10 @@ export function ChatPanel({
             }
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
+            const enterSends = sendOnEnter
+              ? event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey
+              : event.key === 'Enter' && (event.ctrlKey || event.metaKey);
+            if (enterSends) {
               event.preventDefault();
               void send();
             }

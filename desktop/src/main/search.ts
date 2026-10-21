@@ -70,6 +70,8 @@ function normalize(rows: WebReference[], max: number): WebReference[] {
   return out;
 }
 
+const searchCache = new Map<string, { at: number; refs: WebReference[] }>();
+
 function activePlatform(settings: AppSettings): SearchPlatform {
   return (
     settings.search.platforms.find((item) => item.id === settings.search.activeId) ||
@@ -583,6 +585,14 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
   if (!platform) throw new Error('没有可用的检索平台');
   const max = settings.search.maxResults;
   const kind = platform.kind || 'custom';
+  const cacheKey = `${platform.id}|${query}|${max}|${settings.search.timeRange}`;
+  const ttl = Math.max(0, settings.search.cacheMinutes || 0) * 60000;
+  if (ttl > 0) {
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < ttl) {
+      return cached.refs.map((ref) => ({ ...ref }));
+    }
+  }
 
   try {
     let rows: WebReference[] = [];
@@ -601,9 +611,23 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
     else rows = await searchCustom(settings, platform, query);
 
     const normalized = normalize(rows, max);
-    if (normalized.length) return normalized;
+    if (normalized.length) {
+      if (ttl > 0) searchCache.set(cacheKey, { at: Date.now(), refs: normalized });
+      return normalized;
+    }
     throw new Error('没有返回结果');
   } catch (error) {
+    if (settings.search.keylessFallback !== false && kind !== 'exa') {
+      try {
+        const fallback = normalize(await searchExa(query, settings), max);
+        if (fallback.length) {
+          if (ttl > 0) searchCache.set(cacheKey, { at: Date.now(), refs: fallback });
+          return fallback;
+        }
+      } catch {
+        // 兜底失败时保留原错误
+      }
+    }
     throw new Error(`检索失败（${platform.name}）：${(error as Error).message}`);
   }
 }

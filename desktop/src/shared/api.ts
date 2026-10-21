@@ -4,6 +4,8 @@ import type {
   AiErrorEvent,
   AiStatusEvent,
   AiPlatform,
+  AsrPlatform,
+  SearchPlatform,
   AppSettings,
   BridgeStatus,
   ChatDeltaEvent,
@@ -88,6 +90,14 @@ export interface BsubApi {
   testSearch(query: string): Promise<Result<WebReference[]>>;
   previewCorrection(text: string, settings?: AppSettings): Promise<Result<string>>;
   testAi(platform?: AiPlatform): Promise<Result<{ latencyMs: number; message: string }>>;
+  probePlatformModels(
+    kind: 'ai' | 'asr',
+    platform: AiPlatform | AsrPlatform
+  ): Promise<Result<{ models: string[]; url: string }>>;
+  testPlatform(
+    kind: 'ai' | 'asr' | 'search',
+    platform: AiPlatform | AsrPlatform | SearchPlatform
+  ): Promise<Result<{ ok: boolean; ms: number; sample: string }>>;
   openDataDir(): Promise<void>;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;
   writeClipboard(text: string): Promise<void>;

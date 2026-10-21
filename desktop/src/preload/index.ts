@@ -6,6 +6,8 @@ import type {
   AiErrorEvent,
   AiStatusEvent,
   AiPlatform,
+  AsrPlatform,
+  SearchPlatform,
   AppSettings,
   BridgeStatus,
   ChatDeltaEvent,
@@ -114,6 +116,17 @@ const api: BsubApi = {
     ipcRenderer.invoke('search:test', query) as Promise<Result<WebReference[]>>,
   previewCorrection: (text: string, settings?: AppSettings) =>
     ipcRenderer.invoke('correction:preview', text, settings) as Promise<Result<string>>,
+  probePlatformModels: (kind: 'ai' | 'asr', platform: AiPlatform | AsrPlatform) =>
+    ipcRenderer.invoke('platform:models', { kind, platform }) as Promise<
+      Result<{ models: string[]; url: string }>
+    >,
+  testPlatform: (
+    kind: 'ai' | 'asr' | 'search',
+    platform: AiPlatform | AsrPlatform | SearchPlatform
+  ) =>
+    ipcRenderer.invoke('platform:test', { kind, platform }) as Promise<
+      Result<{ ok: boolean; ms: number; sample: string }>
+    >,
   testAi: (platform?: AiPlatform) =>
     ipcRenderer.invoke('settings:test', platform) as Promise<
       Result<{ latencyMs: number; message: string }>

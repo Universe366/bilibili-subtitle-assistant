@@ -28,6 +28,7 @@ import { skillPrompt } from './skills';
 import { chat } from './chat';
 import { rankReferences } from './search';
 import { batchUrls } from './urlbatch';
+import { testPlatformConnection } from './platform';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -742,6 +743,22 @@ function createWindow(): void {
           applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
         );
       }, 4000);
+    }
+
+    if (process.env.BSUB_PLATFORM_CONN_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          const platform = settings.search.platforms.find(
+            (item) => item.id === settings.search.activeId
+          );
+          if (!platform) throw new Error('没有活动检索平台');
+          const result = await testPlatformConnection('search', platform);
+          console.log('[platform-conn-test]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[platform-conn-test] failed', (error as Error).message);
+        }
+      }, 6000);
     }
 
     if (process.env.BSUB_PLATFORM_TEST === '1') {

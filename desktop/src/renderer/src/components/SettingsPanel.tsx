@@ -84,6 +84,12 @@ export function SettingsPanel() {
   const [mcpResult, setMcpResult] = useState('');
   const [settingsQuery, setSettingsQuery] = useState('');
   const [visibleSections, setVisibleSections] = useState(0);
+  const [editingAiId, setEditingAiId] = useState('');
+  const [editingAsrId, setEditingAsrId] = useState('');
+  const [editingSearchId, setEditingSearchId] = useState('');
+  const [modelCache, setModelCache] = useState<Record<string, string[]>>({});
+  const [platformBusy, setPlatformBusy] = useState('');
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
@@ -135,7 +141,9 @@ export function SettingsPanel() {
   }, [settingsQuery, draft]);
 
   const active = draft
-    ? draft.ai.platforms.find((platform) => platform.id === draft.ai.activeId) || draft.ai.platforms[0]
+    ? draft.ai.platforms.find((platform) => platform.id === editingAiId) ||
+      draft.ai.platforms.find((platform) => platform.id === draft.ai.activeId) ||
+      draft.ai.platforms[0]
     : null;
   const activeTemplate = draft
     ? draft.prompt.templates.find((template) => template.id === draft.prompt.activeId) ||
@@ -143,12 +151,14 @@ export function SettingsPanel() {
       null
     : null;
   const activeAsr = draft
-    ? draft.asr.platforms.find((platform) => platform.id === draft.asr.activeId) ||
+    ? draft.asr.platforms.find((platform) => platform.id === editingAsrId) ||
+      draft.asr.platforms.find((platform) => platform.id === draft.asr.activeId) ||
       draft.asr.platforms[0] ||
       null
     : null;
   const activeSearch = draft
-    ? draft.search.platforms.find((platform) => platform.id === draft.search.activeId) ||
+    ? draft.search.platforms.find((platform) => platform.id === editingSearchId) ||
+      draft.search.platforms.find((platform) => platform.id === draft.search.activeId) ||
       draft.search.platforms[0] ||
       null
     : null;
@@ -312,6 +322,7 @@ export function SettingsPanel() {
       keyUrl: '',
       reuseAiKey: ''
     };
+    setEditingSearchId(id);
     setDraft({
       ...draft,
       search: {
@@ -327,10 +338,50 @@ export function SettingsPanel() {
     const platforms = draft.search.platforms.filter(
       (platform) => platform.id !== activeSearch.id
     );
+    setEditingSearchId(platforms[0].id);
     setDraft({
       ...draft,
       search: { ...draft.search, activeId: platforms[0].id, platforms }
     });
+  };
+
+  const testConnection = async (kind: 'ai' | 'asr' | 'search') => {
+    const platform =
+      kind === 'ai' ? active : kind === 'asr' ? activeAsr : activeSearch;
+    if (!platform) return;
+    setPlatformBusy(`${kind}:test`);
+    setError('');
+    try {
+      const response = await window.bsub.testPlatform(kind, platform);
+      if (response.ok) {
+        setMessage(`连接正常（${response.data.ms}ms）${response.data.sample ? ` · ${response.data.sample}` : ''}`);
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setPlatformBusy('');
+    }
+  };
+
+  const probeModels = async (kind: 'ai' | 'asr') => {
+    const platform = kind === 'ai' ? active : activeAsr;
+    if (!platform) return;
+    setPlatformBusy(`${kind}:probe`);
+    setError('');
+    try {
+      const response = await window.bsub.probePlatformModels(kind, platform);
+      if (response.ok) {
+        setModelCache((previous) => ({
+          ...previous,
+          [platform.id]: response.data.models
+        }));
+        setMessage(`探测到 ${response.data.models.length} 个模型`);
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setPlatformBusy('');
+    }
   };
 
   const uid = (prefix: string) =>
@@ -357,6 +408,7 @@ export function SettingsPanel() {
   const addAsrPlatform = () => {
     if (!draft) return;
     const id = uid('asr');
+    setEditingAsrId(id);
     setDraft({
       ...draft,
       asr: {
@@ -373,6 +425,7 @@ export function SettingsPanel() {
   const removeAsrPlatform = () => {
     if (!draft || !activeAsr || draft.asr.platforms.length <= 1) return;
     const platforms = draft.asr.platforms.filter((platform) => platform.id !== activeAsr.id);
+    setEditingAsrId(platforms[0].id);
     setDraft({ ...draft, asr: { ...draft.asr, activeId: platforms[0].id, platforms } });
   };
 
@@ -493,6 +546,7 @@ export function SettingsPanel() {
       apiKey: '',
       model: ''
     };
+    setEditingAiId(id);
     setDraft({
       ...draft,
       ai: { ...draft.ai, activeId: id, platforms: [...draft.ai.platforms, platform] }
@@ -502,6 +556,7 @@ export function SettingsPanel() {
   const removePlatform = () => {
     if (!draft || !active || draft.ai.platforms.length <= 1) return;
     const platforms = draft.ai.platforms.filter((platform) => platform.id !== active.id);
+    setEditingAiId(platforms[0].id);
     setDraft({
       ...draft,
       ai: { ...draft.ai, activeId: platforms[0].id, platforms }
@@ -756,15 +811,25 @@ export function SettingsPanel() {
         <div className="settings-inline">
           <select
             className="settings-input"
-            value={draft.ai.activeId}
-            onChange={(event) => updateAi({ activeId: event.target.value })}
+            value={active?.id || ''}
+            onChange={(event) => setEditingAiId(event.target.value)}
           >
             {draft.ai.platforms.map((platform) => (
               <option key={platform.id} value={platform.id}>
                 {platform.name}
+                {platform.id === draft.ai.activeId ? '（使用中）' : ''}
+                {!platform.apiKey ? ' · 未配 Key' : ''}
               </option>
             ))}
           </select>
+          {active && active.id !== draft.ai.activeId && (
+            <button
+              className="mini-btn primary"
+              onClick={() => updateAi({ activeId: active.id })}
+            >
+              设为使用中
+            </button>
+          )}
           <button className="mini-btn" title="新增平台" onClick={addPlatform}>
             <Plus size={12} />
           </button>
@@ -807,6 +872,44 @@ export function SettingsPanel() {
           ))}
         </datalist>
 
+        <div className="settings-inline">
+          <button
+            className="mini-btn"
+            disabled={platformBusy === 'ai:test'}
+            onClick={() => void testConnection('ai')}
+          >
+            {platformBusy === 'ai:test' ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />}
+            测试连接
+          </button>
+          <button
+            className="mini-btn"
+            disabled={platformBusy === 'ai:probe'}
+            onClick={() => void probeModels('ai')}
+          >
+            {platformBusy === 'ai:probe' ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+            探测模型
+          </button>
+        </div>
+        {(() => {
+          const models = modelCache[active.id] || active.models || [];
+          if (!models.length) return null;
+          return (
+            <div className="settings-inline">
+              <span className="settings-hint">
+                {modelCache[active.id] ? `平台返回 ${models.length} 个` : `内置预设 ${models.length} 个（未核实）`}
+              </span>
+              {models.slice(0, 12).map((model) => (
+                <button
+                  key={model}
+                  className={`mini-btn${active.model === model ? ' is-active' : ''}`}
+                  onClick={() => updatePlatform({ model })}
+                >
+                  {model}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         {(active.homepage || active.keyUrl) && (
           <div className="settings-inline">
             {active.homepage && (
@@ -822,17 +925,43 @@ export function SettingsPanel() {
           </div>
         )}
 
+        <details className="settings-advanced">
+          <summary>高级设置</summary>
+          <div className="settings-label">官网地址</div>
+          <input
+            className="settings-input"
+            value={active.homepage || ''}
+            placeholder="https://"
+            onChange={(event) => updatePlatform({ homepage: event.target.value })}
+          />
+          <div className="settings-label">申请 Key 链接</div>
+          <input
+            className="settings-input"
+            value={active.keyUrl || ''}
+            placeholder="https://"
+            onChange={(event) => updatePlatform({ keyUrl: event.target.value })}
+          />
+        </details>
+
         <div className="settings-label">API Key</div>
         <div className="settings-inline">
           <input
             className="settings-input"
-            type="password"
+            type={showKey[active.id] ? 'text' : 'password'}
             value={active.apiKey === '__CLEAR__' ? '' : active.apiKey}
             placeholder="留空保存不改动"
             spellCheck={false}
             autoComplete="off"
             onChange={(event) => updatePlatform({ apiKey: event.target.value })}
           />
+          <button
+            className="mini-btn"
+            onClick={() =>
+              setShowKey((previous) => ({ ...previous, [active.id]: !previous[active.id] }))
+            }
+          >
+            {showKey[active.id] ? '隐藏' : '显示'}
+          </button>
           <button
             className="mini-btn"
             onClick={() => updatePlatform({ apiKey: '__CLEAR__' })}
@@ -886,6 +1015,15 @@ export function SettingsPanel() {
           总结前先 AI 校对字幕（更慢，消耗额度）
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.ai.sendOnEnter !== false}
+            onChange={(event) => updateAi({ sendOnEnter: event.target.checked })}
+          />
+          回车发送消息（关闭后改为 Ctrl / Cmd + 回车）
+        </label>
+
         <button className="mini-btn" disabled={testing} onClick={() => void test()}>
           {testing ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />} 测试连接
         </button>
@@ -897,15 +1035,25 @@ export function SettingsPanel() {
         <div className="settings-inline">
           <select
             className="settings-input"
-            value={draft.asr.activeId}
-            onChange={(event) => updateAsr({ activeId: event.target.value })}
+            value={activeAsr?.id || ''}
+            onChange={(event) => setEditingAsrId(event.target.value)}
           >
             {draft.asr.platforms.map((platform) => (
               <option key={platform.id} value={platform.id}>
                 {platform.name}
+                {platform.id === draft.asr.activeId ? '（使用中）' : ''}
+                {!platform.apiKey ? ' · 未配 Key' : ''}
               </option>
             ))}
           </select>
+          {activeAsr && activeAsr.id !== draft.asr.activeId && (
+            <button
+              className="mini-btn primary"
+              onClick={() => updateAsr({ activeId: activeAsr.id })}
+            >
+              设为使用中
+            </button>
+          )}
           <button className="mini-btn" title="新增平台" onClick={addAsrPlatform}>
             <Plus size={12} />
           </button>
@@ -948,6 +1096,44 @@ export function SettingsPanel() {
           ))}
         </datalist>
 
+        <div className="settings-inline">
+          <button
+            className="mini-btn"
+            disabled={platformBusy === 'asr:test'}
+            onClick={() => void testConnection('asr')}
+          >
+            {platformBusy === 'asr:test' ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />}
+            测试连接
+          </button>
+          <button
+            className="mini-btn"
+            disabled={platformBusy === 'asr:probe'}
+            onClick={() => void probeModels('asr')}
+          >
+            {platformBusy === 'asr:probe' ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+            探测模型
+          </button>
+        </div>
+        {(() => {
+          const models = modelCache[activeAsr.id] || activeAsr.models || [];
+          if (!models.length) return null;
+          return (
+            <div className="settings-inline">
+              <span className="settings-hint">
+                {modelCache[activeAsr.id] ? `平台返回 ${models.length} 个` : `内置预设 ${models.length} 个（未核实）`}
+              </span>
+              {models.slice(0, 8).map((model) => (
+                <button
+                  key={model}
+                  className={`mini-btn${activeAsr.model === model ? ' is-active' : ''}`}
+                  onClick={() => updateAsrPlatform({ model })}
+                >
+                  {model}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         {(activeAsr.homepage || activeAsr.keyUrl) && (
           <div className="settings-inline">
             {activeAsr.homepage && (
@@ -973,7 +1159,7 @@ export function SettingsPanel() {
         <div className="settings-inline">
           <input
             className="settings-input"
-            type="password"
+            type={showKey[activeAsr.id] ? 'text' : 'password'}
             value={activeAsr.apiKey === '__CLEAR__' ? '' : activeAsr.apiKey}
             placeholder="留空保存不改动"
             spellCheck={false}
@@ -982,11 +1168,66 @@ export function SettingsPanel() {
           />
           <button
             className="mini-btn"
+            onClick={() =>
+              setShowKey((previous) => ({ ...previous, [activeAsr.id]: !previous[activeAsr.id] }))
+            }
+          >
+            {showKey[activeAsr.id] ? '隐藏' : '显示'}
+          </button>
+          <button
+            className="mini-btn"
             onClick={() => updateAsrPlatform({ apiKey: '__CLEAR__' })}
           >
             清除
           </button>
         </div>
+
+        <details className="settings-advanced">
+          <summary>高级设置</summary>
+          <div className="settings-label">请求方式</div>
+          <select
+            className="settings-input"
+            value={activeAsr.transport || 'multipart'}
+            onChange={(event) =>
+              updateAsrPlatform({ transport: event.target.value as AsrPlatform['transport'] })
+            }
+          >
+            <option value="multipart">multipart/form-data</option>
+            <option value="base64-json">base64 JSON</option>
+            <option value="chat-audio">chat/audio（input_audio）</option>
+            <option value="auto">自动</option>
+          </select>
+          <div className="settings-label">音频字段名</div>
+          <input
+            className="settings-input"
+            value={activeAsr.keyField || 'file'}
+            onChange={(event) => updateAsrPlatform({ keyField: event.target.value })}
+          />
+          <div className="settings-label">上传音频格式</div>
+          <select
+            className="settings-input"
+            value={activeAsr.audioFormat || 'auto'}
+            onChange={(event) =>
+              updateAsrPlatform({ audioFormat: event.target.value as AsrPlatform['audioFormat'] })
+            }
+          >
+            <option value="auto">自动</option>
+            <option value="wav">WAV</option>
+            <option value="m4a">M4A</option>
+          </select>
+          <div className="settings-label">参数风格</div>
+          <select
+            className="settings-input"
+            value={activeAsr.paramStyle || 'auto'}
+            onChange={(event) =>
+              updateAsrPlatform({ paramStyle: event.target.value as AsrPlatform['paramStyle'] })
+            }
+          >
+            <option value="auto">自动</option>
+            <option value="minimal">最小（file + model）</option>
+            <option value="full">完整（response_format 等）</option>
+          </select>
+        </details>
 
         <div className="settings-inline">
           <div className="settings-field">
@@ -1036,7 +1277,7 @@ export function SettingsPanel() {
               className="settings-input"
               type="number"
               min={1}
-              max={3}
+              max={8}
               value={draft.asr.concurrency}
               onChange={(event) => updateAsr({ concurrency: Number(event.target.value) || 1 })}
             />
@@ -1050,7 +1291,7 @@ export function SettingsPanel() {
               className="settings-input"
               type="number"
               min={30}
-              max={600}
+              max={1800}
               value={draft.asr.timeoutSeconds}
               onChange={(event) => updateAsr({ timeoutSeconds: Number(event.target.value) || 120 })}
             />
@@ -1072,7 +1313,7 @@ export function SettingsPanel() {
               className="settings-input"
               type="number"
               min={0}
-              max={15}
+              max={30}
               value={draft.asr.overlapSeconds}
               onChange={(event) => updateAsr({ overlapSeconds: Number(event.target.value) || 0 })}
             />
@@ -1194,15 +1435,25 @@ export function SettingsPanel() {
         <div className="settings-inline">
           <select
             className="settings-input"
-            value={draft.search.activeId}
-            onChange={(event) => updateSearch({ activeId: event.target.value })}
+            value={activeSearch?.id || ''}
+            onChange={(event) => setEditingSearchId(event.target.value)}
           >
             {draft.search.platforms.map((platform) => (
               <option key={platform.id} value={platform.id}>
                 {platform.name}
+                {platform.id === draft.search.activeId ? '（使用中）' : ''}
+                {!platform.apiKey && !platform.reuseAiKey ? ' · 未配 Key' : ''}
               </option>
             ))}
           </select>
+          {activeSearch && activeSearch.id !== draft.search.activeId && (
+            <button
+              className="mini-btn primary"
+              onClick={() => updateSearch({ activeId: activeSearch.id })}
+            >
+              设为使用中
+            </button>
+          )}
           <button className="mini-btn" title="新增检索平台" onClick={addSearchPlatform}>
             <Plus size={12} />
           </button>
@@ -1254,17 +1505,43 @@ export function SettingsPanel() {
               onChange={(event) => updateSearchPlatform({ baseUrl: event.target.value })}
             />
 
+            <div className="settings-inline">
+              <button
+                className="mini-btn"
+                disabled={platformBusy === 'search:test'}
+                onClick={() => void testConnection('search')}
+              >
+                {platformBusy === 'search:test' ? (
+                  <Loader2 size={12} className="spin" />
+                ) : (
+                  <Wifi size={12} />
+                )}
+                测试连接
+              </button>
+            </div>
+
             <div className="settings-label">检索 API Key</div>
             <div className="settings-inline">
               <input
                 className="settings-input"
-                type="password"
+                type={showKey[activeSearch.id] ? 'text' : 'password'}
                 value={activeSearch.apiKey === '__CLEAR__' ? '' : activeSearch.apiKey}
                 placeholder="留空保存不改动"
                 spellCheck={false}
                 autoComplete="off"
                 onChange={(event) => updateSearchPlatform({ apiKey: event.target.value })}
               />
+              <button
+                className="mini-btn"
+                onClick={() =>
+                  setShowKey((previous) => ({
+                    ...previous,
+                    [activeSearch.id]: !previous[activeSearch.id]
+                  }))
+                }
+              >
+                {showKey[activeSearch.id] ? '隐藏' : '显示'}
+              </button>
               <button
                 className="mini-btn"
                 onClick={() => updateSearchPlatform({ apiKey: '__CLEAR__' })}
@@ -1309,6 +1586,24 @@ export function SettingsPanel() {
                 )}
               </div>
             )}
+
+            <details className="settings-advanced">
+              <summary>高级设置</summary>
+              <div className="settings-label">官网地址</div>
+              <input
+                className="settings-input"
+                value={activeSearch.homepage || ''}
+                placeholder="https://"
+                onChange={(event) => updateSearchPlatform({ homepage: event.target.value })}
+              />
+              <div className="settings-label">申请 Key 链接</div>
+              <input
+                className="settings-input"
+                value={activeSearch.keyUrl || ''}
+                placeholder="https://"
+                onChange={(event) => updateSearchPlatform({ keyUrl: event.target.value })}
+              />
+            </details>
           </>
         )}
 
@@ -1358,6 +1653,27 @@ export function SettingsPanel() {
           />
           AI 优化时联网核对改动（较慢，消耗检索与 AI 额度）
         </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.keylessFallback !== false}
+            onChange={(event) => updateSearch({ keylessFallback: event.target.checked })}
+          />
+          配置的平台失败时用免费引擎兜底（Exa）
+        </label>
+
+        <div className="settings-label">检索结果缓存（分钟，0 = 关闭）</div>
+        <input
+          className="settings-input"
+          type="number"
+          min={0}
+          max={60}
+          value={draft.search.cacheMinutes}
+          onChange={(event) =>
+            updateSearch({ cacheMinutes: Number(event.target.value) || 0 })
+          }
+        />
 
         <div className="settings-inline">
           <input
