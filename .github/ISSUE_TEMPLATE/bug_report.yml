@@ -1,0 +1,61 @@
+name: Bug 报告
+description: 扩展没有按预期工作
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先刷新扩展和 B 站页面；**不要粘贴 API Key、Cookie 或未脱敏的请求头**。
+  - type: input
+    id: version
+    attributes:
+      label: 扩展版本
+      description: 设置 → 诊断与关于 里可以看到
+      placeholder: "2.16.2"
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: 浏览器
+      placeholder: "Edge 155 / Chrome 155 / Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: 视频 / 页面 URL（可选）
+      placeholder: "https://www.bilibili.com/video/BV..."
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 越具体越好：点了哪里、之前做了什么、是否切换过视频/分 P
+      placeholder: |
+        1. 打开视频 ...
+        2. 点击 ...
+        3. 看到 ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: 诊断信息 / 报错
+      description: 设置 → 诊断与关于 → 复制诊断；或 F12 Console 报错。请先删除 Key、Cookie、隐私内容。
+      render: json
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已经刷新过扩展和 B 站页面
+          required: true
+        - label: 我已删除诊断/日志中的 API Key、Cookie 等敏感信息
+          required: true

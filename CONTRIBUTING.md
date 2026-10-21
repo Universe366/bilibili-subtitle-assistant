@@ -13,13 +13,18 @@
 ```bash
 cd verify
 npm install
-node bundle.js
-node panel-test.js
-node bg-test.js
-node flow2.js
+npm test                    # 21 个 node 套件
+npm run test:browser:smoke  # 真实扩展：内嵌 / 评论区 / 侧边栏 / 设置页
 ```
 
 完整套件见 [`verify/README.md`](verify/README.md)。改动核心逻辑后至少跑 `panel-test`、`bg-test`、`flow2`、`content-test`；改 FFmpeg / 音频相关再跑对应的真实浏览器套件。
+
+## 发布 / 版本
+
+发布前请按 [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) 的检查清单同步版本号、打包、Release 和 Edge 商店包。尤其注意：
+
+- `manifest.json`、`src/shared/constants.js`、`src/content/content.js`、`src/content/page-bridge.js`、`verify/package.json` 和测试固定版本必须一起改；
+- 内嵌面板、字幕身份、缓存相关的改动不要绕过 `docs/MAINTAINERS.md` 里的约束。
 
 ## 提交 PR
 

@@ -130,6 +130,39 @@ img-src 'self' data: blob: https:; connect-src 'self' https: http:
 **规则**：任何来自浏览器/服务端的底层错误，都应该在抛出前拦截并转成可照做的提示。
 现已处理：请求头字符集校验（`assertHeaderSafe`）、multipart 头校验、MCP 错误分类。
 
+### 3.7 内嵌面板：Shadow DOM + 延迟挂载（2.13–2.16 的坑）
+
+- B 站右侧栏脚本会遍历 light DOM 子节点并调用 `setAttribute`。面板按钮/iframe 如果直接作为普通子节点，会抛 `HierarchyRequestError`，**顺手把评论区卸载**，页面部分点击失效。
+- 所以面板内部必须在 `attachShadow({mode:'open'})` 里；宿主只留一个空 `div`。
+- 插入必须等 B 站首屏稳定（当前约 2.2s），切页后延迟约 1.8s；过早插入会打断 B 站自己的 DOM 初始化。
+- 右侧栏重建时复用已有 host/iframe，不要 remove 重建，否则 iframe 重载会闪。
+- 改完必须跑 `npm run test:browser:smoke`，确认评论区 `bili-comments` 还在、无 `HierarchyRequestError`。
+
+### 3.8 侧边栏开关：端口状态 + 不要抢答
+
+- `chrome.sidePanel` 没有可靠的 `isOpen()`；当前靠侧边栏页面建立的 `bsub:sidepanel` 端口判断。端口断开要自动重连，否则 SW 休眠后第一次点击会误判。
+- 关闭优先 `chrome.sidePanel.close()`；旧内核用禁用/启用兜底。
+- 侧边栏的 `chrome.runtime.onMessage` **只处理广播，不要对所有消息 `sendResponse`**。曾经它抢在后台前回 `{ok:true}`，导致「▣」按钮拿到空响应、提示与实际相反。
+- 后台做 embed 动作后要回查内容脚本 `state`，按真实 `open/collapsed` 返回。
+
+### 3.9 字幕身份：四层防线，不要拆
+
+1. `pageIdentity()` 统一 bvid/cid/signature；
+2. `getSubtitleBundle` 接收 `expectSignature`，采集前后校验；
+3. `player.getSubtitle()` / `__INITIAL_STATE__` 的无标识字幕轨，只有来源自身 cid 与当前一致才采用，否则丢弃；
+4. 网络嗅探正文只保留路径能匹配当前轨的条目；缓存写入/读取带 `signature`，旧缓存自动删除。
+
+诊断看 `foreignTracks`、`identityMismatch`、候选轨 `cacheRejected`。
+**不要恢复“抽不到标识就放行”**；那会直接复现「标题对、字幕是别的视频」。
+
+### 3.10 设置页与字幕行
+
+- 设置页必须**离屏构建成功后再替换** `#settings-body`；中途异常保留旧内容，不能先清空。
+- 字幕行是**单行横向滚动**：长句不换行、不撑高行；行尾统计压缩为「N字」，操作按钮绝对定位悬浮。虚拟列表的 `estimate()` 必须与行高/内边距同步，否则滚动会跳。
+- 改这些 UI 后至少要跑 `npm run test:browser:smoke`。
+
+完整发布清单见 [`../../docs/MAINTAINERS.md`](../../docs/MAINTAINERS.md)。
+
 ---
 
 ## 4. 改代码的正确姿势
@@ -231,5 +264,6 @@ docs: 拆分开发日志，补 AGENTS.md
 | `AGENTS.md`（本文件） | **AI / 贡献者** | 环境约束、已踩的坑、方法论 |
 | `docs/history/DEVELOPMENT-LOG.md` | **维护者** | 逐轮缺陷与修复（含「为什么当时想错了」） |
 | `../verify/README.md` | **维护者** | 测试套件说明与运行方式 |
+| `../../docs/MAINTAINERS.md` | **维护者** | 发布清单、版本同步、内嵌/字幕身份/缓存的硬约束 |
 
 新增功能时请同步更新对应文档；**变动用户可见行为 → 改 README**。

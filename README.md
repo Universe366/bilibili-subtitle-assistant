@@ -8,10 +8,12 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Universe366/bilibili-subtitle-assistant" alt="License" /></a>
   <img src="https://img.shields.io/badge/Manifest-V3-4285F4" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/Chrome-116%2B-4285F4" alt="Chrome 116+" />
+  <img src="https://img.shields.io/badge/Edge-116%2B-0078D7" alt="Edge 116+" />
 </p>
 
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
+  <a href="#界面预览">界面预览</a> ·
   <a href="#功能">功能</a> ·
   <a href="#架构">架构</a> ·
   <a href="#开发与测试">开发与测试</a> ·
@@ -24,6 +26,21 @@
 > **非官方项目**，与哔哩哔哩无关联。自己的代码使用 MIT；内置 FFmpeg core 按 GPL 分发，见 [`THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md)。
 
 ---
+
+## 界面预览
+
+<table>
+  <tr>
+    <td width="62%"><img src="docs/screenshots/embed-panel.png" alt="B 站视频页右侧内嵌字幕助手" /></td>
+    <td width="38%"><img src="docs/screenshots/settings.png" alt="设置页" /></td>
+  </tr>
+  <tr>
+    <td align="center">视频页右侧直接内嵌，不遮挡评论区；可折叠为「字幕」标签</td>
+    <td align="center">设置、Key、提示词与页面内功能都在侧边栏完成</td>
+  </tr>
+</table>
+
+> 截图来自真实扩展在 B 站视频页的运行效果；不同 B 站版本/窗口宽度下布局会略有差异。
 
 ## 为什么用它
 
@@ -38,7 +55,10 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 
 | 能力 | 说明 |
 |---|---|
-| **字幕抓取** | 网络嗅探 / 播放器实例 / wbi 签名接口 / 无签名接口 / 主动触发，五路汇总；带时长与归属校验，避免串分 P、串视频。 |
+| **页面内嵌面板** | 默认在视频页右侧直接显示；Shadow DOM 隔离，不干扰 B 站评论区；可折叠、关闭、Alt+Shift+B 全局开关。 |
+| **字幕抓取** | 网络嗅探 / 播放器实例 / wbi 签名接口 / 无签名接口 / 主动触发，五路汇总；带时长、归属与缓存签名校验，避免串分 P、串视频。 |
+| **多语言与翻译** | 同一视频有多条官方字幕轨时可切换语言；支持 AI 翻译为常用/自定义目标语言，保留时间轴。 |
+| **跟随播放** | 字幕逐句高亮、自动滚动；拖动进度条大跳转时恢复到对应句。 |
 | **语音转录** | 没有官方字幕时：解析音轨 → 分块下载 → 解码 → 16 kHz 单声道 → 重叠切片 → 逐片识别 → 去重合并；支持 FFmpeg 流复制重封装、并发与随时终止。 |
 | **AI 总结** | 流式 Markdown、思维链独立折叠、长视频分段总结再合并；生成前可先联网校对字幕。 |
 | **AI 对话** | 基于当前视频字幕提问，流式输出，支持 MCP 工具与 Skills。 |
@@ -52,7 +72,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 1. 从 **[Releases](https://github.com/Universe366/bilibili-subtitle-assistant/releases)** 下载最新 zip，解压。
 2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）→ 开启「开发者模式」→「加载已解压的扩展程序」。
 3. 选择解压后的 **`bilibili-subtitle-assistant/`** 目录（包含 `manifest.json` 的那一层，不是仓库根目录）。
-4. 打开任意 B 站视频页，点击工具栏图标，侧边栏会在右侧打开。
+4. 打开任意 B 站视频页：右侧会自动出现内嵌面板；也可以点工具栏图标打开浏览器侧边栏（两者可切换）。
 
 首次使用可以只抓官方字幕，不需要任何 Key。要用 AI 总结 / 转录 / 联网时，再去 **设置** 里填对应平台的 Key。
 
@@ -99,6 +119,8 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 |---|---|
 | [`bilibili-subtitle-assistant/README.md`](bilibili-subtitle-assistant/README.md) | 用户文档：安装、配置、功能、故障排查 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
+| [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) | 发布清单、易踩坑、版本同步与商店提交注意事项 |
+| [`SECURITY.md`](SECURITY.md) | 安全问题与密钥泄露的处理方式 |
 | [`LICENSE`](LICENSE) | MIT（本项目代码） |
 | [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方组件许可证 |
 | [`bilibili-subtitle-assistant/CHANGELOG.md`](bilibili-subtitle-assistant/CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
@@ -114,6 +136,10 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 - MCP 只支持远程 `http` / `sse`；浏览器扩展无法启动本地进程，因此不支持 `stdio`。
 - 非 M4A 平台的语音转录会把音频解码进侧边栏内存，长视频转录时请保持侧边栏打开。
 - DeepSeek 官方搜索按**成功请求**计费（$0.75 / 1000 次），可在设置中换回免费引擎。
+- 内嵌面板依赖 B 站右侧栏 DOM；B 站改版或窄窗口下可能退回浏览器侧边栏，可在「设置 → 页面内功能」关闭内嵌。
+- 字幕采用**严格归属校验**：无法证明属于当前视频的播放器/嗅探轨会被丢弃。若视频明明有字幕却显示为空，先看「字幕候选轨明细」里的「被排除的跨视频字幕轨」，再刷新页面重试。
+- AI 翻译会覆盖当前显示文本，但每行 `original` 保留原文；切换回原语言轨可重新抓取。
+- 真实浏览器冒烟测试需要本地 Edge/Chrome 与网络，不在 CI 中运行；Node 套件可在无浏览器环境跑。
 
 ## 作者的话
 
