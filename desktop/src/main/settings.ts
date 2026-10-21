@@ -92,6 +92,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: 8192,
     stream: true,
     preProofread: false,
+    presetVersion: 2,
     platforms: [
       {
         id: 'deepseek',
@@ -308,6 +309,17 @@ function normalize(raw: any): AppSettings {
     base.ai.activeId = base.ai.platforms.some((platform) => platform.id === active)
       ? active
       : base.ai.platforms[0].id;
+
+    const presetVersion = Number(raw.ai?.presetVersion) || 0;
+    if (presetVersion < 2) {
+      const extraIds = ['moonshot', 'zhipu', 'openrouter', 'groq'];
+      for (const preset of DEFAULT_SETTINGS.ai.platforms) {
+        if (extraIds.includes(preset.id) && !base.ai.platforms.some((item) => item.id === preset.id)) {
+          base.ai.platforms.push({ ...preset });
+        }
+      }
+    }
+    base.ai.presetVersion = 2;
 
     const temperature = Number(raw.ai?.temperature);
     if (Number.isFinite(temperature)) {

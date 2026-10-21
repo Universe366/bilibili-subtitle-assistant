@@ -368,6 +368,7 @@ export interface AppSettings {
     maxTokens: number;
     stream: boolean;
     preProofread: boolean;
+    presetVersion: number;
   };
   asr: AsrSettings;
   prompt: {
