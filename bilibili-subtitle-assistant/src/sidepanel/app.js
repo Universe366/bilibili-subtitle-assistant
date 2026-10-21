@@ -15,10 +15,23 @@ import { initWizard } from './modules/wizard.js';
 
 // 页面内嵌时 (?embed=1) 由内容脚本的外框显示标题与收起按钮，
 // 面板自己的品牌行可以隐藏，避免出现两遍标题。
+let IS_EMBED = false;
 try {
-  if (new URLSearchParams(location.search).get('embed') === '1') document.body.dataset.embed = 'true';
+  IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+  if (IS_EMBED) document.body.dataset.embed = 'true';
 } catch (err) {
   /* ignore */
+}
+
+// 非内嵌 = 浏览器侧边栏。保留一个端口，让后台知道侧边栏当前是否打开，
+// 从而把「侧栏」按钮做成开关。
+let sidePanelPort = null;
+if (!IS_EMBED) {
+  try {
+    sidePanelPort = chrome.runtime.connect({ name: 'bsub:sidepanel' });
+  } catch (err) {
+    sidePanelPort = null;
+  }
 }
 
 boot();

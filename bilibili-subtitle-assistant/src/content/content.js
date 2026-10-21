@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.14.1';
+  const CONTENT_VERSION = '2.14.2';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -498,21 +498,36 @@
     });
   }
 
+  function updateSidePanelButton(open) {
+    const host = document.getElementById(EMBED_ID);
+    const btn = host && host.shadowRoot && host.shadowRoot.querySelector('.bsub-embed-side');
+    if (btn) btn.title = open ? '关闭浏览器侧边栏' : '打开浏览器侧边栏';
+  }
+
+  function syncSidePanelButton() {
+    try {
+      chrome.runtime.sendMessage({ type: 'bsub:sidepanel-state' }, (res) => {
+        void chrome.runtime.lastError;
+        if (res && res.ok) updateSidePanelButton(!!res.open);
+      });
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
   function openSidePanelFromEmbed() {
     try {
       chrome.runtime.sendMessage({ type: 'bsub:open-side-panel' }, (res) => {
         const err = chrome.runtime.lastError;
         if (err) return;
         if (res && res.ok) {
-          state.embedClosed = true;
-          removeEmbedPanel();
-          showEmbedTab();
+          updateSidePanelButton(!!res.open);
         } else {
-          showPanelHint((res && res.detail) || '侧边栏未能打开，请点浏览器工具栏上的扩展图标。');
+          showPanelHint((res && res.detail) || '侧边栏未能切换，请点浏览器工具栏上的扩展图标。');
         }
       });
     } catch (err) {
-      showPanelHint('侧边栏未能打开，请点浏览器工具栏上的扩展图标。');
+      showPanelHint('侧边栏未能切换，请点浏览器工具栏上的扩展图标。');
     }
   }
 
@@ -591,9 +606,9 @@
     title.textContent = 'B站字幕助手';
     const pop = document.createElement('button');
     pop.type = 'button';
-    pop.className = 'bsub-embed-btn';
+    pop.className = 'bsub-embed-btn bsub-embed-side';
     pop.textContent = '侧栏';
-    pop.title = '在浏览器侧边栏打开（关闭页面内嵌）';
+    pop.title = '打开浏览器侧边栏';
     pop.addEventListener('click', openSidePanelFromEmbed);
     const collapse = document.createElement('button');
     collapse.type = 'button';
@@ -636,6 +651,7 @@
 
     syncEmbedHeight();
     applyEmbedCollapsed();
+    syncSidePanelButton();
     return true;
   }
 

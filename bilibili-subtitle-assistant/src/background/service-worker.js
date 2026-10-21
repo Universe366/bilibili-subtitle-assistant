@@ -1292,6 +1292,34 @@ async function handleRpc(message, sender) {
   }
 }
 
+// 侧边栏是否打开：面板加载时建立一个长连接端口，关闭时端口断开。
+// chrome.sidePanel 没有可靠的 isOpen()，这是最稳的状态来源。
+const sidePanelPorts = new Set();
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'bsub:sidepanel') return;
+  sidePanelPorts.add(port);
+  port.onDisconnect.addListener(() => sidePanelPorts.delete(port));
+});
+
+async function closeSidePanel(tabId) {
+  // 新版 Chrome/Edge 有 close()；旧版退化为「禁用再启用」
+  if (chrome.sidePanel && typeof chrome.sidePanel.close === 'function') {
+    try {
+      await chrome.sidePanel.close({ tabId });
+      return;
+    } catch (err) {
+      /* 落到下面的兼容路径 */
+    }
+  }
+  try {
+    await chrome.sidePanel.setOptions({ tabId, enabled: false });
+    await new Promise((r) => setTimeout(r, 80));
+    await chrome.sidePanel.setOptions({ tabId, path: 'src/sidepanel/panel.html', enabled: true });
+  } catch (err) {
+    /* ignore */
+  }
+}
+
 // 快捷键 / 侧边栏按钮：在当前活动的 B 站标签页打开、折叠或展开内嵌面板。
 async function commandEmbedPanel(action) {
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -1356,6 +1384,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true, tabId: sender?.tab?.id ?? null });
     return undefined;
   }
+  if (message.type === 'bsub:sidepanel-state') {
+    sendResponse({ ok: true, open: sidePanelPorts.size > 0 });
+    return undefined;
+  }
   if (message.type === 'bsub:open-embed') {
     commandEmbedPanel(message.action || 'open')
       .then((res) => sendResponse(res))
@@ -1401,6 +1433,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return undefined;
     }
+    // 已打开 → 关闭；未打开 → 打开。这样内嵌面板的「侧栏」按钮是开关。
+    if (sidePanelPorts.size > 0) {
+      closeSidePanel(tabId)
+        .then(() => done({ ok: true, open: false }))
+        .catch((err) => done({ ok: false, reason: 'error', detail: String((err && err.message) || err) }));
+      return true;
+    }
     // 先确保这个标签页的侧边栏是启用的，再打开
     try {
       chrome.sidePanel
@@ -1411,7 +1450,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     chrome.sidePanel
       .open({ tabId })
-      .then(() => done({ ok: true }))
+      .then(() => done({ ok: true, open: true }))
       .catch((err) => {
         const msg = String((err && err.message) || err);
         // 手势限制是唯一「用户自己能解决」的一类，单独说明

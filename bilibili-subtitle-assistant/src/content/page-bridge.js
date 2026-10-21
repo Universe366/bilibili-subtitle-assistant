@@ -1934,6 +1934,11 @@
       tickOverlay();
     } else if (overlay.el) {
       overlay.el.style.display = 'none';
+      // 关闭时停掉轮询，避免残留定时器在后续帧里再改 display
+      if (overlay.timer) {
+        clearInterval(overlay.timer);
+        overlay.timer = null;
+      }
     }
     return { ok: true, visible: overlay.visible, lines: overlay.lines.length };
   }
@@ -2211,7 +2216,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '2.14.1',
+    version: '2.14.2',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {
