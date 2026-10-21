@@ -9,6 +9,7 @@ import { summarize } from './ai';
 import { searchWeb } from './search';
 import { applyCorrectionToText } from './correction';
 import { transcribeFile } from './asr';
+import { translateLines } from './translate';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -177,6 +178,38 @@ function createWindow(): void {
           console.warn('[audio-test] failed', (error as Error).message);
         }
       }, 12000);
+    }
+
+    if (process.env.BSUB_TRANSLATE_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_TRANSLATE || 'http://127.0.0.1:8898/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          saveSettings(settings);
+          const result = await translateLines(
+            [
+              { start: 0, end: 1, text: '你好世界' },
+              { start: 1, end: 2, text: '这是第二句' }
+            ],
+            'English',
+            (percent, message) => console.log('[translate-test]', Math.round(percent), message),
+            undefined,
+            settings
+          );
+          console.log('[translate-test] done', JSON.stringify(result.lines));
+        } catch (error) {
+          console.warn('[translate-test] failed', (error as Error).message);
+        }
+      }, 5000);
     }
 
     if (process.env.BSUB_ASR_TEST === '1') {

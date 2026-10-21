@@ -15,6 +15,10 @@ import type {
   AsrDoneEvent,
   AsrErrorEvent,
   AsrProgressEvent,
+  TranslateRequest,
+  TranslateProgressEvent,
+  TranslateDoneEvent,
+  TranslateErrorEvent,
   FindResult,
   ExportPayload,
   LayoutRect,
@@ -136,6 +140,17 @@ const api: BsubApi = {
   onAsrProgress: (cb: (event: AsrProgressEvent) => void) => on<AsrProgressEvent>('asr:progress', cb),
   onAsrDone: (cb: (event: AsrDoneEvent) => void) => on<AsrDoneEvent>('asr:done', cb),
   onAsrError: (cb: (event: AsrErrorEvent) => void) => on<AsrErrorEvent>('asr:error', cb),
+
+  translate: (payload: TranslateRequest) =>
+    ipcRenderer.invoke('translate:start', payload) as Promise<Result<{ requestId: string }>>,
+  cancelTranslate: (requestId: string) =>
+    ipcRenderer.invoke('translate:cancel', requestId) as Promise<void>,
+  onTranslateProgress: (cb: (event: TranslateProgressEvent) => void) =>
+    on<TranslateProgressEvent>('translate:progress', cb),
+  onTranslateDone: (cb: (event: TranslateDoneEvent) => void) =>
+    on<TranslateDoneEvent>('translate:done', cb),
+  onTranslateError: (cb: (event: TranslateErrorEvent) => void) =>
+    on<TranslateErrorEvent>('translate:error', cb),
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

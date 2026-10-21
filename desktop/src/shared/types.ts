@@ -230,6 +230,7 @@ export interface AppSettings {
     activeId: string;
     templates: PromptTemplate[];
     chat: string;
+    translate: string;
   };
   search: {
     enabled: boolean;
@@ -310,6 +311,8 @@ export interface ExportPayload {
   savePath?: string;
   includeTimestamps?: boolean;
   filenamePattern?: string;
+  translatedLines?: SubtitleLine[];
+  translationLanguage?: string;
 }
 
 export interface AiDeltaEvent {
@@ -367,6 +370,29 @@ export interface AsrDoneEvent {
 }
 
 export interface AsrErrorEvent {
+  requestId: string;
+  error: string;
+}
+
+export interface TranslateRequest {
+  requestId: string;
+  lines: SubtitleLine[];
+  target: string;
+}
+
+export interface TranslateProgressEvent {
+  requestId: string;
+  percent: number;
+  message: string;
+}
+
+export interface TranslateDoneEvent {
+  requestId: string;
+  lines: SubtitleLine[];
+  language: string;
+}
+
+export interface TranslateErrorEvent {
   requestId: string;
   error: string;
 }

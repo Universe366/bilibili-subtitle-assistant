@@ -795,6 +795,16 @@ export function SettingsPanel() {
             setDraft({ ...draft, prompt: { ...draft.prompt, chat: event.target.value } })
           }
         />
+
+        <div className="settings-label">翻译提示词</div>
+        <textarea
+          className="settings-textarea"
+          rows={6}
+          value={draft.prompt.translate}
+          onChange={(event) =>
+            setDraft({ ...draft, prompt: { ...draft.prompt, translate: event.target.value } })
+          }
+        />
       </div>
 
       <div className="settings-section">
@@ -1162,7 +1172,7 @@ export function SettingsPanel() {
             })
           }
         />
-        <div className="settings-hint">可用变量：{'{title}'}、{'{bvid}'}、{'{date}'}。</div>
+        <div className="settings-hint">可用变量：{'{title}'}、{'{bvid}'}、{'{lang}'}、{'{date}'}。</div>
       </div>
 
       <div className="settings-section">

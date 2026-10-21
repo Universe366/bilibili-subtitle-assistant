@@ -13,6 +13,10 @@ import type {
   AsrDoneEvent,
   AsrErrorEvent,
   AsrProgressEvent,
+  TranslateRequest,
+  TranslateProgressEvent,
+  TranslateDoneEvent,
+  TranslateErrorEvent,
   FindResult,
   LayoutRect,
   Result,
@@ -95,6 +99,12 @@ export interface BsubApi {
   onAsrProgress(cb: (event: AsrProgressEvent) => void): () => void;
   onAsrDone(cb: (event: AsrDoneEvent) => void): () => void;
   onAsrError(cb: (event: AsrErrorEvent) => void): () => void;
+
+  translate(payload: TranslateRequest): Promise<Result<{ requestId: string }>>;
+  cancelTranslate(requestId: string): Promise<void>;
+  onTranslateProgress(cb: (event: TranslateProgressEvent) => void): () => void;
+  onTranslateDone(cb: (event: TranslateDoneEvent) => void): () => void;
+  onTranslateError(cb: (event: TranslateErrorEvent) => void): () => void;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 

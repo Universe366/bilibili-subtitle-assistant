@@ -33,6 +33,13 @@ const DEFAULT_CHAT_PROMPT = `你是一个严谨的中文视频助手。请只依
 - 回答用 Markdown，先给结论，再给依据。
 - 引用字幕时尽量带上 [mm:ss]。`;
 
+const DEFAULT_TRANSLATE_PROMPT = `你是专业字幕翻译。把用户给出的每条字幕翻译成指定目标语言。
+要求：
+- 保持原意，口语自然，不增删信息。
+- 人名、产品名、专有名词保留原文或通用译名。
+- 每条译文单独一行，顺序和条数必须与输入完全一致。
+- 只输出 JSON：{"lines":["第1条译文","第2条译文"]}，不要 Markdown 代码块，不要解释。`;
+
 const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
   {
     id: 'brief',
@@ -101,7 +108,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   prompt: {
     activeId: 'default',
     templates: DEFAULT_TEMPLATES,
-    chat: DEFAULT_CHAT_PROMPT
+    chat: DEFAULT_CHAT_PROMPT,
+    translate: DEFAULT_TRANSLATE_PROMPT
   },
   asr: {
     activeId: 'siliconflow',
@@ -284,6 +292,9 @@ function normalize(raw: any): AppSettings {
 
     if (typeof raw.prompt?.chat === 'string' && raw.prompt.chat.trim()) {
       base.prompt.chat = raw.prompt.chat.trim();
+    }
+    if (typeof raw.prompt?.translate === 'string' && raw.prompt.translate.trim()) {
+      base.prompt.translate = raw.prompt.translate.trim();
     }
 
     if (raw.export && typeof raw.export === 'object') {

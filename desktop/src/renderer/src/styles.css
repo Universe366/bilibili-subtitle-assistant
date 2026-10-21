@@ -1304,6 +1304,46 @@ button:disabled {
   color: var(--muted);
 }
 
+.mini-select {
+  height: 26px;
+  max-width: 128px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 10.5px;
+  padding: 0 5px;
+  outline: none;
+}
+
+.translate-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.translate-progress {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.sub-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sub-translation {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .asr-progress {
   display: flex;
   flex-direction: column;

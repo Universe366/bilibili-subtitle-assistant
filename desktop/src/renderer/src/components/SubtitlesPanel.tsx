@@ -43,6 +43,15 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [asrProgress, setAsrProgress] = useState(0);
   const [asrMessage, setAsrMessage] = useState('');
   const asrRequestRef = useRef('');
+  const [translated, setTranslated] = useState<SubtitleLine[] | null>(null);
+  const [translatedLang, setTranslatedLang] = useState('');
+  const [viewMode, setViewMode] = useState<'original' | 'translated' | 'bilingual'>('original');
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [targetLang, setTargetLang] = useState('中文（简体）');
+  const [translating, setTranslating] = useState(false);
+  const [translateProgress, setTranslateProgress] = useState(0);
+  const [translateMessage, setTranslateMessage] = useState('');
+  const translateRequestRef = useRef('');
   const infoRef = useRef<PageInfo | null>(null);
   const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -67,6 +76,13 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     setAsrProgress(0);
     setAsrMessage('');
     asrRequestRef.current = '';
+    setTranslated(null);
+    setTranslatedLang('');
+    setViewMode('original');
+    setTranslating(false);
+    setTranslateProgress(0);
+    setTranslateMessage('');
+    translateRequestRef.current = '';
     loadedRef.current = { key: '', reload: -1 };
   }, [activeTab?.id, videoKey]);
 
@@ -103,12 +119,71 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       setAsrMessage('');
       setError(event.error);
     });
+    const offTranslateProgress = window.bsub.onTranslateProgress((event) => {
+      if (event.requestId !== translateRequestRef.current) return;
+      setTranslateProgress(event.percent);
+      setTranslateMessage(event.message);
+    });
+    const offTranslateDone = window.bsub.onTranslateDone((event) => {
+      if (event.requestId !== translateRequestRef.current) return;
+      translateRequestRef.current = '';
+      setTranslated(event.lines);
+      setTranslatedLang(event.language);
+      setViewMode('bilingual');
+      setTranslating(false);
+      setTranslateProgress(100);
+      setTranslateMessage(`已翻译为 ${event.language}`);
+      setTranslateOpen(false);
+    });
+    const offTranslateError = window.bsub.onTranslateError((event) => {
+      if (event.requestId !== translateRequestRef.current) return;
+      translateRequestRef.current = '';
+      setTranslating(false);
+      setTranslateMessage('');
+      setError(event.error);
+    });
     return () => {
       offProgress();
       offDone();
       offError();
+      offTranslateProgress();
+      offTranslateDone();
+      offTranslateError();
     };
   }, []);
+
+  useEffect(() => {
+    setTranslated(null);
+    setTranslatedLang('');
+    setViewMode('original');
+  }, [track?.url, track?.source]);
+
+  const startTranslate = async () => {
+    if (!lines.length || translating) return;
+    const requestId = (() => {
+      try {
+        return crypto.randomUUID();
+      } catch {
+        return `tr_${Date.now()}`;
+      }
+    })();
+    translateRequestRef.current = requestId;
+    setTranslating(true);
+    setTranslateProgress(0);
+    setTranslateMessage('准备翻译…');
+    setError(null);
+    const started = await window.bsub.translate({ requestId, lines, target: targetLang });
+    if (!started.ok) {
+      translateRequestRef.current = '';
+      setTranslating(false);
+      setTranslateMessage('');
+      setError(started.error);
+    }
+  };
+
+  const stopTranslate = () => {
+    if (translateRequestRef.current) void window.bsub.cancelTranslate(translateRequestRef.current);
+  };
 
   // 页面加载完成后读取视频信息与字幕轨
   useEffect(() => {
@@ -284,7 +359,35 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           >
             {asrRunning ? <Loader2 size={12} className="spin" /> : '转写'}
           </button>
-          <ExportMenu info={info} track={track} lines={lines} />
+          <button
+            className="mini-btn"
+            disabled={!lines.length || translating}
+            title="用 AI 翻译当前字幕"
+            onClick={() => setTranslateOpen((value) => !value)}
+          >
+            {translating ? <Loader2 size={12} className="spin" /> : '翻译'}
+          </button>
+          {translated && (
+            <select
+              className="mini-select"
+              value={viewMode}
+              title="原文 / 译文 / 双语"
+              onChange={(event) =>
+                setViewMode(event.target.value as 'original' | 'translated' | 'bilingual')
+              }
+            >
+              <option value="original">原文</option>
+              <option value="translated">译文</option>
+              <option value="bilingual">双语</option>
+            </select>
+          )}
+          <ExportMenu
+            info={info}
+            track={track}
+            lines={lines}
+            translated={translated}
+            translationLanguage={translatedLang}
+          />
           <button
             className={`mini-btn${follow ? ' is-active' : ''}`}
             title={follow ? '跟随播放：开' : '跟随播放：关'}
@@ -299,6 +402,42 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       </div>
 
       {saveMessage && <div className="save-status">{saveMessage}</div>}
+
+      {translateOpen && (
+        <div className="translate-bar">
+          <select
+            className="mini-select"
+            value={targetLang}
+            onChange={(event) => setTargetLang(event.target.value)}
+          >
+            <option value="中文（简体）">中文（简体）</option>
+            <option value="中文（繁體）">中文（繁體）</option>
+            <option value="English">English</option>
+            <option value="日本語">日本語</option>
+            <option value="한국어">한국어</option>
+          </select>
+          <button className="mini-btn primary" disabled={translating || !lines.length} onClick={() => void startTranslate()}>
+            开始翻译
+          </button>
+          {translating && (
+            <button className="mini-btn" onClick={stopTranslate}>
+              停止
+            </button>
+          )}
+          <button className="mini-btn" onClick={() => setTranslateOpen(false)}>
+            关闭
+          </button>
+        </div>
+      )}
+
+      {translating && (
+        <div className="translate-progress">
+          <span>{translateMessage || '翻译中…'}</span>
+          <span>{Math.round(translateProgress)}%</span>
+        </div>
+      )}
+
+      {!translating && translateMessage && <div className="save-status">{translateMessage}</div>}
 
       {asrRunning && (
         <div className="asr-progress">

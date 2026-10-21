@@ -18,6 +18,10 @@ import type {
   AsrDoneEvent,
   AsrErrorEvent,
   AsrProgressEvent,
+  TranslateRequest,
+  TranslateProgressEvent,
+  TranslateDoneEvent,
+  TranslateErrorEvent,
   ExportPayload,
   LayoutRect,
   PageInfo,
@@ -43,6 +47,7 @@ import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './
 import { summarize } from './ai';
 import { chat } from './chat';
 import { transcribe } from './asr';
+import { translateLines } from './translate';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -54,6 +59,7 @@ function failure<T>(error: unknown): Result<T> {
 const aiControllers = new Map<string, AbortController>();
 const chatControllers = new Map<string, AbortController>();
 const asrControllers = new Map<string, AbortController>();
+const translateControllers = new Map<string, AbortController>();
 
 export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
@@ -473,6 +479,50 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('asr:cancel', (_event, requestId: string) => {
     asrControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('translate:start', async (_event, payload: TranslateRequest): Promise<Result<{ requestId: string }>> => {
+    if (!payload || !Array.isArray(payload.lines) || payload.lines.length === 0) {
+      return { ok: false, error: '没有可翻译的字幕' };
+    }
+    const requestId = payload.requestId || randomUUID();
+    const controller = new AbortController();
+    translateControllers.set(requestId, controller);
+
+    void (async () => {
+      try {
+        const result = await translateLines(
+          payload.lines,
+          String(payload.target || '中文'),
+          (percent, message) =>
+            send('translate:progress', {
+              requestId,
+              percent,
+              message
+            } satisfies TranslateProgressEvent),
+          controller.signal
+        );
+        send('translate:done', {
+          requestId,
+          lines: result.lines,
+          language: result.language
+        } satisfies TranslateDoneEvent);
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? '已终止'
+          : (error as Error)?.message || String(error);
+        console.warn('[translate] failed:', message);
+        send('translate:error', { requestId, error: message } satisfies TranslateErrorEvent);
+      } finally {
+        translateControllers.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  });
+
+  ipcMain.handle('translate:cancel', (_event, requestId: string) => {
+    translateControllers.get(requestId)?.abort();
   });
 
   ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {

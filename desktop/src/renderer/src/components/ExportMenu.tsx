@@ -13,12 +13,16 @@ export function ExportMenu({
   info,
   track,
   lines,
-  summary
+  summary,
+  translated,
+  translationLanguage
 }: {
   info: PageInfo | null;
   track: SubtitleTrack | null;
   lines: SubtitleLine[];
   summary?: string;
+  translated?: SubtitleLine[] | null;
+  translationLanguage?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -52,7 +56,15 @@ export function ExportMenu({
     setBusy(true);
     setMessage('');
     try {
-      const response = await window.bsub.exportVideo({ format, info, track, lines, summary });
+      const response = await window.bsub.exportVideo({
+        format,
+        info,
+        track,
+        lines,
+        summary,
+        translatedLines: translated || undefined,
+        translationLanguage
+      });
       if (!response.ok) setMessage(response.error);
       else if ('canceled' in response.data) setMessage('已取消');
       else setMessage(`已导出 ${response.data.path.split(/[\\/]/).pop()}`);

@@ -47,11 +47,18 @@ function toMarkdown(payload: ExportPayload): string {
     blocks.push('## AI 总结', '', summary.trim(), '');
   }
 
-  blocks.push(`## 字幕${track ? `（${track.lanDoc || track.lan}）` : ''}`, '');
+  const langLabel = payload.translationLanguage ? ` · ${payload.translationLanguage}` : '';
+  blocks.push(
+    `## 字幕${track ? `（${track.lanDoc || track.lan}${langLabel}）` : langLabel ? `（${payload.translationLanguage}）` : ''}`,
+    ''
+  );
   if (lines.length) {
-    for (const line of lines) {
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
       const prefix = payload.includeTimestamps !== false ? `\`[${clock(line.start)}]\` ` : '';
-      blocks.push(`- ${prefix}${line.text}`);
+      const translated = payload.translatedLines?.[index]?.text;
+      blocks.push(`- ${prefix}${line.text}${translated ? `
+  ${translated}` : ''}`);
     }
   } else {
     blocks.push('_（没有字幕内容）_');
@@ -59,19 +66,29 @@ function toMarkdown(payload: ExportPayload): string {
   return `${blocks.join('\n')}\n`;
 }
 
-function toSrt(lines: SubtitleLine[]): string {
+function toSrt(lines: SubtitleLine[], translated?: SubtitleLine[]): string {
   return lines
     .map((line, index) => {
       const start = Math.max(0, line.start);
       const end = Math.max(start + 0.2, line.end);
-      return `${index + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${line.text}\n`;
+      return `${index + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${
+        translated?.[index]?.text || line.text
+      }\n`;
     })
     .join('\n');
 }
 
-function toTxt(lines: SubtitleLine[], includeTimestamps: boolean): string {
+function toTxt(
+  lines: SubtitleLine[],
+  includeTimestamps: boolean,
+  translated?: SubtitleLine[]
+): string {
   return `${lines
-    .map((line) => `${includeTimestamps ? `[${clock(line.start)}] ` : ''}${line.text}`)
+    .map((line, index) => {
+      const prefix = includeTimestamps ? `[${clock(line.start)}] ` : '';
+      const tr = translated?.[index]?.text;
+      return `${prefix}${line.text}${tr ? `\n  ${tr}` : ''}`;
+    })
     .join('\n')}\n`;
 }
 
@@ -80,6 +97,7 @@ function filenameFor(payload: ExportPayload): string {
   const raw = (payload.filenamePattern || '{title}')
     .replace(/\{title\}/g, payload.info.title || '视频')
     .replace(/\{bvid\}/g, payload.info.bvid || '')
+    .replace(/\{lang\}/g, payload.translationLanguage || '')
     .replace(/\{date\}/g, date);
   return safeFilename(raw);
 }
@@ -95,10 +113,15 @@ export function buildExport(payload: ExportPayload): {
 
   switch (payload.format) {
     case 'srt':
-      return { content: toSrt(payload.lines), ext: 'srt', mime: 'application/x-subrip', filename };
+      return {
+        content: toSrt(payload.lines, payload.translatedLines),
+        ext: 'srt',
+        mime: 'application/x-subrip',
+        filename
+      };
     case 'txt':
       return {
-        content: toTxt(payload.lines, includeTimestamps),
+        content: toTxt(payload.lines, includeTimestamps, payload.translatedLines),
         ext: 'txt',
         mime: 'text/plain',
         filename
@@ -111,6 +134,12 @@ export function buildExport(payload: ExportPayload): {
             track: payload.track,
             summary: payload.summary || '',
             lines: payload.lines,
+            translation: payload.translatedLines
+              ? {
+                  language: payload.translationLanguage || '',
+                  lines: payload.translatedLines
+                }
+              : undefined,
             exportedAt: new Date().toISOString()
           },
           null,
