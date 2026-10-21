@@ -744,12 +744,41 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_PLATFORM_TEST === '1') {
+      setTimeout(() => {
+        const settings = loadSettings();
+        const search = settings.search.platforms.find(
+          (platform) => platform.id === settings.search.activeId
+        );
+        const ai = settings.ai.platforms.find(
+          (platform) => platform.id === settings.ai.activeId
+        );
+        console.log(
+          '[platform-test]',
+          JSON.stringify({
+            ai: settings.ai.platforms.length,
+            aiActive: ai?.name,
+            aiModels: ai?.models?.length || 0,
+            search: settings.search.platforms.length,
+            searchActive: search?.name,
+            searchKind: search?.kind,
+            searchReuse: search?.reuseAiKey || '',
+            asr: settings.asr.platforms.length,
+            asrActive: settings.asr.platforms.find(
+              (platform) => platform.id === settings.asr.activeId
+            )?.name,
+            aiPresetVersion: settings.ai.presetVersion
+          })
+        );
+      }, 3000);
+    }
+
     if (process.env.BSUB_SEARCH_TEST === '1') {
       setTimeout(async () => {
         try {
           const settings = loadSettings();
           const refs = await searchWeb(
-            { ...settings, search: { ...settings.search, enabled: true, provider: 'exa' } },
+            { ...settings, search: { ...settings.search, enabled: true, activeId: 'exa' } },
             'B站 视频 总结'
           );
           console.log(

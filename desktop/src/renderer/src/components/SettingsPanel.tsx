@@ -24,7 +24,7 @@ import type {
   McpTool,
   SkillItem,
   PromptTemplate,
-  SearchProvider,
+  SearchPlatform,
   SearchTimeRange,
   ThemeMode,
   UpdateStatus,
@@ -145,6 +145,11 @@ export function SettingsPanel() {
   const activeAsr = draft
     ? draft.asr.platforms.find((platform) => platform.id === draft.asr.activeId) ||
       draft.asr.platforms[0] ||
+      null
+    : null;
+  const activeSearch = draft
+    ? draft.search.platforms.find((platform) => platform.id === draft.search.activeId) ||
+      draft.search.platforms[0] ||
       null
     : null;
 
@@ -279,6 +284,53 @@ export function SettingsPanel() {
   const updateSearch = (patch: Partial<AppSettings['search']>) => {
     if (!draft) return;
     setDraft({ ...draft, search: { ...draft.search, ...patch } });
+  };
+
+  const updateSearchPlatform = (patch: Partial<SearchPlatform>) => {
+    if (!draft || !activeSearch) return;
+    setDraft({
+      ...draft,
+      search: {
+        ...draft.search,
+        platforms: draft.search.platforms.map((platform) =>
+          platform.id === activeSearch.id ? { ...platform, ...patch } : platform
+        )
+      }
+    });
+  };
+
+  const addSearchPlatform = () => {
+    if (!draft) return;
+    const id = `search-${Date.now().toString(36)}`;
+    const platform: SearchPlatform = {
+      id,
+      name: '自定义搜索',
+      kind: 'custom',
+      baseUrl: '',
+      apiKey: '',
+      homepage: '',
+      keyUrl: '',
+      reuseAiKey: ''
+    };
+    setDraft({
+      ...draft,
+      search: {
+        ...draft.search,
+        activeId: id,
+        platforms: [...draft.search.platforms, platform]
+      }
+    });
+  };
+
+  const removeSearchPlatform = () => {
+    if (!draft || !activeSearch || draft.search.platforms.length <= 1) return;
+    const platforms = draft.search.platforms.filter(
+      (platform) => platform.id !== activeSearch.id
+    );
+    setDraft({
+      ...draft,
+      search: { ...draft.search, activeId: platforms[0].id, platforms }
+    });
   };
 
   const uid = (prefix: string) =>
@@ -744,10 +796,31 @@ export function SettingsPanel() {
         <div className="settings-label">模型</div>
         <input
           className="settings-input"
+          list={`ai-models-${active.id}`}
           value={active.model}
           spellCheck={false}
           onChange={(event) => updatePlatform({ model: event.target.value })}
         />
+        <datalist id={`ai-models-${active.id}`}>
+          {(active.models || []).map((model) => (
+            <option key={model} value={model} />
+          ))}
+        </datalist>
+
+        {(active.homepage || active.keyUrl) && (
+          <div className="settings-inline">
+            {active.homepage && (
+              <button className="mini-btn" onClick={() => void window.bsub.newTab(active.homepage!)}>
+                官网
+              </button>
+            )}
+            {active.keyUrl && (
+              <button className="mini-btn" onClick={() => void window.bsub.newTab(active.keyUrl!)}>
+                获取 Key
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="settings-label">API Key</div>
         <div className="settings-inline">
@@ -864,10 +937,37 @@ export function SettingsPanel() {
         <div className="settings-label">模型</div>
         <input
           className="settings-input"
+          list={`asr-models-${activeAsr.id}`}
           value={activeAsr.model}
           spellCheck={false}
           onChange={(event) => updateAsrPlatform({ model: event.target.value })}
         />
+        <datalist id={`asr-models-${activeAsr.id}`}>
+          {(activeAsr.models || []).map((model) => (
+            <option key={model} value={model} />
+          ))}
+        </datalist>
+
+        {(activeAsr.homepage || activeAsr.keyUrl) && (
+          <div className="settings-inline">
+            {activeAsr.homepage && (
+              <button
+                className="mini-btn"
+                onClick={() => void window.bsub.newTab(activeAsr.homepage!)}
+              >
+                官网
+              </button>
+            )}
+            {activeAsr.keyUrl && (
+              <button
+                className="mini-btn"
+                onClick={() => void window.bsub.newTab(activeAsr.keyUrl!)}
+              >
+                获取 Key
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="settings-label">API Key</div>
         <div className="settings-inline">
@@ -1090,42 +1190,125 @@ export function SettingsPanel() {
           总结时自动检索参考资料
         </label>
 
-        <div className="settings-label">服务商</div>
-        <select
-          className="settings-input"
-          value={draft.search.provider}
-          onChange={(event) =>
-            updateSearch({ provider: event.target.value as SearchProvider })
-          }
-        >
-          <option value="exa">Exa（免 Key，推荐）</option>
-          <option value="anysearch">AnySearch（免 Key）</option>
-          <option value="tavily">Tavily（需 Key）</option>
-          <option value="brave">Brave（需 Key）</option>
-          <option value="bocha">博查 Bocha（需 Key）</option>
-          <option value="serper">Serper Google（需 Key）</option>
-        </select>
+        <div className="settings-label">检索平台</div>
+        <div className="settings-inline">
+          <select
+            className="settings-input"
+            value={draft.search.activeId}
+            onChange={(event) => updateSearch({ activeId: event.target.value })}
+          >
+            {draft.search.platforms.map((platform) => (
+              <option key={platform.id} value={platform.id}>
+                {platform.name}
+              </option>
+            ))}
+          </select>
+          <button className="mini-btn" title="新增检索平台" onClick={addSearchPlatform}>
+            <Plus size={12} />
+          </button>
+          <button
+            className="mini-btn"
+            title="删除当前检索平台"
+            disabled={draft.search.platforms.length <= 1}
+            onClick={removeSearchPlatform}
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
 
-        {['tavily', 'brave', 'bocha', 'serper'].includes(draft.search.provider) && (
+        {activeSearch && (
           <>
+            <div className="settings-label">名称</div>
+            <input
+              className="settings-input"
+              value={activeSearch.name}
+              onChange={(event) => updateSearchPlatform({ name: event.target.value })}
+            />
+
+            <div className="settings-label">协议</div>
+            <select
+              className="settings-input"
+              value={activeSearch.kind}
+              onChange={(event) => updateSearchPlatform({ kind: event.target.value })}
+            >
+              <option value="deepseek-search">DeepSeek 搜索</option>
+              <option value="tavily">Tavily</option>
+              <option value="bocha">博查 Bocha</option>
+              <option value="serper">Serper（Google）</option>
+              <option value="zhipu">智谱 Web 搜索</option>
+              <option value="metaso">秘塔搜索</option>
+              <option value="baidu">百度千帆 AI 搜索</option>
+              <option value="brave">Brave</option>
+              <option value="exa">Exa（MCP，免 Key）</option>
+              <option value="jina">Jina 搜索</option>
+              <option value="searxng">SearXNG</option>
+              <option value="anysearch">AnySearch</option>
+              <option value="custom">自定义（GET ?q=）</option>
+            </select>
+
+            <div className="settings-label">接口地址</div>
+            <input
+              className="settings-input"
+              value={activeSearch.baseUrl}
+              spellCheck={false}
+              onChange={(event) => updateSearchPlatform({ baseUrl: event.target.value })}
+            />
+
             <div className="settings-label">检索 API Key</div>
             <div className="settings-inline">
               <input
                 className="settings-input"
                 type="password"
-                value={draft.search.apiKey === '__CLEAR__' ? '' : draft.search.apiKey}
+                value={activeSearch.apiKey === '__CLEAR__' ? '' : activeSearch.apiKey}
                 placeholder="留空保存不改动"
                 spellCheck={false}
                 autoComplete="off"
-                onChange={(event) => updateSearch({ apiKey: event.target.value })}
+                onChange={(event) => updateSearchPlatform({ apiKey: event.target.value })}
               />
               <button
                 className="mini-btn"
-                onClick={() => updateSearch({ apiKey: '__CLEAR__' })}
+                onClick={() => updateSearchPlatform({ apiKey: '__CLEAR__' })}
               >
                 清除
               </button>
             </div>
+
+            <div className="settings-label">复用 AI Key（可选）</div>
+            <select
+              className="settings-input"
+              value={activeSearch.reuseAiKey || ''}
+              onChange={(event) =>
+                updateSearchPlatform({ reuseAiKey: event.target.value })
+              }
+            >
+              <option value="">不重用</option>
+              {draft.ai.platforms.map((platform) => (
+                <option key={platform.id} value={platform.id}>
+                  {platform.name}
+                </option>
+              ))}
+            </select>
+
+            {(activeSearch.homepage || activeSearch.keyUrl) && (
+              <div className="settings-inline">
+                {activeSearch.homepage && (
+                  <button
+                    className="mini-btn"
+                    onClick={() => void window.bsub.newTab(activeSearch.homepage!)}
+                  >
+                    官网
+                  </button>
+                )}
+                {activeSearch.keyUrl && (
+                  <button
+                    className="mini-btn"
+                    onClick={() => void window.bsub.newTab(activeSearch.keyUrl!)}
+                  >
+                    获取 Key
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -1164,7 +1347,7 @@ export function SettingsPanel() {
             checked={draft.search.includeContent}
             onChange={(event) => updateSearch({ includeContent: event.target.checked })}
           />
-          包含网页正文（Tavily）
+          包含网页正文（支持的平台）
         </label>
 
         <label className="settings-check">
@@ -1198,7 +1381,7 @@ export function SettingsPanel() {
           </div>
         )}
         <div className="settings-hint">
-          免 Key 引擎可能被限流；失败会自动换另一个免 Key 引擎。检索结果只作为总结参考。
+          Exa / AnySearch / SearXNG 免 Key；DeepSeek 搜索可复用 AI 平台 Key。测试使用已保存配置。
         </div>
       </div>
 

@@ -7,9 +7,16 @@ import type {
   AppSettings,
   ExportFormat,
   PromptTemplate,
+  SearchPlatform,
   SettingsSnapshot,
   ThemeMode
 } from '../shared/types';
+import {
+  AI_PRESETS,
+  AI_PRESET_VERSION,
+  ASR_PRESETS,
+  SEARCH_PRESETS
+} from '../shared/presets';
 
 export const DEFAULT_PROMPT = `你是一个严谨的中文视频笔记助手。请只依据提供的字幕，输出 Markdown 格式的总结，包含：
 
@@ -75,6 +82,16 @@ const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', 
   }
 ];
 
+const AI_PRESET_ALIASES: Record<string, string> = {
+  siliconflow: 'siliconflow-ai',
+  custom: 'custom-ai'
+};
+
+function aiPresetFor(id: string): (typeof AI_PRESETS)[number] | undefined {
+  const target = AI_PRESET_ALIASES[id] || id;
+  return AI_PRESETS.find((preset) => preset.id === target);
+}
+
 const EXPORT_FORMATS: ExportFormat[] = ['md', 'srt', 'vtt', 'ass', 'txt', 'json'];
 const THEME_MODES: ThemeMode[] = ['system', 'light', 'dark'];
 
@@ -93,106 +110,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: 8192,
     stream: true,
     preProofread: false,
-    presetVersion: 2,
-    platforms: [
-      {
-        id: 'deepseek',
-        name: 'DeepSeek',
-        baseUrl: 'https://api.deepseek.com/v1',
-        apiKey: '',
-        model: 'deepseek-chat'
-      },
-      {
-        id: 'siliconflow',
-        name: '硅基流动',
-        baseUrl: 'https://api.siliconflow.cn/v1',
-        apiKey: '',
-        model: 'deepseek-ai/DeepSeek-V3'
-      },
-      {
-        id: 'openai',
-        name: 'OpenAI',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: '',
-        model: 'gpt-4o-mini'
-      },
-      {
-        id: 'moonshot',
-        name: 'Moonshot Kimi',
-        baseUrl: 'https://api.moonshot.cn/v1',
-        apiKey: '',
-        model: 'moonshot-v1-8k'
-      },
-      {
-        id: 'zhipu',
-        name: '智谱 GLM',
-        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-        apiKey: '',
-        model: 'glm-4-flash'
-      },
-      {
-        id: 'openrouter',
-        name: 'OpenRouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        apiKey: '',
-        model: 'openai/gpt-4o-mini'
-      },
-      {
-        id: 'groq',
-        name: 'Groq',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        apiKey: '',
-        model: 'llama-3.3-70b-versatile'
-      },
-      {
-        id: 'custom',
-        name: '自定义（OpenAI 兼容）',
-        baseUrl: 'http://127.0.0.1:11434/v1',
-        apiKey: '',
-        model: 'qwen2.5:7b'
-      }
-    ]
-  },
-  prompt: {
-    activeId: 'default',
-    templates: DEFAULT_TEMPLATES,
-    chat: DEFAULT_CHAT_PROMPT,
-    translate: DEFAULT_TRANSLATE_PROMPT,
-    optimize: DEFAULT_OPTIMIZE_PROMPT,
-    chapters: DEFAULT_CHAPTERS_PROMPT
+    presetVersion: AI_PRESET_VERSION,
+    platforms: AI_PRESETS.map((platform) => ({
+      ...platform,
+      models: [...(platform.models || [])]
+    }))
   },
   asr: {
     activeId: 'siliconflow',
-    platforms: [
-      {
-        id: 'siliconflow',
-        name: '硅基流动（SiliconFlow）',
-        baseUrl: 'https://api.siliconflow.cn/v1',
-        apiKey: '',
-        model: 'FunAudioLLM/SenseVoiceSmall'
-      },
-      {
-        id: 'groq',
-        name: 'Groq',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        apiKey: '',
-        model: 'whisper-large-v3-turbo'
-      },
-      {
-        id: 'openai',
-        name: 'OpenAI',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: '',
-        model: 'whisper-1'
-      },
-      {
-        id: 'custom-asr',
-        name: '自定义（OpenAI 兼容）',
-        baseUrl: '',
-        apiKey: '',
-        model: ''
-      }
-    ],
+    platforms: ASR_PRESETS.map((platform) => ({
+      ...platform,
+      models: [...(platform.models || [])]
+    })),
     language: 'auto',
     chunkSeconds: 120,
     transport: 'auto',
@@ -235,10 +164,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
       }
     ]
   },
+  prompt: {
+    activeId: 'default',
+    templates: DEFAULT_TEMPLATES,
+    chat: DEFAULT_CHAT_PROMPT,
+    translate: DEFAULT_TRANSLATE_PROMPT,
+    optimize: DEFAULT_OPTIMIZE_PROMPT,
+    chapters: DEFAULT_CHAPTERS_PROMPT
+  },
   search: {
     enabled: false,
-    provider: 'exa',
-    apiKey: '',
+    activeId: 'exa',
+    platforms: SEARCH_PRESETS.map((platform) => ({ ...platform })),
     maxResults: 5,
     includeContent: true,
     timeRange: 'any',
@@ -303,12 +240,20 @@ function normalize(raw: any): AppSettings {
         const id = String(item.id || '').trim();
         if (!id || seen.has(id)) continue;
         seen.add(id);
+        const preset = aiPresetFor(id);
         platforms.push({
           id,
-          name: String(item.name || id),
-          baseUrl: String(item.baseUrl || ''),
+          name: String(item.name || preset?.name || id),
+          baseUrl: String(item.baseUrl || preset?.baseUrl || ''),
           apiKey: String(item.apiKey || ''),
-          model: String(item.model || '')
+          model: String(item.model || preset?.model || ''),
+          models:
+            Array.isArray(item.models) && item.models.length
+              ? item.models.map(String)
+              : [...(preset?.models || [])],
+          homepage: String(item.homepage || preset?.homepage || ''),
+          keyUrl: String(item.keyUrl || preset?.keyUrl || ''),
+          kind: String(item.kind || preset?.kind || '')
         });
       }
       if (platforms.length) base.ai.platforms = platforms;
@@ -319,15 +264,22 @@ function normalize(raw: any): AppSettings {
       : base.ai.platforms[0].id;
 
     const presetVersion = Number(raw.ai?.presetVersion) || 0;
-    if (presetVersion < 2) {
-      const extraIds = ['moonshot', 'zhipu', 'openrouter', 'groq'];
-      for (const preset of DEFAULT_SETTINGS.ai.platforms) {
-        if (extraIds.includes(preset.id) && !base.ai.platforms.some((item) => item.id === preset.id)) {
-          base.ai.platforms.push({ ...preset });
+    if (presetVersion < AI_PRESET_VERSION) {
+      for (const preset of AI_PRESETS) {
+        const exists = base.ai.platforms.some(
+          (item) =>
+            item.id === preset.id ||
+            AI_PRESET_ALIASES[item.id] === preset.id
+        );
+        if (!exists) {
+          base.ai.platforms.push({
+            ...preset,
+            models: [...(preset.models || [])]
+          });
         }
       }
     }
-    base.ai.presetVersion = 2;
+    base.ai.presetVersion = AI_PRESET_VERSION;
 
     const temperature = Number(raw.ai?.temperature);
     if (Number.isFinite(temperature)) {
@@ -350,12 +302,22 @@ function normalize(raw: any): AppSettings {
           const id = String(item.id || '').trim();
           if (!id || seenAsr.has(id)) continue;
           seenAsr.add(id);
+          const preset = ASR_PRESETS.find((candidate) => candidate.id === id);
           platforms.push({
             id,
             name: String(item.name || id),
-            baseUrl: String(item.baseUrl || ''),
+            baseUrl: String(item.baseUrl || preset?.baseUrl || ''),
             apiKey: String(item.apiKey || ''),
-            model: String(item.model || '')
+            model: String(item.model || preset?.model || ''),
+            models: Array.isArray(item.models)
+              ? item.models.map(String)
+              : [...(preset?.models || [])],
+            homepage: String(item.homepage || preset?.homepage || ''),
+            keyUrl: String(item.keyUrl || preset?.keyUrl || ''),
+            transport: item.transport || preset?.transport || 'multipart',
+            paramStyle: item.paramStyle || preset?.paramStyle || 'auto',
+            audioFormat: item.audioFormat || preset?.audioFormat || 'auto',
+            keyField: String(item.keyField || preset?.keyField || 'file')
           });
         }
         if (platforms.length) base.asr.platforms = platforms;
@@ -484,16 +446,57 @@ function normalize(raw: any): AppSettings {
 
     if (raw.search && typeof raw.search === 'object') {
       base.search.enabled = raw.search.enabled === true;
-      const providers = ['anysearch', 'exa', 'tavily', 'brave', 'bocha', 'serper'];
-      base.search.provider = providers.includes(raw.search.provider) ? raw.search.provider : 'exa';
-      base.search.apiKey = String(raw.search.apiKey || '').trim();
+
+      let platforms: SearchPlatform[] = [];
+      if (Array.isArray(raw.search.platforms)) {
+        const seen = new Set<string>();
+        for (const item of raw.search.platforms) {
+          if (!item || typeof item !== 'object') continue;
+          const id = String(item.id || '').trim();
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          platforms.push({
+            id,
+            name: String(item.name || id),
+            kind: String(item.kind || 'custom'),
+            baseUrl: String(item.baseUrl || ''),
+            apiKey: String(item.apiKey || ''),
+            homepage: String(item.homepage || ''),
+            keyUrl: String(item.keyUrl || ''),
+            reuseAiKey: String(item.reuseAiKey || '')
+          });
+        }
+      }
+
+      if (!platforms.length) {
+        platforms = SEARCH_PRESETS.map((platform) => ({ ...platform }));
+        const legacyId = String(raw.search.provider || '').trim();
+        const hit = platforms.find(
+          (platform) => platform.id === legacyId || platform.kind === legacyId
+        );
+        if (hit) {
+          if (raw.search.apiKey) hit.apiKey = String(raw.search.apiKey || '').trim();
+          base.search.activeId = hit.id;
+        }
+      }
+      if (platforms.length) base.search.platforms = platforms;
+
+      const activeId = String(raw.search.activeId || '');
+      base.search.activeId = base.search.platforms.some(
+        (platform) => platform.id === activeId
+      )
+        ? activeId
+        : base.search.platforms[0].id;
+
       const maxResults = Number(raw.search.maxResults);
       if (Number.isFinite(maxResults)) {
         base.search.maxResults = Math.min(10, Math.max(1, Math.round(maxResults)));
       }
       base.search.includeContent = raw.search.includeContent !== false;
       const ranges = ['any', 'year', 'month', 'week'];
-      base.search.timeRange = ranges.includes(raw.search.timeRange) ? raw.search.timeRange : 'any';
+      base.search.timeRange = ranges.includes(raw.search.timeRange)
+        ? raw.search.timeRange
+        : 'any';
       base.search.verify = raw.search.verify === true;
     }
 
@@ -571,7 +574,7 @@ function maskSettings(settings: AppSettings): AppSettings {
   const clone: AppSettings = JSON.parse(JSON.stringify(settings));
   for (const platform of clone.ai.platforms) platform.apiKey = maskSecret(platform.apiKey);
   for (const platform of clone.asr.platforms) platform.apiKey = maskSecret(platform.apiKey);
-  clone.search.apiKey = maskSecret(clone.search.apiKey);
+  for (const platform of clone.search.platforms) platform.apiKey = maskSecret(platform.apiKey);
   return clone;
 }
 
@@ -597,7 +600,12 @@ function mergeSecrets(next: AppSettings, current: AppSettings): AppSettings {
       current.asr.platforms.find((item) => item.id === platform.id)?.apiKey || ''
     );
   }
-  merged.search.apiKey = resolveSecret(merged.search.apiKey, current.search.apiKey);
+  for (const platform of merged.search.platforms) {
+    platform.apiKey = resolveSecret(
+      platform.apiKey,
+      current.search.platforms.find((item) => item.id === platform.id)?.apiKey || ''
+    );
+  }
   return merged;
 }
 

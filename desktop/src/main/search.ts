@@ -1,5 +1,10 @@
 import { session } from 'electron';
-import type { AppSettings, SearchTimeRange, WebReference } from '../shared/types';
+import type {
+  AppSettings,
+  SearchPlatform,
+  SearchTimeRange,
+  WebReference
+} from '../shared/types';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -34,7 +39,11 @@ function freshnessFor(range: SearchTimeRange): string {
   return '';
 }
 
-async function timeoutFetch(url: string, init: RequestInit, timeoutMs = 15000): Promise<Response> {
+function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+}
+
+async function timeoutFetch(url: string, init: RequestInit, timeoutMs = 20000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('检索超时')), timeoutMs);
   try {
@@ -61,9 +70,96 @@ function normalize(rows: WebReference[], max: number): WebReference[] {
   return out;
 }
 
-async function searchTavily(query: string, settings: AppSettings): Promise<WebReference[]> {
-  const key = settings.search.apiKey.trim();
-  if (!key) throw new Error('Tavily 需要 API Key（设置 → 联网检索）');
+function activePlatform(settings: AppSettings): SearchPlatform {
+  return (
+    settings.search.platforms.find((item) => item.id === settings.search.activeId) ||
+    settings.search.platforms[0]
+  );
+}
+
+function keyOf(settings: AppSettings, platform: SearchPlatform): string {
+  const direct = String(platform.apiKey || '').trim();
+  if (direct) return direct;
+  if (platform.reuseAiKey) {
+    return (
+      settings.ai.platforms.find((item) => item.id === platform.reuseAiKey)?.apiKey || ''
+    ).trim();
+  }
+  return '';
+}
+
+function parseRows(
+  data: any,
+  pick: (item: any) => { title?: string; url?: string; snippet?: string }
+): WebReference[] {
+  const candidates: any[] = [];
+  if (Array.isArray(data?.results)) candidates.push(...data.results);
+  if (Array.isArray(data?.data?.results)) candidates.push(...data.data.results);
+  if (Array.isArray(data?.data?.webPages?.value)) candidates.push(...data.data.webPages.value);
+  if (Array.isArray(data?.webPages?.value)) candidates.push(...data.webPages.value);
+  if (Array.isArray(data?.organic)) candidates.push(...data.organic);
+  if (Array.isArray(data?.search_result)) candidates.push(...data.search_result);
+  if (Array.isArray(data?.references)) candidates.push(...data.references);
+  if (Array.isArray(data?.search_results)) candidates.push(...data.search_results);
+  if (Array.isArray(data?.data?.webpages)) candidates.push(...data.data.webpages);
+  if (Array.isArray(data?.webpages)) candidates.push(...data.webpages);
+  if (Array.isArray(data?.web?.results)) candidates.push(...data.web.results);
+  if (Array.isArray(data?.data) && data.data.some((item: any) => item?.url || item?.link)) {
+    candidates.push(...data.data);
+  }
+  if (Array.isArray(data?.items)) candidates.push(...data.items);
+  return candidates
+    .map((item) => pick(item || {}))
+    .filter((item): item is WebReference => Boolean(item && item.url)) as WebReference[];
+}
+
+async function jsonOf(res: Response, label: string): Promise<any> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`${label} HTTP ${res.status}：${text.slice(0, 160)}`);
+  }
+  return res.json();
+}
+
+async function searchDeepSeek(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('DeepSeek 搜索需要 Key（可复用 AI 平台 DeepSeek Key）');
+  const base = platform.baseUrl.replace(/\/+$/, '');
+  const url = /\/tools\/search$/.test(base) ? base : `${base}/tools/search`;
+  const days = daysFor(settings.search.timeRange);
+  const suffix = days ? ` after:${isoDaysAgo(days)}` : '';
+  const payload = {
+    query: `${query}${suffix}`.slice(0, 128),
+    count: Math.min(50, settings.search.maxResults),
+    need_content: settings.search.includeContent
+  };
+  const res = await timeoutFetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await jsonOf(res, 'DeepSeek 搜索');
+  return parseRows(data, (item) => ({
+    title: item.title || item.url,
+    url: item.url,
+    snippet: item.summary || item.snippet || item.content
+  }));
+}
+
+async function searchTavily(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('Tavily 需要 API Key');
   const body: Record<string, unknown> = {
     api_key: key,
     query,
@@ -72,87 +168,66 @@ async function searchTavily(query: string, settings: AppSettings): Promise<WebRe
     include_raw_content: settings.search.includeContent,
     search_depth: 'basic'
   };
-  const days = daysFor(settings.search.timeRange);
-  if (days) body.days = days;
-
-  const res = await timeoutFetch('https://api.tavily.com/search', {
+  if (settings.search.timeRange !== 'any') body.time_range = settings.search.timeRange;
+  const res = await timeoutFetch(platform.baseUrl || 'https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Tavily HTTP ${res.status}：${text.slice(0, 160)}`);
-  }
-  const json: any = await res.json();
-  const results = Array.isArray(json?.results) ? json.results : [];
-  return results.map((item: any) => ({
+  const data = await jsonOf(res, 'Tavily');
+  return parseRows(data, (item) => ({
     title: item.title,
     url: item.url,
-    snippet: item.content || item.raw_content || ''
+    snippet: item.content || item.raw_content || item.snippet
   }));
 }
 
-async function searchBrave(query: string, settings: AppSettings): Promise<WebReference[]> {
-  const key = settings.search.apiKey.trim();
-  if (!key) throw new Error('Brave 需要 API Key（设置 → 联网检索）');
-  const url = new URL('https://api.search.brave.com/res/v1/web/search');
-  url.searchParams.set('q', query);
-  url.searchParams.set('count', String(Math.min(20, settings.search.maxResults)));
-  const freshness = freshnessFor(settings.search.timeRange);
-  if (freshness) url.searchParams.set('freshness', freshness);
-
-  const res = await timeoutFetch(url.toString(), {
-    headers: {
-      accept: 'application/json',
-      'x-subscription-token': key,
-      'user-agent': UA
+async function searchBocha(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('博查 Bocha 需要 API Key');
+  const body: Record<string, unknown> = {
+    query,
+    count: settings.search.maxResults,
+    summary: settings.search.includeContent
+  };
+  if (settings.search.timeRange !== 'any') {
+    body.freshness =
+      settings.search.timeRange === 'year'
+        ? 'oneYear'
+        : settings.search.timeRange === 'month'
+          ? 'oneMonth'
+          : 'oneWeek';
+  }
+  const res = await timeoutFetch(
+    platform.baseUrl || 'https://api.bochaai.com/v1/web-search',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(body)
     }
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Brave HTTP ${res.status}：${text.slice(0, 160)}`);
-  }
-  const json: any = await res.json();
-  const results = Array.isArray(json?.web?.results) ? json.web.results : [];
-  return results.map((item: any) => ({
-    title: item.title,
-    url: item.url,
-    snippet: item.description || ''
-  }));
-}
-
-async function searchBocha(query: string, settings: AppSettings): Promise<WebReference[]> {
-  const key = settings.search.apiKey.trim();
-  if (!key) throw new Error('博查 Bocha 需要 API Key（设置 → 联网检索）');
-  const res = await timeoutFetch('https://api.bochaai.com/v1/web-search', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${key}`
-    },
-    body: JSON.stringify({
-      query,
-      count: settings.search.maxResults,
-      summary: true
-    })
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Bocha HTTP ${res.status}：${text.slice(0, 160)}`);
-  }
-  const json: any = await res.json();
-  const rows = json?.data?.webPages?.value || json?.webPages?.value || [];
-  return (Array.isArray(rows) ? rows : []).map((item: any) => ({
+  );
+  const data = await jsonOf(res, 'Bocha');
+  return parseRows(data, (item) => ({
     title: item.name || item.title,
     url: item.url,
-    snippet: item.summary || item.snippet || ''
+    snippet: item.summary || item.snippet
   }));
 }
 
-async function searchSerper(query: string, settings: AppSettings): Promise<WebReference[]> {
-  const key = settings.search.apiKey.trim();
-  if (!key) throw new Error('Serper 需要 API Key（设置 → 联网检索）');
+async function searchSerper(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('Serper 需要 API Key');
   const tbs =
     settings.search.timeRange === 'year'
       ? 'qdr:y'
@@ -161,7 +236,7 @@ async function searchSerper(query: string, settings: AppSettings): Promise<WebRe
         : settings.search.timeRange === 'week'
           ? 'qdr:w'
           : '';
-  const res = await timeoutFetch('https://google.serper.dev/search', {
+  const res = await timeoutFetch(platform.baseUrl || 'https://google.serper.dev/search', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -173,36 +248,141 @@ async function searchSerper(query: string, settings: AppSettings): Promise<WebRe
       ...(tbs ? { tbs } : {})
     })
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Serper HTTP ${res.status}：${text.slice(0, 160)}`);
-  }
-  const json: any = await res.json();
-  const rows = Array.isArray(json?.organic) ? json.organic : [];
-  return rows.map((item: any) => ({
+  const data = await jsonOf(res, 'Serper');
+  return parseRows(data, (item) => ({
     title: item.title,
-    url: item.link,
-    snippet: item.snippet || ''
+    url: item.link || item.url,
+    snippet: item.snippet
   }));
 }
 
-async function searchAnySearch(query: string, settings: AppSettings): Promise<WebReference[]> {
-  const res = await timeoutFetch('https://api.anysearch.com/v1/search', {
+async function searchZhipu(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('智谱 Web 搜索需要 API Key');
+  const body: Record<string, unknown> = {
+    search_engine: 'search_std',
+    search_query: query,
+    count: Math.min(50, settings.search.maxResults),
+    content_size: settings.search.includeContent ? 'high' : 'medium'
+  };
+  if (settings.search.timeRange !== 'any') {
+    body.search_recency_filter =
+      settings.search.timeRange === 'year'
+        ? 'oneYear'
+        : settings.search.timeRange === 'month'
+          ? 'oneMonth'
+          : 'oneWeek';
+  }
+  const res = await timeoutFetch(
+    platform.baseUrl || 'https://open.bigmodel.cn/api/paas/v4/web_search',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(body)
+    }
+  );
+  const data = await jsonOf(res, '智谱搜索');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.link || item.url,
+    snippet: item.content || item.snippet
+  }));
+}
+
+async function searchMetaso(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('秘塔搜索需要 API Key');
+  const res = await timeoutFetch(platform.baseUrl || 'https://metaso.cn/api/v1/search', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'user-agent': UA },
-    body: JSON.stringify({ query, max_results: settings.search.maxResults })
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`
+    },
+    body: JSON.stringify({
+      q: query,
+      scope: 'webpage',
+      includeSummary: settings.search.includeContent,
+      size: String(Math.min(50, settings.search.maxResults)),
+      ...(settings.search.timeRange !== 'any' ? { timeRange: settings.search.timeRange } : {})
+    })
   });
-  if (!res.ok) throw new Error(`AnySearch HTTP ${res.status}`);
-  const json: any = await res.json();
-  const results = Array.isArray(json?.data?.results)
-    ? json.data.results
-    : Array.isArray(json?.results)
-      ? json.results
-      : [];
-  return results.map((item: any) => ({
+  const data = await jsonOf(res, '秘塔搜索');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.link || item.url,
+    snippet: item.snippet || item.summary
+  }));
+}
+
+async function searchBaidu(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('百度千帆 AI 搜索需要 API Key');
+  const body: Record<string, unknown> = {
+    messages: [{ role: 'user', content: query }],
+    search_source: 'baidu_search_v2',
+    resource_type_filter: [{ type: 'web', top_k: settings.search.maxResults }]
+  };
+  if (settings.search.timeRange !== 'any') {
+    body.search_recency_filter = settings.search.timeRange;
+  }
+  const res = await timeoutFetch(
+    platform.baseUrl || 'https://qianfan.baidubce.com/v2/ai_search/web_search',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(body)
+    }
+  );
+  const data = await jsonOf(res, '百度 AI 搜索');
+  return parseRows(data, (item) => ({
     title: item.title,
     url: item.url || item.link,
-    snippet: item.snippet || item.content || ''
+    snippet: item.content || item.snippet
+  }));
+}
+
+async function searchBrave(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const key = keyOf(settings, platform);
+  if (!key) throw new Error('Brave 需要 API Key');
+  const url = new URL(platform.baseUrl || 'https://api.search.brave.com/res/v1/web/search');
+  url.searchParams.set('q', query);
+  url.searchParams.set('count', String(Math.min(20, settings.search.maxResults)));
+  const freshness = freshnessFor(settings.search.timeRange);
+  if (freshness) url.searchParams.set('freshness', freshness);
+  const res = await timeoutFetch(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      'x-subscription-token': key,
+      'user-agent': UA
+    }
+  });
+  const data = await jsonOf(res, 'Brave');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.url,
+    snippet: item.description
   }));
 }
 
@@ -223,7 +403,7 @@ function parseRpcPayload(raw: string): any {
       const json = JSON.parse(payload);
       if (json && (json.result || json.error)) return json;
     } catch {
-      // 忽略非 JSON 行
+      // ignore
     }
   }
   return null;
@@ -237,12 +417,7 @@ function parseExaText(text: string): WebReference[] {
     if (!title || !url) continue;
     let body = chunk;
     const highlights = chunk.indexOf('Highlights:');
-    if (highlights >= 0) {
-      body = chunk.slice(highlights + 'Highlights:'.length);
-    } else {
-      const author = /^Author:.*$/m.exec(chunk);
-      if (author) body = chunk.slice(author.index + author[0].length);
-    }
+    if (highlights >= 0) body = chunk.slice(highlights + 'Highlights:'.length);
     rows.push({
       title: title[1].trim(),
       url: url[1].trim(),
@@ -258,7 +433,6 @@ async function searchExa(query: string, settings: AppSettings): Promise<WebRefer
     'content-type': 'application/json',
     accept: 'application/json, text/event-stream'
   };
-
   const init = await timeoutFetch(endpoint, {
     method: 'POST',
     headers,
@@ -277,7 +451,6 @@ async function searchExa(query: string, settings: AppSettings): Promise<WebRefer
   const sessionId = init.headers.get('mcp-session-id');
   if (sessionId) headers['mcp-session-id'] = sessionId;
   await init.text().catch(() => '');
-
   await timeoutFetch(
     endpoint,
     {
@@ -315,38 +488,124 @@ async function searchExa(query: string, settings: AppSettings): Promise<WebRefer
   return rows;
 }
 
+async function searchAnySearch(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const res = await timeoutFetch(platform.baseUrl || 'https://api.anysearch.com/v1/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'user-agent': UA },
+    body: JSON.stringify({ query, max_results: settings.search.maxResults })
+  });
+  const data = await jsonOf(res, 'AnySearch');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.url || item.link,
+    snippet: item.snippet || item.content
+  }));
+}
+
+async function searchJina(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const base = (platform.baseUrl || 'https://s.jina.ai/').replace(/\/+$/, '');
+  const key = keyOf(settings, platform);
+  const res = await timeoutFetch(`${base}/${encodeURIComponent(query)}`, {
+    headers: {
+      accept: 'application/json',
+      ...(key ? { authorization: `Bearer ${key}` } : {})
+    }
+  });
+  const data = await jsonOf(res, 'Jina');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.url || item.link,
+    snippet: item.description || item.content
+  }));
+}
+
+async function searchSearxng(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  const url = new URL(platform.baseUrl || 'https://searx.be/search');
+  url.searchParams.set('q', query);
+  url.searchParams.set('format', 'json');
+  if (settings.search.timeRange !== 'any') {
+    url.searchParams.set('time_range', settings.search.timeRange);
+  }
+  const key = keyOf(settings, platform);
+  const res = await timeoutFetch(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      ...(key ? { authorization: `Bearer ${key}` } : {})
+    }
+  });
+  const data = await jsonOf(res, 'SearXNG');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.url,
+    snippet: item.content
+  }));
+}
+
+async function searchCustom(
+  settings: AppSettings,
+  platform: SearchPlatform,
+  query: string
+): Promise<WebReference[]> {
+  if (!platform.baseUrl.trim()) throw new Error('自定义搜索接口地址为空');
+  const url = new URL(platform.baseUrl);
+  url.searchParams.set('q', query);
+  url.searchParams.set('count', String(settings.search.maxResults));
+  const key = keyOf(settings, platform);
+  const res = await timeoutFetch(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      ...(key ? { authorization: `Bearer ${key}` } : {})
+    }
+  });
+  const data = await jsonOf(res, '自定义搜索');
+  return parseRows(data, (item) => ({
+    title: item.title,
+    url: item.url || item.link,
+    snippet: item.snippet || item.content
+  }));
+}
+
 export async function searchWeb(settings: AppSettings, query: string): Promise<WebReference[]> {
   if (!settings.search.enabled) return [];
+  const platform = activePlatform(settings);
+  if (!platform) throw new Error('没有可用的检索平台');
   const max = settings.search.maxResults;
+  const kind = platform.kind || 'custom';
 
-  if (settings.search.provider === 'tavily') {
-    return normalize(await searchTavily(query, settings), max);
-  }
-  if (settings.search.provider === 'brave') {
-    return normalize(await searchBrave(query, settings), max);
-  }
-  if (settings.search.provider === 'bocha') {
-    return normalize(await searchBocha(query, settings), max);
-  }
-  if (settings.search.provider === 'serper') {
-    return normalize(await searchSerper(query, settings), max);
-  }
+  try {
+    let rows: WebReference[] = [];
+    if (kind === 'deepseek-search') rows = await searchDeepSeek(settings, platform, query);
+    else if (kind === 'tavily') rows = await searchTavily(settings, platform, query);
+    else if (kind === 'bocha') rows = await searchBocha(settings, platform, query);
+    else if (kind === 'serper') rows = await searchSerper(settings, platform, query);
+    else if (kind === 'zhipu') rows = await searchZhipu(settings, platform, query);
+    else if (kind === 'metaso') rows = await searchMetaso(settings, platform, query);
+    else if (kind === 'baidu') rows = await searchBaidu(settings, platform, query);
+    else if (kind === 'brave') rows = await searchBrave(settings, platform, query);
+    else if (kind === 'exa') rows = await searchExa(query, settings);
+    else if (kind === 'anysearch') rows = await searchAnySearch(settings, platform, query);
+    else if (kind === 'jina') rows = await searchJina(settings, platform, query);
+    else if (kind === 'searxng') rows = await searchSearxng(settings, platform, query);
+    else rows = await searchCustom(settings, platform, query);
 
-  // 免 Key 引擎互为兜底；任一成功即可。
-  const order =
-    settings.search.provider === 'exa' ? ['exa', 'anysearch'] : ['anysearch', 'exa'];
-  let lastError: unknown = null;
-  for (const engine of order) {
-    try {
-      const rows = engine === 'exa' ? await searchExa(query, settings) : await searchAnySearch(query, settings);
-      const normalized = normalize(rows, max);
-      if (normalized.length) return normalized;
-      lastError = new Error(`${engine} 返回空结果`);
-    } catch (error) {
-      lastError = error;
-    }
+    const normalized = normalize(rows, max);
+    if (normalized.length) return normalized;
+    throw new Error('没有返回结果');
+  } catch (error) {
+    throw new Error(`检索失败（${platform.name}）：${(error as Error).message}`);
   }
-  throw new Error(`检索失败：${(lastError as Error)?.message || '没有可用结果'}`);
 }
 
 function queryTerms(query: string): string[] {

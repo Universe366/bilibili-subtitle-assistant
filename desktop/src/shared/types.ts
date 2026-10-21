@@ -266,6 +266,10 @@ export interface AiPlatform {
   baseUrl: string;
   apiKey: string;
   model: string;
+  models?: string[];
+  homepage?: string;
+  keyUrl?: string;
+  kind?: string;
 }
 
 export interface McpServer {
@@ -299,6 +303,34 @@ export interface AsrPlatform {
   baseUrl: string;
   apiKey: string;
   model: string;
+  models?: string[];
+  homepage?: string;
+  keyUrl?: string;
+  transport?: AsrTransport;
+  paramStyle?: 'auto' | 'minimal' | 'full';
+  audioFormat?: AsrFormat;
+  keyField?: string;
+}
+
+export interface SearchPlatform {
+  id: string;
+  name: string;
+  kind: string;
+  baseUrl: string;
+  apiKey: string;
+  homepage?: string;
+  keyUrl?: string;
+  reuseAiKey?: string;
+}
+
+export interface SearchSettings {
+  enabled: boolean;
+  activeId: string;
+  platforms: SearchPlatform[];
+  maxResults: number;
+  includeContent: boolean;
+  timeRange: SearchTimeRange;
+  verify: boolean;
 }
 
 export type AsrTransport = 'auto' | 'multipart' | 'base64-json' | 'chat-audio';
@@ -323,13 +355,6 @@ export interface PromptTemplate {
   text: string;
 }
 
-export type SearchProvider =
-  | 'anysearch'
-  | 'exa'
-  | 'tavily'
-  | 'brave'
-  | 'bocha'
-  | 'serper';
 export type SearchTimeRange = 'any' | 'year' | 'month' | 'week';
 
 export interface WebReference {
@@ -397,15 +422,7 @@ export interface AppSettings {
     enabled: boolean;
     items: SkillItem[];
   };
-  search: {
-    enabled: boolean;
-    provider: SearchProvider;
-    apiKey: string;
-    maxResults: number;
-    includeContent: boolean;
-    timeRange: SearchTimeRange;
-    verify: boolean;
-  };
+  search: SearchSettings;
   correction: {
     enabled: boolean;
     groups: CorrectionRuleGroup[];

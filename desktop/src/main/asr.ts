@@ -70,6 +70,7 @@ function totalFromContentRange(value: string): number {
 }
 
 function chooseFormat(platform: AsrPlatform, settings: AsrSettings): 'm4a' | 'wav' {
+  if (platform.audioFormat && platform.audioFormat !== 'auto') return platform.audioFormat;
   if (settings.audioFormat !== 'auto') return settings.audioFormat;
   const model = platform.model;
   // 实测：SenseVoice 只吃 M4A；带时间戳/部分中文模型只吃 WAV。
@@ -341,14 +342,23 @@ async function transcribeChunk(
   const ext = format === 'wav' ? 'wav' : 'm4a';
   const mime = format === 'wav' ? 'audio/wav' : 'audio/mp4';
   const language = settings.language === 'auto' ? '' : settings.language;
-  const fullParams = !/siliconflow/i.test(base);
+  const fullParams =
+    platform.paramStyle === 'minimal'
+      ? false
+      : platform.paramStyle === 'full'
+        ? true
+        : !/siliconflow/i.test(base);
+  const preferred =
+    platform.transport && platform.transport !== 'auto'
+      ? platform.transport
+      : settings.transport;
   const transports: Array<'multipart' | 'base64-json' | 'chat-audio'> =
-    settings.transport === 'auto'
+    preferred === 'auto'
       ? ['multipart', 'base64-json', 'chat-audio']
       : [
-          settings.transport,
+          preferred,
           ...(['multipart', 'base64-json', 'chat-audio'] as const).filter(
-            (item) => item !== settings.transport
+            (item) => item !== preferred
           )
         ];
 
