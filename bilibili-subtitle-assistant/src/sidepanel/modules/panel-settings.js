@@ -162,8 +162,29 @@ function markDirty() {
 }
 
 export function render() {
+  const target = state.body;
+  if (!target) return;
+  // 先在离屏容器里构建完整内容，成功后再一次性替换；
+  // 中途异常时保留旧内容，避免设置页突然整块空白。
+  const staging = document.createElement('div');
+  state.body = staging;
+  let ok = false;
+  try {
+    ok = renderBody();
+  } catch (err) {
+    console.error('[字幕助手] 设置页渲染失败，保留旧内容', err);
+    state.body = target;
+    return;
+  }
+  state.body = target;
+  if (!ok) return;
+  clear(target);
+  while (staging.firstChild) target.appendChild(staging.firstChild);
+}
+
+function renderBody() {
   const st = store.get();
-  if (!state.body || !st.settings) return;
+  if (!state.body || !st.settings) return false;
   renderToolbar();
   const scroll = state.scrollHost ? state.scrollHost.scrollTop : 0;
   clear(state.body);
@@ -235,6 +256,7 @@ export function render() {
       state.scrollHost.scrollTop = scroll;
     }
   });
+  return true;
 }
 
 function setGroupOpenEl(g, open) {
