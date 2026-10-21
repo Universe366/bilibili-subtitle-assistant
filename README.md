@@ -56,7 +56,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 
 首次使用可以只抓官方字幕，不需要任何 Key。要用 AI 总结 / 转录 / 联网时，再去 **设置** 里填对应平台的 Key。
 
-> 当前通过 GitHub Releases 分发，Edge 商店上架暂缓。更新后请在扩展页点刷新，并**刷新所有已打开的 B 站页面**。
+> 当前通过 GitHub Releases 分发；Edge 商店提交材料已准备（见 `docs/EDGE-STORE.md`），上架后可由商店自动更新。手动更新后请在扩展页点刷新，并**刷新所有已打开的 B 站页面**。
 
 ## 架构
 
@@ -104,7 +104,7 @@ npm run test:browser  # 4 个真实浏览器套件（需要 Chrome/Edge）
 | [`bilibili-subtitle-assistant/AGENTS.md`](bilibili-subtitle-assistant/AGENTS.md) | 给 AI / 贡献者：环境硬约束、踩坑、排查方法论 |
 | [`bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md`](bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘（开发记录，不是使用文档） |
 | [`PRIVACY.md`](PRIVACY.md) | 隐私政策 |
-| [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md) | Edge 商店文案、权限理由与认证备注（暂缓使用） |
+| [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md) | Edge 商店包、文案、权限理由、素材与认证备注 |
 | [`verify/README.md`](verify/README.md) | 测试套件说明与运行方式 |
 
 ## 说明

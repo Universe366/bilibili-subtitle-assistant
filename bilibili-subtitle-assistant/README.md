@@ -153,7 +153,7 @@
 **版本更新**
 - 设置 → 诊断与关于：显示当前版本 / 最新版本 / 上次检查时间
 - **自动检查**（每天一次，可关）与**手动检查**；发现新版可查看说明、一键打开下载页
-- 项目通过 **GitHub Releases** 分发；Edge 商店上架暂缓。更新后需在扩展页刷新并刷新 B 站页面
+- 项目通过 **GitHub Releases** 分发；Edge 商店提交材料已准备（见 `docs/EDGE-STORE.md`）。商店上架后由浏览器自动更新；手动更新后需在扩展页刷新并刷新 B 站页面
 
 **导出**
 - 6 种格式：SRT / WebVTT / ASS（可指定字号）/ TXT / Markdown / JSON
@@ -335,7 +335,7 @@ src/sidepanel/selfcheck.js        自检挂钩（把内部模块挂到 window，
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
 | [`LICENSE`](LICENSE) | MIT（本项目代码） |
 | [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方许可证 |
-| [`docs/EDGE-STORE.md`](docs/EDGE-STORE.md) | Edge 商店提交材料（暂缓使用） |
+| [`docs/EDGE-STORE.md`](docs/EDGE-STORE.md) | Edge 商店包、文案、权限理由与认证备注 |
 | [`../PRIVACY.md`](../PRIVACY.md) | 隐私政策 |
 | [`AGENTS.md`](AGENTS.md) | **给后续 AI / 贡献者**：环境硬约束（CSP、沙箱边界、service worker 生命周期）、已踩过的坑、排查方法论 |
 | [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘，重点记录「为什么当时想错了」 |
