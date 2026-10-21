@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.14.0';
+  const CONTENT_VERSION = '2.14.1';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -924,7 +924,19 @@
       if (message.type === 'bsub:embed-command') {
         (async () => {
           const action = message.action || 'toggle';
-          if (action === 'open') {
+          if (action === 'toggle-close') {
+            // 侧边栏按钮：已打开就直接关闭，不再打开
+            if (document.getElementById(EMBED_ID) && !state.embedClosed) {
+              state.embedClosed = true;
+              state.embedCollapsed = false;
+              removeEmbedPanel();
+              ensureEmbedTab();
+              sendResponse({ ok: true, closed: true, collapsed: false });
+              return;
+            }
+            state.embedClosed = false;
+            state.embedCollapsed = false;
+          } else if (action === 'open') {
             state.embedClosed = false;
             state.embedCollapsed = false;
           } else if (action === 'collapse') {
@@ -940,7 +952,7 @@
           const ok = await ensureEmbedPanel(true);
           if (ok) applyEmbedCollapsed();
           else showPanelHint('当前页面没有可用的右侧栏，无法打开页面内面板。');
-          sendResponse({ ok, collapsed: state.embedCollapsed });
+          sendResponse({ ok, collapsed: state.embedCollapsed, closed: false });
         })();
         return true;
       }

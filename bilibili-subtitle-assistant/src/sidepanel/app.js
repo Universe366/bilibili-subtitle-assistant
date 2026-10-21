@@ -157,14 +157,18 @@ function installShell() {
   if (btnEmbed) {
     btnEmbed.addEventListener('click', async () => {
       try {
-        const res = await chrome.runtime.sendMessage({ type: 'bsub:open-embed', action: 'open' });
+        const res = await chrome.runtime.sendMessage({ type: 'bsub:open-embed', action: 'toggle-close' });
         if (res && res.ok) {
-          toast({ title: '已打开页面内面板' }, 'ok');
+          const closed = !!(res && res.closed);
+          btnEmbed.title = closed
+            ? '在 B 站页面内打开面板（Alt+Shift+B）'
+            : '关闭页面内嵌面板（Alt+Shift+B）';
+          toast({ title: closed ? '已关闭页面内面板' : '已打开页面内面板' }, 'ok');
         } else {
-          toast({ title: '无法打开页面内面板', detail: (res && res.detail) || '请先打开 B 站视频页' }, 'warn');
+          toast({ title: '无法切换页面内面板', detail: (res && res.detail) || '请先打开 B 站视频页' }, 'warn');
         }
       } catch (err) {
-        toast({ title: '无法打开页面内面板', detail: String((err && err.message) || err) }, 'warn');
+        toast({ title: '无法切换页面内面板', detail: String((err && err.message) || err) }, 'warn');
       }
     });
   }

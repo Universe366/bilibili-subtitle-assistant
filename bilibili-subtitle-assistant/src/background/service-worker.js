@@ -1302,7 +1302,12 @@ async function commandEmbedPanel(action) {
   try {
     await ensureContentScript(tab.id);
     const res = await chrome.tabs.sendMessage(tab.id, { type: 'bsub:embed-command', action });
-    return { ok: !!(res && res.ok), collapsed: !!(res && res.collapsed), detail: (res && res.detail) || '' };
+    return {
+      ok: !!(res && res.ok),
+      collapsed: !!(res && res.collapsed),
+      closed: !!(res && res.closed),
+      detail: (res && res.detail) || ''
+    };
   } catch (err) {
     return { ok: false, detail: (err && err.message) || '页面内面板不可用' };
   }

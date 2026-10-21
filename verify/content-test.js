@@ -171,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.0', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.1', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.14.0' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.14.1' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
@@ -273,6 +273,28 @@ async function main() {
     await sleep(80);
     check('收起后显示右侧「字幕」标签', !doc.getElementById('__bsub_embed_panel__') && !!doc.getElementById('__bsub_embed_tab__'));
   }
+  const openToggle = await new Promise((resolve) =>
+    window.__contentListener({ type: 'bsub:embed-command', action: 'toggle-close' }, {}, resolve)
+  );
+  await sleep(80);
+  check(
+    '侧边栏按钮第一次点击打开内嵌面板',
+    !!openToggle && openToggle.ok && openToggle.closed === false && !!doc.getElementById('__bsub_embed_panel__'),
+    JSON.stringify(openToggle)
+  );
+  const closeToggle = await new Promise((resolve) =>
+    window.__contentListener({ type: 'bsub:embed-command', action: 'toggle-close' }, {}, resolve)
+  );
+  await sleep(80);
+  check(
+    '侧边栏按钮再点一次关闭内嵌面板',
+    !!closeToggle &&
+      closeToggle.ok &&
+      closeToggle.closed === true &&
+      !doc.getElementById('__bsub_embed_panel__') &&
+      !!doc.getElementById('__bsub_embed_tab__'),
+    JSON.stringify(closeToggle)
+  );
   await rpc('applyOptions', { embedPanel: false });
   await sleep(80);
   check(
@@ -306,8 +328,12 @@ async function main() {
     check('覆盖层显示当前时间对应的字幕', text.includes('第二句'), `${text || '（空）'} | display=${overlay.style.display} | bridgeTime=${JSON.stringify(tProbe2.data)} | videoTime=${doc.querySelector('video').currentTime} | probe=${JSON.stringify(window.__probe)}`);
   }
   res = await rpc('applyOptions', { overlay: false });
-  await sleep(300);
-  check('关闭页面内字幕后覆盖层隐藏', !doc.getElementById('__bsub_overlay__') || doc.getElementById('__bsub_overlay__').style.display === 'none');
+  await sleep(700);
+  check(
+    '关闭页面内字幕后覆盖层隐藏',
+    !doc.getElementById('__bsub_overlay__') || doc.getElementById('__bsub_overlay__').style.display === 'none',
+    doc.getElementById('__bsub_overlay__') ? doc.getElementById('__bsub_overlay__').style.cssText : 'overlay 不存在'
+  );
 
   // ---- 跟随播放：定时上报时间 ----
   await rpc('applyOptions', { playerButton: false, overlay: false, followPlayback: true });
