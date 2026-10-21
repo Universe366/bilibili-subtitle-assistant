@@ -29,7 +29,7 @@ console.log(`notes=${path.relative(desktop, notesFile)}`);
 console.log(
   `assets=release/bsub-desktop-setup-${version}.exe release/latest.yml ` +
     `release/bsub-desktop-setup-${version}.exe.blockmap ` +
-    `release/B站字幕助手-${version}-win-x64-green.zip`
+    `release/bsub-desktop-${version}-win-x64-green.zip`
 );
 console.log('\n--- release notes ---\n');
 console.log(body);

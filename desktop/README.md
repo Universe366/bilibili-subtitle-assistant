@@ -67,7 +67,7 @@ npm run dist
 | 文件 | 说明 |
 |---|---|
 | `release/bsub-desktop-setup-0.2.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/B站字幕助手-0.2.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-0.2.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 
 未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。自动更新尚未接入时请手动替换。

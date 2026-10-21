@@ -49,7 +49,7 @@ jobs:
           1. 进入本目录，双击 B站字幕助手.exe。
           2. 数据保存在 %APPDATA%\bsub-desktop。
           "@ | Set-Content -Path "$dir/README.txt" -Encoding UTF8
-          Compress-Archive -Path "$dir/*" -DestinationPath "release/B站字幕助手-$version-win-x64-green.zip" -Force
+          Compress-Archive -Path "$dir/*" -DestinationPath "release/bsub-desktop-$version-win-x64-green.zip" -Force
 
       - run: npm run release:notes
 
