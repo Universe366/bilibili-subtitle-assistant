@@ -13,6 +13,7 @@ import type {
 } from '../shared/types';
 import { fetchAudioRange, getAudioCandidates } from './page';
 import { loadSettings } from './settings';
+import { applyCorrectionToLines } from './correction';
 
 const CHUNK_BYTES = 384 * 1024;
 
@@ -473,7 +474,8 @@ export async function transcribe(
   const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'bsub-asr-'));
   try {
     const input = await downloadAudio(wc, info, dir, onProgress, signal);
-    return await transcribeFile(input, info, onProgress, signal, settings);
+    const result = await transcribeFile(input, info, onProgress, signal, settings);
+    return { ...result, lines: applyCorrectionToLines(result.lines, settings) };
   } finally {
     try {
       fs.rmSync(dir, { recursive: true, force: true });

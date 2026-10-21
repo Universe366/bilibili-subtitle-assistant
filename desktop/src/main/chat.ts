@@ -49,7 +49,8 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
     glossaryBlock,
     skillPrompt(settings),
     `视频标题：${options.info.title || '未知'}`,
-    `UP 主：${options.info.owner || '未知'}`
+    `UP 主：${options.info.owner || '未知'}`,
+    ...(options.info.desc ? [`视频简介：${options.info.desc.slice(0, 2000)}`] : [])
   ]
     .filter(Boolean)
     .join('\n\n');

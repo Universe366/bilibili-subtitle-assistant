@@ -1331,11 +1331,69 @@ button:disabled {
   color: var(--muted);
 }
 
+.subtitle-search {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 0;
+  color: var(--muted);
+}
+
+.subtitle-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  padding: 0 7px;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+  user-select: text;
+}
+
+.subtitle-search-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.subtitle-search-count {
+  min-width: 34px;
+  text-align: right;
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+.sub-line mark {
+  background: rgba(255, 199, 0, 0.35);
+  color: inherit;
+  border-radius: 2px;
+}
+
 .sub-main {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.sub-copy {
+  flex-shrink: 0;
+  opacity: 0;
+  padding: 2px;
+  color: var(--faint);
+  border-radius: 4px;
+}
+
+.sub-line:hover .sub-copy {
+  opacity: 1;
+}
+
+.sub-copy:hover {
+  color: var(--accent);
+  background: var(--surface-2);
 }
 
 .sub-translation {

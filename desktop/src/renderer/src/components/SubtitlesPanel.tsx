@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Eye, Loader2, RefreshCw } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { AlertTriangle, Copy, Eye, Loader2, RefreshCw, Search } from 'lucide-react';
 import type {
   OptimizeSuggestion,
   PageInfo,
@@ -26,6 +27,25 @@ function fmtTime(seconds: number): string {
 function fmtCount(value: number): string {
   if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
   return String(value);
+}
+
+function highlightMatch(text: string, query: string) {
+  const q = query.trim();
+  if (!q) return text;
+  const lower = text.toLowerCase();
+  const target = q.toLowerCase();
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const index = lower.indexOf(target, cursor);
+    if (index < 0) break;
+    if (index > cursor) parts.push(text.slice(cursor, index));
+    parts.push(<mark key={`${index}-${parts.length}`}>{text.slice(index, index + q.length)}</mark>);
+    cursor = index + q.length;
+  }
+  if (!parts.length) return text;
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
 }
 
 export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
@@ -62,6 +82,10 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const optimizeRequestRef = useRef('');
   const [quality, setQuality] = useState<QualityReport | null>(null);
   const [checkingQuality, setCheckingQuality] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [subtitleQuery, setSubtitleQuery] = useState('');
+  const [searchIndex, setSearchIndex] = useState(0);
+  const [customTarget, setCustomTarget] = useState('');
   const infoRef = useRef<PageInfo | null>(null);
   const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +125,9 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     optimizeRequestRef.current = '';
     setQuality(null);
     setCheckingQuality(false);
+    setSearchOpen(false);
+    setSubtitleQuery('');
+    setSearchIndex(0);
     loadedRef.current = { key: '', reload: -1 };
   }, [activeTab?.id, videoKey]);
 
@@ -205,7 +232,7 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   }, [track?.url, track?.source]);
 
   const startTranslate = async () => {
-    if (!lines.length || translating) return;
+    if (!lines.length || translating || !effectiveTarget) return;
     const requestId = (() => {
       try {
         return crypto.randomUUID();
@@ -218,7 +245,7 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     setTranslateProgress(0);
     setTranslateMessage('准备翻译…');
     setError(null);
-    const started = await window.bsub.translate({ requestId, lines, target: targetLang });
+    const started = await window.bsub.translate({ requestId, lines, target: effectiveTarget });
     if (!started.ok) {
       translateRequestRef.current = '';
       setTranslating(false);
@@ -405,6 +432,26 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     };
   }, [track, lines.length]);
 
+  const matchIndices = useMemo(() => {
+    const query = subtitleQuery.trim().toLowerCase();
+    if (!query) return [] as number[];
+    return lines
+      .map((line, index) => (line.text.toLowerCase().includes(query) ? index : -1))
+      .filter((index) => index >= 0);
+  }, [lines, subtitleQuery]);
+
+  const stats = useMemo(() => {
+    const chars = lines.reduce((sum, line) => sum + line.text.length, 0);
+    const speech = lines.reduce(
+      (sum, line) => sum + Math.max(0, (line.end || 0) - (line.start || 0)),
+      0
+    );
+    const coverage = info && info.duration > 0 ? Math.min(1, speech / info.duration) : 0;
+    return { chars, coverage };
+  }, [lines, info]);
+
+  const effectiveTarget = targetLang === '__custom' ? customTarget.trim() : targetLang;
+
   const currentIndex = useMemo(() => {
     if (!lines.length) return -1;
     let index = -1;
@@ -423,6 +470,27 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const jump = (line: SubtitleLine) => {
     setCurrent(line.start);
     void window.bsub.seek(line.start + 0.05);
+  };
+
+  const jumpMatch = (direction: number) => {
+    if (!matchIndices.length) return;
+    const next =
+      (searchIndex + direction + matchIndices.length) % matchIndices.length;
+    setSearchIndex(next);
+    const line = lines[matchIndices[next]];
+    if (line) jump(line);
+  };
+
+  const copyAll = () => {
+    void window.bsub.writeClipboard(lines.map((line) => line.text).join('\n'));
+    setSaveMessage(`已复制 ${lines.length} 行字幕`);
+    window.setTimeout(() => setSaveMessage(''), 3000);
+  };
+
+  const copyLine = (text: string) => {
+    void window.bsub.writeClipboard(text);
+    setSaveMessage('已复制此行');
+    window.setTimeout(() => setSaveMessage(''), 2000);
   };
 
   const startAsr = async () => {
@@ -540,11 +608,53 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           >
             跟随
           </button>
+          <button
+            className="icon-btn"
+            title="查找字幕"
+            onClick={() => setSearchOpen((value) => !value)}
+          >
+            <Search size={13} />
+          </button>
+          <button className="icon-btn" title="复制全部字幕" onClick={copyAll}>
+            <Copy size={13} />
+          </button>
           <button className="icon-btn" title="刷新" onClick={refresh}>
             <RefreshCw size={13} className={loading ? 'spin' : ''} />
           </button>
         </div>
       </div>
+
+      {searchOpen && (
+        <div className="subtitle-search">
+          <Search size={13} />
+          <input
+            className="subtitle-search-input"
+            value={subtitleQuery}
+            placeholder="查找字幕"
+            spellCheck={false}
+            onChange={(event) => {
+              setSubtitleQuery(event.target.value);
+              setSearchIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                jumpMatch(event.shiftKey ? -1 : 1);
+              }
+              if (event.key === 'Escape') setSearchOpen(false);
+            }}
+          />
+          <span className="subtitle-search-count">
+            {subtitleQuery ? `${matchIndices.length} 行` : ''}
+          </span>
+          <button className="mini-btn" disabled={!matchIndices.length} onClick={() => jumpMatch(-1)}>
+            上一
+          </button>
+          <button className="mini-btn" disabled={!matchIndices.length} onClick={() => jumpMatch(1)}>
+            下一
+          </button>
+        </div>
+      )}
 
       {saveMessage && <div className="save-status">{saveMessage}</div>}
 
@@ -560,8 +670,23 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
             <option value="English">English</option>
             <option value="日本語">日本語</option>
             <option value="한국어">한국어</option>
+            <option value="__custom">自定义…</option>
           </select>
-          <button className="mini-btn primary" disabled={translating || !lines.length} onClick={() => void startTranslate()}>
+          {targetLang === '__custom' && (
+            <input
+              className="settings-input"
+              style={{ maxWidth: 110 }}
+              value={customTarget}
+              placeholder="目标语言"
+              spellCheck={false}
+              onChange={(event) => setCustomTarget(event.target.value)}
+            />
+          )}
+          <button
+            className="mini-btn primary"
+            disabled={translating || !lines.length || !effectiveTarget}
+            onClick={() => void startTranslate()}
+          >
             开始翻译
           </button>
           {translating && (
@@ -875,7 +1000,11 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
 
       {(lines.length > 0 || bundle?.identity) && (
         <div className="panel-foot">
-          <span>{lines.length > 0 ? `${lines.length} 行` : ''}</span>
+          <span>
+            {lines.length > 0
+              ? `${lines.length} 行 · ${stats.chars} 字 · 覆盖 ${Math.round(stats.coverage * 100)}%`
+              : ''}
+          </span>
           {bundle?.identity && <span className="mono" title={bundle.identity}>{bundle.identity}</span>}
         </div>
       )}
