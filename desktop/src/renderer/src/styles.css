@@ -572,12 +572,18 @@ button:disabled {
 }
 
 .mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
   height: 22px;
   padding: 0 7px;
   border-radius: 6px;
   border: 1px solid var(--border);
   color: var(--muted);
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .mini-btn.is-active {
@@ -1894,7 +1900,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 2px 0 8px;
+  padding: 2px 4px 8px 0;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
@@ -1902,6 +1908,10 @@ button:disabled {
 
 .settings-sticky .panel-toolbar {
   padding: 0;
+}
+
+.settings-sticky .toolbar-actions .mini-btn.primary {
+  min-width: 64px;
 }
 
 .settings-panel > .settings-section,

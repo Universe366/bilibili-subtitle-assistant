@@ -745,6 +745,54 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_SAVE_AUDIT === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          const result = await win.webContents.executeJavaScript(`
+            (async () => {
+              const nav = [...document.querySelectorAll('button')].find((item) =>
+                (item.textContent || '').trim() === '设置'
+              );
+              nav?.click();
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              const sticky = document.querySelector('.settings-sticky');
+              const bar = document.querySelector('.settings-sticky .panel-toolbar');
+              const actions = document.querySelector('.settings-sticky .toolbar-actions');
+              const button = [...document.querySelectorAll('.settings-sticky button')].find((item) =>
+                (item.textContent || '').includes('保存')
+              );
+              const r = (el) => {
+                if (!el) return null;
+                const b = el.getBoundingClientRect();
+                const cs = getComputedStyle(el);
+                return {
+                  x: Math.round(b.x), y: Math.round(b.y),
+                  w: Math.round(b.width), h: Math.round(b.height),
+                  right: Math.round(b.right), bottom: Math.round(b.bottom),
+                  scrollW: el.scrollWidth, clientW: el.clientWidth,
+                  overflow: cs.overflow, display: cs.display,
+                  fontSize: cs.fontSize, lineHeight: cs.lineHeight,
+                  padding: cs.padding, text: (el.textContent || '').trim(),
+                  disabled: el.disabled === true
+                };
+              };
+              return {
+                viewport: window.innerWidth,
+                sticky: r(sticky), bar: r(bar), actions: r(actions), button: r(button),
+                saveButtons: [...document.querySelectorAll('.settings-sticky button')]
+                  .map((item) => (item.textContent || '').trim())
+              };
+            })()
+          `);
+          console.log('[save-audit]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[save-audit] failed', (error as Error).message);
+        }
+      }, 6000);
+    }
+
     if (process.env.BSUB_TOOLBAR_AUDIT === '1') {
       setTimeout(async () => {
         try {
