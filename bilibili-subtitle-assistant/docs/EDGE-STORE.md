@@ -149,11 +149,27 @@ python verify/tools/fit-store-screenshot.py 你的截图.png --size 1280x800 --m
 
 ### 认证信息问题（Do testers need an account...）
 
-建议选择：**是的，我需要为测试人员提供资质、账户或其他信息**。
+这里有两种填法，按你是否愿意提供临时 Key 选：
 
-原因：扩展本身没有账号体系，但 AI 总结 / 语音转录 / 联网检索需要用户自备第三方 API Key；选「否」等于声称所有功能都能在无额外信息下测试，不准确。
+**A. 愿意提供临时 Key**：选「是的」，填说明 + 凭据；认证结束后立刻吊销。
 
-在说明 / 凭据框里填：
+**B. 不想提供 Key（推荐给个人项目）**：选「否」，并在认证备注里主动说明。不要选「是」却留空，容易被当成信息不完整。
+
+选「否」时，在 Certification notes 里加这段英文（Partner Center 是英文界面）：
+
+```text
+No developer account or extension login is required.
+
+Core features (official subtitle fetching, subtitle list, search, export) can be fully tested without any credentials.
+
+AI summary, speech transcription, and web search are optional BYOK (bring-your-own-key) integrations: they require the tester's own third-party API key. They are not needed to verify the extension's core functionality. Without a key, the UI shows a clear setup prompt and does not crash.
+
+No developer-provided credentials are included.
+```
+
+这样写是如实说明「没有开发者账号/凭据」，而不是声称「所有 AI 功能都能无 Key 测试」。如果审核追问，再决定是否补一个限额临时 Key。
+
+**A 方案的说明文字**：
 
 ```text
 本扩展没有自己的账号或登录体系，不需要用户名/密码。
@@ -165,7 +181,7 @@ AI 总结、语音转录、联网检索是可选功能，需要用户自备第�
 如需完整测试 AI 功能，可使用下方提供的临时测试 Key（仅限认证期间使用，请勿使用生产 Key）。
 ```
 
-如果确实提供了临时 Key，填在凭据字段，并在认证结束后吊销；如果没有，保留上面“可跳过”的说明即可，不要填假 Key。
+如果提供了临时 Key，填在凭据字段，并在认证结束后吊销；**不要填假 Key，也不要用生产 Key**。
 
 ## 7. 提交步骤
 
