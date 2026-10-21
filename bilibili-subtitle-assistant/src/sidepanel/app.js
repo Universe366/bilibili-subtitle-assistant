@@ -153,6 +153,21 @@ function installShell() {
     b.addEventListener('click', () => switchTab(b.getAttribute('data-tab-btn')));
   }
   document.getElementById('btn-settings').addEventListener('click', () => switchTab('settings'));
+  const btnEmbed = document.getElementById('btn-embed');
+  if (btnEmbed) {
+    btnEmbed.addEventListener('click', async () => {
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'bsub:open-embed', action: 'open' });
+        if (res && res.ok) {
+          toast({ title: '已打开页面内面板' }, 'ok');
+        } else {
+          toast({ title: '无法打开页面内面板', detail: (res && res.detail) || '请先打开 B 站视频页' }, 'warn');
+        }
+      } catch (err) {
+        toast({ title: '无法打开页面内面板', detail: String((err && err.message) || err) }, 'warn');
+      }
+    });
+  }
   document.getElementById('btn-layout').addEventListener('click', cycleLayout);
   document.getElementById('btn-theme').addEventListener('click', cycleTheme);
   document.getElementById('btn-font-up').addEventListener('click', () => bumpFont(0.05));
@@ -434,6 +449,7 @@ const SHORTCUTS = [
   ['Alt + F', '搜索框聚焦（字幕内搜索）'],
   ['Alt + L', '切换布局（双列 / 单列）'],
   ['Alt + K', '切换主题'],
+  ['Alt + Shift + B', '打开 / 折叠页面内面板（全局快捷键）'],
   ['Alt + ?', '打开本快捷键面板'],
   ['Ctrl + Enter', '在聊天框内发送消息'],
   ['Esc', '关闭浮层']

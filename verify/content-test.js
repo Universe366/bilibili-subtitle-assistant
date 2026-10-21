@@ -171,11 +171,11 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.9', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.14.0', JSON.stringify(ping));
   const ping2 = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping2' }, {}, resolve));
   check(
     '新版 ping2 握手返回版本与协议号',
-    ping2 && ping2.ok && ping2.version === '2.13.9' && ping2.protocol === 2,
+    ping2 && ping2.ok && ping2.version === '2.14.0' && ping2.protocol === 2,
     JSON.stringify(ping2)
   );
 
@@ -230,6 +230,32 @@ async function main() {
     '内嵌面板高度已同步',
     !!embed && Number.parseInt(embed.style.height, 10) >= 300,
     embed ? embed.style.height : ''
+  );
+  const toggle1 = await new Promise((resolve) =>
+    window.__contentListener({ type: 'bsub:embed-command', action: 'toggle' }, {}, resolve)
+  );
+  await sleep(80);
+  check(
+    '快捷键可折叠内嵌面板',
+    !!toggle1 &&
+      toggle1.ok &&
+      toggle1.collapsed === true &&
+      embed.dataset.collapsed === 'true' &&
+      embed.style.height === '34px',
+    JSON.stringify(toggle1)
+  );
+  const toggle2 = await new Promise((resolve) =>
+    window.__contentListener({ type: 'bsub:embed-command', action: 'toggle' }, {}, resolve)
+  );
+  await sleep(80);
+  check(
+    '再按一次展开内嵌面板',
+    !!toggle2 &&
+      toggle2.ok &&
+      toggle2.collapsed === false &&
+      embed.dataset.collapsed === 'false' &&
+      embed.style.height !== '34px',
+    JSON.stringify(toggle2)
   );
   const embedJs = fs.readFileSync(path.join(EXT, 'src/content/content.js'), 'utf8');
   check(

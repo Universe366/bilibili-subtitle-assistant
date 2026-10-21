@@ -10,5 +10,9 @@
   "extensionDescription": {
     "message": "Grab Bilibili subtitles, transcribe audio, summarize with AI, chat about videos, and export. All settings live in the side panel.",
     "description": "Extension description shown in the browser and store listing"
+  },
+  "commandToggleEmbed": {
+    "message": "Open / collapse the in-page subtitle panel",
+    "description": "Shortcut: open or collapse the embedded panel"
   }
 }

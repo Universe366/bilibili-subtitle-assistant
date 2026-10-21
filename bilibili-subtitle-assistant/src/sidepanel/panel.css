@@ -150,6 +150,11 @@ body[data-embed='true'] .brand {
   display: none;
 }
 
+/* 已经在内嵌面板里，不需要再「打开页面内面板」 */
+body[data-embed='true'] #btn-embed {
+  display: none;
+}
+
 body[data-embed='true'] .topbar-actions {
   margin-left: auto;
 }

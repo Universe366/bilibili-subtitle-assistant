@@ -25,6 +25,7 @@ const skeleton = `<!DOCTYPE html>
     <div class="topbar-row">
       <div class="brand"><span class="brand-mark">字幕</span><span class="brand-title">B站字幕助手</span></div>
       <div class="topbar-actions">
+        <button id="btn-embed" class="btn icon-btn" type="button">E</button>
         <button id="btn-layout" class="btn icon-btn" type="button">L</button>
         <button id="btn-font-down" class="btn icon-btn" type="button">A-</button>
         <button id="btn-font-up" class="btn icon-btn" type="button">A+</button>
@@ -129,7 +130,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.13.9', contentVersion: '2.13.9', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.14.0', contentVersion: '2.14.0', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -150,12 +151,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.13.9', stale: false }],
-    contentVersion: '2.13.9'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.14.0', stale: false }],
+    contentVersion: '2.14.0'
   },
   diagnostics: {
-    extensionVersion: '2.13.9',
-    contentVersion: '2.13.9',
+    extensionVersion: '2.14.0',
+    contentVersion: '2.14.0',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -171,7 +172,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.13.9', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.14.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -243,7 +244,8 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.13\.9 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('侧边栏有「在页面内打开」按钮', !!doc.getElementById('btn-embed'), '');
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.14\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
 
   // Edge / Chrome 商店语言检测依赖 _locales + __MSG_ 占位符
   const manifestJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
@@ -261,6 +263,17 @@ async function main() {
     'manifest 使用 i18n 占位符并声明 default_locale',
     manifestJson.default_locale === 'zh_CN' && msgKeys.every(Boolean),
     `${manifestJson.default_locale} / ${msgKeys.join(',')}`
+  );
+  const embedCommand = manifestJson.commands && manifestJson.commands['toggle-embed-panel'];
+  check(
+    'manifest 声明内嵌面板快捷键并带 i18n 描述',
+    !!embedCommand &&
+      embedCommand.suggested_key &&
+      embedCommand.suggested_key.default === 'Alt+Shift+B' &&
+      /^__MSG_/.test(embedCommand.description || '') &&
+      !!zhMessages.commandToggleEmbed &&
+      !!enMessages.commandToggleEmbed,
+    JSON.stringify(embedCommand || null)
   );
   check(
     '中英文 locale 均包含名称、短名称、描述',

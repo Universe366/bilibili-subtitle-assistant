@@ -4,8 +4,14 @@
   "short_name": "__MSG_extensionShortName__",
   "description": "__MSG_extensionDescription__",
   "default_locale": "zh_CN",
-  "version": "2.13.9",
+  "version": "2.14.0",
   "minimum_chrome_version": "116",
+  "commands": {
+    "toggle-embed-panel": {
+      "suggested_key": { "default": "Alt+Shift+B" },
+      "description": "__MSG_commandToggleEmbed__"
+    }
+  },
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"

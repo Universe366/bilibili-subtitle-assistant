@@ -1292,6 +1292,30 @@ async function handleRpc(message, sender) {
   }
 }
 
+// 快捷键 / 侧边栏按钮：在当前活动的 B 站标签页打开、折叠或展开内嵌面板。
+async function commandEmbedPanel(action) {
+  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const tab = tabs && tabs[0];
+  if (!tab || tab.id == null) {
+    return { ok: false, detail: '没有找到活动标签页' };
+  }
+  try {
+    await ensureContentScript(tab.id);
+    const res = await chrome.tabs.sendMessage(tab.id, { type: 'bsub:embed-command', action });
+    return { ok: !!(res && res.ok), collapsed: !!(res && res.collapsed), detail: (res && res.detail) || '' };
+  } catch (err) {
+    return { ok: false, detail: (err && err.message) || '页面内面板不可用' };
+  }
+}
+
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener((command) => {
+    if (command === 'toggle-embed-panel') {
+      commandEmbedPanel('toggle').catch(() => {});
+    }
+  });
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return undefined;
   if (message.type === 'bsub:ping') {
@@ -1326,6 +1350,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'bsub:get-tab-id') {
     sendResponse({ ok: true, tabId: sender?.tab?.id ?? null });
     return undefined;
+  }
+  if (message.type === 'bsub:open-embed') {
+    commandEmbedPanel(message.action || 'open')
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ ok: false, detail: (err && err.message) || '打开失败' }));
+    return true;
   }
   if (message.type === 'bsub:request-options') {
     // 内容脚本启动时主动要一次页面选项：不能等侧边栏打开才推送，

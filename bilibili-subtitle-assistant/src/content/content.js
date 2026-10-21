@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.13.9';
+  const CONTENT_VERSION = '2.14.0';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -41,6 +41,7 @@
     bridgeReady: false,
     embedClosed: false,
     embedFrame: null,
+    embedCollapsed: false,
     // B 站首屏/切页时还在做 DOM 初始化，过早插入会打断它自己的渲染
     embedMountAfter: Date.now() + 2200
   };
@@ -213,6 +214,7 @@
           state.overlayLines = [];
           // 切页后 B 站会重建右侧栏，等它渲染完再挂，避免打断评论区
           state.embedMountAfter = Date.now() + 1800;
+          state.embedCollapsed = false;
           removeEmbedPanel();
           sendEvent('navigate', { signature: sig, info });
           log('导航签名变化', sig);
@@ -322,6 +324,7 @@
       // 开启页面内嵌时，播放器按钮直接展开面板；找不到 B 站右侧栏再退回侧边栏
       if (canEmbed()) {
         state.embedClosed = false;
+        state.embedCollapsed = false;
         ensureEmbedPanel(true).then((ok) => {
           if (!ok) requestSidePanel();
         });
@@ -389,6 +392,8 @@
       cursor: pointer;
     }
     .bsub-embed-btn:hover { background: #eef0f2; }
+    :host([data-collapsed='true']) { height: 34px !important; }
+    :host([data-collapsed='true']) .bsub-embed-frame { display: none; }
     .bsub-embed-frame {
       flex: 1 1 auto;
       width: 100%;
@@ -438,7 +443,33 @@
 
   function syncEmbedHeight() {
     const el = document.getElementById(EMBED_ID);
-    if (el) el.style.height = `${embedHeight()}px`;
+    if (!el) return;
+    if (state.embedCollapsed) {
+      el.style.height = '34px';
+      return;
+    }
+    el.style.height = `${embedHeight()}px`;
+  }
+
+  // 折叠只保留标题栏；再点一次展开。和「× 关闭」不同，面板不会被移除。
+  function applyEmbedCollapsed() {
+    const el = document.getElementById(EMBED_ID);
+    if (!el) return;
+    const collapsed = !!state.embedCollapsed;
+    el.dataset.collapsed = collapsed ? 'true' : 'false';
+    const btn = el.shadowRoot && el.shadowRoot.querySelector('.bsub-embed-collapse');
+    if (btn) {
+      btn.textContent = collapsed ? '＋' : '−';
+      btn.title = collapsed ? '展开面板' : '折叠面板';
+      btn.setAttribute('aria-expanded', String(!collapsed));
+    }
+    if (collapsed) el.style.height = '34px';
+    else syncEmbedHeight();
+  }
+
+  function setEmbedCollapsed(value) {
+    state.embedCollapsed = !!value;
+    applyEmbedCollapsed();
   }
 
   function removeEmbedTab() {
@@ -499,6 +530,7 @@
     tab.title = '打开 B站字幕助手';
     tab.addEventListener('click', () => {
       state.embedClosed = false;
+      state.embedCollapsed = false;
       removeEmbedTab();
       ensureEmbedPanel(true);
     });
@@ -528,6 +560,7 @@
 
     let wrap = document.getElementById(EMBED_ID);
     if (wrap && wrap.isConnected && host.contains(wrap)) {
+      applyEmbedCollapsed();
       syncEmbedHeight();
       return true;
     }
@@ -562,17 +595,26 @@
     pop.textContent = '侧栏';
     pop.title = '在浏览器侧边栏打开（关闭页面内嵌）';
     pop.addEventListener('click', openSidePanelFromEmbed);
+    const collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.className = 'bsub-embed-btn bsub-embed-collapse';
+    collapse.textContent = '−';
+    collapse.title = '折叠面板';
+    collapse.setAttribute('aria-expanded', 'true');
+    collapse.addEventListener('click', () => setEmbedCollapsed(!state.embedCollapsed));
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'bsub-embed-btn bsub-embed-close';
     close.textContent = '×';
-    close.title = '收起页面内嵌面板（右侧「字幕」可重新打开）';
+    close.title = '关闭页面内嵌面板（右侧「字幕」可重新打开）';
     close.addEventListener('click', () => {
       state.embedClosed = true;
+      state.embedCollapsed = false;
       removeEmbedPanel();
       ensureEmbedTab();
     });
     bar.appendChild(title);
+    bar.appendChild(collapse);
     bar.appendChild(pop);
     bar.appendChild(close);
 
@@ -593,6 +635,7 @@
     else host.prepend(wrap);
 
     syncEmbedHeight();
+    applyEmbedCollapsed();
     return true;
   }
 
@@ -769,7 +812,10 @@
         const hadEmbed = state.options.embedPanel !== false;
         state.options = { ...state.options, ...(params || {}) };
         // 用户重新打开开关时，允许面板重新出现；否则保持用户手动收起的状态
-        if (!hadEmbed && state.options.embedPanel !== false) state.embedClosed = false;
+        if (!hadEmbed && state.options.embedPanel !== false) {
+          state.embedClosed = false;
+          state.embedCollapsed = false;
+        }
         ensurePlayerButton();
         await syncOverlay();
         ensureEmbedPanel();
@@ -874,6 +920,29 @@
           href: location.href
         });
         return undefined;
+      }
+      if (message.type === 'bsub:embed-command') {
+        (async () => {
+          const action = message.action || 'toggle';
+          if (action === 'open') {
+            state.embedClosed = false;
+            state.embedCollapsed = false;
+          } else if (action === 'collapse') {
+            state.embedCollapsed = true;
+          } else if (action === 'expand') {
+            state.embedCollapsed = false;
+          } else if (!document.getElementById(EMBED_ID) || state.embedClosed) {
+            state.embedClosed = false;
+            state.embedCollapsed = false;
+          } else {
+            state.embedCollapsed = !state.embedCollapsed;
+          }
+          const ok = await ensureEmbedPanel(true);
+          if (ok) applyEmbedCollapsed();
+          else showPanelHint('当前页面没有可用的右侧栏，无法打开页面内面板。');
+          sendResponse({ ok, collapsed: state.embedCollapsed });
+        })();
+        return true;
       }
       if (message.type === 'bsub:to-content') {
         handle(message.method, message.params)
