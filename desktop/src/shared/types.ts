@@ -312,6 +312,8 @@ export interface AsrSettings {
   transport: AsrTransport;
   audioFormat: AsrFormat;
   concurrency: number;
+  timeoutSeconds: number;
+  maxFileMb: number;
 }
 
 export interface PromptTemplate {
@@ -567,6 +569,7 @@ export interface OptimizeSuggestion {
   suggestion: string;
   verdict?: 'support' | 'refute' | 'unknown';
   evidence?: string;
+  sources?: number;
 }
 
 export interface OptimizeProgressEvent {

@@ -38,6 +38,27 @@ function activeAsr(settings: AppSettings): AsrPlatform {
   return platform;
 }
 
+async function fetchAsr(
+  url: string,
+  init: RequestInit,
+  timeoutSeconds: number,
+  outerSignal?: AbortSignal
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error('语音识别超时')),
+    Math.max(30, timeoutSeconds || 120) * 1000
+  );
+  const forward = () => controller.abort();
+  outerSignal?.addEventListener('abort', forward, { once: true });
+  try {
+    return await session.defaultSession.fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    outerSignal?.removeEventListener('abort', forward);
+  }
+}
+
 function ffmpegPath(): string {
   if (!ffmpegStatic) throw new Error('没有找到 ffmpeg');
   return app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
@@ -137,9 +158,19 @@ async function convertToChunks(
   settings: AsrSettings,
   duration: number,
   dir: string,
+  chunkSeconds: number,
   onProgress: Progress,
   signal?: AbortSignal
 ): Promise<string[]> {
+  for (const name of fs.readdirSync(dir)) {
+    if (name.startsWith('chunk-')) {
+      try {
+        fs.rmSync(path.join(dir, name), { force: true });
+      } catch {
+        // ignore
+      }
+    }
+  }
   const ext = format === 'wav' ? 'wav' : 'm4a';
   const pattern = path.join(dir, `chunk-%03d.${ext}`);
   const args = [
@@ -157,7 +188,7 @@ async function convertToChunks(
     '-f',
     'segment',
     '-segment_time',
-    String(settings.chunkSeconds),
+    String(chunkSeconds),
     '-reset_timestamps',
     '1',
     '-progress',
@@ -308,12 +339,12 @@ async function transcribeChunk(
         });
       }
 
-      const response = await session.defaultSession.fetch(`${base}/audio/transcriptions`, {
-        method: 'POST',
-        headers,
-        body,
+      const response = await fetchAsr(
+        `${base}/audio/transcriptions`,
+        { method: 'POST', headers, body },
+        settings.timeoutSeconds,
         signal
-      });
+      );
       if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new TransportError(`HTTP ${response.status}：${text.slice(0, 160)}`, response.status);
@@ -416,15 +447,29 @@ export async function transcribeFile(
   const format = chooseFormat(platform, settings.asr);
   const dir = path.dirname(input);
 
-  const chunks = await convertToChunks(
-    input,
-    format,
-    settings.asr,
-    info.duration,
-    dir,
-    onProgress,
-    signal
-  );
+  let chunkSeconds = settings.asr.chunkSeconds;
+  let chunks: string[] = [];
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    chunks = await convertToChunks(
+      input,
+      format,
+      settings.asr,
+      info.duration,
+      dir,
+      chunkSeconds,
+      onProgress,
+      signal
+    );
+    const limit = Math.max(1, settings.asr.maxFileMb) * 1024 * 1024;
+    const largest = chunks.reduce((max, file) => Math.max(max, fs.statSync(file).size), 0);
+    if (!largest || largest <= limit) break;
+    if (attempt === 2) {
+      onProgress('convert', 100, `单段仍超过 ${settings.asr.maxFileMb}MB，继续识别`);
+      break;
+    }
+    chunkSeconds = Math.max(20, Math.floor(chunkSeconds * 0.7));
+    onProgress('convert', 0, `单段过大，缩小到 ${chunkSeconds}s 重试…`);
+  }
   onProgress('transcribe', 0, `识别音频（${chunks.length} 段）…`);
 
   const results: Array<{
@@ -457,7 +502,7 @@ export async function transcribeFile(
   await Promise.all(Array.from({ length: workers }, () => worker()));
 
   onProgress('merge', 0, '合并转写结果…');
-  const lines = mergeChunks(results, settings.asr.chunkSeconds, info.duration);
+  const lines = mergeChunks(results, chunkSeconds, info.duration);
   if (!lines.length) throw new Error('语音识别没有返回可用文本');
   onProgress('merge', 100, `转写完成，共 ${lines.length} 行`);
   return { lines, model: platform.model, duration: info.duration };

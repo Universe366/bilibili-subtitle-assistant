@@ -196,7 +196,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     chunkSeconds: 120,
     transport: 'auto',
     audioFormat: 'auto',
-    concurrency: 1
+    concurrency: 1,
+    timeoutSeconds: 120,
+    maxFileMb: 20
   },
   mcp: {
     enabled: false,
@@ -366,6 +368,14 @@ function normalize(raw: any): AppSettings {
       const concurrency = Number(raw.asr.concurrency);
       if (Number.isFinite(concurrency)) {
         base.asr.concurrency = Math.min(3, Math.max(1, Math.round(concurrency)));
+      }
+      const timeout = Number(raw.asr.timeoutSeconds);
+      if (Number.isFinite(timeout)) {
+        base.asr.timeoutSeconds = Math.min(600, Math.max(30, Math.round(timeout)));
+      }
+      const maxFileMb = Number(raw.asr.maxFileMb);
+      if (Number.isFinite(maxFileMb)) {
+        base.asr.maxFileMb = Math.min(100, Math.max(1, Math.round(maxFileMb)));
       }
     }
 

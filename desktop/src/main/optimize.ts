@@ -94,6 +94,21 @@ async function verifySuggestions(
     }
   }
 
+  for (const row of rows) {
+    const domains = new Set(
+      row.refs
+        .map((ref) => {
+          try {
+            return new URL(ref.url).hostname.replace(/^www\./i, '');
+          } catch {
+            return '';
+          }
+        })
+        .filter(Boolean)
+    );
+    row.item.sources = domains.size;
+  }
+
   const withEvidence = rows.filter((row) => row.refs.length);
   if (!withEvidence.length) {
     suggestions.forEach((item) => {

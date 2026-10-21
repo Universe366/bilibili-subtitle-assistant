@@ -931,6 +931,31 @@ export function SettingsPanel() {
           </div>
         </div>
 
+        <div className="settings-inline">
+          <div className="settings-field">
+            <div className="settings-label">单请求超时（秒）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={30}
+              max={600}
+              value={draft.asr.timeoutSeconds}
+              onChange={(event) => updateAsr({ timeoutSeconds: Number(event.target.value) || 120 })}
+            />
+          </div>
+          <div className="settings-field">
+            <div className="settings-label">单段上限（MB）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={1}
+              max={100}
+              value={draft.asr.maxFileMb}
+              onChange={(event) => updateAsr({ maxFileMb: Number(event.target.value) || 20 })}
+            />
+          </div>
+        </div>
+
         <div className="settings-label">传输方式</div>
         <select
           className="settings-input"

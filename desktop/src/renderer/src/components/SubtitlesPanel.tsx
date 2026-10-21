@@ -802,6 +802,7 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
                           : item.verdict === 'refute'
                             ? '证据反对'
                             : '未核实'}
+                        {item.sources ? ` · ${item.sources} 源` : ''}
                       </span>
                     )}
                   </div>
