@@ -1,9 +1,16 @@
 import { app, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AiPlatform, AppSettings, SettingsSnapshot } from '../shared/types';
+import type {
+  AiPlatform,
+  AppSettings,
+  ExportFormat,
+  PromptTemplate,
+  SettingsSnapshot,
+  ThemeMode
+} from '../shared/types';
 
-const DEFAULT_PROMPT = `你是一个严谨的中文视频笔记助手。请只依据提供的字幕，输出 Markdown 格式的总结，包含：
+export const DEFAULT_PROMPT = `你是一个严谨的中文视频笔记助手。请只依据提供的字幕，输出 Markdown 格式的总结，包含：
 
 ## 一句话总结
 用一句话概括视频讲了什么。
@@ -20,9 +27,41 @@ const DEFAULT_PROMPT = `你是一个严谨的中文视频笔记助手。请只�
 
 要求：不要编造字幕里没有的信息；不确定的地方标注「不确定」。`;
 
+const DEFAULT_TEMPLATES: PromptTemplate[] = [
+  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
+  {
+    id: 'brief',
+    name: '精简',
+    text: '用 Markdown 输出简洁总结，最多 5 条要点，总字数控制在 300 字以内。只依据字幕，不要编造；不确定的地方标注「不确定」。'
+  },
+  {
+    id: 'detailed',
+    name: '详细',
+    text: `输出一份详细学习笔记，Markdown 格式，包含：
+## 一句话总结
+## 核心观点（3-8 条）
+## 章节脉络（带 [mm:ss] 时间戳）
+## 关键细节与数据
+## 术语解释
+## 可行动建议
+只依据字幕，不要编造；不确定的地方标注「不确定」。`
+  }
+];
+
+const EXPORT_FORMATS: ExportFormat[] = ['md', 'srt', 'txt', 'json'];
+const THEME_MODES: ThemeMode[] = ['system', 'light', 'dark'];
+
 export const DEFAULT_SETTINGS: AppSettings = {
+  general: {
+    theme: 'system',
+    closeToTray: true,
+    suspendMinutes: 5
+  },
   ai: {
     activeId: 'deepseek',
+    temperature: 0.3,
+    maxTokens: 8192,
+    stream: true,
     platforms: [
       {
         id: 'deepseek',
@@ -54,7 +93,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
       }
     ]
   },
-  prompt: { summary: DEFAULT_PROMPT },
+  prompt: {
+    activeId: 'default',
+    templates: DEFAULT_TEMPLATES
+  },
+  export: {
+    format: 'md',
+    includeTimestamps: true,
+    filenamePattern: '{title}'
+  },
   bridge: { enabled: true, port: 47821, token: '' },
   update: { autoCheck: false, feedUrl: '' },
   dataDir: ''
@@ -69,8 +116,81 @@ function normalize(raw: any): AppSettings {
   base.dataDir = app.getPath('userData');
 
   if (raw && typeof raw === 'object') {
-    const prompt = raw.prompt && typeof raw.prompt.summary === 'string' ? raw.prompt.summary.trim() : '';
-    if (prompt) base.prompt.summary = prompt;
+    if (raw.general && typeof raw.general === 'object') {
+      const theme = raw.general.theme;
+      base.general.theme = THEME_MODES.includes(theme) ? theme : 'system';
+      base.general.closeToTray = raw.general.closeToTray !== false;
+      const minutes = Number(raw.general.suspendMinutes);
+      if (Number.isFinite(minutes)) {
+        base.general.suspendMinutes = Math.min(120, Math.max(1, Math.round(minutes)));
+      }
+    }
+
+    const incoming = Array.isArray(raw.ai?.platforms) ? raw.ai.platforms : [];
+    if (incoming.length) {
+      // 有配置就按配置走：删除内置平台后不能又被默认值加回来。
+      const platforms: AiPlatform[] = [];
+      const seen = new Set<string>();
+      for (const item of incoming) {
+        if (!item || typeof item !== 'object') continue;
+        const id = String(item.id || '').trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        platforms.push({
+          id,
+          name: String(item.name || id),
+          baseUrl: String(item.baseUrl || ''),
+          apiKey: String(item.apiKey || ''),
+          model: String(item.model || '')
+        });
+      }
+      if (platforms.length) base.ai.platforms = platforms;
+    }
+    const active = String(raw.ai?.activeId || '');
+    base.ai.activeId = base.ai.platforms.some((platform) => platform.id === active)
+      ? active
+      : base.ai.platforms[0].id;
+
+    const temperature = Number(raw.ai?.temperature);
+    if (Number.isFinite(temperature)) {
+      base.ai.temperature = Math.min(2, Math.max(0, Math.round(temperature * 100) / 100));
+    }
+    const maxTokens = Number(raw.ai?.maxTokens);
+    if (Number.isFinite(maxTokens)) {
+      base.ai.maxTokens = Math.min(64000, Math.max(256, Math.round(maxTokens)));
+    }
+    base.ai.stream = raw.ai?.stream !== false;
+
+    const templates: PromptTemplate[] = [];
+    const rawTemplates = Array.isArray(raw.prompt?.templates) ? raw.prompt.templates : [];
+    for (const item of rawTemplates) {
+      if (!item || typeof item !== 'object') continue;
+      const id = String(item.id || '').trim();
+      if (!id) continue;
+      templates.push({
+        id,
+        name: String(item.name || id),
+        text: String(item.text || '')
+      });
+    }
+    if (templates.length) {
+      base.prompt.templates = templates;
+      const promptActive = String(raw.prompt?.activeId || '');
+      base.prompt.activeId = templates.some((template) => template.id === promptActive)
+        ? promptActive
+        : templates[0].id;
+    } else if (typeof raw.prompt?.summary === 'string' && raw.prompt.summary.trim()) {
+      // 旧版本只有单条 prompt.summary，迁移成默认模板。
+      base.prompt.templates = [{ id: 'default', name: '默认', text: raw.prompt.summary.trim() }];
+      base.prompt.activeId = 'default';
+    }
+
+    if (raw.export && typeof raw.export === 'object') {
+      base.export.format = EXPORT_FORMATS.includes(raw.export.format) ? raw.export.format : 'md';
+      base.export.includeTimestamps = raw.export.includeTimestamps !== false;
+      const pattern = String(raw.export.filenamePattern || '').trim();
+      base.export.filenamePattern = pattern || '{title}';
+    }
 
     if (raw.bridge && typeof raw.bridge === 'object') {
       base.bridge.enabled = raw.bridge.enabled !== false;
@@ -83,26 +203,6 @@ function normalize(raw: any): AppSettings {
       base.update.autoCheck = raw.update.autoCheck !== false;
       base.update.feedUrl = typeof raw.update.feedUrl === 'string' ? raw.update.feedUrl.trim() : '';
     }
-
-    const byId = new Map(base.ai.platforms.map((platform) => [platform.id, platform]));
-    const incoming = Array.isArray(raw.ai?.platforms) ? raw.ai.platforms : [];
-    for (const item of incoming) {
-      if (!item || typeof item !== 'object') continue;
-      const id = String(item.id || '').trim();
-      if (!id) continue;
-      byId.set(id, {
-        id,
-        name: String(item.name || id),
-        baseUrl: String(item.baseUrl || ''),
-        apiKey: String(item.apiKey || ''),
-        model: String(item.model || '')
-      });
-    }
-    base.ai.platforms = [...byId.values()];
-    const active = String(raw.ai?.activeId || '');
-    base.ai.activeId = base.ai.platforms.some((platform) => platform.id === active)
-      ? active
-      : base.ai.platforms[0].id;
   }
 
   return base;
@@ -128,6 +228,14 @@ export function activePlatform(settings: AppSettings = loadSettings()): AiPlatfo
   return (
     settings.ai.platforms.find((platform) => platform.id === settings.ai.activeId) ||
     settings.ai.platforms[0]
+  );
+}
+
+export function activePrompt(settings: AppSettings = loadSettings()): PromptTemplate {
+  return (
+    settings.prompt.templates.find((template) => template.id === settings.prompt.activeId) ||
+    settings.prompt.templates[0] ||
+    { id: 'default', name: '默认', text: DEFAULT_PROMPT }
   );
 }
 

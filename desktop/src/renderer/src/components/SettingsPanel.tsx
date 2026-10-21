@@ -1,6 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Download, FolderOpen, Loader2, RefreshCw, Save, Wifi } from 'lucide-react';
-import type { AiPlatform, AppSettings, BridgeStatus, UpdateStatus } from '../../../shared/types';
+import {
+  Download,
+  FolderOpen,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  Upload,
+  Wifi
+} from 'lucide-react';
+import type {
+  AiPlatform,
+  AppSettings,
+  BridgeStatus,
+  ExportFormat,
+  PromptTemplate,
+  ThemeMode,
+  UpdateStatus
+} from '../../../shared/types';
 
 function updateText(status: UpdateStatus | null): string {
   if (!status) return '尚未检查';
@@ -25,6 +43,13 @@ function updateText(status: UpdateStatus | null): string {
       return '';
   }
 }
+
+const EXPORT_LABELS: Record<ExportFormat, string> = {
+  md: 'Markdown',
+  srt: 'SRT 字幕',
+  txt: '纯文本',
+  json: 'JSON'
+};
 
 export function SettingsPanel() {
   const [draft, setDraft] = useState<AppSettings | null>(null);
@@ -72,6 +97,21 @@ export function SettingsPanel() {
   const active = draft
     ? draft.ai.platforms.find((platform) => platform.id === draft.ai.activeId) || draft.ai.platforms[0]
     : null;
+  const activeTemplate = draft
+    ? draft.prompt.templates.find((template) => template.id === draft.prompt.activeId) ||
+      draft.prompt.templates[0] ||
+      null
+    : null;
+
+  const updateGeneral = (patch: Partial<AppSettings['general']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, general: { ...draft.general, ...patch } });
+  };
+
+  const updateAi = (patch: Partial<AppSettings['ai']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, ai: { ...draft.ai, ...patch } });
+  };
 
   const updatePlatform = (patch: Partial<AiPlatform>) => {
     if (!draft || !active) return;
@@ -83,6 +123,67 @@ export function SettingsPanel() {
           platform.id === active.id ? { ...platform, ...patch } : platform
         )
       }
+    });
+  };
+
+  const addPlatform = () => {
+    if (!draft) return;
+    const id = `custom-${Date.now().toString(36)}`;
+    const platform: AiPlatform = {
+      id,
+      name: '自定义平台',
+      baseUrl: '',
+      apiKey: '',
+      model: ''
+    };
+    setDraft({
+      ...draft,
+      ai: { ...draft.ai, activeId: id, platforms: [...draft.ai.platforms, platform] }
+    });
+  };
+
+  const removePlatform = () => {
+    if (!draft || !active || draft.ai.platforms.length <= 1) return;
+    const platforms = draft.ai.platforms.filter((platform) => platform.id !== active.id);
+    setDraft({
+      ...draft,
+      ai: { ...draft.ai, activeId: platforms[0].id, platforms }
+    });
+  };
+
+  const updateTemplate = (patch: Partial<PromptTemplate>) => {
+    if (!draft || !activeTemplate) return;
+    setDraft({
+      ...draft,
+      prompt: {
+        ...draft.prompt,
+        templates: draft.prompt.templates.map((template) =>
+          template.id === activeTemplate.id ? { ...template, ...patch } : template
+        )
+      }
+    });
+  };
+
+  const addTemplate = () => {
+    if (!draft) return;
+    const id = `tpl-${Date.now().toString(36)}`;
+    const template: PromptTemplate = { id, name: '新模板', text: '' };
+    setDraft({
+      ...draft,
+      prompt: {
+        ...draft.prompt,
+        activeId: id,
+        templates: [...draft.prompt.templates, template]
+      }
+    });
+  };
+
+  const removeTemplate = () => {
+    if (!draft || !activeTemplate || draft.prompt.templates.length <= 1) return;
+    const templates = draft.prompt.templates.filter((template) => template.id !== activeTemplate.id);
+    setDraft({
+      ...draft,
+      prompt: { ...draft.prompt, activeId: templates[0].id, templates }
     });
   };
 
@@ -122,7 +223,39 @@ export function SettingsPanel() {
     }
   };
 
-  if (!draft || !active) {
+  const exportSettings = async () => {
+    setMessage('');
+    setError('');
+    const response = await window.bsub.exportSettings();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setMessage(response.data.canceled ? '已取消' : `已导出到 ${response.data.path}`);
+  };
+
+  const importSettings = async () => {
+    if (!window.confirm('导入会覆盖当前设置（含 API Key 和插件桥 Token），继续？')) return;
+    setMessage('');
+    setError('');
+    const response = await window.bsub.importSettings();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    if (response.data.canceled || !response.data.snapshot) {
+      setMessage('已取消');
+      return;
+    }
+    setDraft(response.data.snapshot.settings);
+    setDataDir(response.data.snapshot.dataDir);
+    setVersion(response.data.snapshot.version);
+    setMessage('设置已导入');
+    const status = await window.bsub.getBridgeStatus();
+    if (status.ok) setBridge(status.data);
+  };
+
+  if (!draft || !active || !activeTemplate) {
     return (
       <div className="panel">
         <div className="panel-title">设置</div>
@@ -135,7 +268,7 @@ export function SettingsPanel() {
   }
 
   return (
-    <div className="panel">
+    <div className="panel settings-panel">
       <div className="panel-toolbar">
         <div className="panel-title">设置</div>
         <div className="toolbar-actions">
@@ -146,20 +279,74 @@ export function SettingsPanel() {
       </div>
 
       <div className="settings-section">
-        <div className="settings-label">AI 平台</div>
+        <div className="settings-label">通用</div>
+        <div className="settings-label">主题</div>
         <select
           className="settings-input"
-          value={draft.ai.activeId}
-          onChange={(event) =>
-            setDraft({ ...draft, ai: { ...draft.ai, activeId: event.target.value } })
-          }
+          value={draft.general.theme}
+          onChange={(event) => updateGeneral({ theme: event.target.value as ThemeMode })}
         >
-          {draft.ai.platforms.map((platform) => (
-            <option key={platform.id} value={platform.id}>
-              {platform.name}
-            </option>
-          ))}
+          <option value="system">跟随系统</option>
+          <option value="light">浅色</option>
+          <option value="dark">深色</option>
         </select>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.general.closeToTray !== false}
+            onChange={(event) => updateGeneral({ closeToTray: event.target.checked })}
+          />
+          关闭窗口时缩到托盘
+        </label>
+
+        <div className="settings-label">后台标签休眠（分钟）</div>
+        <input
+          className="settings-input"
+          type="number"
+          min={1}
+          max={120}
+          value={draft.general.suspendMinutes}
+          onChange={(event) =>
+            updateGeneral({ suspendMinutes: Number(event.target.value) || 5 })
+          }
+        />
+        <div className="settings-hint">1–120 分钟；正在出声的标签不会被回收。</div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">AI 平台</div>
+        <div className="settings-inline">
+          <select
+            className="settings-input"
+            value={draft.ai.activeId}
+            onChange={(event) => updateAi({ activeId: event.target.value })}
+          >
+            {draft.ai.platforms.map((platform) => (
+              <option key={platform.id} value={platform.id}>
+                {platform.name}
+              </option>
+            ))}
+          </select>
+          <button className="mini-btn" title="新增平台" onClick={addPlatform}>
+            <Plus size={12} />
+          </button>
+          <button
+            className="mini-btn"
+            title="删除当前平台"
+            disabled={draft.ai.platforms.length <= 1}
+            onClick={removePlatform}
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+
+        <div className="settings-label">名称</div>
+        <input
+          className="settings-input"
+          value={active.name}
+          onChange={(event) => updatePlatform({ name: event.target.value })}
+        />
 
         <div className="settings-label">Base URL</div>
         <input
@@ -187,9 +374,88 @@ export function SettingsPanel() {
           onChange={(event) => updatePlatform({ apiKey: event.target.value })}
         />
 
+        <div className="settings-inline">
+          <div className="settings-field">
+            <div className="settings-label">温度（0–2）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={draft.ai.temperature}
+              onChange={(event) => updateAi({ temperature: Number(event.target.value) })}
+            />
+          </div>
+          <div className="settings-field">
+            <div className="settings-label">最大 token</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={256}
+              max={64000}
+              step={256}
+              value={draft.ai.maxTokens}
+              onChange={(event) => updateAi({ maxTokens: Number(event.target.value) })}
+            />
+          </div>
+        </div>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.ai.stream !== false}
+            onChange={(event) => updateAi({ stream: event.target.checked })}
+          />
+          流式输出
+        </label>
+
         <button className="mini-btn" disabled={testing} onClick={() => void test()}>
           {testing ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />} 测试连接
         </button>
+        <div className="settings-hint">关闭流式后会等完整响应再显示。</div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">提示词模板</div>
+        <div className="settings-inline">
+          <select
+            className="settings-input"
+            value={draft.prompt.activeId}
+            onChange={(event) => setDraft({ ...draft, prompt: { ...draft.prompt, activeId: event.target.value } })}
+          >
+            {draft.prompt.templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </select>
+          <button className="mini-btn" title="新增模板" onClick={addTemplate}>
+            <Plus size={12} />
+          </button>
+          <button
+            className="mini-btn"
+            title="删除当前模板"
+            disabled={draft.prompt.templates.length <= 1}
+            onClick={removeTemplate}
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+
+        <div className="settings-label">模板名称</div>
+        <input
+          className="settings-input"
+          value={activeTemplate.name}
+          onChange={(event) => updateTemplate({ name: event.target.value })}
+        />
+
+        <textarea
+          className="settings-textarea"
+          rows={9}
+          value={activeTemplate.text}
+          onChange={(event) => updateTemplate({ text: event.target.value })}
+        />
       </div>
 
       <div className="settings-section">
@@ -241,6 +507,56 @@ export function SettingsPanel() {
           {' · '}
           POST /v1/ingest
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">导出默认值</div>
+        <div className="settings-label">默认格式</div>
+        <select
+          className="settings-input"
+          value={draft.export.format}
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              export: { ...draft.export, format: event.target.value as ExportFormat }
+            })
+          }
+        >
+          {(Object.keys(EXPORT_LABELS) as ExportFormat[]).map((format) => (
+            <option key={format} value={format}>
+              {EXPORT_LABELS[format]}
+            </option>
+          ))}
+        </select>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.export.includeTimestamps !== false}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                export: { ...draft.export, includeTimestamps: event.target.checked }
+              })
+            }
+          />
+          Markdown / TXT 保留时间戳
+        </label>
+
+        <div className="settings-label">文件名模板</div>
+        <input
+          className="settings-input"
+          value={draft.export.filenamePattern}
+          spellCheck={false}
+          placeholder="{title}-{bvid}"
+          onChange={(event) =>
+            setDraft({
+              ...draft,
+              export: { ...draft.export, filenamePattern: event.target.value }
+            })
+          }
+        />
+        <div className="settings-hint">可用变量：{'{title}'}、{'{bvid}'}、{'{date}'}。</div>
       </div>
 
       <div className="settings-section">
@@ -316,25 +632,31 @@ export function SettingsPanel() {
       </div>
 
       <div className="settings-section">
-        <div className="settings-label">总结提示词</div>
-        <textarea
-          className="settings-textarea"
-          rows={7}
-          value={draft.prompt.summary}
-          onChange={(event) =>
-            setDraft({ ...draft, prompt: { ...draft.prompt, summary: event.target.value } })
-          }
-        />
-      </div>
-
-      <div className="settings-section">
-        <div className="settings-label">数据目录</div>
+        <div className="settings-label">数据与备份</div>
+        <div className="settings-row">
+          <span>数据目录</span>
+        </div>
         <div className="settings-path" title={dataDir}>
           {dataDir}
         </div>
-        <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
-          <FolderOpen size={12} /> 打开目录
-        </button>
+        <div className="settings-row">
+          <span>数据库</span>
+          <code>{dataDir}\library.db</code>
+        </div>
+        <div className="settings-inline">
+          <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
+            <FolderOpen size={12} /> 打开目录
+          </button>
+          <button className="mini-btn" onClick={() => void exportSettings()}>
+            <Download size={12} /> 导出设置
+          </button>
+          <button className="mini-btn" onClick={() => void importSettings()}>
+            <Upload size={12} /> 导入设置
+          </button>
+        </div>
+        <div className="settings-hint">
+          导出文件包含 API Key 与桥 Token；日志在数据目录的 startup.log / fatal.log。
+        </div>
       </div>
 
       {message && <div className="settings-message ok">{message}</div>}

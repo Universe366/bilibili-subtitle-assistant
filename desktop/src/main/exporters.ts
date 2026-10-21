@@ -49,7 +49,10 @@ function toMarkdown(payload: ExportPayload): string {
 
   blocks.push(`## 字幕${track ? `（${track.lanDoc || track.lan}）` : ''}`, '');
   if (lines.length) {
-    for (const line of lines) blocks.push(`- \`[${clock(line.start)}]\` ${line.text}`);
+    for (const line of lines) {
+      const prefix = payload.includeTimestamps !== false ? `\`[${clock(line.start)}]\` ` : '';
+      blocks.push(`- ${prefix}${line.text}`);
+    }
   } else {
     blocks.push('_（没有字幕内容）_');
   }
@@ -66,8 +69,19 @@ function toSrt(lines: SubtitleLine[]): string {
     .join('\n');
 }
 
-function toTxt(lines: SubtitleLine[]): string {
-  return `${lines.map((line) => `[${clock(line.start)}] ${line.text}`).join('\n')}\n`;
+function toTxt(lines: SubtitleLine[], includeTimestamps: boolean): string {
+  return `${lines
+    .map((line) => `${includeTimestamps ? `[${clock(line.start)}] ` : ''}${line.text}`)
+    .join('\n')}\n`;
+}
+
+function filenameFor(payload: ExportPayload): string {
+  const date = new Date().toISOString().slice(0, 10);
+  const raw = (payload.filenamePattern || '{title}')
+    .replace(/\{title\}/g, payload.info.title || '视频')
+    .replace(/\{bvid\}/g, payload.info.bvid || '')
+    .replace(/\{date\}/g, date);
+  return safeFilename(raw);
 }
 
 export function buildExport(payload: ExportPayload): {
@@ -76,13 +90,19 @@ export function buildExport(payload: ExportPayload): {
   mime: string;
   filename: string;
 } {
-  const filename = `${safeFilename(payload.info.title)}${payload.info.bvid ? `-${payload.info.bvid}` : ''}`;
+  const filename = filenameFor(payload);
+  const includeTimestamps = payload.includeTimestamps !== false;
 
   switch (payload.format) {
     case 'srt':
       return { content: toSrt(payload.lines), ext: 'srt', mime: 'application/x-subrip', filename };
     case 'txt':
-      return { content: toTxt(payload.lines), ext: 'txt', mime: 'text/plain', filename };
+      return {
+        content: toTxt(payload.lines, includeTimestamps),
+        ext: 'txt',
+        mime: 'text/plain',
+        filename
+      };
     case 'json':
       return {
         content: JSON.stringify(

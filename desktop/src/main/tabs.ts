@@ -6,9 +6,9 @@ import { randomUUID } from 'node:crypto';
 import type { FindResult, LayoutRect, TabInfo } from '../shared/types';
 import { normalizeUrl } from './url';
 
-// 后台标签闲置多久后释放渲染进程。可用环境变量覆盖，便于本地验证。
-const SUSPEND_AFTER_MS = Math.max(2000, Number(process.env.BSUB_SUSPEND_MS) || 5 * 60 * 1000);
-const SUSPEND_CHECK_MS = Math.min(30000, Math.max(1000, Math.floor(SUSPEND_AFTER_MS / 2)));
+// 后台标签闲置多久后释放渲染进程。环境变量用于测试覆盖。
+const ENV_SUSPEND_MS = Number(process.env.BSUB_SUSPEND_MS) || 0;
+const DEFAULT_SUSPEND_MS = 5 * 60 * 1000;
 
 interface TabRecord {
   id: string;
@@ -47,15 +47,29 @@ export class TabManager {
   private readonly creating = new Map<string, Promise<void>>();
   private activeId: string | null = null;
   private bounds: LayoutRect = { x: 0, y: 0, width: 0, height: 0 };
-  private readonly suspendTimer: NodeJS.Timeout;
+  private suspendAfterMs = ENV_SUSPEND_MS > 0 ? Math.max(2000, ENV_SUSPEND_MS) : DEFAULT_SUSPEND_MS;
+  private suspendTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly win: BrowserWindow,
     private readonly onChanged: (tabs: TabInfo[]) => void,
     private readonly onFindResult?: (result: FindResult) => void
   ) {
-    this.suspendTimer = setInterval(() => this.suspendIdle(), SUSPEND_CHECK_MS);
+    this.startSuspendTimer();
+  }
+
+  private startSuspendTimer(): void {
+    if (this.suspendTimer) clearInterval(this.suspendTimer);
+    const checkMs = Math.min(30000, Math.max(1000, Math.floor(this.suspendAfterMs / 2)));
+    this.suspendTimer = setInterval(() => this.suspendIdle(), checkMs);
     this.suspendTimer.unref?.();
+  }
+
+  setSuspendMinutes(minutes: number): void {
+    if (ENV_SUSPEND_MS > 0) return;
+    const safe = Math.min(120, Math.max(1, Math.round(minutes || 5)));
+    this.suspendAfterMs = safe * 60 * 1000;
+    this.startSuspendTimer();
   }
 
   async create(input = 'https://www.bilibili.com/'): Promise<string> {
@@ -75,7 +89,7 @@ export class TabManager {
 
     await this.ensureView(record);
     this.setActive(id);
-    console.log('[tab] created', id, url, `suspendAfter=${SUSPEND_AFTER_MS}ms`);
+    console.log('[tab] created', id, url, `suspendAfter=${this.suspendAfterMs}ms`);
     this.emit();
     return id;
   }
@@ -350,7 +364,7 @@ export class TabManager {
     const now = Date.now();
     for (const [id, record] of this.tabs) {
       if (id === this.activeId || record.suspended || !record.view) continue;
-      if (now - record.lastActiveAt < SUSPEND_AFTER_MS) continue;
+      if (now - record.lastActiveAt < this.suspendAfterMs) continue;
 
       const wc = record.view.webContents;
       try {
@@ -495,7 +509,8 @@ export class TabManager {
   }
 
   dispose(): void {
-    clearInterval(this.suspendTimer);
+    if (this.suspendTimer) clearInterval(this.suspendTimer);
+    this.suspendTimer = null;
     for (const record of this.tabs.values()) {
       this.releaseView(record);
     }

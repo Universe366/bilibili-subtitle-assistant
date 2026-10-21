@@ -152,13 +152,35 @@ export interface AiPlatform {
   model: string;
 }
 
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  text: string;
+}
+
+export type ThemeMode = 'system' | 'light' | 'dark';
+
 export interface AppSettings {
+  general: {
+    theme: ThemeMode;
+    closeToTray: boolean;
+    suspendMinutes: number;
+  };
   ai: {
     activeId: string;
     platforms: AiPlatform[];
+    temperature: number;
+    maxTokens: number;
+    stream: boolean;
   };
   prompt: {
-    summary: string;
+    activeId: string;
+    templates: PromptTemplate[];
+  };
+  export: {
+    format: ExportFormat;
+    includeTimestamps: boolean;
+    filenamePattern: string;
   };
   bridge: {
     enabled: boolean;
@@ -216,6 +238,8 @@ export interface ExportPayload {
   lines: SubtitleLine[];
   summary?: string;
   savePath?: string;
+  includeTimestamps?: boolean;
+  filenamePattern?: string;
 }
 
 export interface AiDeltaEvent {

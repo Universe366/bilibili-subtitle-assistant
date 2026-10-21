@@ -7,7 +7,7 @@ import { closeLibrary, getSummaryFor, ingestVideo, initLibrary, listLibrary, sav
 import { getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
 import { buildExport } from './exporters';
-import { settingsSnapshot } from './settings';
+import { loadSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
 
@@ -148,11 +148,36 @@ function createWindow(): void {
     }
   );
   registerIpc(mainWindow, tabManager);
+  tabManager.setSuspendMinutes(loadSettings().general.suspendMinutes);
 
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
+
+    if (process.env.BSUB_SETTINGS_TEST === '1') {
+      setTimeout(async () => {
+        if (!mainWindow) return;
+        try {
+          const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+            const r = await window.bsub.getSettings();
+            const s = r.data.settings;
+            s.general.theme = 'dark';
+            s.general.suspendMinutes = 7;
+            s.ai.platforms = s.ai.platforms.filter((p) => p.id !== 'openai');
+            s.ai.activeId = 'deepseek';
+            s.ai.temperature = 0.7;
+            s.prompt.templates.push({ id: 'test-tpl', name: '测试模板', text: '只输出一句话' });
+            s.prompt.activeId = 'test-tpl';
+            s.export.filenamePattern = '{title}-{bvid}';
+            return await window.bsub.saveSettings(s);
+          })()`);
+          console.log('[settings-test]', JSON.stringify(result).slice(0, 600));
+        } catch (error) {
+          console.warn('[settings-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
 
     if (process.env.BSUB_UI_TEST === '1') {
       setTimeout(() => {
@@ -356,10 +381,11 @@ function createWindow(): void {
   }
 
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
-    }
+    if (isQuitting) return;
+    // 设置里关掉「关闭到托盘」后，点关闭直接退出。
+    if (loadSettings().general.closeToTray === false) return;
+    event.preventDefault();
+    mainWindow?.hide();
   });
 
   mainWindow.on('closed', () => {
@@ -371,6 +397,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   writeLog('startup.log', 'ready');
+  nativeTheme.themeSource = loadSettings().general.theme;
   if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
   session.defaultSession.setUserAgent(UA);
   session.defaultSession.on('will-download', (_event, item) => {

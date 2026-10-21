@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ExportFormat, PageInfo, SubtitleLine, SubtitleTrack } from '../../../shared/types';
 
@@ -23,7 +23,19 @@ export function ExportMenu({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [defaultFormat, setDefaultFormat] = useState<ExportFormat>('md');
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void window.bsub.getSettings().then((response) => {
+      if (response.ok) setDefaultFormat(response.data.settings.export.format);
+    });
+  }, []);
+
+  const formats = useMemo(() => {
+    const first = FORMATS.find((format) => format.id === defaultFormat) || FORMATS[0];
+    return [first, ...FORMATS.filter((format) => format.id !== first.id)];
+  }, [defaultFormat]);
 
   useEffect(() => {
     if (!open) return;
@@ -62,9 +74,10 @@ export function ExportMenu({
       </button>
       {open && (
         <div className="export-popover">
-          {FORMATS.map((format) => (
+          {formats.map((format) => (
             <button key={format.id} className="export-item" onClick={() => void run(format.id)}>
               {format.label}
+              {format.id === defaultFormat ? '（默认）' : ''}
             </button>
           ))}
         </div>

@@ -52,6 +52,8 @@ export interface BsubApi {
 
   getSettings(): Promise<Result<SettingsSnapshot>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
+  exportSettings(): Promise<Result<{ canceled: boolean; path?: string }>>;
+  importSettings(): Promise<Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>>;
   testAi(platform?: AiPlatform): Promise<Result<{ latencyMs: number; message: string }>>;
   openDataDir(): Promise<void>;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;

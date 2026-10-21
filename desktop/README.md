@@ -1,6 +1,6 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.2.0**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.3.0**。
 
 ## 运行
 
@@ -54,6 +54,7 @@ docs/          V1 方案
 - **M3 本地库**：SQLite（`node:sqlite`，无需重编译原生模块）、一键入库、视频列表、字幕全文搜索（FTS5 trigram，短词退化 LIKE）、点击搜索结果回到对应时间、删除入库视频
 - **M4 总结与导出**：AI 流式总结（OpenAI 兼容）、零依赖 Markdown 渲染、总结存库、导出 Markdown / SRT / TXT / JSON；设置页可配置 AI 平台、Key、模型、总结提示词、数据目录与连接测试
 - **M5 插件桥 / 托盘 / 打包**：本地 HTTP 桥（`127.0.0.1` + Bearer token，`GET /v1/health`、`POST /v1/ingest`）、设置页显示端口/Token/运行状态、关闭到托盘、NSIS 安装包 + 绿色 zip
+- **设置页**：主题、关闭到托盘、休眠时长、AI 平台/温度/token/流式、提示词模板、导出默认值、设置导入导出
 - **自动更新**：设置页检查 / 下载 / 重启安装；默认关闭自动检查（发布首个桌面 Release 后可在设置里开启）；支持自定义 generic 更新源
 
 ## 打包
@@ -66,8 +67,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.2.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.2.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.3.0.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.3.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.17.0.zip` | 浏览器插件（由 CI 打包） |
 

@@ -1205,6 +1205,47 @@ button:disabled {
 }
 
 /* ---------- 设置 ---------- */
+.settings-panel {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.settings-panel > .panel-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.settings-panel > .settings-section,
+.settings-panel > .panel-foot,
+.settings-panel > .settings-message {
+  flex-shrink: 0;
+}
+
+.settings-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-inline > .settings-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-inline > .mini-btn {
+  flex-shrink: 0;
+}
+
+.settings-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .settings-section {
   display: flex;
   flex-direction: column;

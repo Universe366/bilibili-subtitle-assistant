@@ -72,6 +72,12 @@ const api: BsubApi = {
   getSettings: () => ipcRenderer.invoke('settings:get') as Promise<Result<SettingsSnapshot>>,
   saveSettings: (next: AppSettings) =>
     ipcRenderer.invoke('settings:set', next) as Promise<Result<SettingsSnapshot>>,
+  exportSettings: () =>
+    ipcRenderer.invoke('settings:export') as Promise<Result<{ canceled: boolean; path?: string }>>,
+  importSettings: () =>
+    ipcRenderer.invoke('settings:import') as Promise<
+      Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>
+    >,
   testAi: (platform?: AiPlatform) =>
     ipcRenderer.invoke('settings:test', platform) as Promise<
       Result<{ latencyMs: number; message: string }>

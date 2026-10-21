@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { app, clipboard, dialog, ipcMain, shell } from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -28,7 +28,7 @@ import type {
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek } from './page';
 import { getSummaryFor, ingestVideo, listLibrary, removeVideo, saveSummary, searchLibrary } from './library';
-import { activePlatform, saveSettings, settingsSnapshot, testPlatform } from './settings';
+import { activePlatform, loadSettings, saveSettings, settingsSnapshot, testPlatform } from './settings';
 import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
@@ -224,13 +224,58 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('settings:set', async (_event, next: AppSettings): Promise<Result<ReturnType<typeof settingsSnapshot>>> => {
     try {
-      saveSettings(next);
+      const saved = saveSettings(next);
+      nativeTheme.themeSource = saved.general.theme;
+      tabs.setSuspendMinutes(saved.general.suspendMinutes);
       await restartBridge(win);
       return { ok: true, data: settingsSnapshot() };
     } catch (error) {
       return failure(error);
     }
   });
+
+  ipcMain.handle(
+    'settings:export',
+    async (): Promise<Result<{ canceled: boolean; path?: string }>> => {
+      try {
+        const result = await dialog.showSaveDialog(win, {
+          title: '导出设置',
+          defaultPath: path.join(app.getPath('documents'), 'bsub-settings.json'),
+          filters: [{ name: 'JSON', extensions: ['json'] }]
+        });
+        if (result.canceled || !result.filePath) return { ok: true, data: { canceled: true } };
+        fs.writeFileSync(result.filePath, JSON.stringify(loadSettings(), null, 2), 'utf8');
+        return { ok: true, data: { canceled: false, path: result.filePath } };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'settings:import',
+    async (): Promise<
+      Result<{ canceled: boolean; snapshot?: ReturnType<typeof settingsSnapshot> }>
+    > => {
+      try {
+        const result = await dialog.showOpenDialog(win, {
+          title: '导入设置',
+          properties: ['openFile'],
+          filters: [{ name: 'JSON', extensions: ['json'] }]
+        });
+        const file = result.filePaths[0];
+        if (result.canceled || !file) return { ok: true, data: { canceled: true } };
+        const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as AppSettings;
+        const saved = saveSettings(raw);
+        nativeTheme.themeSource = saved.general.theme;
+        tabs.setSuspendMinutes(saved.general.suspendMinutes);
+        await restartBridge(win);
+        return { ok: true, data: { canceled: false, snapshot: settingsSnapshot() } };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
 
   ipcMain.handle('bridge:status', (): Result<BridgeStatus> => {
     try {
@@ -338,7 +383,12 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     ): Promise<Result<{ path: string } | { canceled: true }>> => {
       try {
         if (!payload || !payload.info) throw new Error('缺少视频信息');
-        const built = buildExport(payload);
+        const settings = loadSettings();
+        const built = buildExport({
+          ...payload,
+          includeTimestamps: payload.includeTimestamps ?? settings.export.includeTimestamps,
+          filenamePattern: payload.filenamePattern || settings.export.filenamePattern
+        });
         let target = payload.savePath;
 
         if (!target) {
