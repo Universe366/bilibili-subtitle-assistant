@@ -3,6 +3,7 @@ import type { AiPlatform, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
 import { buildSearchQuery, searchWeb } from './search';
 import { glossaryTerms } from './correction';
+import { skillPrompt } from './skills';
 
 const MAX_TRANSCRIPT_CHARS = 30000;
 const REQUEST_TIMEOUT_MS = 300000;
@@ -51,6 +52,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
   const template = activePrompt(settings);
   const prompt = options.prompt || template.text;
 
+  const skills = skillPrompt(settings);
   const glossary = glossaryTerms(settings);
   const glossaryBlock = glossary.length
     ? `\n\n术语表（输出时统一使用以下写法）：\n${glossary
@@ -126,7 +128,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
         temperature: settings.ai.temperature,
         max_tokens: settings.ai.maxTokens || undefined,
         messages: [
-          { role: 'system', content: `${prompt}${glossaryBlock}` },
+          { role: 'system', content: `${prompt}${glossaryBlock}${skills}` },
           { role: 'user', content: `${userContent}${referencesBlock}` }
         ]
       }),

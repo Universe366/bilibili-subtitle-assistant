@@ -20,6 +20,9 @@ import type {
   CorrectionRuleGroup,
   ExportFormat,
   GlossaryTerm,
+  McpServer,
+  McpTool,
+  SkillItem,
   PromptTemplate,
   SearchProvider,
   SearchTimeRange,
@@ -75,6 +78,10 @@ export function SettingsPanel() {
   const [correctionTest, setCorrectionTest] = useState('这是一段测试字幕，AI 和 GPU 可能会被写错。');
   const [correctionPreview, setCorrectionPreview] = useState('');
   const [correctionTesting, setCorrectionTesting] = useState(false);
+  const [mcpTools, setMcpTools] = useState<Record<string, McpTool[]>>({});
+  const [mcpTesting, setMcpTesting] = useState('');
+  const [mcpArgs, setMcpArgs] = useState('{}');
+  const [mcpResult, setMcpResult] = useState('');
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
@@ -132,6 +139,123 @@ export function SettingsPanel() {
   const updateAi = (patch: Partial<AppSettings['ai']>) => {
     if (!draft) return;
     setDraft({ ...draft, ai: { ...draft.ai, ...patch } });
+  };
+
+  const updateMcp = (patch: Partial<AppSettings['mcp']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, mcp: { ...draft.mcp, ...patch } });
+  };
+
+  const updateMcpServer = (id: string, patch: Partial<McpServer>) => {
+    if (!draft) return;
+    updateMcp({
+      servers: draft.mcp.servers.map((server) =>
+        server.id === id ? { ...server, ...patch } : server
+      )
+    });
+  };
+
+  const addMcpServer = () => {
+    if (!draft) return;
+    updateMcp({
+      servers: [
+        ...draft.mcp.servers,
+        {
+          id: uid('mcp'),
+          name: 'MCP 服务',
+          url: '',
+          token: '',
+          headers: {},
+          enabled: true
+        }
+      ]
+    });
+  };
+
+  const removeMcpServer = (id: string) => {
+    if (!draft) return;
+    updateMcp({ servers: draft.mcp.servers.filter((server) => server.id !== id) });
+    setMcpTools((previous) => {
+      const next = { ...previous };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const testMcp = async (server: McpServer) => {
+    setMcpTesting(server.id);
+    setMcpResult('');
+    try {
+      const response = await window.bsub.testMcp(server);
+      if (response.ok) {
+        setMcpTools((previous) => ({ ...previous, [server.id]: response.data }));
+        setMessage(`MCP 连接成功，${response.data.length} 个工具`);
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setMcpTesting('');
+    }
+  };
+
+  const callMcp = async (server: McpServer, tool: McpTool) => {
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(mcpArgs || '{}');
+    } catch {
+      setError('MCP 参数不是合法 JSON');
+      return;
+    }
+    setMcpResult(`调用 ${tool.name}…`);
+    const response = await window.bsub.callMcp(server, tool.name, args);
+    setMcpResult(response.ok ? response.data : `调用失败：${response.error}`);
+  };
+
+  const updateSkills = (patch: Partial<AppSettings['skills']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, skills: { ...draft.skills, ...patch } });
+  };
+
+  const updateSkill = (id: string, patch: Partial<SkillItem>) => {
+    if (!draft) return;
+    updateSkills({
+      items: draft.skills.items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    });
+  };
+
+  const addSkill = () => {
+    if (!draft) return;
+    updateSkills({
+      items: [
+        ...draft.skills.items,
+        {
+          id: uid('skill'),
+          name: '新技能',
+          description: '',
+          body: '',
+          enabled: true,
+          source: 'manual'
+        }
+      ]
+    });
+  };
+
+  const removeSkill = (id: string) => {
+    if (!draft) return;
+    updateSkills({ items: draft.skills.items.filter((item) => item.id !== id) });
+  };
+
+  const importSkill = async () => {
+    if (!draft) return;
+    const response = await window.bsub.importSkill();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    if (response.data) {
+      updateSkills({ items: [...draft.skills.items, response.data] });
+      setMessage(`已导入技能：${response.data.name}`);
+    }
   };
 
   const updateSearch = (patch: Partial<AppSettings['search']>) => {
@@ -1299,6 +1423,162 @@ export function SettingsPanel() {
         <div className="settings-hint">
           自动检查与更新源修改后下次启动生效；未签名时 SmartScreen 仍会提示。
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">MCP 服务</div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.mcp.enabled}
+            onChange={(event) => updateMcp({ enabled: event.target.checked })}
+          />
+          启用 MCP
+        </label>
+        <div className="settings-inline">
+          <span className="settings-label" style={{ flex: 1 }}>
+            服务列表
+          </span>
+          <button className="mini-btn" onClick={addMcpServer}>
+            <Plus size={12} /> 服务
+          </button>
+        </div>
+
+        {draft.mcp.servers.map((server) => (
+          <div key={server.id} className="mcp-card">
+            <div className="settings-inline">
+              <input
+                className="settings-input"
+                value={server.name}
+                onChange={(event) => updateMcpServer(server.id, { name: event.target.value })}
+              />
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={server.enabled}
+                  onChange={(event) =>
+                    updateMcpServer(server.id, { enabled: event.target.checked })
+                  }
+                />
+                启用
+              </label>
+              <button className="mini-btn" onClick={() => removeMcpServer(server.id)}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <input
+              className="settings-input"
+              placeholder="https://example.com/mcp"
+              value={server.url}
+              spellCheck={false}
+              onChange={(event) => updateMcpServer(server.id, { url: event.target.value })}
+            />
+            <input
+              className="settings-input"
+              type="password"
+              placeholder="Token（可选）"
+              value={server.token}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => updateMcpServer(server.id, { token: event.target.value })}
+            />
+            <button
+              className="mini-btn"
+              disabled={mcpTesting === server.id}
+              onClick={() => void testMcp(server)}
+            >
+              {mcpTesting === server.id ? (
+                <Loader2 size={12} className="spin" />
+              ) : (
+                '连接 / 列出工具'
+              )}
+            </button>
+            {mcpTools[server.id]?.length ? (
+              <div className="mcp-tools">
+                {mcpTools[server.id].map((tool) => (
+                  <button
+                    key={tool.name}
+                    className="mcp-tool"
+                    title={tool.description}
+                    onClick={() => void callMcp(server, tool)}
+                  >
+                    {tool.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+
+        <div className="settings-label">调用参数（JSON）</div>
+        <textarea
+          className="settings-textarea"
+          rows={3}
+          value={mcpArgs}
+          spellCheck={false}
+          onChange={(event) => setMcpArgs(event.target.value)}
+        />
+        {mcpResult && <pre className="correction-preview">{mcpResult}</pre>}
+        <div className="settings-hint">
+          点击工具名用上方参数调用。当前是手动调用；自动接入 AI 工具循环待补。
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">Skills</div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.skills.enabled}
+            onChange={(event) => updateSkills({ enabled: event.target.checked })}
+          />
+          启用技能提示词
+        </label>
+        <div className="settings-inline">
+          <button className="mini-btn" onClick={() => void importSkill()}>
+            <Plus size={12} /> 导入 SKILL.md
+          </button>
+          <button className="mini-btn" onClick={addSkill}>
+            <Plus size={12} /> 新建技能
+          </button>
+        </div>
+
+        {draft.skills.items.map((skill) => (
+          <div key={skill.id} className="skill-card">
+            <div className="settings-inline">
+              <input
+                className="settings-input"
+                value={skill.name}
+                onChange={(event) => updateSkill(skill.id, { name: event.target.value })}
+              />
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={skill.enabled}
+                  onChange={(event) => updateSkill(skill.id, { enabled: event.target.checked })}
+                />
+                启用
+              </label>
+              <button className="mini-btn" onClick={() => removeSkill(skill.id)}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+            <input
+              className="settings-input"
+              placeholder="触发条件 / 描述"
+              value={skill.description}
+              onChange={(event) => updateSkill(skill.id, { description: event.target.value })}
+            />
+            <textarea
+              className="settings-textarea"
+              rows={4}
+              value={skill.body}
+              onChange={(event) => updateSkill(skill.id, { body: event.target.value })}
+            />
+            <div className="settings-hint">来源：{skill.source}</div>
+          </div>
+        ))}
+        <div className="settings-hint">启用后会注入总结和对话的系统提示词。</div>
       </div>
 
       <div className="settings-section">

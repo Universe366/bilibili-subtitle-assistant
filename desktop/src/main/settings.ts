@@ -166,6 +166,39 @@ export const DEFAULT_SETTINGS: AppSettings = {
     audioFormat: 'auto',
     concurrency: 1
   },
+  mcp: {
+    enabled: false,
+    servers: []
+  },
+  skills: {
+    enabled: true,
+    items: [
+      {
+        id: 'skill_deep_summary',
+        name: '深度总结',
+        description: '按主题分节，给出要点、结论与时间轴',
+        body:
+          '请对本期视频做一份深度总结：\n' +
+          '1. 先用一句话概括主题；\n' +
+          '2. 再按内容分成 3~6 个主题小节，每节给 2~4 条要点；\n' +
+          '3. 最后列出结论与「值得回看的片段」（用 mm:ss 标注时间）。',
+        enabled: true,
+        source: 'builtin'
+      },
+      {
+        id: 'skill_qa_extract',
+        name: '提取问答',
+        description: '把视频里的问题与回答整理成问答对',
+        body:
+          '把视频内容整理成问答对：\n' +
+          '- 只保留视频中明确提出的问题；\n' +
+          '- 每个问题给出简洁回答，并标注对应时间点（mm:ss）；\n' +
+          '- 没有明确答案的问题标注「视频未回答」。',
+        enabled: false,
+        source: 'builtin'
+      }
+    ]
+  },
   search: {
     enabled: false,
     provider: 'exa',
@@ -334,6 +367,45 @@ function normalize(raw: any): AppSettings {
       const fontSize = Number(raw.export.assFontSize);
       if (Number.isFinite(fontSize)) {
         base.export.assFontSize = Math.min(96, Math.max(12, Math.round(fontSize)));
+      }
+    }
+
+    if (raw.mcp && typeof raw.mcp === 'object') {
+      base.mcp.enabled = raw.mcp.enabled === true;
+      if (Array.isArray(raw.mcp.servers)) {
+        base.mcp.servers = raw.mcp.servers
+          .filter((server: any) => server && typeof server === 'object' && String(server.id || '').trim())
+          .map((server: any) => ({
+            id: String(server.id),
+            name: String(server.name || 'MCP 服务'),
+            url: String(server.url || ''),
+            token: String(server.token || ''),
+            headers:
+              server.headers && typeof server.headers === 'object'
+                ? Object.fromEntries(
+                    Object.entries(server.headers)
+                      .filter(([key, value]) => key && value)
+                      .map(([key, value]) => [String(key), String(value)])
+                  )
+                : {},
+            enabled: server.enabled !== false
+          }));
+      }
+    }
+
+    if (raw.skills && typeof raw.skills === 'object') {
+      base.skills.enabled = raw.skills.enabled !== false;
+      if (Array.isArray(raw.skills.items)) {
+        base.skills.items = raw.skills.items
+          .filter((item: any) => item && typeof item === 'object' && String(item.id || '').trim())
+          .map((item: any) => ({
+            id: String(item.id),
+            name: String(item.name || '未命名技能'),
+            description: String(item.description || ''),
+            body: String(item.body || ''),
+            enabled: item.enabled !== false,
+            source: ['builtin', 'manual', 'file'].includes(item.source) ? item.source : 'manual'
+          }));
       }
     }
 

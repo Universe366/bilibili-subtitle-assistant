@@ -1577,6 +1577,35 @@ button:disabled {
   white-space: nowrap;
 }
 
+.mcp-card,
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mcp-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mcp-tool {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 10.5px;
+}
+
+.mcp-tool:hover {
+  border-color: var(--accent);
+}
+
 .asr-progress {
   display: flex;
   flex-direction: column;

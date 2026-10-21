@@ -26,6 +26,9 @@ import type {
   BatchErrorEvent,
   Chapter,
   QualityReport,
+  McpServer,
+  McpTool,
+  SkillItem,
   LibraryHistoryItem,
   FindResult,
   LayoutRect,
@@ -134,6 +137,10 @@ export interface BsubApi {
 
   checkQuality(info: PageInfo, lines: SubtitleLine[]): Promise<Result<QualityReport>>;
   generateChapters(info: PageInfo, lines: SubtitleLine[]): Promise<Result<Chapter[]>>;
+
+  testMcp(server: McpServer): Promise<Result<McpTool[]>>;
+  callMcp(server: McpServer, name: string, args: Record<string, unknown>): Promise<Result<string>>;
+  importSkill(): Promise<Result<SkillItem | null>>;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 

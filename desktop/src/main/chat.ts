@@ -1,8 +1,11 @@
 import { session } from 'electron';
-import type { ChatMessage, PageInfo, SubtitleLine } from '../shared/types';
+import type { AiPlatform, AppSettings, ChatMessage, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
 import { buildTranscript } from './ai';
 import { glossaryTerms } from './correction';
+import { listMcpTools, callMcpTool } from './mcp';
+import type { McpServer, McpTool } from '../shared/types';
+import { skillPrompt } from './skills';
 
 const MAX_HISTORY = 16;
 const REQUEST_TIMEOUT_MS = 300000;
@@ -44,6 +47,7 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
   const system = [
     settings.prompt.chat,
     glossaryBlock,
+    skillPrompt(settings),
     `视频标题：${options.info.title || '未知'}`,
     `UP 主：${options.info.owner || '未知'}`
   ]
@@ -65,6 +69,35 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
     },
     ...history
   ];
+
+  let toolBindings: Array<{ server: McpServer; tool: McpTool; qualifiedName: string }> = [];
+  if (settings.mcp.enabled) {
+    for (const server of settings.mcp.servers.filter((item) => item.enabled && item.url)) {
+      try {
+        const tools = await listMcpTools(server);
+        toolBindings.push(
+          ...tools.map((tool) => ({
+            server,
+            tool,
+            qualifiedName: `${server.id}__${tool.name}`
+          }))
+        );
+      } catch (error) {
+        console.warn('[mcp] 连接失败', server.name, (error as Error).message);
+      }
+    }
+  }
+
+  if (toolBindings.length) {
+    return chatWithTools({
+      platform,
+      messages,
+      settings,
+      toolBindings,
+      signal: options.signal,
+      onDelta: options.onDelta
+    });
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('AI 请求超时（5 分钟）')), REQUEST_TIMEOUT_MS);
@@ -145,4 +178,98 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', forwardAbort);
   }
+}
+
+
+async function chatWithTools(options: {
+  platform: AiPlatform;
+  messages: any[];
+  settings: AppSettings;
+  toolBindings: Array<{ server: McpServer; tool: McpTool; qualifiedName: string }>;
+  signal?: AbortSignal;
+  onDelta?: (delta: string) => void;
+}): Promise<{ text: string; model: string }> {
+  const { platform, settings, toolBindings } = options;
+  const base = platform.baseUrl.replace(/\/+$/, '');
+  const tools = toolBindings.map((binding) => ({
+    type: 'function',
+    function: {
+      name: binding.qualifiedName,
+      description: (binding.tool.description || '').slice(0, 1024),
+      parameters:
+        (binding.tool.inputSchema as Record<string, unknown>) || {
+          type: 'object',
+          properties: {}
+        }
+    }
+  }));
+  const convo = options.messages.map((message) => ({ ...message }));
+
+  for (let round = 0; round < 6; round += 1) {
+    if (options.signal?.aborted) throw new Error('已终止');
+    const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${platform.apiKey.trim()}`
+      },
+      body: JSON.stringify({
+        model: platform.model.trim(),
+        stream: false,
+        temperature: settings.ai.temperature,
+        max_tokens: settings.ai.maxTokens || undefined,
+        messages: convo,
+        tools,
+        tool_choice: 'auto'
+      }),
+      signal: options.signal
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(errorForStatus(response.status, body));
+    }
+    const json: any = await response.json();
+    const message = json?.choices?.[0]?.message;
+    const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+
+    if (calls.length) {
+      convo.push({
+        role: 'assistant',
+        content: message?.content ?? null,
+        tool_calls: calls
+      });
+      for (const call of calls) {
+        const name = String(call?.function?.name || '');
+        const binding = toolBindings.find((item) => item.qualifiedName === name);
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(String(call?.function?.arguments || '{}'));
+        } catch {
+          args = {};
+        }
+        let content = '工具不存在';
+        if (binding) {
+          try {
+            content = await callMcpTool(binding.server, binding.tool.name, args);
+          } catch (error) {
+            content = `工具调用失败：${(error as Error).message}`;
+          }
+        }
+        convo.push({
+          role: 'tool',
+          tool_call_id: String(call?.id || ''),
+          name,
+          content: content.slice(0, 4000)
+        });
+      }
+      continue;
+    }
+
+    const text = String(message?.content || '');
+    if (!text.trim()) throw new Error('AI 返回为空');
+    options.onDelta?.(text);
+    return { text, model: platform.model };
+  }
+
+  throw new Error('工具调用轮数过多（超过 6 轮）');
 }

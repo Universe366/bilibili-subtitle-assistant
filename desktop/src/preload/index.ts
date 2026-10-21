@@ -28,6 +28,9 @@ import type {
   BatchErrorEvent,
   Chapter,
   QualityReport,
+  McpServer,
+  McpTool,
+  SkillItem,
   LibraryHistoryItem,
   FindResult,
   ExportPayload,
@@ -194,6 +197,13 @@ const api: BsubApi = {
     ipcRenderer.invoke('quality:check', { info, lines }) as Promise<Result<QualityReport>>,
   generateChapters: (info: PageInfo, lines: SubtitleLine[]) =>
     ipcRenderer.invoke('chapters:generate', { info, lines }) as Promise<Result<Chapter[]>>,
+
+  testMcp: (server: McpServer) =>
+    ipcRenderer.invoke('mcp:test', server) as Promise<Result<McpTool[]>>,
+  callMcp: (server: McpServer, name: string, args: Record<string, unknown>) =>
+    ipcRenderer.invoke('mcp:call', { server, name, args }) as Promise<Result<string>>,
+  importSkill: () =>
+    ipcRenderer.invoke('skills:import') as Promise<Result<SkillItem | null>>,
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

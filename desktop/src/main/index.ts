@@ -23,6 +23,9 @@ import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
 import { checkSubtitles } from './quality';
 import { generateChapters } from './chapters';
+import { callMcpTool, listMcpTools } from './mcp';
+import { skillPrompt } from './skills';
+import { chat } from './chat';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -191,6 +194,90 @@ function createWindow(): void {
           console.warn('[audio-test] failed', (error as Error).message);
         }
       }, 12000);
+    }
+
+    if (process.env.BSUB_MCP_CHAT_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_AI_TOOLS || 'http://127.0.0.1:8894/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          settings.mcp.enabled = true;
+          settings.mcp.servers = [
+            {
+              id: 'mock',
+              name: 'Mock MCP',
+              url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
+              token: '',
+              headers: {},
+              enabled: true
+            }
+          ];
+          saveSettings(settings);
+          const result = await chat({
+            info: {
+              kind: 'video',
+              bvid: 'BV1',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '测试视频',
+              owner: '测试UP',
+              desc: '',
+              duration: 10,
+              url: '',
+              signature: 'test'
+            },
+            lines: [{ start: 0, end: 2, text: '测试字幕' }],
+            messages: [{ role: 'user', content: '调用工具' }]
+          });
+          console.log('[mcp-chat-test]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[mcp-chat-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_MCP_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const server = {
+            id: 'mock',
+            name: 'Mock MCP',
+            url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
+            token: '',
+            headers: {},
+            enabled: true
+          };
+          const tools = await listMcpTools(server);
+          const result = await callMcpTool(server, 'echo', { text: 'hello' });
+          const settings = loadSettings();
+          const prompt = skillPrompt(settings);
+          console.log(
+            '[mcp-test]',
+            JSON.stringify({
+              tools: tools.map((tool) => tool.name),
+              result,
+              skillsInjected: prompt.includes('深度总结'),
+              promptLength: prompt.length
+            })
+          );
+        } catch (error) {
+          console.warn('[mcp-test] failed', (error as Error).message);
+        }
+      }, 5000);
     }
 
     if (process.env.BSUB_QUALITY_TEST === '1') {

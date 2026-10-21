@@ -44,6 +44,9 @@ import type {
   BatchDoneEvent,
   Chapter,
   QualityReport,
+  McpServer,
+  McpTool,
+  SkillItem,
   LibraryIngestResult,
   LibraryList,
   LibrarySearchResult
@@ -72,6 +75,8 @@ import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
 import { checkSubtitles } from './quality';
 import { generateChapters } from './chapters';
+import { callMcpTool, listMcpTools } from './mcp';
+import { readSkillFile } from './skills';
 import { testSearch } from './search';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
@@ -654,6 +659,44 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return { ok: true, data: { removed: clearHistory() } };
     } catch (error) {
       return failure<{ removed: number }>(error);
+    }
+  });
+
+
+  ipcMain.handle('mcp:test', async (_event, server: McpServer): Promise<Result<McpTool[]>> => {
+    try {
+      return { ok: true, data: await listMcpTools(server) };
+    } catch (error) {
+      return failure<McpTool[]>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'mcp:call',
+    async (
+      _event,
+      payload: { server: McpServer; name: string; args: Record<string, unknown> }
+    ): Promise<Result<string>> => {
+      try {
+        return { ok: true, data: await callMcpTool(payload.server, payload.name, payload.args || {}) };
+      } catch (error) {
+        return failure<string>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('skills:import', async (): Promise<Result<SkillItem | null>> => {
+    try {
+      const picked = await dialog.showOpenDialog(win, {
+        title: '导入 SKILL.md',
+        properties: ['openFile'],
+        filters: [{ name: 'Skill', extensions: ['md'] }]
+      });
+      const file = picked.filePaths[0];
+      if (picked.canceled || !file) return { ok: true, data: null };
+      return { ok: true, data: readSkillFile(file) };
+    } catch (error) {
+      return failure<SkillItem | null>(error);
     }
   });
 

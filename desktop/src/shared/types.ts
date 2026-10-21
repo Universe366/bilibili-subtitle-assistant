@@ -222,6 +222,30 @@ export interface AiPlatform {
   model: string;
 }
 
+export interface McpServer {
+  id: string;
+  name: string;
+  url: string;
+  token: string;
+  headers: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema?: unknown;
+}
+
+export interface SkillItem {
+  id: string;
+  name: string;
+  description: string;
+  body: string;
+  enabled: boolean;
+  source: 'builtin' | 'manual' | 'file';
+}
+
 export interface AsrPlatform {
   id: string;
   name: string;
@@ -303,6 +327,14 @@ export interface AppSettings {
     translate: string;
     optimize: string;
     chapters: string;
+  };
+  mcp: {
+    enabled: boolean;
+    servers: McpServer[];
+  };
+  skills: {
+    enabled: boolean;
+    items: SkillItem[];
   };
   search: {
     enabled: boolean;
