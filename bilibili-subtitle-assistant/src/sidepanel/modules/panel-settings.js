@@ -241,6 +241,7 @@ function renderBody() {
   state.body.appendChild(batchGroup(d));
   state.body.appendChild(historyGroup(d));
   state.body.appendChild(pageGroup(d));
+  state.body.appendChild(desktopGroup(d));
   state.body.appendChild(advancedGroup(d));
 
   const noResult = h('div', {
@@ -2023,8 +2024,7 @@ function historyGroup(d) {
 }
 
 function pageGroup(d) {
-  return groupWrap('page', '页面内功能', false, (body) => {
-    body.appendChild(checkbox(d.page.embedPanel !== false, (v) => { d.page.embedPanel = v; markDirty(); }, '在 B 站视频页内嵌侧边栏（不用点扩展图标；仍支持浏览器侧边栏）'));
+  return groupWrap('page', '页面内功能', false, (body) => {    body.appendChild(checkbox(d.page.embedPanel !== false, (v) => { d.page.embedPanel = v; markDirty(); }, '在 B 站视频页内嵌侧边栏（不用点扩展图标；仍支持浏览器侧边栏）'));
     body.appendChild(checkbox(d.page.playerButton, (v) => { d.page.playerButton = v; markDirty(); }, '在播放器上显示「字幕」按钮'));
     body.appendChild(field('按钮触发时使用的提示词', textInput(d.page.playerButtonPrompt, (v) => { d.page.playerButtonPrompt = v; markDirty(); })));
     body.appendChild(checkbox(d.page.overlay, (v) => { d.page.overlay = v; markDirty(); }, '在视频画面上显示字幕'));
@@ -2038,6 +2038,72 @@ function pageGroup(d) {
         await persistDraft({ silent: true });
         toast({ title: '已推送到 B 站页面' }, 'ok');
       }, { small: true })
+    );
+  });
+}
+
+function desktopGroup(d) {
+  const cfg = d.desktop || (d.desktop = { enabled: true, port: 47821, token: '' });
+  return groupWrap('desktop', '桌面端（本地字幕库）', false, (body) => {
+    body.appendChild(
+      h('div', {
+        class: 'note',
+        text: '把当前视频的字幕与总结推送到本机桌面端。先在桌面端「设置 → 插件桥」复制端口和 Token；填写后点顶部「保存」，下面的「保存并测试」也会先保存。'
+      })
+    );
+    body.appendChild(checkbox(cfg.enabled !== false, (v) => { cfg.enabled = v; markDirty(); }, '启用「发送到桌面」'));
+    body.appendChild(
+      field(
+        '端口',
+        numberInput(cfg.port || 47821, (v) => {
+          cfg.port = Math.max(1024, Math.min(65535, Math.round(Number(v) || 47821)));
+          markDirty();
+        }, { min: 1024, max: 65535, step: 1 })
+      )
+    );
+    body.appendChild(
+      field(
+        'Token',
+        textInput(cfg.token || '', (v) => {
+          cfg.token = String(v || '').trim();
+          markDirty();
+        }, { placeholder: '桌面端「插件桥」里的 Token' })
+      )
+    );
+    body.appendChild(
+      field(
+        '连接',
+        button('保存并测试', async () => {
+          try {
+            // 先保存：测试成功必须代表「已保存的配置」可用。
+            // 之前只测草稿，用户不点保存就去发送，发送读到的还是旧 Token。
+            await save();
+            if (state.dirty) throw new Error('设置保存失败，请查看提示');
+
+            const saved = (store.get().settings && store.get().settings.desktop) || {};
+            const port = Number(saved.port) || 47821;
+            const token = String(saved.token || '').trim();
+            if (!token) throw new Error('Token 为空：请填写后重试');
+
+            const res = await fetch(`http://127.0.0.1:${port}/v1/health`, {
+              headers: { authorization: `Bearer ${token}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            toast(
+              {
+                title: '桌面端连接成功（配置已保存）',
+                detail: `127.0.0.1:${port} · 库内 ${data.library?.videos || 0} 个视频 · ${data.library?.segments || 0} 行`
+              },
+              'ok',
+              3200
+            );
+          } catch (e) {
+            toast({ title: '连接失败', detail: String((e && e.message) || e) }, 'error', 4200);
+          }
+        }, { small: true }),
+        '需要桌面端正在运行；按钮会先保存，成功即代表「发送到桌面」也能用。'
+      )
     );
   });
 }

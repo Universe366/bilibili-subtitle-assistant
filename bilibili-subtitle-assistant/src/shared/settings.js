@@ -677,6 +677,12 @@ export function defaultSettings() {
       // 在 B 站视频页内嵌侧边栏；关闭后仍可用浏览器侧边栏
       embedPanel: true
     },
+    // 桌面端本地库：把当前字幕/总结推到本机桌面程序（插件 ↔ 桌面桥）
+    desktop: {
+      enabled: true,
+      port: 47821,
+      token: ''
+    },
     behavior: {
       preferOfficial: true,
       useLocalCache: true

@@ -25,6 +25,27 @@ import { openOverlay, closeOverlays, popoverMenu, confirmDialog } from './ui.js'
 import { engineLabel } from './search.js';
 import { subtitleSpan, searchCapabilityOf } from './panel-ai.js';
 import * as TIMELINE from './timeline.js';
+import { sendToDesktop } from './desktop-bridge.js';
+
+async function pushToDesktop() {
+  try {
+    const result = await sendToDesktop();
+    toast(
+      {
+        title: '已发送到桌面',
+        detail: `入库 ${result.lineCount} 行${result.summarySaved ? '，含总结' : ''}`
+      },
+      'ok',
+      3200
+    );
+  } catch (error) {
+    const raw = String((error && error.message) || error);
+    const detail = /Failed to fetch|NetworkError|Load failed|Network request failed/i.test(raw)
+      ? '连不上桌面端：确认桌面端在运行、端口正确，并在 设置 → 桌面端 点「保存并测试」'
+      : `${raw}（检查 设置 → 桌面端）`;
+    toast({ title: '发送到桌面失败', detail }, 'error', 5200);
+  }
+}
 
 let host = null;
 let searchQuery = '';
@@ -202,6 +223,18 @@ export function render() {
     { icon: '🔁', label: '应用替换规则', title: '按当前替换规则组一键全部替换', disabled: !hasLines, onClick: () => applyActiveRules() },
     { icon: '📑', label: '生成章节', title: '把视频按内容切成若干段并可跳转', disabled: !hasLines, onClick: () => generateChapters() },
     { icon: '🩺', label: '质量自检', title: '检查漏段与时间异常', disabled: !hasLines, onClick: () => runQualityCheck() },
+    { divider: true },
+    { heading: '同步' },
+    {
+      icon: '💻',
+      label: '发送到桌面',
+      title:
+        st.settings && st.settings.desktop && st.settings.desktop.enabled === false
+          ? '桌面端推送已在 设置 → 桌面端 关闭'
+          : '把当前字幕与总结写入桌面端本地库',
+      disabled: !hasLines || Boolean(st.settings && st.settings.desktop && st.settings.desktop.enabled === false),
+      onClick: () => void pushToDesktop()
+    },
     { divider: true },
     { heading: '结果与记录' },
     { icon: '📋', label: '复制全部字幕', title: '复制纯文本字幕到剪贴板', disabled: !hasLines, onClick: () => copyAllSubtitles() },
