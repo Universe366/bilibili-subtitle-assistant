@@ -162,7 +162,7 @@ async function main() {
 
   // ---- 版本握手 ----
   const ping = await new Promise((resolve) => window.__contentListener({ type: 'bsub:ping' }, {}, resolve));
-  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.12.3', JSON.stringify(ping));
+  check('版本握手：内容脚本声明自己的版本', ping.ok && ping.version === '2.13.0', JSON.stringify(ping));
 
   // ---- 播放器内嵌按钮 ----
   res = await rpc('applyOptions', { playerButton: true, playerButtonPrompt: '总结这个视频的要点', overlay: false });
@@ -177,6 +177,33 @@ async function main() {
     check('点击播放器按钮会上报事件（带自定义提示词）', !!evt && evt.payload.prompt === '总结这个视频的要点', JSON.stringify(evt && evt.payload));
     check('点击播放器按钮会请求打开侧边栏', toBackground.some((m) => m.type === 'bsub:open-side-panel'));
   }
+
+  // ---- 页面内嵌面板（不点扩展图标；仍保留侧边栏） ----
+  res = await rpc('applyOptions', { embedPanel: true, playerButton: false, overlay: false });
+  await sleep(250);
+  const embed = doc.getElementById('__bsub_embed_panel__');
+  const embedFrame = embed && embed.querySelector('iframe');
+  check(
+    '开启页面内嵌后注入面板与 iframe',
+    !!embed && !!embedFrame && /panel\.html/.test(embedFrame.src) && /embed=1/.test(embedFrame.src),
+    embedFrame ? embedFrame.src : '未注入'
+  );
+  check(
+    '内嵌面板有收起与打开侧边栏按钮',
+    !!embed && !!embed.querySelector('.bsub-embed-close') && /侧栏/.test(embed.textContent),
+    embed ? embed.textContent.slice(0, 80) : ''
+  );
+  if (embed) {
+    embed.querySelector('.bsub-embed-close').click();
+    await sleep(80);
+    check('收起后显示右侧「字幕」标签', !doc.getElementById('__bsub_embed_panel__') && !!doc.getElementById('__bsub_embed_tab__'));
+  }
+  await rpc('applyOptions', { embedPanel: false });
+  await sleep(80);
+  check(
+    '关闭页面内嵌后移除面板与标签',
+    !doc.getElementById('__bsub_embed_panel__') && !doc.getElementById('__bsub_embed_tab__')
+  );
   res = await rpc('applyOptions', { playerButton: false });
   await sleep(1600);
   check('关闭开关后播放器按钮被移除', !doc.getElementById('__bsub_player_btn__'));

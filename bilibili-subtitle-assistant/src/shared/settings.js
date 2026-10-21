@@ -673,7 +673,9 @@ export function defaultSettings() {
       overlay: false,
       overlayFontScale: 1,
       overlayBottom: 8,
-      followPlayback: true
+      followPlayback: true,
+      // 在 B 站视频页内嵌侧边栏；关闭后仍可用浏览器侧边栏
+      embedPanel: true
     },
     behavior: {
       preferOfficial: true,

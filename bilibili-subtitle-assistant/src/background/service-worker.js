@@ -1226,7 +1226,8 @@ async function pushPageOptions(settings, tabId) {
     overlay: settings.page.overlay,
     overlayFontScale: settings.page.overlayFontScale,
     overlayBottom: settings.page.overlayBottom,
-    followPlayback: settings.page.followPlayback
+    followPlayback: settings.page.followPlayback,
+    embedPanel: settings.page.embedPanel !== false
   };
   const targets = [];
   if (tabId != null) targets.push(tabId);
@@ -1287,6 +1288,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 内容脚本上报的事件（分 P 变化、按钮点击等）转发给侧边栏
     broadcast({ type: 'bsub:content-event', event: message.event, payload: message.payload, tabId: sender?.tab?.id });
     if (message.event === 'player-button' || message.event === 'open-panel') {
+      // 页面内嵌模式由内容脚本自己展开面板，不要再抢开浏览器侧边栏
+      if (message.payload && message.payload.embedded) {
+        sendResponse({ ok: true });
+        return undefined;
+      }
       const tabId = sender?.tab?.id;
       if (tabId != null && chrome.sidePanel?.open) {
         // 这里由内容脚本另外发一条 bsub:open-side-panel 来拿结果，
@@ -1296,6 +1302,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     sendResponse({ ok: true });
     return undefined;
+  }
+  if (message.type === 'bsub:request-options') {
+    // 内容脚本启动时主动要一次页面选项：不能等侧边栏打开才推送，
+    // 否则「页面内嵌面板」默认开启时不会出现。
+    (async () => {
+      try {
+        const s = await ST.loadSettings();
+        await pushPageOptions(s, sender?.tab?.id);
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, detail: (err && err.message) || '读取设置失败' });
+      }
+    })();
+    return true;
   }
   if (message.type === 'bsub:open-side-panel') {
     // 打开侧边栏失败的原因必须**报出去**，不能吞掉。

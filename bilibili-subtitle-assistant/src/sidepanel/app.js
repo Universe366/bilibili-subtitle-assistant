@@ -13,6 +13,14 @@ import * as actionsPanel from './modules/panel-actions.js';
 import { DEFAULT_SYSTEM_PROMPT } from '../shared/constants.js';
 import { initWizard } from './modules/wizard.js';
 
+// 页面内嵌时 (?embed=1) 由内容脚本的外框显示标题与收起按钮，
+// 面板自己的品牌行可以隐藏，避免出现两遍标题。
+try {
+  if (new URLSearchParams(location.search).get('embed') === '1') document.body.dataset.embed = 'true';
+} catch (err) {
+  /* ignore */
+}
+
 boot();
 
 async function boot() {

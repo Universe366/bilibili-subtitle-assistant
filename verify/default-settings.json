@@ -256,7 +256,8 @@
     "overlay": false,
     "overlayFontScale": 1,
     "overlayBottom": 8,
-    "followPlayback": true
+    "followPlayback": true,
+    "embedPanel": true
   },
   "behavior": {
     "preferOfficial": true,

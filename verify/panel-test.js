@@ -129,7 +129,7 @@ function settingsForUi() {
 }
 
 const RPC_RESPONSES = {
-  'build.info': { app: 'B站字幕助手', version: '2.12.3', contentVersion: '2.12.3', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
+  'build.info': { app: 'B站字幕助手', version: '2.13.0', contentVersion: '2.13.0', modules: 19, buildTime: '2026-10-21T07:00:00Z' },
   'page.info': {
     ok: true,
     kind: 'video',
@@ -150,12 +150,12 @@ const RPC_RESPONSES = {
   'history.list': { rows: [] },
   'cache.stats': { subtitleCount: 0, audioCount: 0, historyCount: 0, approxBytes: 0 },
   'page.refresh': {
-    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.12.3', stale: false }],
-    contentVersion: '2.12.3'
+    tabs: [{ tabId: 1, url: 'https://www.bilibili.com/video/BV1xx411c7mD', title: '测试视频标题', pageType: 'video', scriptVersion: '2.13.0', stale: false }],
+    contentVersion: '2.13.0'
   },
   diagnostics: {
-    extensionVersion: '2.12.3',
-    contentVersion: '2.12.3',
+    extensionVersion: '2.13.0',
+    contentVersion: '2.13.0',
     modules: 19,
     buildTime: '2026-10-21T07:00:00Z',
     userAgent: 'jsdom',
@@ -171,7 +171,7 @@ function installChrome(window) {
     runtime: {
       id: 'test-extension',
       lastError: null,
-      getManifest: () => ({ version: '2.12.3', manifest_version: 3 }),
+      getManifest: () => ({ version: '2.13.0', manifest_version: 3 }),
       getURL: (p) => `http://127.0.0.1/${p}`,
       connect: () => makePort(),
       sendMessage: (msg, cb) => {
@@ -243,7 +243,7 @@ async function main() {
   const api = window.__BSUB_SELFCHECK__;
 
   check('顶部标题渲染', /B站字幕助手/.test(doc.body.textContent));
-  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.12\.3 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
+  check('构建指纹（版本 + 模块数 + 构建时间）', /构建指纹 2\.13\.0 · 19 模块 · 2026-10-21/.test(doc.getElementById('fingerprint').textContent), doc.getElementById('fingerprint').textContent);
 
   // Edge / Chrome 商店语言检测依赖 _locales + __MSG_ 占位符
   const manifestJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
@@ -524,6 +524,7 @@ async function main() {
   check('设置页含替换规则 / 术语表 / 检索 / 批量 / 历史', /替换规则组/.test(settingsText) && /术语表/.test(settingsText) && /联网检索/.test(settingsText) && /批量队列/.test(settingsText) && /历史记录/.test(settingsText));
   check('设置页含页面内功能（播放器按钮 / 画面字幕 / 跟随播放）', /播放器上显示/.test(settingsText) && /画面字幕/.test(settingsText) && /跟随播放/.test(settingsText));
   check('设置页说明密钥留空不改动', /留空保存表示「不改动」/.test(settingsText));
+  check('设置页提供页面内嵌开关', /在 B 站视频页内嵌侧边栏/.test(settingsText), '');
   check(
     '设置页有更新前备份入口',
     /先备份设置/.test(settingsText) && /设置备份/.test(settingsText),
@@ -1299,6 +1300,7 @@ async function main() {
 
     const defaults = api.settingsLib.defaultSettings();
     check('默认每次核实 12 条', defaults.search.verifyItemCount === 12, String(defaults.search.verifyItemCount));
+    check('默认开启页面内嵌面板', defaults.page.embedPanel === true, String(defaults.page.embedPanel));
     check('默认开启 AI 生成检索词', defaults.search.aiQueryGeneration === true, String(defaults.search.aiQueryGeneration));
     const estimate = api.panelAi.estimateSummaryCost(defaults);
     check('总结成本估算：默认 3~6 次检索 + 4 次 AI', estimate.searches === 6 && estimate.aiCalls === 4, JSON.stringify(estimate));

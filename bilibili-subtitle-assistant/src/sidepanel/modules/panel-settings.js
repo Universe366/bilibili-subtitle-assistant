@@ -2002,6 +2002,7 @@ function historyGroup(d) {
 
 function pageGroup(d) {
   return groupWrap('page', '页面内功能', false, (body) => {
+    body.appendChild(checkbox(d.page.embedPanel !== false, (v) => { d.page.embedPanel = v; markDirty(); }, '在 B 站视频页内嵌侧边栏（不用点扩展图标；仍支持浏览器侧边栏）'));
     body.appendChild(checkbox(d.page.playerButton, (v) => { d.page.playerButton = v; markDirty(); }, '在播放器上显示「字幕」按钮'));
     body.appendChild(field('按钮触发时使用的提示词', textInput(d.page.playerButtonPrompt, (v) => { d.page.playerButtonPrompt = v; markDirty(); })));
     body.appendChild(checkbox(d.page.overlay, (v) => { d.page.overlay = v; markDirty(); }, '在视频画面上显示字幕'));

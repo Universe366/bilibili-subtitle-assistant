@@ -145,6 +145,15 @@ body {
   min-width: 0;
 }
 
+/* 页面内嵌时由内容脚本外框显示标题，面板内不再重复品牌行 */
+body[data-embed='true'] .brand {
+  display: none;
+}
+
+body[data-embed='true'] .topbar-actions {
+  margin-left: auto;
+}
+
 .brand-mark {
   flex: 0 0 auto;
   width: 1.5em;

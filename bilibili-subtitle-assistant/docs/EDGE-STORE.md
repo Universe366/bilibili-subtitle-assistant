@@ -1,4 +1,4 @@
-# Edge Add-ons 提交材料（2.12.3）
+# Edge Add-ons 提交材料（2.13.0）
 
 > 官方流程：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/publish-extension>
 > 开发者注册：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/create-dev-account>（免费，需要 Microsoft 账号 + Partner Center）
@@ -9,7 +9,7 @@ Edge 使用与 Chrome 相同的 MV3 包。**zip 根目录必须直接有 `manife
 
 ```bash
 cd repo
-git archive --format=zip -o edge-2.12.3.zip HEAD:bilibili-subtitle-assistant \
+git archive --format=zip -o edge-2.13.0.zip HEAD:bilibili-subtitle-assistant \
   manifest.json rules.json src vendor icons _locales LICENSE THIRD-PARTY-NOTICES.md LICENSES
 ```
 
@@ -18,11 +18,11 @@ git archive --format=zip -o edge-2.12.3.zip HEAD:bilibili-subtitle-assistant \
 上传前检查：
 
 ```bash
-unzip -l edge-2.12.3.zip | head
-unzip -p edge-2.12.3.zip manifest.json | head
+unzip -l edge-2.13.0.zip | head
+unzip -p edge-2.13.0.zip manifest.json | head
 ```
 
-- 版本：**2.12.3**
+- 版本：**2.13.0**
 - 运行时文件约 11 MB（主要是 `vendor/ffmpeg/ffmpeg-core.wasm`，31 MB 未压缩）
 - `rules.json` 是静态 DNR 规则；`src/background/header-rules.js` 会在会话中为 TokenRhythm 动态加规则
 - 包含 `_locales/zh_CN` 与 `_locales/en`，Partner Center 才能识别中文/英文列表语言
@@ -47,7 +47,8 @@ unzip -p edge-2.12.3.zip manifest.json | head
 > 4. 联网核对：生成总结前会按字幕原句逐条检索，判定证据是支持、反驳还是无关；按独立域名区分多来源一致与单一来源，外部信息只作为补充提醒，不污染正文。
 > 5. 优化与导出：AI 修正错别字/术语/数字，规则组与术语表；支持 SRT、WebVTT、ASS、TXT、Markdown、JSON。
 > 6. 质量与批量：章节、质量自检、批量队列、历史记录、操作留痕与回退。
-> 7. 设置与更新：设置页支持搜索、分组摘要与「去配置」；发现新版本时提示先备份设置；支持导出/导入完整设置备份，避免手动更新换目录后配置丢失。
+> 7. 页面内嵌：默认在 B 站视频页右侧直接显示面板，不用点扩展图标；可拖宽、可收起，也可一键切回浏览器原生侧边栏。
+> 8. 设置与更新：设置页支持搜索、分组摘要与「去配置」；发现新版本时提示先备份设置；支持导出/导入完整设置备份，避免手动更新换目录后配置丢失。
 >
 > 所有配置都在侧边栏内完成；API Key 只保存在本机，不上传到开发者服务器。首次使用无需填写 Key 即可抓取官方字幕；AI 总结、语音转录与联网检索需要用户自备对应服务的 Key。
 >
@@ -133,6 +134,7 @@ python verify/tools/fit-store-screenshot.py 你的截图.png --size 1280x800 --m
 - **host permissions（AI/ASR/检索域名）**：向用户配置的服务发送请求；默认只声明内置平台域名。
 - **host permissions（tokenrhythm.studio）**：TokenRhythm 是内置 AI 平台之一，仅用于用户选择该平台时的对话请求。
 - **optional_host_permissions（http/https 任意域名）**：仅当用户填写自定义 OpenAI 兼容端点或自建 SearXNG 时，才在运行时申请对应域名权限；不填写则不使用。
+- **web_accessible_resources（src/content/*、src/sidepanel/*）**：前者用于页面主环境桥的兜底注入；后者用于「页面内嵌面板」——把扩展自己的 `panel.html` 作为 iframe 加载到 B 站页面，不向网页暴露 API 或数据。
 - **alarms**：每天检查一次新版本。
 
 ## 6. 认证备注（Notes for certification）
@@ -186,7 +188,7 @@ AI 总结、语音转录、联网检索是可选功能，需要用户自备第�
 ## 7. 提交步骤
 
 1. 注册 Partner Center → Microsoft Edge 计划（免费）。
-2. **Create new extension** → 上传 `edge-2.12.3.zip`。
+2. **Create new extension** → 上传 `edge-2.13.0.zip`。
 3. **Availability**：Public；市场默认全部（或按需选择）。
 4. **Properties**：类别 Productivity；网站填 GitHub 仓库；支持链接填 Issues。
 5. **Privacy**：按第 4、5 节填写 Single purpose、权限理由、Remote code=No、Data usage、Privacy URL。
