@@ -55,6 +55,8 @@ unzip -p edge-2.12.3.zip manifest.json | head
 >
 > 已知限制：MCP 仅支持远程 HTTP/SSE；非 M4A 平台的转录会把音频解码进侧边栏内存；B 站部分内容可能受地区或登录限制。
 >
+> 作者的话：此插件是本人 vibe coding 作品，有 bug 不代表本人能修；本人是新手，请各位大佬高抬贵手。遇到问题欢迎提 Issue，但请温柔一点 🙏
+>
 > 问题反馈：https://github.com/Universe366/bilibili-subtitle-assistant/issues
 
 **类别**：Productivity（生产力）；备选 Utilities
