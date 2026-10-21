@@ -97,6 +97,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     activeId: 'default',
     templates: DEFAULT_TEMPLATES
   },
+  search: {
+    enabled: false,
+    provider: 'exa',
+    apiKey: '',
+    maxResults: 5,
+    includeContent: true,
+    timeRange: 'any'
+  },
   export: {
     format: 'md',
     includeTimestamps: true,
@@ -190,6 +198,20 @@ function normalize(raw: any): AppSettings {
       base.export.includeTimestamps = raw.export.includeTimestamps !== false;
       const pattern = String(raw.export.filenamePattern || '').trim();
       base.export.filenamePattern = pattern || '{title}';
+    }
+
+    if (raw.search && typeof raw.search === 'object') {
+      base.search.enabled = raw.search.enabled === true;
+      const providers = ['anysearch', 'exa', 'tavily', 'brave'];
+      base.search.provider = providers.includes(raw.search.provider) ? raw.search.provider : 'exa';
+      base.search.apiKey = String(raw.search.apiKey || '').trim();
+      const maxResults = Number(raw.search.maxResults);
+      if (Number.isFinite(maxResults)) {
+        base.search.maxResults = Math.min(10, Math.max(1, Math.round(maxResults)));
+      }
+      base.search.includeContent = raw.search.includeContent !== false;
+      const ranges = ['any', 'year', 'month', 'week'];
+      base.search.timeRange = ranges.includes(raw.search.timeRange) ? raw.search.timeRange : 'any';
     }
 
     if (raw.bridge && typeof raw.bridge === 'object') {

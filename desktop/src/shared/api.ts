@@ -2,6 +2,7 @@ import type {
   AiDeltaEvent,
   AiDoneEvent,
   AiErrorEvent,
+  AiStatusEvent,
   AiPlatform,
   AppSettings,
   BridgeStatus,
@@ -17,6 +18,7 @@ import type {
   SummaryRef,
   TrackBody,
   TabInfo,
+  WebReference,
   UpdateStatus,
   ExportPayload,
   LibraryIngestPayload,
@@ -54,6 +56,7 @@ export interface BsubApi {
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
   exportSettings(): Promise<Result<{ canceled: boolean; path?: string }>>;
   importSettings(): Promise<Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>>;
+  testSearch(query: string): Promise<Result<WebReference[]>>;
   testAi(platform?: AiPlatform): Promise<Result<{ latencyMs: number; message: string }>>;
   openDataDir(): Promise<void>;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;
@@ -71,6 +74,7 @@ export interface BsubApi {
   onAiDelta(cb: (event: AiDeltaEvent) => void): () => void;
   onAiDone(cb: (event: AiDoneEvent) => void): () => void;
   onAiError(cb: (event: AiErrorEvent) => void): () => void;
+  onAiStatus(cb: (event: AiStatusEvent) => void): () => void;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
 

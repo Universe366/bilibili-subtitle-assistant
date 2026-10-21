@@ -4,6 +4,7 @@ import type {
   AiDeltaEvent,
   AiDoneEvent,
   AiErrorEvent,
+  AiStatusEvent,
   AiPlatform,
   AppSettings,
   BridgeStatus,
@@ -14,6 +15,7 @@ import type {
   Result,
   SettingsSnapshot,
   StoredSummary,
+  WebReference,
   SubtitleBundle,
   SubtitleLine,
   SummarizeRequest,
@@ -78,6 +80,8 @@ const api: BsubApi = {
     ipcRenderer.invoke('settings:import') as Promise<
       Result<{ canceled: boolean; snapshot?: SettingsSnapshot }>
     >,
+  testSearch: (query: string) =>
+    ipcRenderer.invoke('search:test', query) as Promise<Result<WebReference[]>>,
   testAi: (platform?: AiPlatform) =>
     ipcRenderer.invoke('settings:test', platform) as Promise<
       Result<{ latencyMs: number; message: string }>
@@ -106,6 +110,7 @@ const api: BsubApi = {
   onAiDelta: (cb: (event: AiDeltaEvent) => void) => on<AiDeltaEvent>('ai:delta', cb),
   onAiDone: (cb: (event: AiDoneEvent) => void) => on<AiDoneEvent>('ai:done', cb),
   onAiError: (cb: (event: AiErrorEvent) => void) => on<AiErrorEvent>('ai:error', cb),
+  onAiStatus: (cb: (event: AiStatusEvent) => void) => on<AiStatusEvent>('ai:status', cb),
 
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<

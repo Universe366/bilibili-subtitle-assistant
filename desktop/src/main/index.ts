@@ -6,6 +6,7 @@ import { registerIpc } from './ipc';
 import { closeLibrary, getSummaryFor, ingestVideo, initLibrary, listLibrary, saveSummary, searchLibrary } from './library';
 import { getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
+import { searchWeb } from './search';
 import { buildExport } from './exporters';
 import { loadSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -154,6 +155,25 @@ function createWindow(): void {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
     void tabManager?.create(START_URL);
+
+    if (process.env.BSUB_SEARCH_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          const refs = await searchWeb(
+            { ...settings, search: { ...settings.search, enabled: true, provider: 'exa' } },
+            'B站 视频 总结'
+          );
+          console.log(
+            '[search-test]',
+            refs.length,
+            JSON.stringify(refs.map((ref) => ({ title: ref.title.slice(0, 40), url: ref.url })))
+          );
+        } catch (error) {
+          console.warn('[search-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
 
     if (process.env.BSUB_SETTINGS_TEST === '1') {
       setTimeout(async () => {

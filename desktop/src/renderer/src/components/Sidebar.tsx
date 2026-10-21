@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
 import { Captions, Library, Settings, Sparkles } from 'lucide-react';
 import type { Section, TabInfo } from '../../../shared/types';
@@ -26,6 +27,13 @@ export function Sidebar({
   activeTab: TabInfo | null;
   tabCount: number;
 }) {
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    void window.bsub.getSettings().then((response) => {
+      if (response.ok) setVersion(response.data.version);
+    });
+  }, []);
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -65,7 +73,7 @@ export function Sidebar({
       <div className="side-footer">
         <span className={`dot${tabCount > 0 ? ' is-on' : ''}`} />
         <span>插件未连接</span>
-        <span className="side-version">0.1.0</span>
+        <span className="side-version">{version ? `v${version}` : ''}</span>
       </div>
     </aside>
   );

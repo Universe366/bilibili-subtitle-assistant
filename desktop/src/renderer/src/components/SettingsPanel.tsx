@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Trash2,
   Upload,
   Wifi
@@ -16,8 +17,11 @@ import type {
   BridgeStatus,
   ExportFormat,
   PromptTemplate,
+  SearchProvider,
+  SearchTimeRange,
   ThemeMode,
-  UpdateStatus
+  UpdateStatus,
+  WebReference
 } from '../../../shared/types';
 
 function updateText(status: UpdateStatus | null): string {
@@ -59,6 +63,9 @@ export function SettingsPanel() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [searchTesting, setSearchTesting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('B站 视频 总结');
+  const [searchResults, setSearchResults] = useState<WebReference[] | null>(null);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [updateState, setUpdateState] = useState<UpdateStatus | null>(null);
 
@@ -111,6 +118,11 @@ export function SettingsPanel() {
   const updateAi = (patch: Partial<AppSettings['ai']>) => {
     if (!draft) return;
     setDraft({ ...draft, ai: { ...draft.ai, ...patch } });
+  };
+
+  const updateSearch = (patch: Partial<AppSettings['search']>) => {
+    if (!draft) return;
+    setDraft({ ...draft, search: { ...draft.search, ...patch } });
   };
 
   const updatePlatform = (patch: Partial<AiPlatform>) => {
@@ -220,6 +232,28 @@ export function SettingsPanel() {
       else setError(response.error);
     } finally {
       setTesting(false);
+    }
+  };
+
+  const testSearch = async () => {
+    setSearchTesting(true);
+    setMessage('');
+    setError('');
+    setSearchResults(null);
+    try {
+      const response = await window.bsub.testSearch(searchQuery);
+      if (response.ok) {
+        setSearchResults(response.data);
+        setMessage(
+          response.data.length
+            ? `检索到 ${response.data.length} 条参考资料`
+            : '没有检索到结果'
+        );
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setSearchTesting(false);
     }
   };
 
@@ -456,6 +490,109 @@ export function SettingsPanel() {
           value={activeTemplate.text}
           onChange={(event) => updateTemplate({ text: event.target.value })}
         />
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">联网检索</div>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.enabled}
+            onChange={(event) => updateSearch({ enabled: event.target.checked })}
+          />
+          总结时自动检索参考资料
+        </label>
+
+        <div className="settings-label">服务商</div>
+        <select
+          className="settings-input"
+          value={draft.search.provider}
+          onChange={(event) =>
+            updateSearch({ provider: event.target.value as SearchProvider })
+          }
+        >
+          <option value="exa">Exa（免 Key，推荐）</option>
+          <option value="anysearch">AnySearch（免 Key）</option>
+          <option value="tavily">Tavily（需 Key）</option>
+          <option value="brave">Brave（需 Key）</option>
+        </select>
+
+        {(draft.search.provider === 'tavily' || draft.search.provider === 'brave') && (
+          <>
+            <div className="settings-label">检索 API Key</div>
+            <input
+              className="settings-input"
+              type="password"
+              value={draft.search.apiKey}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => updateSearch({ apiKey: event.target.value })}
+            />
+          </>
+        )}
+
+        <div className="settings-inline">
+          <div className="settings-field">
+            <div className="settings-label">结果数</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={1}
+              max={10}
+              value={draft.search.maxResults}
+              onChange={(event) => updateSearch({ maxResults: Number(event.target.value) || 5 })}
+            />
+          </div>
+          <div className="settings-field">
+            <div className="settings-label">时间范围</div>
+            <select
+              className="settings-input"
+              value={draft.search.timeRange}
+              onChange={(event) =>
+                updateSearch({ timeRange: event.target.value as SearchTimeRange })
+              }
+            >
+              <option value="any">不限</option>
+              <option value="year">最近一年</option>
+              <option value="month">最近一月</option>
+              <option value="week">最近一周</option>
+            </select>
+          </div>
+        </div>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.includeContent}
+            onChange={(event) => updateSearch({ includeContent: event.target.checked })}
+          />
+          包含网页正文（Tavily）
+        </label>
+
+        <div className="settings-inline">
+          <input
+            className="settings-input"
+            value={searchQuery}
+            spellCheck={false}
+            placeholder="测试查询"
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button className="mini-btn" disabled={searchTesting} onClick={() => void testSearch()}>
+            {searchTesting ? <Loader2 size={12} className="spin" /> : <Search size={12} />} 测试检索
+          </button>
+        </div>
+        {searchResults && (
+          <div className="settings-hint">
+            找到 {searchResults.length} 条：
+            {searchResults
+              .slice(0, 3)
+              .map((item) => item.title)
+              .join(' / ')}
+          </div>
+        )}
+        <div className="settings-hint">
+          免 Key 引擎可能被限流；失败会自动换另一个免 Key 引擎。检索结果只作为总结参考。
+        </div>
       </div>
 
       <div className="settings-section">

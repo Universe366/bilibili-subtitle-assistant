@@ -7,6 +7,7 @@ import type {
   AiDeltaEvent,
   AiDoneEvent,
   AiErrorEvent,
+  AiStatusEvent,
   AiPlatform,
   AppSettings,
   BridgeStatus,
@@ -20,6 +21,7 @@ import type {
   SummaryRef,
   UpdateStatus,
   TrackBody,
+  WebReference,
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
@@ -32,6 +34,7 @@ import { activePlatform, loadSettings, saveSettings, settingsSnapshot, testPlatf
 import { bridgeStatus, restartBridge } from './bridge';
 import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
+import { testSearch } from './search';
 import { buildExport, exportFilters } from './exporters';
 
 function failure<T>(error: unknown): Result<T> {
@@ -350,7 +353,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
             info: payload.info,
             lines: payload.lines,
             signal: controller.signal,
-            onDelta: (delta) => send('ai:delta', { requestId, delta } satisfies AiDeltaEvent)
+            onDelta: (delta) => send('ai:delta', { requestId, delta } satisfies AiDeltaEvent),
+            onStatus: (status) => send('ai:status', { requestId, status } satisfies AiStatusEvent)
           });
           const saved = saveSummary(payload.info, result.text, result.model);
           send('ai:done', { requestId, text: result.text, model: result.model } satisfies AiDoneEvent);
@@ -373,6 +377,15 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('ai:cancel', (_event, requestId: string) => {
     aiControllers.get(requestId)?.abort();
+  });
+
+  ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {
+    try {
+      const q = String(query || '').trim() || 'B站 视频 总结';
+      return { ok: true, data: await testSearch(loadSettings(), q) };
+    } catch (error) {
+      return failure<WebReference[]>(error);
+    }
   });
 
   ipcMain.handle(

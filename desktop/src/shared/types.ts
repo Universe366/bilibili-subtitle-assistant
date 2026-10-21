@@ -158,6 +158,15 @@ export interface PromptTemplate {
   text: string;
 }
 
+export type SearchProvider = 'anysearch' | 'exa' | 'tavily' | 'brave';
+export type SearchTimeRange = 'any' | 'year' | 'month' | 'week';
+
+export interface WebReference {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface AppSettings {
@@ -176,6 +185,14 @@ export interface AppSettings {
   prompt: {
     activeId: string;
     templates: PromptTemplate[];
+  };
+  search: {
+    enabled: boolean;
+    provider: SearchProvider;
+    apiKey: string;
+    maxResults: number;
+    includeContent: boolean;
+    timeRange: SearchTimeRange;
   };
   export: {
     format: ExportFormat;
@@ -245,6 +262,11 @@ export interface ExportPayload {
 export interface AiDeltaEvent {
   requestId: string;
   delta: string;
+}
+
+export interface AiStatusEvent {
+  requestId: string;
+  status: string;
 }
 
 export interface SummarizeRequest {

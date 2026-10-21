@@ -35,6 +35,7 @@ export function SummaryPanel({
   const [track, setTrack] = useState<SubtitleTrack | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState('');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef('');
@@ -112,11 +113,17 @@ export function SummaryPanel({
       if (event.requestId !== requestRef.current) return;
       setError(event.error);
       setStreaming(false);
+      setStatus('');
+    });
+    const offStatus = window.bsub.onAiStatus((event) => {
+      if (event.requestId !== requestRef.current) return;
+      setStatus(event.status);
     });
     return () => {
       offDelta();
       offDone();
       offError();
+      offStatus();
     };
   }, []);
 
@@ -151,6 +158,7 @@ export function SummaryPanel({
     setStreaming(true);
     setStreamText('');
     setSummary('');
+    setStatus('准备字幕…');
 
     try {
       const data = await ensureLines();
@@ -236,9 +244,12 @@ export function SummaryPanel({
       )}
 
       {streaming && (
-        <pre className="summary-live" ref={liveRef}>
-          {streamText || '正在生成…'}
-        </pre>
+        <>
+          {status && <div className="status-line">{status}</div>}
+          <pre className="summary-live" ref={liveRef}>
+            {streamText || '正在生成…'}
+          </pre>
+        </>
       )}
 
       {!streaming && summary && (

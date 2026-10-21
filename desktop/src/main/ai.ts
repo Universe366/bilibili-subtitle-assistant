@@ -1,6 +1,7 @@
 import { session } from 'electron';
 import type { AiPlatform, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
+import { buildSearchQuery, searchWeb } from './search';
 
 const MAX_TRANSCRIPT_CHARS = 30000;
 const REQUEST_TIMEOUT_MS = 300000;
@@ -12,6 +13,7 @@ export interface SummarizeOptions {
   prompt?: string;
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
+  onStatus?: (status: string) => void;
 }
 
 function clock(seconds: number): string {
@@ -66,6 +68,36 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
     transcript
   ].join('\n');
 
+  let referencesBlock = '';
+  if (settings.search.enabled) {
+    options.onStatus?.('正在联网检索参考资料…');
+    try {
+      const references = await searchWeb(settings, buildSearchQuery(info.title, info.owner));
+      if (references.length) {
+        let budget = 6000;
+        const rows: string[] = [];
+        references.forEach((ref, index) => {
+          if (budget <= 0) return;
+          const snippet = ref.snippet.slice(0, Math.min(900, budget));
+          budget -= snippet.length;
+          rows.push(`[${index + 1}] ${ref.title}\n${ref.url}\n${snippet}`);
+        });
+        referencesBlock = [
+          '',
+          '联网参考资料（仅用于核对和补充，不要照抄；与字幕冲突时以字幕为准；使用到的地方用 [n] 标注来源）：',
+          rows.join('\n\n')
+        ].join('\n');
+        options.onStatus?.(`已检索到 ${references.length} 条参考资料`);
+      } else {
+        options.onStatus?.('没有检索到参考资料，仅根据字幕总结');
+      }
+    } catch (error) {
+      options.onStatus?.(`检索失败：${(error as Error).message}（继续总结）`);
+    }
+  }
+
+  options.onStatus?.('正在生成总结…');
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('AI 请求超时（5 分钟）')), REQUEST_TIMEOUT_MS);
   const forwardAbort = () => controller.abort();
@@ -86,7 +118,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
         max_tokens: settings.ai.maxTokens || undefined,
         messages: [
           { role: 'system', content: prompt },
-          { role: 'user', content: userContent }
+          { role: 'user', content: `${userContent}${referencesBlock}` }
         ]
       }),
       signal: controller.signal
