@@ -8,6 +8,7 @@
 npm install                 # jsdom / esbuild / fake-indexeddb
 npm test                    # 全部 node 套件（等价于下面逐个跑）
 npm run test:browser        # 4 个真实浏览器套件（需要 Chrome/Edge）
+npm run test:browser:smoke  # 10 项真实扩展冒烟：内嵌面板 / 评论区 / 折叠 / 侧边栏开关 / 设置页
 node bundle.js              # 把面板打包成 IIFE（jsdom 不执行 type=module 脚本）
 node panel-test.js          # 侧边栏渲染与纯逻辑
 node bg-test.js             # 后台 service worker 端到端
@@ -21,6 +22,7 @@ node asr-e2e-test.mjs       # ASR 400 端到端复现（含文案）
 node bridge-transparency-test.mjs  # 主环境桥透明性
 node method-contract-test.mjs      # 三层方法白名单一致性
 node m4a-encode-test.mjs           # 真实浏览器里的 M4A 编码
+node browser-smoke-test.js         # 真实加载扩展：内嵌面板/评论/折叠/开关/设置页（需网络）
 node ffmpeg-remux-test.mjs         # FFmpeg.wasm 封装重传
 node mp4-structure-test.mjs        # MP4 结构正确性
 node csp-ffmpeg-test.mjs           # CSP 等约束下的 FFmpeg 加载
