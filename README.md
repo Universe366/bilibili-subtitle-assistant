@@ -91,7 +91,7 @@ npm run test:browser        # 4 个真实浏览器套件（需要 Chrome/Edge）
 npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论区 / 侧边栏 / 设置页）
 ```
 
-当前 **21 个 node 套件、1465 项断言**全部通过；真实扩展冒烟需要本地 Edge/Chrome 与网络，未在 CI 中运行。
+当前 **21 个 node 套件、1466 项断言**全部通过；真实扩展冒烟需要本地 Edge/Chrome 与网络，未在 CI 中运行。
 
 ## 文档
 

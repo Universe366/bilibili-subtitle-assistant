@@ -166,6 +166,12 @@ export async function cachePutSubtitle(key, payload, meta = {}) {
   return row;
 }
 
+// 删除单条字幕缓存：发现签名不符/旧版本写入时，避免它继续占空间或再次命中
+export async function cacheDelSubtitle(key) {
+  await db.del(STORE_CACHE, key);
+  return { ok: true };
+}
+
 export async function cacheClearOld(days) {
   if (!days || days <= 0) return 0;
   const cutoff = Date.now() - days * 86400000;

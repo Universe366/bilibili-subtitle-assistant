@@ -648,6 +648,11 @@ const methods = {
     return { key };
   },
 
+  'subtitle.cache.delete': async (params) => {
+    const key = params && params.key ? params.key : ST.subtitleCacheKey(params || {});
+    return ST.cacheDelSubtitle(key);
+  },
+
   'subtitle.cache.clear-old': async () => {
     const s = await ST.loadSettings();
     return { removed: await ST.cacheClearOld(s.cache.subtitleTtlDays) };

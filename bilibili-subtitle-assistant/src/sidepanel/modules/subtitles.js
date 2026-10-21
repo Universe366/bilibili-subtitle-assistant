@@ -569,7 +569,14 @@ export async function harvestSubtitles(video, settings, hooks = {}) {
           const cacheSig = cache.row && cache.row.meta && cache.row.meta.signature;
           // 旧缓存没有签名（或签名不是当前视频）一律不用：
           // 否则一次错误写入会“稳定地”反复返回别的视频字幕。
-          if (cache.hit && cacheSig === video.signature && cache.row && Array.isArray(cache.row.payload?.lines) && cache.row.payload.lines.length) {
+          if (cache.hit && cache.row && cacheSig !== video.signature) {
+            attempt.cacheRejected = {
+              title: '缓存签名不符',
+              detail: `缓存属于 ${cacheSig || '旧版本（无签名）'}，当前视频是 ${video.signature || '未知'}；已删除这条缓存。`
+            };
+            // 顺手删掉，避免它继续占空间/下次再被读出来
+            call('subtitle.cache.delete', cacheParams).catch(() => {});
+          } else if (cache.hit && cacheSig === video.signature && cache.row && Array.isArray(cache.row.payload?.lines) && cache.row.payload.lines.length) {
             const cached = cache.row.payload.lines.map((l) => ({ from: l.from, to: l.to, text: l.text }));
             // 缓存也要校验：否则一旦某次把错误内容写进缓存，
             // 之后每次都会「稳定地」返回错内容（用户报的

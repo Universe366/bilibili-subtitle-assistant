@@ -883,6 +883,22 @@ export function attemptsDialog() {
         ])
       );
     }
+    const foreign = (d.pageBundle && d.pageBundle.foreignTracks) || [];
+    if (foreign.length) {
+      body.appendChild(h('div', { class: 'section-title', text: '被排除的跨视频字幕轨' }));
+      body.appendChild(
+        h('div', {
+          class: 'note',
+          text: '这些轨来自播放器实例/页面状态/网络嗅探，但无法证明属于当前视频，已丢弃。'
+        })
+      );
+      for (const f of foreign.slice(0, 12)) {
+        const line = h('div', { class: 'history-row' });
+        line.appendChild(h('div', { class: 't', text: `${f.from || '未知来源'}${f.lan ? ` · ${f.lan}` : ''}` }));
+        if (f.url) line.appendChild(h('div', { class: 'muted', text: f.url }));
+        body.appendChild(line);
+      }
+    }
     body.appendChild(h('div', { class: 'section-title', text: '字幕获取诊断' }));
     body.appendChild(
       h('div', { class: 'kv' }, [
@@ -927,6 +943,14 @@ export function attemptsDialog() {
       const line = h('div', { class: 'history-row' });
       line.appendChild(h('div', { class: 't', text: `${a.label}${a.isAi ? '（AI）' : ''}${a.from === 'api' ? '（来自接口）' : ''}` }));
       if (a.cached) line.appendChild(h('div', { class: 'muted', text: '来源：本地缓存' }));
+      if (a.cacheRejected) {
+        line.appendChild(
+          h('div', {
+            class: 'muted',
+            text: `缓存拒用：${a.cacheRejected.title || ''} ${a.cacheRejected.detail || ''}`
+          })
+        );
+      }
       if (a.error) line.appendChild(h('div', { class: 'muted', text: `下载失败：${a.error.title} ${a.error.detail || ''}` }));
       if (a.validation) {
         line.appendChild(
