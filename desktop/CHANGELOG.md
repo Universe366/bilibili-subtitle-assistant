@@ -1,5 +1,11 @@
 # 更新记录（桌面端）
 
+## 0.23.0（2026-10-22）
+
+### 新增
+- 检索平台新增博查 Bocha、Serper（Google）。
+- 检索平台共 6 家：Exa / AnySearch（免 Key）、Tavily / Brave / Bocha / Serper（需 Key）。
+
 ## 0.22.0（2026-10-22）
 
 ### 新增

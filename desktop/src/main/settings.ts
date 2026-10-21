@@ -484,7 +484,7 @@ function normalize(raw: any): AppSettings {
 
     if (raw.search && typeof raw.search === 'object') {
       base.search.enabled = raw.search.enabled === true;
-      const providers = ['anysearch', 'exa', 'tavily', 'brave'];
+      const providers = ['anysearch', 'exa', 'tavily', 'brave', 'bocha', 'serper'];
       base.search.provider = providers.includes(raw.search.provider) ? raw.search.provider : 'exa';
       base.search.apiKey = String(raw.search.apiKey || '').trim();
       const maxResults = Number(raw.search.maxResults);

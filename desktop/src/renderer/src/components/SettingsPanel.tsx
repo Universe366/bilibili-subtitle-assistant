@@ -1102,9 +1102,11 @@ export function SettingsPanel() {
           <option value="anysearch">AnySearch（免 Key）</option>
           <option value="tavily">Tavily（需 Key）</option>
           <option value="brave">Brave（需 Key）</option>
+          <option value="bocha">博查 Bocha（需 Key）</option>
+          <option value="serper">Serper Google（需 Key）</option>
         </select>
 
-        {(draft.search.provider === 'tavily' || draft.search.provider === 'brave') && (
+        {['tavily', 'brave', 'bocha', 'serper'].includes(draft.search.provider) && (
           <>
             <div className="settings-label">检索 API Key</div>
             <div className="settings-inline">

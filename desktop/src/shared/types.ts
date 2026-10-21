@@ -323,7 +323,13 @@ export interface PromptTemplate {
   text: string;
 }
 
-export type SearchProvider = 'anysearch' | 'exa' | 'tavily' | 'brave';
+export type SearchProvider =
+  | 'anysearch'
+  | 'exa'
+  | 'tavily'
+  | 'brave'
+  | 'bocha'
+  | 'serper';
 export type SearchTimeRange = 'any' | 'year' | 'month' | 'week';
 
 export interface WebReference {

@@ -122,6 +122,70 @@ async function searchBrave(query: string, settings: AppSettings): Promise<WebRef
   }));
 }
 
+async function searchBocha(query: string, settings: AppSettings): Promise<WebReference[]> {
+  const key = settings.search.apiKey.trim();
+  if (!key) throw new Error('博查 Bocha 需要 API Key（设置 → 联网检索）');
+  const res = await timeoutFetch('https://api.bochaai.com/v1/web-search', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`
+    },
+    body: JSON.stringify({
+      query,
+      count: settings.search.maxResults,
+      summary: true
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Bocha HTTP ${res.status}：${text.slice(0, 160)}`);
+  }
+  const json: any = await res.json();
+  const rows = json?.data?.webPages?.value || json?.webPages?.value || [];
+  return (Array.isArray(rows) ? rows : []).map((item: any) => ({
+    title: item.name || item.title,
+    url: item.url,
+    snippet: item.summary || item.snippet || ''
+  }));
+}
+
+async function searchSerper(query: string, settings: AppSettings): Promise<WebReference[]> {
+  const key = settings.search.apiKey.trim();
+  if (!key) throw new Error('Serper 需要 API Key（设置 → 联网检索）');
+  const tbs =
+    settings.search.timeRange === 'year'
+      ? 'qdr:y'
+      : settings.search.timeRange === 'month'
+        ? 'qdr:m'
+        : settings.search.timeRange === 'week'
+          ? 'qdr:w'
+          : '';
+  const res = await timeoutFetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-API-KEY': key
+    },
+    body: JSON.stringify({
+      q: query,
+      num: settings.search.maxResults,
+      ...(tbs ? { tbs } : {})
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Serper HTTP ${res.status}：${text.slice(0, 160)}`);
+  }
+  const json: any = await res.json();
+  const rows = Array.isArray(json?.organic) ? json.organic : [];
+  return rows.map((item: any) => ({
+    title: item.title,
+    url: item.link,
+    snippet: item.snippet || ''
+  }));
+}
+
 async function searchAnySearch(query: string, settings: AppSettings): Promise<WebReference[]> {
   const res = await timeoutFetch('https://api.anysearch.com/v1/search', {
     method: 'POST',
@@ -260,6 +324,12 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
   }
   if (settings.search.provider === 'brave') {
     return normalize(await searchBrave(query, settings), max);
+  }
+  if (settings.search.provider === 'bocha') {
+    return normalize(await searchBocha(query, settings), max);
+  }
+  if (settings.search.provider === 'serper') {
+    return normalize(await searchSerper(query, settings), max);
   }
 
   // 免 Key 引擎互为兜底；任一成功即可。
