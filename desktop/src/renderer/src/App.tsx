@@ -29,12 +29,22 @@ export default function App() {
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>('left');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
+  const [hasUpdate, setHasUpdate] = useState(false);
 
   const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
     setSidebarPosition(snapshot.settings.general.sidebarPosition);
     setSidebarCollapsed(snapshot.settings.general.sidebarCollapsed);
   };
+
+  useEffect(() => {
+    const apply = (state: string) =>
+      setHasUpdate(['available', 'downloading', 'downloaded'].includes(state));
+    void window.bsub.getUpdateStatus().then((response) => {
+      if (response.ok) apply(response.data.state);
+    });
+    return window.bsub.onUpdateStatus((status) => apply(status.state));
+  }, []);
 
   const commitSidebarWidth = (width: number) => {
     setSidebarWidth(width);
@@ -219,6 +229,7 @@ export default function App() {
           onDockChange={commitSidebarPosition}
           onToggleCollapse={commitSidebarToggle}
           onDragSnapshot={setDragSnapshot}
+          hasUpdate={hasUpdate}
         />
         <BrowserStage
           hasTab={Boolean(active)}

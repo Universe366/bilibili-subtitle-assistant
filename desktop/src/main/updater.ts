@@ -45,7 +45,7 @@ export function initUpdater(window: BrowserWindow): void {
     return;
   }
 
-  autoUpdater.autoDownload = false;
+  autoUpdater.autoDownload = settings.update.autoDownload === true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = false;
   autoUpdater.logger = console;
@@ -71,6 +71,9 @@ export function initUpdater(window: BrowserWindow): void {
       checkedAt: Date.now(),
       error: undefined
     });
+    if (settings.update.autoDownload === true) {
+      void downloadUpdate();
+    }
   });
   autoUpdater.on('update-not-available', (info) => {
     console.log('[update] not available', info.version);
@@ -114,7 +117,12 @@ export async function checkForUpdates(manual = true): Promise<UpdateStatus> {
     setStatus({ state: 'checking', manual, error: undefined });
     await autoUpdater.checkForUpdates();
   } catch (error) {
-    setStatus({ state: 'error', error: (error as Error).message, manual });
+    setStatus({
+      state: 'error',
+      error: (error as Error).message,
+      manual,
+      checkedAt: Date.now()
+    });
   }
   return status;
 }

@@ -2129,6 +2129,61 @@ button:disabled {
   background: rgba(192, 57, 43, 0.12);
 }
 
+.update-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.update-card.is-available,
+.update-card.is-downloaded {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.update-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.update-head .muted {
+  color: var(--faint);
+  font-size: 9.5px;
+  flex-shrink: 0;
+}
+
+.update-error {
+  color: #b71c1c;
+  font-size: 10px;
+  word-break: break-word;
+}
+
+.update-notes {
+  max-height: 180px;
+  overflow: auto;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.side-update-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
 .settings-advanced {
   margin-top: 6px;
   padding-top: 6px;

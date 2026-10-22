@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Markdown } from './Markdown';
 import {
   Download,
   FolderOpen,
@@ -78,7 +79,7 @@ function updateText(status: UpdateStatus | null): string {
     case 'available':
       return `发现新版本 ${status.version || ''}`;
     case 'not-available':
-      return '已是最新版本';
+      return `已是最新版本（v${status.currentVersion}）`;
     case 'downloading':
       return `正在下载 ${status.progress || 0}%`;
     case 'downloaded':
@@ -2237,14 +2238,31 @@ export function SettingsPanel() {
           <span>当前版本</span>
           <code>v{version}</code>
         </div>
-        <div className="update-state">{updateText(updateState)}</div>
-        {updateState?.state === 'downloading' && (
-          <div className="update-progress">
-            <span style={{ width: `${updateState.progress || 0}%` }} />
+        <div className={`update-card${updateState ? ` is-${updateState.state}` : ''}`}>
+          <div className="update-head">
+            <span>{updateText(updateState)}</span>
+            <span className="muted">当前 v{version}</span>
           </div>
-        )}
-        {(updateState?.state === 'available' || updateState?.state === 'downloaded') &&
-          updateState?.notes && <pre className="update-notes">{updateState.notes}</pre>}
+          {updateState?.checkedAt && (
+            <div className="settings-hint">
+              上次检查：{new Date(updateState.checkedAt).toLocaleString('zh-CN')}
+            </div>
+          )}
+          {updateState?.state === 'downloading' && (
+            <div className="update-progress">
+              <span style={{ width: `${updateState.progress || 0}%` }} />
+            </div>
+          )}
+          {updateState?.state === 'error' && updateState.error && (
+            <div className="update-error">{updateState.error}</div>
+          )}
+          {(updateState?.state === 'available' || updateState?.state === 'downloaded') &&
+            updateState?.notes && (
+              <div className="update-notes">
+                <Markdown content={updateState.notes} />
+              </div>
+            )}
+        </div>
 
         <div className="toolbar-actions">
           <button
@@ -2257,7 +2275,7 @@ export function SettingsPanel() {
             }
             onClick={() => void window.bsub.checkForUpdates()}
           >
-            <RefreshCw size={12} /> 检查
+            <RefreshCw size={12} /> {updateState?.state === 'error' ? '重试' : '检查'}
           </button>
           {updateState?.state === 'available' && (
             <button className="mini-btn primary" onClick={() => void window.bsub.downloadUpdate()}>
@@ -2283,6 +2301,20 @@ export function SettingsPanel() {
             }
           />
           启动后自动检查
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.update.autoDownload === true}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                update: { ...draft.update, autoDownload: event.target.checked }
+              })
+            }
+          />
+          发现新版本后自动下载（安装仍需重启）
         </label>
 
         <div className="settings-label">自定义更新源（可选）</div>

@@ -214,7 +214,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     estimateTimestamps: true
   },
   bridge: { enabled: true, port: 47821, token: '' },
-  update: { autoCheck: false, feedUrl: '' },
+  update: { autoCheck: true, autoDownload: false, feedUrl: '' },
   dataDir: ''
 };
 
@@ -583,6 +583,7 @@ function normalize(raw: any): AppSettings {
 
     if (raw.update && typeof raw.update === 'object') {
       base.update.autoCheck = raw.update.autoCheck !== false;
+      base.update.autoDownload = raw.update.autoDownload === true;
       base.update.feedUrl = typeof raw.update.feedUrl === 'string' ? raw.update.feedUrl.trim() : '';
     }
   }

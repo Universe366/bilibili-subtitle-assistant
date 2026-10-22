@@ -461,6 +461,7 @@ export interface AppSettings {
   };
   update: {
     autoCheck: boolean;
+    autoDownload: boolean;
     feedUrl: string;
   };
   dataDir: string;

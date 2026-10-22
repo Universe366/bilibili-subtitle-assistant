@@ -45,7 +45,8 @@ export function Sidebar({
   position = 'left',
   onDockChange,
   onToggleCollapse,
-  onDragSnapshot
+  onDragSnapshot,
+  hasUpdate = false
 }: {
   section: Section;
   onSelect: (section: Section) => void;
@@ -60,6 +61,7 @@ export function Sidebar({
   onDockChange?: (position: 'left' | 'right') => void;
   onToggleCollapse?: (collapsed: boolean) => void;
   onDragSnapshot?: (snapshot: string | null) => void;
+  hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
   const dragActiveRef = useRef(false);
@@ -219,6 +221,7 @@ export function Sidebar({
           >
             <Icon size={16} />
             <span>{label}</span>
+            {id === 'settings' && hasUpdate && <span className="side-update-dot" />}
           </button>
         ))}
       </nav>
