@@ -167,3 +167,12 @@ node spike/bridge-test.mjs
 - 当前使用 Electron 默认会话，登录态与扩展浏览器互不影响；app 内需要单独扫码一次。
 - `out/`、`resources/page-bridge.js`、`node_modules/` 均已忽略，不入库。
 - 截图：`out/m0.png`（`scripts/capture-window.ps1` 生成）。
+
+
+## 卸载
+
+- 安装版：Windows「设置 → 应用 → 已安装的应用」卸载「B站字幕助手」，或运行安装目录下的 `Uninstall B站字幕助手.exe`。
+- 卸载页可选择是否同时删除本地数据：
+  - 默认只删除程序、快捷方式和卸载项；
+  - 勾选后额外删除 `%APPDATA%sub-desktop`（设置、字幕库、登录状态、缓存、日志）和更新缓存。
+- 绿色版没有卸载器：退出程序后删除程序目录；如需彻底清理，再手动删除 `%APPDATA%sub-desktop`。

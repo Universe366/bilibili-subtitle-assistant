@@ -71,7 +71,13 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "artifactName": "bsub-desktop-setup-${version}.${ext}",
-      "shortcutName": "B站字幕助手"
+      "shortcutName": "B站字幕助手",
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ]
     },
     "asar": true,
     "publish": {
