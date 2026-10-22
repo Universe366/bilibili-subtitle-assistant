@@ -17,7 +17,7 @@ import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrac
 import { summarize } from './ai';
 import { searchWeb } from './search';
 import { applyCorrectionToText } from './correction';
-import { transcribeFile } from './asr';
+import { transcribe, transcribeFile } from './asr';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
@@ -766,6 +766,80 @@ function createWindow(): void {
           applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
         );
       }, 4000);
+    }
+
+    if (process.env.BSUB_LIVE_AI_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const wc = tabManager?.activeWebContents();
+          if (!wc) throw new Error('没有活动标签');
+          const info = await getPageInfo(wc);
+          const bundle = await getSubtitles(wc);
+          console.log('[live-ai] info', info.title, 'tracks', bundle.tracks.length, 'needLogin', bundle.needLogin);
+          if (!bundle.tracks.length) throw new Error('没有字幕轨');
+          const track = bundle.tracks[0];
+          const body = await getTrackBody(track.url);
+          const lines = body.lines;
+          console.log('[live-ai] lines', lines.length, 'track', track.lanDoc || track.lan);
+
+          const summary = await summarize({
+            info,
+            lines,
+            signal: undefined,
+            onStatus: (status) => console.log('[live-ai] status', status)
+          });
+          console.log('[live-ai] summary', summary.model, summary.text.length, JSON.stringify(summary.text.slice(0, 220)));
+
+          const answer = await chat({
+            info,
+            lines,
+            messages: [{ role: 'user', content: '用三句话概括这个视频。' }]
+          });
+          console.log('[live-ai] chat', answer.model, answer.text.length, JSON.stringify(answer.text.slice(0, 180)));
+
+          const translated = await translateLines(
+            lines.slice(0, 20),
+            'English',
+            (percent, message) => console.log('[live-ai] translate', Math.round(percent), message),
+            undefined,
+            loadSettings()
+          );
+          console.log('[live-ai] translate', translated.lines.length, JSON.stringify(translated.lines[0]?.text?.slice(0, 120)));
+
+          const suggestions = await optimizeLines(lines.slice(0, 30), () => undefined, undefined, loadSettings());
+          console.log('[live-ai] optimize', suggestions.length, JSON.stringify(suggestions.slice(0, 2)));
+
+          const chapters = await generateChapters(info, lines);
+          console.log('[live-ai] chapters', chapters.length, JSON.stringify(chapters.slice(0, 2)));
+          console.log('[live-ai] done');
+        } catch (error) {
+          console.warn('[live-ai] failed', (error as Error).message);
+        }
+      }, 9000);
+    }
+
+    if (process.env.BSUB_LIVE_ASR_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const wc = tabManager?.activeWebContents();
+          if (!wc) throw new Error('没有活动标签');
+          const info = await getPageInfo(wc);
+          console.log('[live-asr] info', info.title, 'duration', info.duration);
+          const started = Date.now();
+          const result = await transcribe(wc, info, (stage, percent, message) =>
+            console.log('[live-asr]', stage, Math.round(percent), message)
+          );
+          console.log(
+            '[live-asr] done',
+            result.model,
+            result.lines.length,
+            Math.round((Date.now() - started) / 1000) + 's',
+            JSON.stringify(result.lines.slice(0, 3))
+          );
+        } catch (error) {
+          console.warn('[live-asr] failed', (error as Error).message);
+        }
+      }, 9000);
     }
 
     if (process.env.BSUB_RESTORE_TEST === '1') {
