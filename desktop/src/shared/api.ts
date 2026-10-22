@@ -111,6 +111,7 @@ export interface BsubApi {
     platform: AiPlatform | AsrPlatform | SearchPlatform
   ): Promise<Result<{ ok: boolean; ms: number; sample: string }>>;
   openDataDir(): Promise<void>;
+  openExternal(url: string): Promise<void>;
   backupData(): Promise<Result<{ canceled: boolean; path?: string }>>;
   restoreData(): Promise<Result<{ canceled: boolean; restored?: boolean }>>;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;

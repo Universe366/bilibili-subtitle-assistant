@@ -367,6 +367,12 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('system:open-external', async (_event, url: string) => {
+    const value = String(url || '');
+    if (!/^https?:\/\//i.test(value)) throw new Error('只允许打开 http/https 链接');
+    await shell.openExternal(value);
+  });
+
   ipcMain.handle('clipboard:write', (_event, text: string) => {
     clipboard.writeText(String(text ?? ''));
   });
@@ -561,7 +567,15 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
             onStatus: (status) => send('ai:status', { requestId, status } satisfies AiStatusEvent)
           });
           const saved = saveSummary(payload.info, result.text, result.model);
-          send('ai:done', { requestId, text: result.text, model: result.model } satisfies AiDoneEvent);
+          send(
+            'ai:done',
+            {
+              requestId,
+              text: result.text,
+              model: result.model,
+              verification: result.verification
+            } satisfies AiDoneEvent
+          );
           send('library:changed', null);
           console.log('[m4] summary saved', saved.id, `chars=${result.text.length}`);
         } catch (error) {

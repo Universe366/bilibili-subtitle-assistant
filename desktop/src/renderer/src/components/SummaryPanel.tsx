@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, Sparkles, Square } from 'lucide-react';
-import type { Chapter, PageInfo, SubtitleLine, SubtitleTrack, TabInfo } from '../../../shared/types';
+import type {
+  Chapter,
+  PageInfo,
+  SubtitleLine,
+  SubtitleTrack,
+  TabInfo,
+  VerificationSummary
+} from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { ExportMenu } from './ExportMenu';
 import { pickTrack, videoKeyOf } from '../lib/video';
@@ -30,6 +37,7 @@ export function SummaryPanel({
 }) {
   const [info, setInfo] = useState<PageInfo | null>(null);
   const [summary, setSummary] = useState('');
+  const [verification, setVerification] = useState<VerificationSummary | null>(null);
   const [model, setModel] = useState('');
   const [updatedAt, setUpdatedAt] = useState(0);
   const [lines, setLines] = useState<SubtitleLine[]>([]);
@@ -111,6 +119,7 @@ export function SummaryPanel({
     const offDone = window.bsub.onAiDone((event) => {
       if (event.requestId !== requestRef.current) return;
       setSummary(event.text);
+      setVerification(event.verification || null);
       setModel(event.model);
       setUpdatedAt(Date.now());
       setStreaming(false);
@@ -329,6 +338,57 @@ export function SummaryPanel({
       {!streaming && summary && (
         <div className="summary-content">
           <Markdown content={summary} />
+        </div>
+      )}
+
+      {!streaming && verification && (
+        <div className="verify-card">
+          <div className="verify-head">
+            <span>本次联网核对</span>
+            <span className="verify-stats">
+              {verification.attempted} 项 · {verification.references.length} 条证据
+              {verification.judged ? ` · 丢弃 ${verification.dropped}` : ' · 未判定'}
+            </span>
+          </div>
+          {verification.supplements.length > 0 && (
+            <div className="verify-supplements">
+              {verification.supplements.map((item, index) => (
+                <div key={`${index}-${item.slice(0, 8)}`}>+ {item}</div>
+              ))}
+            </div>
+          )}
+          <details className="verify-details">
+            <summary>查看待核实项与证据</summary>
+            {verification.items.map((item, index) => (
+              <div key={`${index}-${item.query}`} className="verify-item">
+                <div className="verify-query">
+                  {item.query}
+                  <span className="verify-line">字幕：{item.line}</span>
+                </div>
+                {item.references.length === 0 ? (
+                  <div className="verify-none">没有可用证据</div>
+                ) : (
+                  item.references.map((reference) => (
+                    <button
+                      key={reference.url}
+                      className="verify-ref"
+                      title={reference.url}
+                      onClick={() => void window.bsub.openExternal(reference.url)}
+                    >
+                      <span className={`verify-verdict ${reference.verdict || 'unknown'}`}>
+                        {reference.verdict === 'support'
+                          ? '支持'
+                          : reference.verdict === 'refute'
+                            ? '反驳'
+                            : '未判定'}
+                      </span>
+                      <span className="verify-title">{reference.title}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ))}
+          </details>
         </div>
       )}
 

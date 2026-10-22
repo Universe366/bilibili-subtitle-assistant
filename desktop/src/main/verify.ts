@@ -1,5 +1,13 @@
 import { session } from 'electron';
-import type { AppSettings, PageInfo, SubtitleLine, WebReference } from '../shared/types';
+import type {
+  AppSettings,
+  PageInfo,
+  SubtitleLine,
+  VerificationSummary,
+  VerifiedReference,
+  VerifyVerdict,
+  WebReference
+} from '../shared/types';
 import { activePlatform } from './settings';
 import { rankReferences, searchWeb } from './search';
 
@@ -18,18 +26,10 @@ type Progress = (done: number, total: number, message: string) => void;
 export interface VerifyItem {
   query: string;
   line: string;
-  references: WebReference[];
+  references: VerifiedReference[];
 }
 
-export interface VerifyResult {
-  items: VerifyItem[];
-  references: WebReference[];
-  supplements: string[];
-  attempted: number;
-  failed: number;
-  judged: boolean;
-  dropped: number;
-}
+export type VerifyResult = VerificationSummary;
 
 function clean(value: string): string {
   return String(value || '')
@@ -247,6 +247,7 @@ async function judgeEvidence(
 
     const evidenceById = new Map(evidence.map((row) => [row.id, row]));
     const drop = new Set<string>();
+    const verdicts = new Map<string, VerifyVerdict>();
     for (const judgment of Array.isArray(parsed.judgments) ? parsed.judgments : []) {
       const row = evidenceById.get(String(judgment?.id || ''));
       if (!row) continue;
@@ -257,16 +258,22 @@ async function judgeEvidence(
         drop.add(row.id);
         continue;
       }
-      if (verdict === 'irrelevant') drop.add(row.id);
+      if (verdict === 'irrelevant') {
+        drop.add(row.id);
+      } else if (verdict === 'support' || verdict === 'refute') {
+        verdicts.set(row.id, verdict);
+      }
     }
 
     const kept = items.map((item, itemIndex) => ({
       ...item,
-      references: item.references.filter((_, refIndex) => {
+      references: item.references.flatMap((reference, refIndex) => {
         const row = evidence.find(
           (candidate) => candidate.itemIndex === itemIndex && candidate.refIndex === refIndex
         );
-        return row ? !drop.has(row.id) : true;
+        if (row && drop.has(row.id)) return [];
+        const verdict = row ? verdicts.get(row.id) : undefined;
+        return [verdict ? { ...reference, verdict } : reference];
       })
     }));
 

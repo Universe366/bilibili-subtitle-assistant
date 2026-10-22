@@ -373,6 +373,28 @@ export interface WebReference {
   snippet: string;
 }
 
+export type VerifyVerdict = 'support' | 'refute' | 'irrelevant';
+
+export interface VerifiedReference extends WebReference {
+  verdict?: VerifyVerdict;
+}
+
+export interface VerificationItem {
+  query: string;
+  line: string;
+  references: VerifiedReference[];
+}
+
+export interface VerificationSummary {
+  items: VerificationItem[];
+  references: VerifiedReference[];
+  supplements: string[];
+  attempted: number;
+  failed: number;
+  judged: boolean;
+  dropped: number;
+}
+
 export interface CorrectionRule {
   id: string;
   pattern: string;
@@ -649,6 +671,7 @@ export interface AiDoneEvent {
   requestId: string;
   text: string;
   model: string;
+  verification?: VerificationSummary;
 }
 
 export interface AiErrorEvent {

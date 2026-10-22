@@ -152,6 +152,7 @@ const api: BsubApi = {
       Result<{ latencyMs: number; message: string }>
     >,
   openDataDir: () => ipcRenderer.invoke('settings:open-data') as Promise<void>,
+  openExternal: (url: string) => ipcRenderer.invoke('system:open-external', url) as Promise<void>,
   backupData: () =>
     ipcRenderer.invoke('data:backup') as Promise<
       Result<{ canceled: boolean; path?: string }>

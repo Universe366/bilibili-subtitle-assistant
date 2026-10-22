@@ -1,5 +1,5 @@
 import { session } from 'electron';
-import type { AiPlatform, PageInfo, SubtitleLine } from '../shared/types';
+import type { AiPlatform, PageInfo, SubtitleLine, VerificationSummary } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
 import { buildSearchQuery, rankReferences, searchWeb } from './search';
 import { buildVerifyBlock, verifySummary } from './verify';
@@ -48,7 +48,7 @@ function errorForStatus(status: number, body: string): string {
   return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
 }
 
-export async function summarize(options: SummarizeOptions): Promise<{ text: string; model: string }> {
+export async function summarize(options: SummarizeOptions): Promise<{ text: string; model: string; verification?: VerificationSummary }> {
   const settings = loadSettings();
   const platform = options.platform || activePlatform(settings);
   const template = activePrompt(settings);
@@ -105,6 +105,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
   ].join('\n');
 
   let referencesBlock = '';
+  let verification: VerificationSummary | undefined;
   if (settings.search.enabled) {
     if (settings.search.verifySummary !== false) {
       options.onStatus?.('正在从字幕抽取待核实项…');
@@ -118,6 +119,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
             options.onStatus?.(`联网核对 ${done}/${total}：${query.slice(0, 28)}`)
         );
         referencesBlock = buildVerifyBlock(verified);
+        verification = verified;
         if (referencesBlock) {
           options.onStatus?.(
             `已核对 ${verified.attempted} 项，取得 ${verified.references.length} 条证据` +
@@ -199,7 +201,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
       const text = String(json?.choices?.[0]?.message?.content || '');
       if (!text.trim()) throw new Error('AI 返回为空');
       options.onDelta?.(text);
-      return { text, model: platform.model };
+      return { text, model: platform.model, verification };
     }
 
     const reader = response.body.getReader();
