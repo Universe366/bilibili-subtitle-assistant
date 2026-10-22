@@ -793,6 +793,35 @@ export function SettingsPanel() {
     setMessage(response.data.canceled ? '已取消' : `已导出到 ${response.data.path}`);
   };
 
+  const backupAll = async () => {
+    const response = await window.bsub.backupData();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setMessage(response.data.canceled ? '已取消' : `数据已备份到：${response.data.path || ''}`);
+  };
+
+  const restoreAll = async () => {
+    if (
+      !window.confirm(
+        '恢复备份会覆盖当前设置与字幕库，并自动重启程序。当前数据会先留一份 pre-restore 备份。继续？'
+      )
+    ) {
+      return;
+    }
+    const response = await window.bsub.restoreData();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    if (response.data.canceled) {
+      setMessage('已取消');
+      return;
+    }
+    setMessage('备份已恢复，程序正在重启…');
+  };
+
   const importSettings = async () => {
     if (!window.confirm('导入会覆盖当前设置（含 API Key 和插件桥 Token），继续？')) return;
     setMessage('');
@@ -2571,8 +2600,17 @@ export function SettingsPanel() {
             <Upload size={12} /> 导入设置
           </button>
         </div>
+        <div className="settings-inline">
+          <button className="mini-btn primary" onClick={() => void backupAll()}>
+            <Download size={12} /> 备份数据
+          </button>
+          <button className="mini-btn" onClick={() => void restoreAll()}>
+            <Upload size={12} /> 恢复备份
+          </button>
+        </div>
         <div className="settings-hint">
-          导出文件包含 API Key 与桥 Token；日志在数据目录的 startup.log / fatal.log。
+          导出设置只含配置；备份数据会复制 settings.json 和 library.db（含 API Key、桥 Token、字幕、总结、历史），请妥善保管。
+          日志在数据目录的 startup.log / fatal.log。
         </div>
       </SettingsSection>
 

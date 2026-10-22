@@ -152,6 +152,14 @@ const api: BsubApi = {
       Result<{ latencyMs: number; message: string }>
     >,
   openDataDir: () => ipcRenderer.invoke('settings:open-data') as Promise<void>,
+  backupData: () =>
+    ipcRenderer.invoke('data:backup') as Promise<
+      Result<{ canceled: boolean; path?: string }>
+    >,
+  restoreData: () =>
+    ipcRenderer.invoke('data:restore') as Promise<
+      Result<{ canceled: boolean; restored?: boolean }>
+    >,
   getBridgeStatus: () =>
     ipcRenderer.invoke('bridge:status') as Promise<Result<BridgeStatus>>,
   writeClipboard: (text: string) =>

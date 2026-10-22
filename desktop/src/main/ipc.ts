@@ -98,6 +98,7 @@ import { callMcpTool, listMcpTools } from './mcp';
 import { readSkillFile } from './skills';
 import { testSearch } from './search';
 import { probePlatformModels, testPlatformConnection } from './platform';
+import { backupData, restoreData } from './backup';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
 
@@ -514,6 +515,22 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('browser:set-visible', (_event, visible: boolean) => {
     tabs.setActiveViewVisible(visible === true);
+  });
+
+  ipcMain.handle('data:backup', async () => {
+    try {
+      return { ok: true, data: await backupData() };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  ipcMain.handle('data:restore', async () => {
+    try {
+      return { ok: true, data: await restoreData() };
+    } catch (error) {
+      return failure(error);
+    }
   });
 
   ipcMain.handle('settings:open-data', async () => {

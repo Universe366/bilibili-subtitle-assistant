@@ -97,6 +97,15 @@ export function initLibrary(): void {
   console.log('[library] ready', dbFile, `fts=${ftsEnabled}`);
 }
 
+export function checkpointLibrary(): void {
+  const database = requireDb();
+  try {
+    database.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch {
+    // WAL 可能已被其他连接占用，备份仍会复制主库文件
+  }
+}
+
 export function closeLibrary(): void {
   try {
     db?.close();
