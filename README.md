@@ -1,6 +1,6 @@
 <div align="center">
   <img src="docs/banner.png" alt="B站字幕助手" width="100%" />
-  <p><b>在 B 站视频侧边栏里，抓字幕、做转录、生成 AI 总结，然后导出。</b></p>
+  <p><b>浏览器扩展 + Windows 桌面端：抓字幕、语音转录、AI 总结、导出与本地字幕库。</b></p>
 </div>
 
 <p align="center">
@@ -118,6 +118,7 @@ flowchart LR
 - **主环境桥**负责读取页面里的播放器状态、字幕接口和音轨字节（Referer 必须由页面发出）。
 - **Service Worker** 负责 RPC、平台调用、重试与错误翻译；service worker 与面板是两份独立代码。
 - **侧边栏**只做 UI 与业务编排，所有配置都在这里完成。
+- **桌面端**（`desktop/`）是独立的 Electron 程序：主进程用 `WebContentsView` 承载 B 站页面、CDP 注入同一份 `page-bridge.js`；渲染进程是 React 侧栏 + 浏览器区域；字幕/总结/设置存在本地 SQLite 与 `settings.json`。
 
 ## 适合谁
 
@@ -139,6 +140,18 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 
 当前 **21 个 node 套件、1468 项断言**全部通过；真实扩展冒烟需要本地 Edge/Chrome 与网络，未在 CI 中运行。
 
+桌面端：
+
+```bash
+cd desktop
+npm install
+npm run typecheck
+npm run dev
+npm run dist
+```
+
+详见 [`desktop/README.md`](desktop/README.md)。
+
 ## 文档
 
 | 文件 | 内容 |
@@ -149,7 +162,7 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 | [`desktop/docs/PARITY.md`](desktop/docs/PARITY.md) | 桌面端 vs 插件功能矩阵与验收 |
 | [`desktop/docs/PLATFORMS.md`](desktop/docs/PLATFORMS.md) | 桌面端 AI / 检索 / ASR 平台目录 |
 | [`desktop/docs/REAL-REGRESSION.md`](desktop/docs/REAL-REGRESSION.md) | 真实平台回归前置条件与清单 |
-| [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) | 发布清单、易踩坑、版本同步与商店提交注意事项 |
+| [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) | 发布清单、桌面端构建/更新/卸载、易踩坑与商店提交注意事项 |
 | [`SECURITY.md`](SECURITY.md) | 安全问题与密钥泄露的处理方式 |
 | [`LICENSE`](LICENSE) | MIT（本项目代码） |
 | [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方组件许可证 |

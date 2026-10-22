@@ -80,9 +80,9 @@ GITHUB_TOKEN=... NODE_OPTIONS=--use-system-ca node tools/release.mjs --create --
 - 权限理由、隐私政策 URL、认证备注见 `docs/EDGE-STORE.md`；
 - 商店审核期间不要中途换包；审核通过后再提交新版本更新。
 
-## 2.5 桌面端（desktop/）
+### 2.5 桌面端（desktop/）
 
-### 构建与打包
+#### 构建与打包
 
 ```bash
 cd desktop
@@ -98,7 +98,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - `ffmpeg-static` 约 82MB，已配置 `asarUnpack`；不要把它打进 asar，否则 ASR 找不到可执行文件。
 - 打包产物在 `desktop/release/`，已被 `.gitignore` 忽略，不要提交。
 
-### 版本与发布
+#### 版本与发布
 
 - 桌面版本在 `desktop/package.json`，同步更新 `desktop/CHANGELOG.md`、`desktop/README.md` 的产物名和版本说明。
 - 发布仍用**合并 Release**：一个 `v*` tag 同时带插件 zip 与桌面 setup/green/latest.yml。
@@ -106,14 +106,14 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `bsub-desktop-setup-${version}.exe`）。
 - 当前最新 Release 的桌面资产可能落后于源码；发布前先确认 `desktop/package.json` 版本高于 Release 资产，否则客户端会显示“已是最新”。
 
-### 自动更新
+#### 自动更新
 
 - `electron-updater` + GitHub provider；`autoCheck` 默认开启，`autoDownload` 默认关闭，安装仍要重启。
 - 只有**安装版**能自动更新；绿色版手动替换。
 - 自定义 generic 源通过设置 `update.feedUrl`，修改后下次启动生效。
 - 未签名时 SmartScreen 仍会提示；签名后再谈“无感更新”。
 
-### 卸载与数据
+#### 卸载与数据
 
 - 安装包 `nsis.include=build/installer.nsh`，`deleteAppDataOnUninstall=false`。
 - 自定义卸载页默认只删程序；勾选后删除 `%APPDATA%\bsub-desktop` 与 `%LOCALAPPDATA%\bsub-desktop-updater`。
