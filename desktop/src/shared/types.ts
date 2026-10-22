@@ -401,8 +401,10 @@ export interface VerifiedReference extends WebReference {
 }
 
 export interface VerificationItem {
+  label?: string;
   query: string;
   line: string;
+  context?: string;
   references: VerifiedReference[];
 }
 

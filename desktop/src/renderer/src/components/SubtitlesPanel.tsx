@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Copy, Eye, Loader2, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, Copy, Eye, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
   OptimizeSuggestion,
   PageInfo,
@@ -101,6 +101,8 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const optimizeRequestRef = useRef('');
   const [quality, setQuality] = useState<QualityReport | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState('');
   const [checkingQuality, setCheckingQuality] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [subtitleQuery, setSubtitleQuery] = useState('');
@@ -550,6 +552,41 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     void window.bsub.writeClipboard(lines.map((line) => line.text).join('\n'));
     setSaveMessage(`已复制 ${lines.length} 行字幕`);
     window.setTimeout(() => setSaveMessage(''), 3000);
+  };
+
+  const commitEdit = () => {
+    if (editingIndex == null) return;
+    const next = lines.map((line, index) =>
+      index === editingIndex ? { ...line, text: editingText } : line
+    );
+    setLines(next);
+    if (track?.source === 'asr' && infoRef.current) {
+      setAsrResult(videoKeyRef.current, infoRef.current, next);
+    }
+    setEditingIndex(null);
+    setEditingText('');
+    setSaveMessage('已修改此行');
+    window.setTimeout(() => setSaveMessage(''), 2000);
+  };
+
+  const clearSubtitles = () => {
+    if (!lines.length) return;
+    if (!window.confirm('清空当前字幕显示？不会删除本地库、缓存或视频。')) return;
+    setLines([]);
+    setEditingIndex(null);
+    setEditingText('');
+    setTranslated(null);
+    setTranslatedLang('');
+    setViewMode('original');
+    setSuggestions(null);
+    setSelectedSuggestions(new Set());
+    setQuality(null);
+    setSearchOpen(false);
+    setSubtitleQuery('');
+    setSearchIndex(0);
+    setError(null);
+    setSaveMessage('已清空当前字幕显示');
+    window.setTimeout(() => setSaveMessage(''), 2500);
   };
 
   const copyLine = (text: string) => {
@@ -1065,15 +1102,46 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
               onClick={() => jump(line)}
             >
               <span className="sub-time">{fmtTime(line.start)}</span>
-              <span
-                className="sub-text"
-                title={`${fmtTime(line.start)} – ${fmtTime(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
-                  1,
-                  Math.round(line.text.length / 4)
-                )} 秒`}
+              {editingIndex === index ? (
+                <input
+                  className="sub-edit"
+                  autoFocus
+                  value={editingText}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => setEditingText(event.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      commitEdit();
+                    } else if (event.key === 'Escape') {
+                      setEditingIndex(null);
+                      setEditingText('');
+                    }
+                  }}
+                />
+              ) : (
+                <span
+                  className="sub-text"
+                  title={`${fmtTime(line.start)} – ${fmtTime(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
+                    1,
+                    Math.round(line.text.length / 4)
+                  )} 秒`}
+                >
+                  {line.text}
+                </span>
+              )}
+              <button
+                className="sub-edit-btn"
+                title="编辑此行"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setEditingIndex(index);
+                  setEditingText(line.text);
+                }}
               >
-                {line.text}
-              </span>
+                <Pencil size={10} />
+              </button>
               <button
                 className="sub-copy"
                 title="复制此行"

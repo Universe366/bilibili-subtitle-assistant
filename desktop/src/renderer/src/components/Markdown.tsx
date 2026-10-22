@@ -41,6 +41,16 @@ function inline(text: string, keyPrefix: string): React.ReactNode[] {
   return nodes;
 }
 
+function splitTableRow(line: string): string[] {
+  const text = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  return text.split('|').map((cell) => cell.trim());
+}
+
+function isTableSeparator(line: string): boolean {
+  const cells = splitTableRow(line);
+  return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
 export function Markdown({ content }: { content: string }) {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const blocks: React.ReactNode[] = [];
@@ -73,7 +83,8 @@ export function Markdown({ content }: { content: string }) {
     code = null;
   };
 
-  for (const rawLine of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const rawLine = lines[lineIndex];
     const line = rawLine.trimEnd();
 
     if (line.trim().startsWith('```')) {
@@ -90,6 +101,43 @@ export function Markdown({ content }: { content: string }) {
     }
     if (!line.trim()) {
       flushList();
+      continue;
+    }
+
+    if (line.includes('|') && isTableSeparator(lines[lineIndex + 1] || '')) {
+      flushList();
+      const header = splitTableRow(line);
+      const rows: string[][] = [];
+      let cursor = lineIndex + 2;
+      while (cursor < lines.length && lines[cursor].includes('|') && lines[cursor].trim()) {
+        rows.push(splitTableRow(lines[cursor]));
+        cursor += 1;
+      }
+      blocks.push(
+        <div className="md-table-wrap" key={`table-${key++}`}>
+          <table>
+            <thead>
+              <tr>
+                {header.map((cell, index) => (
+                  <th key={`th-${index}`}>{inline(cell, `th-${key}-${index}`)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={`tr-${rowIndex}`}>
+                  {header.map((_, cellIndex) => (
+                    <td key={`td-${rowIndex}-${cellIndex}`}>
+                      {inline(row[cellIndex] || '', `td-${rowIndex}-${cellIndex}`)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      lineIndex = cursor - 1;
       continue;
     }
 

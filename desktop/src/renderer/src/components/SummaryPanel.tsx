@@ -410,10 +410,15 @@ export function SummaryPanel({
           )}
           <details className="verify-details">
             <summary>查看待核实项与证据</summary>
-            {verification.items.map((item, index) => (
+            {verification.items.filter((item) => item.references.length > 0).length === 0 && (
+              <div className="verify-none">本次没有取得可用证据</div>
+            )}
+            {verification.items
+              .filter((item) => item.references.length > 0)
+              .map((item, index) => (
               <div key={`${index}-${item.query}`} className="verify-item">
                 <div className="verify-query">
-                  {item.query}
+                  {item.label || item.query}
                   <span className="verify-line">字幕：{item.line}</span>
                 </div>
                 {item.references.length === 0 ? (

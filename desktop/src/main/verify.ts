@@ -24,8 +24,10 @@ const STOPWORDS = new Set([
 type Progress = (done: number, total: number, message: string) => void;
 
 export interface VerifyItem {
+  label?: string;
   query: string;
   line: string;
+  context?: string;
   references: VerifiedReference[];
 }
 
@@ -128,6 +130,77 @@ function extractItems(lines: SubtitleLine[], limit: number): Array<{ term: strin
   return picked.slice(0, total);
 }
 
+function contextWindowFor(lines: SubtitleLine[], lineText: string, maxChars = 140): string {
+  const index = lines.findIndex((line) => line.text === lineText);
+  if (index < 0) return clean(lineText).slice(0, maxChars);
+  const picked: string[] = [];
+  let total = 0;
+  const take = (at: number) => {
+    const text = clean(lines[at]?.text || '');
+    if (!text || total + text.length > maxChars) return;
+    picked.push(text);
+    total += text.length + 1;
+  };
+  take(index);
+  for (let distance = 1; distance <= 2 && total < maxChars; distance += 1) {
+    take(index - distance);
+    take(index + distance);
+  }
+  return picked.join(' ').slice(0, maxChars);
+}
+
+function contextualQuery(term: string, context: string): string {
+  const value = clean(term);
+  const window = clean(context);
+  if (!window) return value;
+  if (window.length <= 90) return window;
+  const index = window.toLowerCase().indexOf(value.toLowerCase());
+  if (index < 0) return `${value} ${window.slice(0, 80)}`.slice(0, 100);
+  return window.slice(Math.max(0, index - 30), Math.min(window.length, index + value.length + 45)).trim();
+}
+
+const CJK_STOP = new Set([
+  '视频', '内容', '我们', '他们', '你们', '这个', '那个', '什么', '怎么', '为什',
+  '可以', '应该', '如果', '因为', '所以', '但是', '而且', '然后', '现在', '今天',
+  '一个', '一些', '非常', '特别', '其实', '就是', '这样', '那样', '大家', '自己',
+  '问题', '时候', '地方', '东西', '事情', '情况', '方面', '方式', '方法', '结果',
+  '第一', '第二', '第三', '最后', '开始', '结束', '发布', '正式', '目前', '今年',
+  '去年', '明年', '最新', '最近', '以及', '还有', '不过', '或者', '因此', '只要',
+  '已经', '正在', '表示', '认为', '觉得', '知道', '看到', '进行', '出现', '发生',
+  '成为', '作为', '通过', '根据', '关于', '对于', '由于', '同时', '此外', '例如',
+  '比如', '包括', '主要', '重要', '可能', '需要', '提供', '支持', '使用', '实现'
+]);
+
+function normalizeMatch(value: string): string {
+  return String(value || '')
+    .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\u3000/g, ' ')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function queryTokens(query: string): { strong: string[]; cjk: string[] } {
+  const text = normalizeMatch(query);
+  const strong: string[] = [];
+  const cjk: string[] = [];
+  for (const match of text.matchAll(/[a-z0-9]+|[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+/g)) {
+    const segment = match[0];
+    if (/^[a-z0-9]/.test(segment)) {
+      if (segment.length >= 2 && !STOPWORDS.has(segment) && !strong.includes(segment)) {
+        strong.push(segment);
+      }
+      continue;
+    }
+    for (let index = 0; index + 1 < segment.length; index += 1) {
+      const bigram = segment.slice(index, index + 2);
+      if (!CJK_STOP.has(bigram) && !cjk.includes(bigram)) cjk.push(bigram);
+    }
+  }
+  return { strong, cjk };
+}
+
 async function mapLimit<T, R>(
   items: T[],
   limit: number,
@@ -148,13 +221,20 @@ async function mapLimit<T, R>(
 }
 
 function relevant(query: string, reference: WebReference): boolean {
-  const text = `${reference.title} ${reference.snippet}`.toLowerCase();
-  const terms = query
-    .toLowerCase()
-    .split(/[^a-z0-9一-龥]+/i)
-    .filter((term) => term.length >= 2 && !STOPWORDS.has(term));
-  if (!terms.length) return Boolean(reference.snippet.trim());
-  return terms.some((term) => text.includes(term));
+  const hay = normalizeMatch(`${reference.title} ${reference.snippet}`);
+  if (!hay) return false;
+  const { strong, cjk } = queryTokens(query);
+  if (!strong.length && !cjk.length) return false;
+  if (strong.length) {
+    const hits = strong.filter((term) => hay.includes(term)).length;
+    if (hits === 0) return false;
+  }
+  if (cjk.length) {
+    const hits = cjk.filter((term) => hay.includes(term)).length;
+    if (hits === 0) return false;
+    if (cjk.length >= 4 && hits / cjk.length < 0.25) return false;
+  }
+  return true;
 }
 
 function evidenceText(reference: WebReference): string {
@@ -217,7 +297,7 @@ async function judgeEvidence(
     '',
     ...evidence.map(
       (row) =>
-        `${row.id} | 待核实项：${row.item.query} | 字幕：${row.item.line.slice(0, 70)} | ` +
+        `${row.id} | 待核实项：${row.item.label || row.item.query} | 字幕：${row.item.line.slice(0, 70)} | ` +
         `标题：${row.reference.title} | 摘要：${row.reference.snippet.slice(0, 320)}`
     )
   ].join('\n');
@@ -308,10 +388,15 @@ export async function verifySummary(
   onProgress: Progress
 ): Promise<VerifyResult> {
   const limit = Math.max(1, Math.min(20, Number(settings.search.verifyItemCount) || 12));
-  const items = extractItems(lines, limit).map((item) => ({
-    query: item.term,
-    line: item.line
-  }));
+  const items = extractItems(lines, limit).map((item) => {
+    const context = contextWindowFor(lines, item.line);
+    return {
+      label: item.term,
+      query: contextualQuery(item.term, context),
+      line: item.line,
+      context
+    };
+  });
 
   if (!items.length) {
     return {
@@ -340,21 +425,22 @@ export async function verifySummary(
       : item.query;
     try {
       const raw = await searchWeb(settings, searchQuery);
-      const ranked = rankReferences(searchQuery, raw)
-        .filter((reference) => relevant(searchQuery, reference))
+      const label = item.label || item.query;
+      const ranked = rankReferences(label, raw)
+        .filter((reference) => relevant(label, reference))
         .slice(0, 2);
       done += 1;
-      onProgress(done, items.length, item.query);
+      onProgress(done, items.length, label);
       return { ...item, references: ranked };
     } catch {
       failed += 1;
       done += 1;
-      onProgress(done, items.length, item.query);
+      onProgress(done, items.length, item.label || item.query);
       return { ...item, references: [] as WebReference[] };
     }
   });
 
-  let finalItems = results;
+  let finalItems: VerifyItem[] = results;
   let supplements: string[] = [];
   let judged = false;
   let dropped = 0;
