@@ -11,7 +11,7 @@
 | AI 对话 | ✅ | mock + 真实 DeepSeek（891 字） | 已真实跑通 |
 | 字幕翻译 | ✅ | mock + 真实 DeepSeek（20 行 English，时间轴保持） | 已真实跑通 |
 | AI 优化字幕 | ✅ | mock + 真实 DeepSeek（30 行输入，10 处改动） | 已真实跑通 |
-| ASR 转录 | ✅ | mock + 真实 SiliconFlow（213 秒视频，2 段，10 行，29 秒） | 长视频成本/语种仍是风险 |
+| ASR 转录 | ✅ | mock + 真实 SiliconFlow（213 秒，2 段，10 行；显式 en 生效） | 长视频成本仍是风险 |
 | 批量 / 历史 | ✅ | 库内批量；URL 2/2 成功；非法/重复/失效 BV 分支验证 | 无字幕视频分支待补 |
 | 导出扩展 | ✅ | VTT/ASS/笔记模板输出 | — |
 | 质量检查 / 章节 | ✅ | 质检 5 类问题；mock 2 段 + 真实 DeepSeek 12 段 | 质检为启发式，非 AI |
@@ -82,7 +82,7 @@
 - 翻译：20 行 English，时间轴保持。
 - 优化：30 行输入，10 处改动。
 - 章节：12 段。
-- ASR：SiliconFlow SenseVoice，213 秒视频，2 段切片，10 行，29 秒。
+- ASR：SiliconFlow SenseVoice，213 秒视频，2 段切片，10 行；自动模式 29 秒，显式 en 59 秒且英文更稳定。
 - 搜索：Exa 5 条；音轨 3 条候选 + Range 1KB。
 - URL 批量：2 个链接成功；非法/重复 URL、失效 BV（1 秒失败）分支通过。
 - MCP：Exa 真实端点返回 `web_search_exa` / `web_fetch_exa`，实际搜索成功。

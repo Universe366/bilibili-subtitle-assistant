@@ -373,10 +373,12 @@ async function transcribeChunk(
         const form = new FormData();
         form.append('file', new Blob([new Uint8Array(buffer)], { type: mime }), `chunk.${ext}`);
         form.append('model', platform.model);
-        if (fullParams) {
-          if (language) form.append('language', language);
-          form.append('response_format', 'verbose_json');
+        // 显式选了语言就发给平台；minimal 平台（硅基流动）只发 file+model，
+        // 但用户明确指定语言时仍应尊重设置。
+        if (language && (fullParams || settings.language !== 'auto')) {
+          form.append('language', language);
         }
+        if (fullParams) form.append('response_format', 'verbose_json');
         body = form;
       } else if (transport === 'base64-json') {
         headers['content-type'] = 'application/json';

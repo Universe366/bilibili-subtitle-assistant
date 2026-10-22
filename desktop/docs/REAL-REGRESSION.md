@@ -28,7 +28,7 @@
 | 字幕翻译 | ✅ | 20 行译为 English，时间轴保持 |
 | AI 优化 | ✅ | 30 行输入，返回 10 处改动（如 `IPHONE` → `iPhone`） |
 | AI 章节 | ✅ | 12 段，含标题与起止时间 |
-| 真实 ASR | ✅ | `BV1GJ411x7h7` 213 秒 / 1.1 MB 音轨；2 段切片；10 行；29 秒；SenseVoice |
+| 真实 ASR | ✅ | `BV1GJ411x7h7` 213 秒 / 1.1 MB；2 段；10 行；`language=en` 时英文输出明显改善 |
 | B 站音轨候选 | ✅ | 3 条 candidate，首条 `playurl-api（已验证）` |
 | 音轨 Range | ✅ | 1024 字节，`application/octet-stream` |
 | Exa 在线搜索 | ✅ | 5 条真实结果 |
@@ -62,7 +62,7 @@ npm run dev
 
 1. **URL 批量边界**：非法链接/重复/失效 BV 已测；无字幕视频的失败分支未测。
 2. **真实 MCP SSE**：HTTP 已用 Exa 真实端点验证；SSE 仍只有 mock。
-3. **ASR 语种**：音乐视频中 SenseVoice 自动语种出现中/韩混出，属于模型自动识别限制；后续可按视频语言固定 `asr.language`。
+3. **ASR 语种**：自动模式仍可能混出；显式设置 `asr.language=en` 已实测生效。
 4. **长视频/成本**：本次 AI 视频 24:52、字幕 751 行，未统计真实 token 费用。
 5. **未签名**：SmartScreen 仍会提示；签名按当前决定暂不做。
 
