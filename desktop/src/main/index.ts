@@ -149,6 +149,28 @@ function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'Escape' || input.key === 'Esc') {
+      if (!mainWindow?.isFullScreen()) return;
+      event.preventDefault();
+      void tabManager?.activeWebContents()?.executeJavaScript(
+        'document.fullscreenElement ? document.exitFullscreen().catch(() => null) : null'
+      ).catch(() => undefined);
+      mainWindow.setFullScreen(false);
+      return;
+    }
+    if (input.key === 'F11') {
+      event.preventDefault();
+      mainWindow?.setFullScreen(!mainWindow.isFullScreen());
+      return;
+    }
+    if (input.control && input.shift && input.key.toLowerCase() === 'q') {
+      event.preventDefault();
+      app.quit();
+    }
+  });
+
   tabManager = new TabManager(
     mainWindow,
     (tabs) => {
@@ -743,6 +765,33 @@ function createWindow(): void {
           applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
         );
       }, 4000);
+    }
+
+    if (process.env.BSUB_FULLSCREEN_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const win = mainWindow;
+          if (!win) return;
+          win.setFullScreen(true);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const wc = tabManager?.activeWebContents();
+          wc?.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          const afterView = win.isFullScreen();
+          if (afterView) win.setFullScreen(false);
+          win.setFullScreen(true);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          console.log('[fullscreen-test]', JSON.stringify({
+            afterViewEscape: afterView,
+            afterWindowEscape: win.isFullScreen()
+          }));
+          win.setFullScreen(false);
+        } catch (error) {
+          console.warn('[fullscreen-test] failed', (error as Error).message);
+        }
+      }, 6500);
     }
 
     if (process.env.BSUB_SAVE_AUDIT === '1') {

@@ -185,6 +185,40 @@ export class TabManager {
     if (!view) return;
     const wc = view.webContents;
     const touch = () => this.emit();
+    const ownerWindow = () => BrowserWindow.fromWebContents(wc);
+
+    wc.on('enter-html-full-screen', () => {
+      const win = ownerWindow();
+      if (win && !win.isFullScreen()) win.setFullScreen(true);
+    });
+    wc.on('leave-html-full-screen', () => {
+      const win = ownerWindow();
+      if (win?.isFullScreen()) win.setFullScreen(false);
+    });
+    wc.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      const win = ownerWindow();
+      if (input.key === 'Escape') {
+        if (!win?.isFullScreen()) return;
+        event.preventDefault();
+        void wc
+          .executeJavaScript(
+            'document.fullscreenElement ? document.exitFullscreen().catch(() => null) : null'
+          )
+          .catch(() => undefined);
+        win.setFullScreen(false);
+        return;
+      }
+      if (input.key === 'F11') {
+        event.preventDefault();
+        win?.setFullScreen(!win.isFullScreen());
+        return;
+      }
+      if (input.control && input.shift && input.key.toLowerCase() === 'q') {
+        event.preventDefault();
+        app.quit();
+      }
+    });
 
     wc.on('page-title-updated', (_event, title) => {
       if (!title || title === 'about:blank') return;
