@@ -174,11 +174,11 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('page:subtitles', async (): Promise<Result<SubtitleBundle>> => {
+  ipcMain.handle('page:subtitles', async (_event, expectSignature?: string): Promise<Result<SubtitleBundle>> => {
     const wc = tabs.activeWebContents();
     if (!wc) return { ok: false, error: '没有打开的页面' };
     try {
-      const bundle = await getSubtitles(wc);
+      const bundle = await getSubtitles(wc, String(expectSignature || '') || undefined);
       console.log(
         '[m2] subtitles',
         `tracks=${bundle.tracks.length}`,

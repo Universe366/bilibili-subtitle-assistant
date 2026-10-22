@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Copy, Eye, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Copy, Eye, Loader2, Pencil, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react';
 import type {
   OptimizeSuggestion,
   PageInfo,
@@ -77,7 +77,13 @@ async function pickFullestTrack(
   return bestCount > 0 ? best : initial;
 }
 
-export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
+export function SubtitlesPanel({
+  activeTab,
+  onOpenSummary
+}: {
+  activeTab: TabInfo | null;
+  onOpenSummary?: () => void;
+}) {
   const [info, setInfo] = useState<PageInfo | null>(null);
   const [bundle, setBundle] = useState<SubtitleBundle | null>(null);
   const [track, setTrack] = useState<SubtitleTrack | null>(null);
@@ -407,7 +413,9 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       setError(null);
       try {
         let infoResult = await window.bsub.getPageInfo();
-        let subtitlesResult = await window.bsub.getSubtitles();
+        let subtitlesResult = await window.bsub.getSubtitles(
+          infoResult.ok ? infoResult.data.signature : undefined
+        );
         for (let attempt = 0; attempt < 4; attempt += 1) {
           if (cancelled) return;
           const identity =
@@ -427,7 +435,9 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           if (ready) break;
           await new Promise((resolve) => setTimeout(resolve, 700));
           infoResult = await window.bsub.getPageInfo();
-          subtitlesResult = await window.bsub.getSubtitles();
+          subtitlesResult = await window.bsub.getSubtitles(
+            infoResult.ok ? infoResult.data.signature : undefined
+          );
         }
         if (cancelled) return;
         if (

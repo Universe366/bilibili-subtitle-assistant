@@ -73,7 +73,7 @@ export interface BsubApi {
   onTabs(cb: (tabs: TabInfo[]) => void): () => void;
 
   getPageInfo(): Promise<Result<PageInfo>>;
-  getSubtitles(): Promise<Result<SubtitleBundle>>;
+  getSubtitles(expectSignature?: string): Promise<Result<SubtitleBundle>>;
   getTrackBody(url: string): Promise<Result<TrackBody>>;
   getTime(): Promise<Result<{ currentTime: number; duration: number }>>;
   seek(time: number): Promise<void>;

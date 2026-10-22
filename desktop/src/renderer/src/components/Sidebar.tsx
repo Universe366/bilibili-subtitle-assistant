@@ -46,6 +46,7 @@ export function Sidebar({
   onDockChange,
   onToggleCollapse,
   onDragSnapshot,
+  onOpenSummary,
   hasUpdate = false
 }: {
   section: Section;
@@ -61,6 +62,7 @@ export function Sidebar({
   onDockChange?: (position: 'left' | 'right') => void;
   onToggleCollapse?: (collapsed: boolean) => void;
   onDragSnapshot?: (snapshot: string | null) => void;
+  onOpenSummary?: () => void;
   hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
@@ -235,7 +237,9 @@ export function Sidebar({
         />
       )}
       <div className="side-content" style={{ zoom: fontScale }}>
-        {section === 'subtitles' && <SubtitlesPanel activeTab={activeTab} />}
+        {section === 'subtitles' && (
+          <SubtitlesPanel activeTab={activeTab} onOpenSummary={onOpenSummary} />
+        )}
 
         {section === 'chat' && (
           <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />

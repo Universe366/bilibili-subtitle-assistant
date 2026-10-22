@@ -230,6 +230,10 @@ export default function App() {
           onToggleCollapse={commitSidebarToggle}
           onDragSnapshot={setDragSnapshot}
           hasUpdate={hasUpdate}
+          onOpenSummary={() => {
+            setSection('summary');
+            window.setTimeout(() => window.dispatchEvent(new Event('bsub:summary-request')), 80);
+          }}
         />
         <BrowserStage
           hasTab={Boolean(active)}

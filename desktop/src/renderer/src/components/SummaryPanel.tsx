@@ -45,6 +45,7 @@ export function SummaryPanel({
   const [lines, setLines] = useState<SubtitleLine[]>([]);
   const [track, setTrack] = useState<SubtitleTrack | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [summaryVideoKey, setSummaryVideoKey] = useState('');
   const [streamText, setStreamText] = useState('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
@@ -54,12 +55,14 @@ export function SummaryPanel({
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef('');
+  const streamingRef = useRef(false);
   const liveRef = useRef<HTMLPreElement>(null);
 
   const videoKey = videoKeyOf(activeTab?.url);
   const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
 
   useEffect(() => {
+    if (streamingRef.current) return;
     if (requestRef.current) {
       void window.bsub.cancelSummary(requestRef.current);
       requestRef.current = '';
@@ -82,6 +85,7 @@ export function SummaryPanel({
   }, [activeTab?.id, videoKey]);
 
   useEffect(() => {
+    if (streamingRef.current) return;
     if (!activeTab || activeTab.loading || !isVideoPage) return;
     let cancelled = false;
     setLoading(true);
@@ -147,6 +151,7 @@ export function SummaryPanel({
     });
     const offError = window.bsub.onAiError((event) => {
       if (event.requestId !== requestRef.current) return;
+      streamingRef.current = false;
       setError(event.error);
       setStreaming(false);
       setStatus('');
@@ -173,7 +178,7 @@ export function SummaryPanel({
     if (!infoResponse.ok) throw new Error(infoResponse.error);
     const currentInfo = infoResponse.data;
 
-    const subtitles = await window.bsub.getSubtitles();
+    const subtitles = await window.bsub.getSubtitles(currentInfo.signature);
     if (!subtitles.ok) throw new Error(subtitles.error);
 
     const chosen = pickTrack(subtitles.data.tracks, currentInfo);
@@ -216,7 +221,9 @@ export function SummaryPanel({
   const generate = async () => {
     if (streaming) return;
     setError(null);
+    streamingRef.current = true;
     setStreaming(true);
+    setSummaryVideoKey(videoKey);
     setStreamText('');
     setSummary('');
     setVerification(null);
@@ -240,8 +247,17 @@ export function SummaryPanel({
   };
 
   const cancel = () => {
+    streamingRef.current = false;
     if (requestRef.current) void window.bsub.cancelSummary(requestRef.current);
   };
+
+  useEffect(() => {
+    const handler = () => {
+      void generate();
+    };
+    window.addEventListener('bsub:summary-request', handler);
+    return () => window.removeEventListener('bsub:summary-request', handler);
+  }, [generate]);
 
   const loadChapters = async () => {
     if (chaptersLoading) return;
@@ -370,6 +386,12 @@ export function SummaryPanel({
             {streamText || '正在生成…'}
           </pre>
         </>
+      )}
+
+      {!streaming && summary && summaryVideoKey && summaryVideoKey !== videoKey && (
+        <div className="summary-verify-hint">
+          <span>这份总结属于上一个视频；切换回该视频或重新生成。</span>
+        </div>
       )}
 
       {!streaming && summary && (!verifyEnabled || !verification) && (

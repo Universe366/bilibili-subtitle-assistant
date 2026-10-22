@@ -164,8 +164,16 @@ export async function getPageInfo(wc: WebContents): Promise<PageInfo> {
   return info;
 }
 
-export async function getSubtitles(wc: WebContents): Promise<SubtitleBundle> {
-  const raw = await callPage<any>(wc, 'getSubtitleBundle', {}, 35000);
+export async function getSubtitles(
+  wc: WebContents,
+  expectSignature?: string
+): Promise<SubtitleBundle> {
+  const raw = await callPage<any>(
+    wc,
+    'getSubtitleBundle',
+    expectSignature ? { expectSignature } : {},
+    35000
+  );
   const tracks: SubtitleTrack[] = (raw && Array.isArray(raw.tracks) ? raw.tracks : [])
     .filter((track: any) => track && track.url)
     .map((track: any) => ({

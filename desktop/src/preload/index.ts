@@ -88,7 +88,8 @@ const api: BsubApi = {
   onTabs: (cb: (tabs: TabInfo[]) => void) => on<TabInfo[]>('tabs:changed', cb),
 
   getPageInfo: () => ipcRenderer.invoke('page:info') as Promise<Result<PageInfo>>,
-  getSubtitles: () => ipcRenderer.invoke('page:subtitles') as Promise<Result<SubtitleBundle>>,
+  getSubtitles: (expectSignature?: string) =>
+    ipcRenderer.invoke('page:subtitles', expectSignature) as Promise<Result<SubtitleBundle>>,
   getTrackBody: (url: string) => ipcRenderer.invoke('page:track-body', url) as Promise<Result<TrackBody>>,
   getTime: () =>
     ipcRenderer.invoke('page:time') as Promise<Result<{ currentTime: number; duration: number }>>,
