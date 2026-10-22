@@ -74,9 +74,9 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 除了浏览器扩展，仓库里还有一个 Windows 桌面端 `desktop/`：把 B 站浏览器、字幕、AI 和本地库放进同一个程序，适合不想开浏览器扩展、或需要本地库/批量处理的场景。
 
 <p align="center">
-  <img src="docs/screenshots/desktop-sidebar.png" alt="桌面端侧栏：本地字幕库" width="422" />
+  <img src="docs/screenshots/desktop-sidebar.png" alt="桌面端侧栏：空库状态" width="422" />
 </p>
-<p align="center"><sub>桌面端侧栏：本地字幕库；截图使用演示数据</sub></p>
+<p align="center"><sub>桌面端侧栏：空库状态（0 个视频，无测试/历史数据）</sub></p>
 
 - 内置 B 站浏览器（多标签、登录、播放、弹幕、评论），扩展里的字幕/总结/翻译/优化/章节/ASR/MCP/Skills 都有对应原生入口
 - 本地 SQLite 字幕库：入库、全文搜索、历史、批量总结、URL 批量抓取
