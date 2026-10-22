@@ -774,36 +774,48 @@ function createWindow(): void {
           if (!win) return;
           const result = await win.webContents.executeJavaScript(`
             (async () => {
-              const resizer = document.querySelector('.sidebar-resizer');
-              if (!resizer) return { error: 'no resizer' };
-              const rect = resizer.getBoundingClientRect();
-              resizer.dispatchEvent(new MouseEvent('mousedown', {
-                bubbles: true, clientX: rect.left + 2, clientY: rect.top + 20
-              }));
-              window.dispatchEvent(new MouseEvent('mousemove', {
-                bubbles: true, clientX: window.innerWidth - 40, clientY: rect.top + 20
-              }));
-              window.dispatchEvent(new MouseEvent('mouseup', {
-                bubbles: true, clientX: window.innerWidth - 40, clientY: rect.top + 20
-              }));
-              await new Promise((resolve) => setTimeout(resolve, 700));
-              return {
-                bodyClass: document.querySelector('.app-body')?.className || '',
-                sidebarWidth: document.querySelector('.sidebar')?.getBoundingClientRect().width || 0,
-                stageWidth: document.querySelector('.browser-stage')?.getBoundingClientRect().width || 0
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const drag = async (element, startX, endX) => {
+                const rect = element.getBoundingClientRect();
+                element.dispatchEvent(new MouseEvent('mousedown', {
+                  bubbles: true, clientX: startX, clientY: rect.top + 12
+                }));
+                window.dispatchEvent(new MouseEvent('mousemove', {
+                  bubbles: true, clientX: endX, clientY: rect.top + 12
+                }));
+                window.dispatchEvent(new MouseEvent('mouseup', {
+                  bubbles: true, clientX: endX, clientY: rect.top + 12
+                }));
+                await wait(650);
               };
+              const collapseIcon = () =>
+                document.querySelector('.sidebar-collapse svg')?.getAttribute('class') || '';
+              const brand = document.querySelector('.brand');
+              if (!brand) return { error: 'no brand' };
+              const before = {
+                body: document.querySelector('.app-body')?.className,
+                title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
+                icon: collapseIcon()
+              };
+              await drag(brand, 80, window.innerWidth - 50);
+              const afterDock = {
+                body: document.querySelector('.app-body')?.className,
+                width: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width || 0),
+                title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
+                icon: collapseIcon()
+              };
+              const resizer = document.querySelector('.sidebar-resizer');
+              if (resizer) await drag(resizer, 900, 1180);
+              const afterCollapse = {
+                body: document.querySelector('.app-body')?.className,
+                width: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width || 0),
+                title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
+                icon: collapseIcon()
+              };
+              return { before, afterDock, afterCollapse };
             })()
           `);
           console.log('[dock-test]', JSON.stringify(result));
-          await win.webContents.executeJavaScript(`
-            (async () => {
-              const resizer = document.querySelector('.sidebar-resizer');
-              if (!resizer) return;
-              const rect = resizer.getBoundingClientRect();
-              resizer.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: rect.left + 2 }));
-              await new Promise((resolve) => setTimeout(resolve, 500));
-            })()
-          `);
         } catch (error) {
           console.warn('[dock-test] failed', (error as Error).message);
         }

@@ -6,8 +6,8 @@ import {
   Library,
   ListChecks,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronLeft,
+  ChevronRight,
   Settings,
   Sparkles
 } from 'lucide-react';
@@ -75,27 +75,26 @@ export function Sidebar({
       startPosition === 'left'
         ? clientX > window.innerWidth * 0.62
         : clientX < window.innerWidth * 0.38;
+    const rawWidthAt = (clientX: number) => {
+      const delta = startPosition === 'left' ? clientX - startX : startX - clientX;
+      return startWidth + delta;
+    };
     const move = (moveEvent: MouseEvent) => {
-      const delta =
-        startPosition === 'left'
-          ? moveEvent.clientX - startX
-          : startX - moveEvent.clientX;
+      const raw = rawWidthAt(moveEvent.clientX);
       const width = crossedAt(moveEvent.clientX)
         ? startWidth
-        : Math.min(560, Math.max(260, startWidth + delta));
+        : Math.min(560, Math.max(260, raw));
       onWidthChange?.(width);
     };
     const up = (upEvent: MouseEvent) => {
       const crossed = crossedAt(upEvent.clientX);
-      const delta =
-        startPosition === 'left' ? upEvent.clientX - startX : startX - upEvent.clientX;
-      const width = crossed
-        ? startWidth
-        : Math.min(560, Math.max(260, startWidth + delta));
-      if (crossed) {
+      const raw = rawWidthAt(upEvent.clientX);
+      if (raw < 190) {
+        onToggleCollapse?.(true);
+      } else if (crossed) {
         onDockChange?.(startPosition === 'left' ? 'right' : 'left');
       } else {
-        onWidthCommit?.(width);
+        onWidthCommit?.(Math.min(560, Math.max(260, raw)));
       }
 
       document.body.style.userSelect = '';
@@ -109,12 +108,52 @@ export function Sidebar({
     window.addEventListener('mouseup', up);
   };
 
+  const startDockDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    let moved = false;
+    const move = (moveEvent: MouseEvent) => {
+      if (Math.abs(moveEvent.clientX - startX) > 4) moved = true;
+    };
+    const up = (upEvent: MouseEvent) => {
+      if (moved) {
+        const crossed =
+          position === 'left'
+            ? upEvent.clientX > window.innerWidth * 0.62
+            : upEvent.clientX < window.innerWidth * 0.38;
+        if (crossed) onDockChange?.(position === 'left' ? 'right' : 'left');
+      }
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  const CollapseIcon = collapsed
+    ? position === 'left'
+      ? ChevronRight
+      : ChevronLeft
+    : position === 'left'
+      ? ChevronLeft
+      : ChevronRight;
+
   return (
     <aside
       className={`sidebar${collapsed ? ' is-collapsed' : ''}`}
       style={{ width: collapsed ? 56 : sidebarWidth }}
     >
-      <div className="brand">
+      <div
+        className="brand"
+        onMouseDown={startDockDrag}
+        title="按住标题栏拖动到另一侧"
+      >
         <div className="brand-mark">字</div>
         <div className="brand-text">
           <div className="brand-name">字幕助手</div>
@@ -123,9 +162,10 @@ export function Sidebar({
         <button
           className="sidebar-collapse"
           title={collapsed ? '展开侧栏' : '折叠侧栏'}
+          onMouseDown={(event) => event.stopPropagation()}
           onClick={() => onToggleCollapse?.(!collapsed)}
         >
-          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+          <CollapseIcon size={15} />
         </button>
       </div>
 
@@ -147,8 +187,8 @@ export function Sidebar({
         <div
           className="sidebar-resizer"
           onMouseDown={startResize}
-          onDoubleClick={() => onDockChange?.(position === 'left' ? 'right' : 'left')}
-          title="拖动调整宽度；拖过页面中线或双击切换到另一侧"
+          onDoubleClick={() => onToggleCollapse?.(true)}
+          title="拖动调宽；拖得很窄会折叠；双击折叠；拖标题栏换边"
         />
       )}
       <div className="side-content" style={{ zoom: fontScale }}>
