@@ -403,6 +403,8 @@ export interface AppSettings {
     cacheSubtitles: boolean;
     fontScale: number;
     sidebarWidth: number;
+    sidebarPosition: 'left' | 'right';
+    sidebarCollapsed: boolean;
     autoFollow: boolean;
   };
   ai: {

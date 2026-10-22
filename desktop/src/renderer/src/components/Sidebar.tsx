@@ -6,6 +6,8 @@ import {
   Library,
   ListChecks,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Sparkles
 } from 'lucide-react';
@@ -38,7 +40,9 @@ export function Sidebar({
   fontScale = 1,
   sidebarWidth = 320,
   onWidthChange,
-  onWidthCommit
+  onWidthCommit,
+  collapsed = false,
+  onToggleCollapse
 }: {
   section: Section;
   onSelect: (section: Section) => void;
@@ -48,6 +52,8 @@ export function Sidebar({
   sidebarWidth?: number;
   onWidthChange?: (width: number) => void;
   onWidthCommit?: (width: number) => void;
+  collapsed?: boolean;
+  onToggleCollapse?: (collapsed: boolean) => void;
 }) {
   const [version, setVersion] = useState('');
   useEffect(() => {
@@ -79,13 +85,23 @@ export function Sidebar({
   };
 
   return (
-    <aside className="sidebar" style={{ width: sidebarWidth }}>
+    <aside
+      className={`sidebar${collapsed ? ' is-collapsed' : ''}`}
+      style={{ width: collapsed ? 56 : sidebarWidth }}
+    >
       <div className="brand">
         <div className="brand-mark">字</div>
         <div className="brand-text">
           <div className="brand-name">字幕助手</div>
           <div className="brand-sub">Desktop</div>
         </div>
+        <button
+          className="sidebar-collapse"
+          title={collapsed ? '展开侧栏' : '折叠侧栏'}
+          onClick={() => onToggleCollapse?.(!collapsed)}
+        >
+          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+        </button>
       </div>
 
       <nav className="side-nav">
@@ -102,7 +118,9 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="sidebar-resizer" onMouseDown={startResize} title="拖动调整侧栏宽度" />
+      {!collapsed && (
+        <div className="sidebar-resizer" onMouseDown={startResize} title="拖动调整侧栏宽度" />
+      )}
       <div className="side-content" style={{ zoom: fontScale }}>
         {section === 'subtitles' && <SubtitlesPanel activeTab={activeTab} />}
 

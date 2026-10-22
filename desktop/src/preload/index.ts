@@ -103,6 +103,12 @@ const api: BsubApi = {
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),
 
   getSettings: () => ipcRenderer.invoke('settings:get') as Promise<Result<SettingsSnapshot>>,
+  setSidebarLayout: (patch: {
+    width?: number;
+    position?: 'left' | 'right';
+    collapsed?: boolean;
+  }) =>
+    ipcRenderer.invoke('settings:sidebar-layout', patch) as Promise<Result<SettingsSnapshot>>,
   setSidebarWidth: (width: number) =>
     ipcRenderer.invoke('settings:sidebar-width', width) as Promise<Result<SettingsSnapshot>>,
   saveSettings: (next: AppSettings) =>

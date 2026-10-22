@@ -949,6 +949,27 @@ export function SettingsPanel() {
           }
         />
 
+        <div className="settings-label">侧栏位置</div>
+        <select
+          className="settings-input"
+          value={draft.general.sidebarPosition || 'left'}
+          onChange={(event) =>
+            updateGeneral({ sidebarPosition: event.target.value as 'left' | 'right' })
+          }
+        >
+          <option value="left">左侧</option>
+          <option value="right">右侧</option>
+        </select>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.general.sidebarCollapsed === true}
+            onChange={(event) => updateGeneral({ sidebarCollapsed: event.target.checked })}
+          />
+          折叠侧栏（只保留图标）
+        </label>
+
         <div className="settings-label">后台标签休眠（分钟）</div>
         <input
           className="settings-input"

@@ -78,6 +78,7 @@ import {
   loadSettings,
   saveSettings,
   setSidebarWidth,
+  setSidebarLayout,
   settingsSnapshot,
   testPlatform
 } from './settings';
@@ -437,6 +438,23 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return failure(error);
     }
   });
+
+  ipcMain.handle(
+    'settings:sidebar-layout',
+    (
+      _event,
+      patch: { width?: number; position?: 'left' | 'right'; collapsed?: boolean }
+    ) => {
+      try {
+        setSidebarLayout(patch || {});
+        const snapshot = settingsSnapshot();
+        send('settings:changed', snapshot);
+        return { ok: true, data: snapshot };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
 
   ipcMain.handle('settings:sidebar-width', (_event, width: number) => {
     try {

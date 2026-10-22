@@ -103,6 +103,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     cacheSubtitles: true,
     fontScale: 1,
     sidebarWidth: 320,
+    sidebarPosition: 'left',
+    sidebarCollapsed: false,
     autoFollow: true
   },
   ai: {
@@ -238,6 +240,8 @@ function normalize(raw: any): AppSettings {
       if (Number.isFinite(sidebarWidth)) {
         base.general.sidebarWidth = Math.min(560, Math.max(260, Math.round(sidebarWidth)));
       }
+      base.general.sidebarPosition = raw.general.sidebarPosition === 'right' ? 'right' : 'left';
+      base.general.sidebarCollapsed = raw.general.sidebarCollapsed === true;
       base.general.autoFollow = raw.general.autoFollow !== false;
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
@@ -646,9 +650,24 @@ function mergeSecrets(next: AppSettings, current: AppSettings): AppSettings {
 }
 
 export function setSidebarWidth(width: number): AppSettings {
+  return setSidebarLayout({ width });
+}
+
+export function setSidebarLayout(patch: {
+  width?: number;
+  position?: 'left' | 'right';
+  collapsed?: boolean;
+}): AppSettings {
   const settings = loadSettings();
-  const value = Math.min(560, Math.max(260, Math.round(width)));
-  settings.general.sidebarWidth = value;
+  if (Number.isFinite(Number(patch.width))) {
+    settings.general.sidebarWidth = Math.min(560, Math.max(260, Math.round(Number(patch.width))));
+  }
+  if (patch.position === 'left' || patch.position === 'right') {
+    settings.general.sidebarPosition = patch.position;
+  }
+  if (typeof patch.collapsed === 'boolean') {
+    settings.general.sidebarCollapsed = patch.collapsed;
+  }
   return saveSettings(settings);
 }
 

@@ -26,11 +26,26 @@ export default function App() {
   const [findResult, setFindResult] = useState<FindResult | null>(null);
   const [fontScale, setFontScale] = useState(1);
   const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>('left');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
+    setSidebarWidth(snapshot.settings.general.sidebarWidth);
+    setSidebarPosition(snapshot.settings.general.sidebarPosition);
+    setSidebarCollapsed(snapshot.settings.general.sidebarCollapsed);
+  };
 
   const commitSidebarWidth = (width: number) => {
     setSidebarWidth(width);
-    void window.bsub.setSidebarWidth(width).then((response) => {
-      if (response.ok) setSidebarWidth(response.data.settings.general.sidebarWidth);
+    void window.bsub.setSidebarLayout({ width }).then((response) => {
+      if (response.ok) applyLayout(response.data);
+    });
+  };
+
+  const commitSidebarToggle = (collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+    void window.bsub.setSidebarLayout({ collapsed }).then((response) => {
+      if (response.ok) applyLayout(response.data);
     });
   };
 
@@ -57,12 +72,12 @@ export default function App() {
     void window.bsub.getSettings().then((response) => {
       if (response.ok) {
         setFontScale(response.data.settings.general.fontScale || 1);
-        setSidebarWidth(response.data.settings.general.sidebarWidth || 320);
+        applyLayout(response.data);
       }
     });
     return window.bsub.onSettingsChanged((snapshot) => {
       setFontScale(snapshot.settings.general.fontScale || 1);
-      setSidebarWidth(snapshot.settings.general.sidebarWidth || 320);
+      applyLayout(snapshot);
     });
   }, []);
 
@@ -181,7 +196,7 @@ export default function App() {
           onClose={closeFind}
         />
       )}
-      <div className="app-body">
+      <div className={`app-body sidebar-${sidebarPosition}${sidebarCollapsed ? ' is-collapsed' : ''}`}>
         <Sidebar
           section={section}
           onSelect={setSection}
@@ -191,6 +206,8 @@ export default function App() {
           sidebarWidth={sidebarWidth}
           onWidthChange={setSidebarWidth}
           onWidthCommit={commitSidebarWidth}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={commitSidebarToggle}
         />
         <BrowserStage hasTab={Boolean(active)} />
       </div>
