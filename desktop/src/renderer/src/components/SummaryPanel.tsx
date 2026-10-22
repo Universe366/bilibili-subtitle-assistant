@@ -49,6 +49,7 @@ export function SummaryPanel({
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chaptersOpen, setChaptersOpen] = useState(false);
   const [chaptersLoading, setChaptersLoading] = useState(false);
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export function SummaryPanel({
     setError(null);
     setStreaming(false);
     setChapters([]);
+    setChaptersOpen(false);
     setChaptersLoading(false);
     setChapterError(null);
   }, [activeTab?.id, videoKey]);
@@ -84,9 +86,15 @@ export function SummaryPanel({
     let cancelled = false;
     setLoading(true);
 
-    window.bsub
-      .getPageInfo()
-      .then(async (response) => {
+    void (async () => {
+      try {
+        let response = await window.bsub.getPageInfo();
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          if (cancelled) return;
+          if (response.ok && response.data.bvid && response.data.cid) break;
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          response = await window.bsub.getPageInfo();
+        }
         if (cancelled) return;
         if (!response.ok) {
           setError(response.error);
@@ -105,10 +113,10 @@ export function SummaryPanel({
           setModel(saved.data.model);
           setUpdatedAt(saved.data.updatedAt);
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -123,6 +131,12 @@ export function SummaryPanel({
     });
     const offDone = window.bsub.onAiDone((event) => {
       if (event.requestId !== requestRef.current) return;
+      console.log(
+        '[summary-done]',
+        event.verification
+          ? `${event.verification.attempted}/${event.verification.references.length}`
+          : 'none'
+      );
       setSummary(event.text);
       setVerification(event.verification || null);
       setFromSaved(false);
@@ -236,7 +250,10 @@ export function SummaryPanel({
     try {
       const data = await ensureLines();
       const response = await window.bsub.generateChapters(data.info, data.lines);
-      if (response.ok) setChapters(response.data);
+      if (response.ok) {
+        setChapters(response.data);
+        setChaptersOpen(response.data.length > 0 && response.data.length <= 4);
+      }
       else setChapterError(response.error);
     } catch (caught) {
       setChapterError((caught as Error).message);
@@ -304,19 +321,28 @@ export function SummaryPanel({
       {chapterError && <div className="settings-hint">章节生成失败：{chapterError}</div>}
 
       {chapters.length > 0 && (
-        <div className="chapters-card">
-          <div className="chapters-head">章节</div>
-          {chapters.map((chapter) => (
-            <button
-              key={`${chapter.start}-${chapter.title}`}
-              className="chapter-row"
-              onClick={() => void window.bsub.seek(chapter.start + 0.05)}
-            >
-              <span className="chapter-time">{fmtTime(chapter.start)}</span>
-              <span className="chapter-title">{chapter.title}</span>
-            </button>
-          ))}
-        </div>
+        <details
+          className="chapters-card"
+          open={chaptersOpen}
+          onToggle={(event) => setChaptersOpen(event.currentTarget.open)}
+        >
+          <summary className="chapters-head">
+            <span>章节 · {chapters.length}</span>
+            <span className="chapters-toggle">{chaptersOpen ? '收起' : '展开'}</span>
+          </summary>
+          <div className="chapters-list">
+            {chapters.map((chapter) => (
+              <button
+                key={`${chapter.start}-${chapter.title}`}
+                className="chapter-row"
+                onClick={() => void window.bsub.seek(chapter.start + 0.05)}
+              >
+                <span className="chapter-time">{fmtTime(chapter.start)}</span>
+                <span className="chapter-title">{chapter.title}</span>
+              </button>
+            ))}
+          </div>
+        </details>
       )}
 
       {error && (
@@ -337,13 +363,16 @@ export function SummaryPanel({
       {streaming && (
         <>
           {status && <div className="status-line">{status}</div>}
+          <div className="summary-progress" aria-label="正在生成">
+            <span />
+          </div>
           <pre className="summary-live" ref={liveRef}>
             {streamText || '正在生成…'}
           </pre>
         </>
       )}
 
-      {!streaming && summary && (!verifyEnabled || (fromSaved && !verification)) && (
+      {!streaming && summary && (!verifyEnabled || !verification) && (
         <div className="summary-verify-hint">
           {!verifyEnabled ? (
             <>
@@ -352,8 +381,10 @@ export function SummaryPanel({
                 去设置
               </button>
             </>
-          ) : (
+          ) : fromSaved ? (
             <span>这是已保存的总结；重新生成会执行联网核对。</span>
+          ) : (
+            <span>本次没有产生核对结果（可能没有可核实项或检索失败）。</span>
           )}
         </div>
       )}
@@ -367,6 +398,9 @@ export function SummaryPanel({
               {verification.judged ? ` · 丢弃 ${verification.dropped}` : ' · 未判定'}
             </span>
           </div>
+          {verification.error && (
+            <div className="verify-error">核对失败：{verification.error}</div>
+          )}
           {verification.supplements.length > 0 && (
             <div className="verify-supplements">
               {verification.supplements.map((item, index) => (

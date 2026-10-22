@@ -414,6 +414,7 @@ export interface VerificationSummary {
   failed: number;
   judged: boolean;
   dropped: number;
+  error?: string;
 }
 
 export interface CorrectionRule {

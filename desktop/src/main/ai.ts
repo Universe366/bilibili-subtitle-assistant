@@ -141,8 +141,8 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
           (done, total, query) =>
             options.onStatus?.(`联网核对 ${done}/${total}：${query.slice(0, 28)}`)
         );
-        referencesBlock = buildVerifyBlock(verified);
         verification = verified;
+        referencesBlock = buildVerifyBlock(verified);
         if (referencesBlock) {
           options.onStatus?.(
             `已核对 ${verified.attempted} 项，取得 ${verified.references.length} 条证据` +
@@ -154,7 +154,18 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
           options.onStatus?.('没有取得可用证据，仅根据字幕总结');
         }
       } catch (error) {
-        options.onStatus?.(`联网核对失败：${(error as Error).message}（继续总结）`);
+        const message = (error as Error)?.message || String(error);
+        verification = {
+          items: [],
+          references: [],
+          supplements: [],
+          attempted: 0,
+          failed: 1,
+          judged: false,
+          dropped: 0,
+          error: message
+        };
+        options.onStatus?.(`联网核对失败：${message}（继续总结）`);
       }
     } else {
       options.onStatus?.('正在联网检索参考资料…');
@@ -264,7 +275,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
     }
 
     if (!text.trim()) throw new Error('AI 返回为空');
-    return { text, model: platform.model };
+    return { text, model: platform.model, verification };
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', forwardAbort);

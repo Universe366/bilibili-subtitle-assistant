@@ -1256,6 +1256,64 @@ function createWindow(): void {
       }, 6000);
     }
 
+    if (process.env.BSUB_SUMMARY_UI_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          await win.webContents.executeJavaScript(`
+            (() => {
+              const nav = [...document.querySelectorAll('.side-nav-item')].find((item) =>
+                (item.textContent || '').includes('总结')
+              );
+              nav?.click();
+              return !!nav;
+            })()
+          `);
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          const clicked = await win.webContents.executeJavaScript(`
+            (() => {
+              const button = [...document.querySelectorAll('.side-content button')].find((item) =>
+                ['生成', '重生成'].includes((item.textContent || '').trim())
+              );
+              button?.click();
+              return !!button;
+            })()
+          `);
+          await new Promise((resolve) => setTimeout(resolve, 90000));
+          const metrics = await win.webContents.executeJavaScript(`
+            (() => {
+              const content = document.querySelector('.summary-content');
+              const live = document.querySelector('.summary-live');
+              const progress = document.querySelector('.summary-progress');
+              const chapters = document.querySelector('.chapters-card');
+              const verify = document.querySelector('.verify-card');
+              const hint = document.querySelector('.summary-verify-hint');
+              return {
+                clicked: ${clicked},
+                contentHeight: content ? content.getBoundingClientRect().height : 0,
+                contentText: content ? (content.textContent || '').slice(0, 120) : '',
+                liveHeight: live ? live.getBoundingClientRect().height : 0,
+                progress: !!progress,
+                chapters: chapters
+                  ? { open: chapters.open, height: chapters.getBoundingClientRect().height }
+                  : null,
+                verify: verify
+                  ? { text: (verify.textContent || '').slice(0, 120), height: verify.getBoundingClientRect().height }
+                  : null,
+                hint: hint ? hint.textContent : ''
+              };
+            })()
+          `);
+          console.log('[summary-ui-metrics]', JSON.stringify(metrics));
+          const image = await win.webContents.capturePage();
+          fs.writeFileSync(path.join(app.getPath('temp'), 'bsub-summary-shot.png'), image.toPNG());
+        } catch (error) {
+          console.warn('[summary-ui-test] failed', (error as Error).message);
+        }
+      }, 8000);
+    }
+
     if (process.env.BSUB_SETTINGS_SHOT === '1') {
       setTimeout(async () => {
         try {

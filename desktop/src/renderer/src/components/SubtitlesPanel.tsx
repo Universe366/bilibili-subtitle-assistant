@@ -395,10 +395,20 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
       setLoading(true);
       setError(null);
       try {
-        const [infoResult, subtitlesResult] = await Promise.all([
-          window.bsub.getPageInfo(),
-          window.bsub.getSubtitles()
-        ]);
+        let infoResult = await window.bsub.getPageInfo();
+        let subtitlesResult = await window.bsub.getSubtitles();
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          if (cancelled) return;
+          const ready =
+            infoResult.ok &&
+            infoResult.data.bvid &&
+            subtitlesResult.ok &&
+            (subtitlesResult.data.tracks.length > 0 || subtitlesResult.data.needLogin);
+          if (ready) break;
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          infoResult = await window.bsub.getPageInfo();
+          subtitlesResult = await window.bsub.getSubtitles();
+        }
         if (cancelled) return;
 
         if (infoResult.ok) setInfo(infoResult.data);

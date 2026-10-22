@@ -18,7 +18,7 @@ const STOPWORDS = new Set([
   '问题', '时候', '地方', '东西', '事情', '情况', '方面', '方式', '方法', '结果',
   '第一', '第二', '第三', '最后', '开始', '结束', 'the', 'and', 'for', 'with', 'this',
   'that', 'from', 'have', 'will', 'your', 'about', 'into', 'than', 'then', 'they',
-  'app', 'application', 'pro', 'max', 'plus', 'new'
+  'app', 'application', 'pro', 'max', 'plus', 'new', 'never', 'what', 'running', 'door'
 ]);
 
 type Progress = (done: number, total: number, message: string) => void;

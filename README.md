@@ -77,7 +77,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 - 数据备份/恢复：设置 + 字幕库一键备份，恢复前自动保留当前数据
 - 侧栏可拖拽调宽、折叠成图标栏、左右换边；卸载时可选择是否删除本地数据
 
-源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.30.5**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
+源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.30.6**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
 
 安装版直接运行 `bsub-desktop-setup-*.exe`，绿色版解压后双击 `B站字幕助手.exe`。数据默认在 `%APPDATA%\bsub-desktop`（设置、字幕库、登录态、缓存、日志）；卸载页默认保留数据，勾选后才会删除。
 

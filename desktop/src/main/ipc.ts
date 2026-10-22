@@ -602,6 +602,12 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
             onStatus: (status) => send('ai:status', { requestId, status } satisfies AiStatusEvent)
           });
           const saved = saveSummary(payload.info, result.text, result.model);
+          console.log(
+            '[m4] verification',
+            result.verification
+              ? `${result.verification.attempted}/${result.verification.references.length}`
+              : 'none'
+          );
           send(
             'ai:done',
             {

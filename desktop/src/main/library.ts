@@ -448,9 +448,20 @@ export function getSummaryFor(ref: SummaryRef): StoredSummary | null {
       : '';
   if (!uid) return null;
 
-  const row = database
+  let row = database
     .prepare('SELECT content_md, model, updated_at FROM summaries WHERE uid = ?')
     .get(uid) as { content_md: string; model: string; updated_at: number } | undefined;
+
+  // 页面 cid 可能取不到/变化；按 bvid 兜底，避免重开视频找不到已保存总结。
+  if (!row && ref.bvid) {
+    row = database
+      .prepare(
+        'SELECT content_md, model, updated_at FROM summaries WHERE uid LIKE ? ORDER BY updated_at DESC LIMIT 1'
+      )
+      .get(`v:${ref.bvid}:%`) as
+      | { content_md: string; model: string; updated_at: number }
+      | undefined;
+  }
 
   if (!row) return null;
   return {
