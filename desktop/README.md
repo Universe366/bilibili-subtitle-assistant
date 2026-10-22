@@ -1,6 +1,6 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.6**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.7**。
 
 > 维护、发布、常见坑见根目录 [`docs/MAINTAINERS.md`](../docs/MAINTAINERS.md) 的桌面端章节。
 
@@ -87,8 +87,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.30.6.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.30.6-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.30.7.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.30.7-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.17.7.zip` | 浏览器插件（由 CI 打包） |
 
@@ -100,7 +100,7 @@ npm run dist
 这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
 
 1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.17.7）。
-2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.30.6 --no-git-tag-version`）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.30.7 --no-git-tag-version`）。
 3. `npm run dist` 本地确认能构建。
 4. `npm run release:notes` 生成发布说明。
 5. 打 tag 并推送：
@@ -156,9 +156,9 @@ node spike/bridge-test.mjs
 - B 站单页应用切 query 时可能重复请求一次视频信息（结果正确，后续合并去重）
 - 多字幕轨时默认选择是启发式（优先带当前 cid 的轨），极端情况仍需手动切换
 - API Key 与桥 Token 以明文保存在本机 `settings.json`，后续接系统钥匙串
-- 字幕超过约 3 万字会被截断（长视频尚未做分段总结）
+- 总结字幕上下文上限约 20 万字符，极端超长视频仍会头尾保留、中间省略
 - 未签名，SmartScreen 会提示
-- 桌面 0.30.6 随 `v2.17.7` 合并 Release 发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
+- 源码 0.30.7 尚未发布；最新 Release 为 `v2.17.7 / 0.30.6`。安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
 - 更新检查默认开启；若最新 Release 仍是旧桌面资产，会显示已是最新。安装版才支持自动更新
 - 插件桥需要桌面端先运行，并在插件「设置 → 桌面端」填入端口 / Token
 - 休眠标签切回会重新加载页面（滚动位置与播放进度不保留）

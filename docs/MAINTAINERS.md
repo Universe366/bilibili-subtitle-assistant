@@ -128,6 +128,35 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - 更换证书前先测试旧版本自动更新；publisher 不一致会导致更新失败，保留手动下载入口。
 - 详细流程见 [`SIGNING.md`](SIGNING.md)。
 
+### 2.7 总结核对、字幕身份与 Markdown
+
+**总结核对链路**（`desktop/src/main/verify.ts`、`ai.ts`）：
+
+- 从字幕分段抽具体项（数字/年份/版本/术语），用命中行前后 2 行构造上下文窗口。
+- 搜索用上下文整句，相关性过滤用**短标签**（如 `500次` / `IPHONE`），不要把整句拿去做相关性，否则证据会被全杀。
+- 只把有证据的项展示到核对面板；语义判定失败时保留原始证据，不要静默清空。
+- **流式和非流式返回都必须带 `verification`**。0.30.6 之前的 bug 是非流式有、流式漏，导致界面看不到核对。
+- 输出上限走 `settings.ai.maxTokens`（当前 64000）；字幕上下文 `MAX_TRANSCRIPT_CHARS=200000`，不要再用 30000 截断。
+- `buildVerifyBlock` 抛错不能丢掉已判定的 `verification`；先赋值，再格式化。
+
+**字幕身份**：
+
+- IPC `page:subtitles` 接收 `expectSignature`；页面桥 `getSubtitleBundle` 用它做 identity guard。
+- 渲染层先取 `PageInfo`，再带 `signature` 请求字幕；返回 `bundle.identity` 不一致必须丢弃。
+- 多轨自动选择只在字幕末句覆盖视频 ≥70%、且不超时长 20% 的候选里选正文最多；不要无脑选最长轨（会选到别片/广告轨）。
+- 无官方字幕视频优先显示空状态 + 转录；不要把上一页的 `track` 状态留着。
+
+**总结跨页**：
+
+- 切浏览器标签时不要取消 `summarize`、不要清空流式状态；用 `streamingRef` 防止新标签的已保存总结覆盖当前生成。
+- 切走侧栏分组会卸载 SummaryPanel，仍会丢失界面监听；要彻底解决需要把总结任务提升到全局 store。
+
+**Markdown**：
+
+- 桌面端是自写解析器（`Markdown.tsx`），不是 react-markdown；新增语法必须补解析和 CSS。
+- 已支持 GFM 表格；改动后用 `react-dom/server` 静态渲染一段表格验证 `<table>` 输出。
+- 长字幕行是单行横向滚动，表格容器单独 `overflow-x:auto`，不要互相影响。
+
 ## 3. 不能随便改的约束
 
 ### 3.1 内嵌面板：Shadow DOM + 延迟挂载
