@@ -38,6 +38,8 @@ export function SummaryPanel({
   const [info, setInfo] = useState<PageInfo | null>(null);
   const [summary, setSummary] = useState('');
   const [verification, setVerification] = useState<VerificationSummary | null>(null);
+  const [verifyEnabled, setVerifyEnabled] = useState(true);
+  const [fromSaved, setFromSaved] = useState(false);
   const [model, setModel] = useState('');
   const [updatedAt, setUpdatedAt] = useState(0);
   const [lines, setLines] = useState<SubtitleLine[]>([]);
@@ -63,6 +65,8 @@ export function SummaryPanel({
     }
     setInfo(null);
     setSummary('');
+    setVerification(null);
+    setFromSaved(false);
     setModel('');
     setUpdatedAt(0);
     setLines([]);
@@ -97,6 +101,7 @@ export function SummaryPanel({
         if (cancelled) return;
         if (saved.ok && saved.data) {
           setSummary(saved.data.content);
+          setFromSaved(true);
           setModel(saved.data.model);
           setUpdatedAt(saved.data.updatedAt);
         }
@@ -120,6 +125,7 @@ export function SummaryPanel({
       if (event.requestId !== requestRef.current) return;
       setSummary(event.text);
       setVerification(event.verification || null);
+      setFromSaved(false);
       setModel(event.model);
       setUpdatedAt(Date.now());
       setStreaming(false);
@@ -199,6 +205,8 @@ export function SummaryPanel({
     setStreaming(true);
     setStreamText('');
     setSummary('');
+    setVerification(null);
+    setFromSaved(false);
     setStatus('准备字幕…');
 
     try {
@@ -335,9 +343,18 @@ export function SummaryPanel({
         </>
       )}
 
-      {!streaming && summary && (
-        <div className="summary-content">
-          <Markdown content={summary} />
+      {!streaming && summary && (!verifyEnabled || (fromSaved && !verification)) && (
+        <div className="summary-verify-hint">
+          {!verifyEnabled ? (
+            <>
+              <span>联网核对未开启，本次总结不会检查外部证据。</span>
+              <button className="mini-btn" onClick={onOpenSettings}>
+                去设置
+              </button>
+            </>
+          ) : (
+            <span>这是已保存的总结；重新生成会执行联网核对。</span>
+          )}
         </div>
       )}
 
@@ -389,6 +406,12 @@ export function SummaryPanel({
               </div>
             ))}
           </details>
+        </div>
+      )}
+
+      {!streaming && summary && (
+        <div className="summary-content">
+          <Markdown content={summary} />
         </div>
       )}
 

@@ -18,22 +18,8 @@ import {
   SEARCH_PRESETS
 } from '../shared/presets';
 
-export const DEFAULT_PROMPT = `你是一个严谨的中文视频笔记助手。请只依据提供的字幕，输出 Markdown 格式的总结，包含：
-
-## 一句话总结
-用一句话概括视频讲了什么。
-
-## 核心观点
-- 3 到 6 条，按重要性排序。
-
-## 章节脉络
-- [mm:ss] 标题
-按时间顺序梳理视频结构。
-
-## 关键细节
-- 值得记下的数字、结论、方法或观点。
-
-要求：不要编造字幕里没有的信息；不确定的地方标注「不确定」。`;
+export const DEFAULT_PROMPT =
+  '整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）';
 
 const DEFAULT_CHAT_PROMPT = `你是一个严谨的中文视频助手。请只依据提供的字幕回答用户的问题。
 - 字幕里没有的信息，明确说「字幕里没有提到」，不要编造。
@@ -62,7 +48,7 @@ const DEFAULT_CHAPTERS_PROMPT = `你是视频章节编辑。根据字幕把视�
 - 只输出 JSON 数组：[{"start":0,"end":120,"title":"开场"}, ...]
 - start/end 使用秒数，不要输出 Markdown 代码块或解释。`;
 
-const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认', text: DEFAULT_PROMPT },
+const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认（视频整理）', text: DEFAULT_PROMPT },
   {
     id: 'brief',
     name: '精简',
@@ -184,7 +170,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     chapters: DEFAULT_CHAPTERS_PROMPT
   },
   search: {
-    enabled: false,
+    enabled: true,
     activeId: 'exa',
     platforms: SEARCH_PRESETS.map((platform) => ({ ...platform })),
     maxResults: 5,
@@ -198,7 +184,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoSearchOnChat: false,
     alwaysSearchOnChat: false,
     useVideoMeta: true,
-    useComments: false
+    useComments: true
   },
   correction: {
     enabled: true,
@@ -390,6 +376,14 @@ function normalize(raw: any): AppSettings {
       });
     }
     if (templates.length) {
+      const defaultTemplate = templates.find((template) => template.id === 'default');
+      if (
+        defaultTemplate &&
+        /^你是一个严谨的中文视频笔记助手/.test(defaultTemplate.text.trim())
+      ) {
+        defaultTemplate.text = DEFAULT_PROMPT;
+        defaultTemplate.name = '默认（视频整理）';
+      }
       base.prompt.templates = templates;
       const promptActive = String(raw.prompt?.activeId || '');
       base.prompt.activeId = templates.some((template) => template.id === promptActive)
@@ -480,7 +474,7 @@ function normalize(raw: any): AppSettings {
     }
 
     if (raw.search && typeof raw.search === 'object') {
-      base.search.enabled = raw.search.enabled === true;
+      base.search.enabled = raw.search.enabled === undefined ? true : raw.search.enabled === true;
 
       let platforms: SearchPlatform[] = [];
       if (Array.isArray(raw.search.platforms)) {
@@ -546,7 +540,8 @@ function normalize(raw: any): AppSettings {
       base.search.autoSearchOnChat = raw.search.autoSearchOnChat === true;
       base.search.alwaysSearchOnChat = raw.search.alwaysSearchOnChat === true;
       base.search.useVideoMeta = raw.search.useVideoMeta !== false;
-      base.search.useComments = raw.search.useComments === true;
+      base.search.useComments =
+        raw.search.useComments === undefined ? true : raw.search.useComments === true;
     }
 
     if (raw.correction && typeof raw.correction === 'object') {

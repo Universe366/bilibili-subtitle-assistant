@@ -875,6 +875,7 @@ button:disabled {
 }
 
 .sub-line {
+  position: relative;
   display: grid;
   grid-template-columns: 42px 1fr;
   gap: 8px;
@@ -918,6 +919,30 @@ button:disabled {
   word-break: normal;
   scrollbar-width: thin;
   padding-bottom: 2px;
+  padding-right: 16px;
+}
+
+.sub-copy {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  background: var(--surface-2);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.sub-line:hover .sub-copy {
+  opacity: 1;
+}
+
+.sub-copy:hover {
+  color: var(--accent);
 }
 
 .sub-text::-webkit-scrollbar {
@@ -1178,6 +1203,21 @@ button:disabled {
   overflow-y: auto;
   margin: 0 -4px;
   padding: 0 4px;
+}
+
+.summary-verify-hint {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .verify-card {

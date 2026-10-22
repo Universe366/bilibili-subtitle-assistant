@@ -1055,7 +1055,25 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
               onClick={() => jump(line)}
             >
               <span className="sub-time">{fmtTime(line.start)}</span>
-              <span className="sub-text">{line.text}</span>
+              <span
+                className="sub-text"
+                title={`${fmtTime(line.start)} – ${fmtTime(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
+                  1,
+                  Math.round(line.text.length / 4)
+                )} 秒`}
+              >
+                {line.text}
+              </span>
+              <button
+                className="sub-copy"
+                title="复制此行"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  copyLine(line.text);
+                }}
+              >
+                <Copy size={10} />
+              </button>
             </div>
           ))}
         </div>
