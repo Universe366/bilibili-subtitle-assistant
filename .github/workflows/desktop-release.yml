@@ -66,10 +66,11 @@ jobs:
           name: 桌面端 + 插件 ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
           body_path: desktop/release/release-notes.md
           files: |
-            desktop/release/*.exe
-            desktop/release/*.yml
+            desktop/release/bsub-desktop-setup-*.exe
+            desktop/release/bsub-desktop-*.zip
+            desktop/release/bilibili-subtitle-assistant-*.zip
+            desktop/release/latest.yml
             desktop/release/*.blockmap
-            desktop/release/*.zip
           draft: false
           prerelease: false
         env:
