@@ -103,6 +103,8 @@ const api: BsubApi = {
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),
 
   getSettings: () => ipcRenderer.invoke('settings:get') as Promise<Result<SettingsSnapshot>>,
+  setBrowserVisible: (visible: boolean) =>
+    ipcRenderer.invoke('browser:set-visible', visible) as Promise<void>,
   setSidebarLayout: (patch: {
     width?: number;
     position?: 'left' | 'right';

@@ -467,6 +467,10 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('browser:set-visible', (_event, visible: boolean) => {
+    tabs.setActiveViewVisible(visible === true);
+  });
+
   ipcMain.handle('settings:open-data', async () => {
     await shell.openPath(app.getPath('userData'));
   });

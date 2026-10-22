@@ -68,6 +68,13 @@ export function Sidebar({
 
   const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
+    void window.bsub.setBrowserVisible(false);
+    let restored = false;
+    const restoreView = () => {
+      if (restored) return;
+      restored = true;
+      window.setTimeout(() => void window.bsub.setBrowserVisible(true), 80);
+    };
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     const startPosition = position;
@@ -97,21 +104,31 @@ export function Sidebar({
         onWidthCommit?.(Math.min(560, Math.max(260, raw)));
       }
 
+      restoreView();
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      window.removeEventListener('blur', restoreView);
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
+    window.addEventListener('blur', restoreView, { once: true });
   };
 
   const startDockDrag = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     if (target.closest('button')) return;
     event.preventDefault();
+    void window.bsub.setBrowserVisible(false);
+    let restored = false;
+    const restoreView = () => {
+      if (restored) return;
+      restored = true;
+      window.setTimeout(() => void window.bsub.setBrowserVisible(true), 80);
+    };
     const startX = event.clientX;
     let moved = false;
     const move = (moveEvent: MouseEvent) => {
@@ -125,15 +142,18 @@ export function Sidebar({
             : upEvent.clientX < window.innerWidth * 0.38;
         if (crossed) onDockChange?.(position === 'left' ? 'right' : 'left');
       }
+      restoreView();
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      window.removeEventListener('blur', restoreView);
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'grabbing';
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
+    window.addEventListener('blur', restoreView, { once: true });
   };
 
   const CollapseIcon = collapsed

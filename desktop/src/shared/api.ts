@@ -86,6 +86,7 @@ export interface BsubApi {
   getSettings(): Promise<Result<SettingsSnapshot>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
   setSidebarWidth(width: number): Promise<Result<SettingsSnapshot>>;
+  setBrowserVisible(visible: boolean): Promise<void>;
   setSidebarLayout(patch: {
     width?: number;
     position?: 'left' | 'right';

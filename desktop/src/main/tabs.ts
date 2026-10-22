@@ -533,6 +533,17 @@ export class TabManager {
     return this.tabs.get(id)?.view?.webContents ?? null;
   }
 
+  // 拖拽侧栏时暂时隐藏页面，避免鼠标进入 WebContentsView 后
+  // 渲染层收不到 mousemove / mouseup。
+  setActiveViewVisible(visible: boolean): void {
+    const record = this.activeRecord();
+    try {
+      record?.view?.setVisible(visible);
+    } catch {
+      // ignore
+    }
+  }
+
   list(): TabInfo[] {
     return [...this.tabs.values()].map((record) => {
       const wc = record.view?.webContents;
