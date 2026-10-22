@@ -2,7 +2,7 @@
 // 仅数据，主进程与渲染进程共用；apiKey 一律为空。
 import type { AiPlatform, AsrPlatform, SearchPlatform } from './types';
 
-export const AI_PRESET_VERSION = 3;
+export const AI_PRESET_VERSION = 4;
 
 export const AI_PRESETS: AiPlatform[] = [
   {
@@ -46,6 +46,21 @@ export const AI_PRESETS: AiPlatform[] = [
     "homepage": "https://platform.openai.com/",
     "keyUrl": "https://platform.openai.com/api-keys",
     "kind": ""
+  },
+  {
+    "id": "anthropic",
+    "name": "Anthropic Claude",
+    "baseUrl": "https://api.anthropic.com/v1",
+    "apiKey": "",
+    "model": "claude-sonnet-4-5",
+    "models": [
+      "claude-sonnet-4-5",
+      "claude-opus-4-1",
+      "claude-3-5-haiku-latest"
+    ],
+    "homepage": "https://www.anthropic.com/",
+    "keyUrl": "https://console.anthropic.com/settings/keys",
+    "kind": "anthropic"
   },
   {
     "id": "groq",

@@ -8,10 +8,16 @@ import type {
   SubtitleBundle,
   SubtitleLine,
   SubtitleTrack,
+  SubtitleTrackCheck,
   TabInfo
 } from '../../../shared/types';
 import { pickTrack, videoKeyOf } from '../lib/video';
-import { setAsrResult } from '../lib/asrStore';
+import { getAsrResult, setAsrResult } from '../lib/asrStore';
+import {
+  clearTranslationResult,
+  getTranslationResult,
+  setTranslationResult
+} from '../lib/translationStore';
 import { ExportMenu } from './ExportMenu';
 
 function fmtTime(seconds: number): string {
@@ -48,46 +54,169 @@ function highlightMatch(text: string, query: string) {
   return parts;
 }
 
-async function pickFullestTrack(
+function minCoverageOf(duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+  // 桌面端没有插件那套「URL 归属 + 缓存签名」全链路，单轨时必须更严格：
+  // 45% 覆盖的「别的视频/广告残留」在 B 站接口里很常见，宁可拒绝也不能串片。
+  if (duration >= 180) return 0.7;
+  return 0.5;
+}
+
+const TITLE_STOPWORDS = new Set([
+  '视频', '内容', '我们', '你们', '他们', '这个', '那个', '什么', '怎么',
+  '为什么', '如何', '到底', '多少', '一个', '一些', '现在', '今天', '就是',
+  '可以', '应该', '因为', '所以', '但是', '而且', '然后', '通过', '关于',
+  '对于', '以及', '还有', '不过', '或者', '因此', '已经', '正在', '表示',
+  '认为', '觉得', '知道', '看到', '进行', '出现', '发生', '成为', '作为',
+  '根据', '由于', '同时', '此外', '例如', '比如', '包括', '主要', '重要',
+  '可能', '需要', '提供', '支持', '使用', '实现', '第一', '第二', '第三',
+  '最后', '开始', '结束', '全集', '高清', '完整版', '最新', '天花板'
+]);
+
+function titleKeywords(info: PageInfo | null): string[] {
+  if (!info) return [];
+  const source = `${info.title || ''} ${info.desc || ''}`;
+  const words = new Set<string>();
+  for (const run of source.match(/[\u4e00-\u9fa5]{2,}/g) || []) {
+    if (run.length <= 8) words.add(run);
+    for (let index = 0; index + 1 < run.length; index += 1) {
+      const bigram = run.slice(index, index + 2);
+      if (!TITLE_STOPWORDS.has(bigram)) words.add(bigram);
+    }
+  }
+  for (const word of source.match(/[A-Za-z][A-Za-z0-9._-]{2,}/g) || []) {
+    words.add(word.toLowerCase());
+  }
+  return [...words].filter((word) => word.length >= 2).slice(0, 30);
+}
+
+function subtitleMatchesTitle(lines: SubtitleLine[], info: PageInfo | null): boolean {
+  const text = lines.map((line) => line.text).join('').replace(/\s+/g, '');
+  if (!/[\u4e00-\u9fa5]/.test(text)) return true; // 英文/其它语言轨不做中文标题匹配
+  const keywords = titleKeywords(info);
+  if (!keywords.length) return true;
+  return keywords.some((word) => text.includes(word));
+}
+
+async function evaluateTracks(
   tracks: SubtitleTrack[],
   info: PageInfo | null
-): Promise<SubtitleTrack | null> {
+): Promise<{ best: SubtitleTrack | null; checks: SubtitleTrackCheck[] }> {
   const initial = pickTrack(tracks, info);
-  if (tracks.length <= 1) return initial;
+  if (tracks.length <= 1) return { best: initial, checks: [] };
   const candidates = tracks.filter((item) => item.url && item.source !== 'asr').slice(0, 6);
-  if (candidates.length <= 1) return initial;
-  let best = initial;
-  let bestCount = 0;
+  if (candidates.length <= 1) return { best: initial, checks: [] };
+
+  const duration = Number(info?.duration || 0);
+  const checks: SubtitleTrackCheck[] = [];
+  const valid: Array<{ candidate: SubtitleTrack; lines: number; lastEnd: number; aligned: boolean }> = [];
+
   for (const candidate of candidates) {
+    const base = {
+      url: candidate.url,
+      lanDoc: candidate.lanDoc || candidate.lan || '未知语言',
+      source: candidate.source || '未知来源',
+      isAi: Boolean(candidate.isAi)
+    };
     const result = await window.bsub.getTrackBody(candidate.url);
-    if (!result.ok || !result.data.lines.length) continue;
-    const duration = Number(info?.duration || 0);
-    const lastEnd = result.data.lines.reduce(
+    if (!result.ok || !result.data.lines.length) {
+      checks.push({
+        ...base,
+        lines: 0,
+        lastEnd: 0,
+        coverage: 0,
+        ok: false,
+        reason: result.ok ? '没有正文' : `下载失败：${result.error}`
+      });
+      continue;
+    }
+    const lines = result.data.lines;
+    const lastEnd = lines.reduce(
       (max, line) => Math.max(max, Number(line.end || line.start || 0)),
       0
     );
-    if (duration > 0 && lastEnd > duration * 1.2 + 15) continue;
     const coverage = duration > 0 ? lastEnd / duration : 1;
-    if (duration > 0 && coverage < 0.7) continue;
-    if (result.data.lines.length > bestCount) {
-      best = candidate;
-      bestCount = result.data.lines.length;
+    // 末句明显超出视频时长（>8% 且 >8s）判为别的视频 / 整段合集，直接丢弃。
+    if (duration > 0 && lastEnd > duration * 1.08 + 8) {
+      checks.push({
+        ...base,
+        lines: lines.length,
+        lastEnd,
+        coverage,
+        ok: false,
+        reason: `时长明显超出视频（末句 ${Math.round(lastEnd)}s / 视频 ${Math.round(duration)}s）`
+      });
+      continue;
     }
+    if (duration > 0 && coverage < minCoverageOf(duration)) {
+      checks.push({
+        ...base,
+        lines: lines.length,
+        lastEnd,
+        coverage,
+        ok: false,
+        reason: `覆盖不足（${Math.round(coverage * 100)}%，需要 ≥${Math.round(
+          minCoverageOf(duration) * 100
+        )}%）`
+      });
+      continue;
+    }
+    // 「对齐片尾」优先：正确轨通常结束在视频时长附近；
+    // 广告/合集/别的视频的轨往往更长，即使行数更多也不能选。
+    const aligned = duration > 0 ? lastEnd <= duration * 1.02 + 5 : true;
+    checks.push({
+      ...base,
+      lines: lines.length,
+      lastEnd,
+      coverage,
+      ok: true,
+      reason: `可用 ${lines.length} 行${aligned ? '' : '（末句超出片尾）'}`
+    });
+    valid.push({ candidate, lines: lines.length, lastEnd, aligned });
   }
-  return bestCount > 0 ? best : initial;
+
+  const alignedRows = valid.filter((row) => row.aligned);
+  const pool = alignedRows.length ? alignedRows : valid;
+  pool.sort(
+    (a, b) =>
+      b.lines - a.lines ||
+      Math.abs(a.lastEnd - duration) - Math.abs(b.lastEnd - duration)
+  );
+  const best = pool[0]?.candidate || initial;
+  console.log(
+    '[subtitle-track-pick]',
+    JSON.stringify({
+      duration: Math.round(duration),
+      checks: checks.map((item) => ({
+        lan: item.lanDoc,
+        lines: item.lines,
+        end: Math.round(item.lastEnd),
+        ok: item.ok,
+        reason: item.reason
+      })),
+      picked: best ? `${best.lanDoc}/${best.url.slice(-10)}` : null
+    })
+  );
+
+  return { best, checks };
 }
 
 export function SubtitlesPanel({
   activeTab,
-  onOpenSummary
+  active = true,
+  onOpenSummary,
+  onOpenChapters
 }: {
   activeTab: TabInfo | null;
+  active?: boolean;
   onOpenSummary?: () => void;
+  onOpenChapters?: () => void;
 }) {
   const [info, setInfo] = useState<PageInfo | null>(null);
   const [bundle, setBundle] = useState<SubtitleBundle | null>(null);
   const [track, setTrack] = useState<SubtitleTrack | null>(null);
   const [lines, setLines] = useState<SubtitleLine[]>([]);
+  const [trackNonce, setTrackNonce] = useState(0);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingLines, setLoadingLines] = useState(false);
@@ -103,6 +232,7 @@ export function SubtitlesPanel({
   const [translated, setTranslated] = useState<SubtitleLine[] | null>(null);
   const [translatedLang, setTranslatedLang] = useState('');
   const [viewMode, setViewMode] = useState<'original' | 'translated' | 'bilingual'>('original');
+  const [trackChecks, setTrackChecks] = useState<SubtitleTrackCheck[]>([]);
   const [translateOpen, setTranslateOpen] = useState(false);
   const [targetLang, setTargetLang] = useState('中文（简体）');
   const [translating, setTranslating] = useState(false);
@@ -129,6 +259,16 @@ export function SubtitlesPanel({
   const infoRef = useRef<PageInfo | null>(null);
   const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
+  const followRef = useRef(follow);
+  const lastTimeRef = useRef<number | null>(null);
+  const bundleRef = useRef<SubtitleBundle | null>(null);
+  const trackRef = useRef<SubtitleTrack | null>(null);
+  const failedTrackUrlsRef = useRef<Set<string>>(new Set());
+  const coverageRetryRef = useRef(0);
+
+  useEffect(() => {
+    followRef.current = follow;
+  }, [follow]);
   const loadedRef = useRef<{ key: string; reload: number }>({ key: '', reload: -1 });
 
   const refresh = useCallback(() => setReloadKey((value) => value + 1), []);
@@ -136,6 +276,8 @@ export function SubtitlesPanel({
   const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
   infoRef.current = info;
   videoKeyRef.current = videoKey;
+  bundleRef.current = bundle;
+  trackRef.current = track;
 
   // 切换视频时先清空，避免短暂显示上一个视频的字幕
   useEffect(() => {
@@ -169,6 +311,8 @@ export function SubtitlesPanel({
     setSubtitleQuery('');
     setSearchIndex(0);
     loadedRef.current = { key: '', reload: -1 };
+    failedTrackUrlsRef.current.clear();
+    coverageRetryRef.current = 0;
   }, [activeTab?.id, videoKey]);
 
   useEffect(() => {
@@ -195,6 +339,7 @@ export function SubtitlesPanel({
       setAsrMessage(`转写完成 · ${event.lines.length} 行`);
       if (infoRef.current) {
         setAsrResult(videoKeyRef.current, infoRef.current, event.lines);
+        clearTranslationResult(videoKeyRef.current, 'asr://local');
       }
     });
     const offError = window.bsub.onAsrError((event) => {
@@ -215,6 +360,15 @@ export function SubtitlesPanel({
       setTranslated(event.lines);
       setTranslatedLang(event.language);
       setViewMode('bilingual');
+      const track = trackRef.current;
+      if (track) {
+        setTranslationResult(
+          videoKeyRef.current,
+          track.url,
+          event.lines,
+          event.language
+        );
+      }
       setTranslating(false);
       setTranslateProgress(100);
       setTranslateMessage(`已翻译为 ${event.language}`);
@@ -284,6 +438,7 @@ export function SubtitlesPanel({
     setTranslated(null);
     setTranslatedLang('');
     setViewMode('original');
+    lastTimeRef.current = null;
   }, [track?.url, track?.source]);
 
   const startTranslate = async () => {
@@ -353,8 +508,32 @@ export function SubtitlesPanel({
       `sniffed: ${bundle.diagnostics?.sniffCount || 0}`,
       `staleSniffed: ${bundle.diagnostics?.staleSniffCount || 0}`,
       `foreignTracks: ${(bundle.diagnostics?.foreignTracks || []).length}`,
+      ...(bundle.diagnostics?.foreignTracks || []).map(
+        (item) =>
+          `  - ${item.from || item.source || '未知'}${item.cid ? ` cid=${item.cid}` : ''}${
+            item.lan ? ` ${item.lan}` : ''
+          } ${item.url || ''}`
+      ),
       `reason: ${bundle.diagnostics?.reason || ''}`,
-      `errors: ${bundle.errors.join('；')}`
+      ...(trackChecks.length
+        ? [
+            'candidates:',
+            ...trackChecks.map(
+              (item) =>
+                `  - ${item.lanDoc} / ${item.source}${item.isAi ? ' / AI' : ''}: ${
+                  item.ok ? '可用' : '不可用'
+                }，${item.reason}`
+            )
+          ]
+        : []),
+      `errors: ${bundle.errors
+        .map(
+          (item) =>
+            `${item.source || '未知来源'}${item.code != null ? `(code ${String(item.code)})` : ''}: ${
+              item.message || '未知错误'
+            }`
+        )
+        .join('；')}`
     ];
     void window.bsub.writeClipboard(lines.join('\n'));
     setSaveMessage('诊断信息已复制');
@@ -385,6 +564,7 @@ export function SubtitlesPanel({
       byIndex.has(index) ? { ...line, text: byIndex.get(index) || line.text } : line
     );
     setLines(updated);
+    if (track) clearTranslationResult(videoKeyRef.current, track.url);
     if (track?.source === 'asr' && infoRef.current) {
       setAsrResult(videoKeyRef.current, infoRef.current, updated);
     }
@@ -411,11 +591,13 @@ export function SubtitlesPanel({
     const timer = window.setTimeout(async () => {
       setLoading(true);
       setError(null);
+      failedTrackUrlsRef.current.clear();
       try {
         let infoResult = await window.bsub.getPageInfo();
         let subtitlesResult = await window.bsub.getSubtitles(
           infoResult.ok ? infoResult.data.signature : undefined
         );
+        let lastPlayerReady = true;
         for (let attempt = 0; attempt < 4; attempt += 1) {
           if (cancelled) return;
           const identity =
@@ -426,14 +608,36 @@ export function SubtitlesPanel({
             ? subtitlesResult.data.identity || ''
             : '';
           const identityMatches = !identity || !bundleIdentity || identity === bundleIdentity;
+          // 播放器还没切到当前视频时，B 站接口可能仍返回上一个视频的字幕。
+          // 用播放器实际时长与页面信息时长做一道「加载完成」校验。
+          let playerReady = true;
+          try {
+            const played = await window.bsub.getTime();
+            const expected = infoResult.ok ? Number(infoResult.data.duration || 0) : 0;
+            if (played.ok && expected > 0) {
+              const actual = Number(played.data.duration || 0);
+              playerReady =
+                actual > 0 &&
+                Math.abs(actual - expected) <= Math.max(3, expected * 0.03);
+            }
+          } catch {
+            playerReady = true;
+          }
+          lastPlayerReady = playerReady;
+          const sources = subtitlesResult.ok ? subtitlesResult.data.sources : [];
+          // 签名接口明确返回「空」时直接认定无字幕，不必再等播放器/重试。
+          const wbiEmpty = sources.some((source) => source.includes('player/wbi/v2（空）'));
           const ready =
             infoResult.ok &&
             infoResult.data.bvid &&
             subtitlesResult.ok &&
             identityMatches &&
-            (subtitlesResult.data.tracks.length > 0 || subtitlesResult.data.needLogin);
+            (subtitlesResult.data.needLogin ||
+              wbiEmpty ||
+              (subtitlesResult.data.tracks.length > 0 && playerReady));
+          if (wbiEmpty) lastPlayerReady = true;
           if (ready) break;
-          await new Promise((resolve) => setTimeout(resolve, 700));
+          await new Promise((resolve) => setTimeout(resolve, 450));
           infoResult = await window.bsub.getPageInfo();
           subtitlesResult = await window.bsub.getSubtitles(
             infoResult.ok ? infoResult.data.signature : undefined
@@ -463,18 +667,47 @@ export function SubtitlesPanel({
 
         if (subtitlesResult.ok) {
           const infoData = infoResult.ok ? infoResult.data : null;
-          setBundle(subtitlesResult.data);
-          const initialTrack = pickTrack(subtitlesResult.data.tracks, infoData);
+          const tracks = subtitlesResult.data.tracks;
+          if (tracks.length > 0 && !lastPlayerReady) {
+            setBundle({ ...subtitlesResult.data, tracks: [] });
+            setTrack(null);
+            setLines([]);
+            setTrackChecks([]);
+            setError('播放器还没有加载完当前视频，已暂停读取字幕；请稍等后点「重试」');
+            return;
+          }
+          // 转录结果缓存在内存里：点刷新时如果本视频没有官方轨，不要把它弄丢。
+          const cachedAsr = getAsrResult(videoKey);
+          const asrTrack: SubtitleTrack = {
+            lan: 'asr',
+            lanDoc: '语音转录',
+            url: 'asr://local',
+            isAi: false,
+            aiStatus: null,
+            source: 'asr'
+          };
+          const displayTracks = cachedAsr
+            ? [...tracks.filter((item) => item.source !== 'asr'), asrTrack]
+            : tracks;
+          setBundle({ ...subtitlesResult.data, tracks: displayTracks });
+          const initialTrack =
+            cachedAsr && tracks.length === 0 ? asrTrack : pickTrack(tracks, infoData);
           setTrack(initialTrack);
-          if (subtitlesResult.data.tracks.length > 1) {
+          if (initialTrack?.source === 'asr' && cachedAsr) setLines(cachedAsr.lines);
+          setTrackNonce((value) => value + 1);
+          if (tracks.length > 1) {
             const initialUrl = initialTrack?.url || '';
-            void pickFullestTrack(subtitlesResult.data.tracks, infoData).then((best) => {
-              if (!cancelled && best && best.url !== initialUrl) {
+            void evaluateTracks(tracks, infoData).then(({ best, checks }) => {
+              if (cancelled) return;
+              setTrackChecks(checks);
+              if (best && best.url !== initialUrl) {
                 setTrack((current) =>
                   current?.url === initialUrl || !current ? best : current
                 );
               }
             });
+          } else {
+            setTrackChecks([]);
           }
         } else {
           setBundle(null);
@@ -495,39 +728,208 @@ export function SubtitlesPanel({
     };
   }, [activeTab?.id, activeTab?.loading, videoKey, isVideoPage, reloadKey]);
 
-  // 选中的字幕轨下载正文
+  // 选中的字幕轨下载正文；失败或空正文时自动尝试下一条候选轨（最多 3 条）。
   useEffect(() => {
     if (!track?.url) {
       setLines([]);
+      setLoadingLines(false);
       return;
     }
-    if (track.source === 'asr') return;
+    if (track.source === 'asr') {
+      const cached = getAsrResult(videoKeyRef.current);
+      if (cached) {
+        setLines(cached.lines);
+        if (cached.info) setInfo(cached.info);
+        const cachedTranslation = getTranslationResult(videoKeyRef.current, track.url);
+        if (cachedTranslation && cachedTranslation.lines.length === cached.lines.length) {
+          setTranslated(cachedTranslation.lines);
+          setTranslatedLang(cachedTranslation.language);
+          setViewMode((current) => (current === 'original' ? 'bilingual' : current));
+        }
+      }
+      setLoadingLines(false);
+      return;
+    }
     let cancelled = false;
     setLoadingLines(true);
     window.bsub
       .getTrackBody(track.url)
       .then((result) => {
         if (cancelled) return;
-        if (result.ok) setLines(result.data.lines);
-        else setError(result.error);
+        if (result.ok && result.data.lines.length) {
+          const fetched = result.data.lines;
+          const duration = Number(infoRef.current?.duration || 0);
+          const lastEnd = fetched.reduce(
+            (max, line) => Math.max(max, Number(line.end || line.start || 0)),
+            0
+          );
+          // 单轨/手动选轨也要校验：末句明显超过视频时长的轨不是当前视频。
+          if (duration > 0 && lastEnd > duration * 1.08 + 8) {
+            failedTrackUrlsRef.current.add(track.url);
+            const alternatives = (bundleRef.current?.tracks || []).filter(
+              (item) =>
+                item.url &&
+                item.source !== 'asr' &&
+                !failedTrackUrlsRef.current.has(item.url)
+            );
+            if (failedTrackUrlsRef.current.size < 3 && alternatives.length) {
+              setTrack(alternatives[0]);
+              return;
+            }
+            if (coverageRetryRef.current < 4) {
+              coverageRetryRef.current += 1;
+              setReloadKey((value) => value + 1);
+              return;
+            }
+            setLines([]);
+            setError(
+              `这条字幕的时长与当前视频不符（末句 ${Math.round(lastEnd)}s / 视频 ${Math.round(
+                duration
+              )}s），已停止使用；请刷新或重新获取字幕`
+            );
+            setLoadingLines(false);
+            return;
+          }
+          if (duration > 0) {
+            const coverage = lastEnd / duration;
+            const min = minCoverageOf(duration);
+            if (coverage < min) {
+              // 单轨/手动选轨也可能拿到「广告/别的视频」的残留轨：
+              // 30 行只覆盖 10% 的视频时，绝不能当成本片字幕。
+              console.log(
+                '[subtitle-coverage]',
+                JSON.stringify({
+                  duration: Math.round(duration),
+                  lastEnd: Math.round(lastEnd),
+                  coverage: Math.round(coverage * 100),
+                  min: Math.round(min * 100),
+                  lines: fetched.length,
+                  retry: coverageRetryRef.current,
+                  url: track.url.slice(-10)
+                })
+              );
+              failedTrackUrlsRef.current.add(track.url);
+              const alternatives = (bundleRef.current?.tracks || []).filter(
+                (item) =>
+                  item.url &&
+                  item.source !== 'asr' &&
+                  !failedTrackUrlsRef.current.has(item.url)
+              );
+              if (failedTrackUrlsRef.current.size < 3 && alternatives.length) {
+                setTrack(alternatives[0]);
+                return;
+              }
+              // B 站接口在切页/预取时会短暂返回别的视频的轨，重新获取几次通常能碰到正确的。
+              if (coverageRetryRef.current < 4) {
+                coverageRetryRef.current += 1;
+                setReloadKey((value) => value + 1);
+                return;
+              }
+              setLines([]);
+              setError(
+                `这条字幕只覆盖 ${Math.round(coverage * 100)}%（末句 ${Math.round(
+                  lastEnd
+                )}s / 视频 ${Math.round(duration)}s），与当前视频不匹配，已停止使用`
+              );
+              setLoadingLines(false);
+              return;
+            }
+          }
+          if (duration > 0 && lastEnd / duration < 0.97) {
+            // 覆盖率不足以证明归属时，再看字幕正文是否真的提到标题里的事物。
+            // 宁可放过一条全片字幕，也不能把「郎酒」视频配上「京都旅行」的字幕。
+            if (!subtitleMatchesTitle(fetched, infoRef.current)) {
+              console.log(
+                '[subtitle-content]',
+                JSON.stringify({
+                  title: infoRef.current?.title?.slice(0, 30),
+                  lines: fetched.length,
+                  first: fetched[0]?.text?.slice(0, 24),
+                  retry: coverageRetryRef.current
+                })
+              );
+              failedTrackUrlsRef.current.add(track.url);
+              const alternatives = (bundleRef.current?.tracks || []).filter(
+                (item) =>
+                  item.url &&
+                  item.source !== 'asr' &&
+                  !failedTrackUrlsRef.current.has(item.url)
+              );
+              if (failedTrackUrlsRef.current.size < 3 && alternatives.length) {
+                setTrack(alternatives[0]);
+                return;
+              }
+              if (coverageRetryRef.current < 4) {
+                coverageRetryRef.current += 1;
+                setReloadKey((value) => value + 1);
+                return;
+              }
+              setLines([]);
+              setError('这条字幕的内容与视频标题不匹配，已停止使用；请刷新或改用语音转录');
+              setLoadingLines(false);
+              return;
+            }
+          }
+          coverageRetryRef.current = 0;
+          const cachedTranslation = getTranslationResult(videoKeyRef.current, track.url);
+          if (cachedTranslation && cachedTranslation.lines.length === fetched.length) {
+            setTranslated(cachedTranslation.lines);
+            setTranslatedLang(cachedTranslation.language);
+            setViewMode((current) => (current === 'original' ? 'bilingual' : current));
+          } else {
+            setTranslated(null);
+            setTranslatedLang('');
+            setViewMode('original');
+          }
+          setLines(fetched);
+          setLoadingLines(false);
+          return;
+        }
+        failedTrackUrlsRef.current.add(track.url);
+        const alternatives = (bundleRef.current?.tracks || []).filter(
+          (item) =>
+            item.url &&
+            item.source !== 'asr' &&
+            !failedTrackUrlsRef.current.has(item.url)
+        );
+        if (failedTrackUrlsRef.current.size < 3 && alternatives.length) {
+          setTrack(alternatives[0]);
+          return;
+        }
+        setLines([]);
+        setError(result.ok ? '这条字幕没有正文' : result.error);
+        setLoadingLines(false);
       })
-      .finally(() => {
-        if (!cancelled) setLoadingLines(false);
+      .catch((error) => {
+        if (cancelled) return;
+        setLines([]);
+        setError((error as Error).message);
+        setLoadingLines(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [track?.url]);
+  }, [track?.url, trackNonce]);
 
-  // 跟随播放：每秒取一次当前时间
+  // 跟随播放：每秒取一次当前时间（面板隐藏时暂停轮询）
   useEffect(() => {
+    if (!active) return;
     if (!track || lines.length === 0) return;
     let alive = true;
     const tick = () => {
       window.bsub
         .getTime()
         .then((result) => {
-          if (alive && result.ok) setCurrent(result.data.currentTime);
+          if (!alive || !result.ok) return;
+          const next = result.data.currentTime;
+          const previous = lastTimeRef.current;
+          lastTimeRef.current = next;
+          // 拖动进度条 / 大跳转后自动恢复跟随（与插件一致）；
+          // 正常播放每秒只前进约 1s，不会触发。
+          if (previous != null && Math.abs(next - previous) > 5 && !followRef.current) {
+            setFollow(true);
+          }
+          setCurrent(next);
         })
         .catch(() => {
           // 页面切换/关闭时忽略
@@ -539,25 +941,47 @@ export function SubtitlesPanel({
       alive = false;
       window.clearInterval(timer);
     };
-  }, [track, lines.length]);
+  }, [track, lines.length, active]);
+
+  const searchTexts = useMemo(
+    () =>
+      lines.map((line, index) => {
+        const translation = translated?.[index]?.text || '';
+        if (viewMode === 'translated') return translation || line.text;
+        if (viewMode === 'bilingual') return `${line.text} ${translation}`.trim();
+        return line.text;
+      }),
+    [lines, translated, viewMode]
+  );
 
   const matchIndices = useMemo(() => {
     const query = subtitleQuery.trim().toLowerCase();
     if (!query) return [] as number[];
-    return lines
-      .map((line, index) => (line.text.toLowerCase().includes(query) ? index : -1))
+    return searchTexts
+      .map((text, index) => (text.toLowerCase().includes(query) ? index : -1))
       .filter((index) => index >= 0);
-  }, [lines, subtitleQuery]);
+  }, [searchTexts, subtitleQuery]);
 
-  const stats = useMemo(() => {
-    const chars = lines.reduce((sum, line) => sum + line.text.length, 0);
+  const displayText = (line: SubtitleLine, index: number): string => {
+    const translation = translated?.[index]?.text || '';
+    if (viewMode === 'translated') return translation || line.text;
+    if (viewMode === 'bilingual') return translation ? `${line.text}\n${translation}` : line.text;
+    return line.text;
+  };
+
+  const stats = useMemo(() => {    const chars = lines.reduce((sum, line) => sum + line.text.length, 0);
     const speech = lines.reduce(
       (sum, line) => sum + Math.max(0, (line.end || 0) - (line.start || 0)),
       0
     );
     const coverage = info && info.duration > 0 ? Math.min(1, speech / info.duration) : 0;
-    return { chars, coverage };
+    return { chars, speech, coverage };
   }, [lines, info]);
+
+  const checkByUrl = useMemo(
+    () => new Map(trackChecks.map((item) => [item.url, item])),
+    [trackChecks]
+  );
 
   const effectiveTarget = targetLang === '__custom' ? customTarget.trim() : targetLang;
 
@@ -572,9 +996,10 @@ export function SubtitlesPanel({
   }, [lines, current]);
 
   useEffect(() => {
+    if (!active) return;
     if (!follow || currentIndex < 0) return;
     activeLineRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [currentIndex, follow]);
+  }, [currentIndex, follow, active]);
 
   const jump = (line: SubtitleLine) => {
     setCurrent(line.start);
@@ -586,13 +1011,15 @@ export function SubtitlesPanel({
     const next =
       (searchIndex + direction + matchIndices.length) % matchIndices.length;
     setSearchIndex(next);
+    setFollow(true);
     const line = lines[matchIndices[next]];
     if (line) jump(line);
   };
 
   const copyAll = () => {
-    void window.bsub.writeClipboard(lines.map((line) => line.text).join('\n'));
-    setSaveMessage(`已复制 ${lines.length} 行字幕`);
+    const texts = lines.map((line, index) => displayText(line, index));
+    void window.bsub.writeClipboard(texts.join('\n'));
+    setSaveMessage(`已复制 ${lines.length} 行字幕（${viewMode === 'original' ? '原文' : viewMode === 'translated' ? '译文' : '双语'}）`);
     window.setTimeout(() => setSaveMessage(''), 3000);
   };
 
@@ -602,6 +1029,7 @@ export function SubtitlesPanel({
       index === editingIndex ? { ...line, text: editingText } : line
     );
     setLines(next);
+    if (track) clearTranslationResult(videoKeyRef.current, track.url);
     if (track?.source === 'asr' && infoRef.current) {
       setAsrResult(videoKeyRef.current, infoRef.current, next);
     }
@@ -615,6 +1043,9 @@ export function SubtitlesPanel({
     if (!lines.length) return;
     if (!window.confirm('清空当前字幕显示？不会删除本地库、缓存或视频。')) return;
     setLines([]);
+    if (track) clearTranslationResult(videoKeyRef.current, track.url);
+    setTrack(null);
+    setBundle(null);
     setEditingIndex(null);
     setEditingText('');
     setTranslated(null);
@@ -629,6 +1060,18 @@ export function SubtitlesPanel({
     setError(null);
     setSaveMessage('已清空当前字幕显示');
     window.setTimeout(() => setSaveMessage(''), 2500);
+  };
+
+  const triggerMenu = async () => {
+    setSaveMessage('正在让播放器重新请求字幕…');
+    const result = await window.bsub.triggerSubtitleMenu();
+    if (!result.ok) {
+      setSaveMessage('');
+      setError(result.error);
+      return;
+    }
+    window.setTimeout(() => refresh(), 900);
+    window.setTimeout(() => setSaveMessage(''), 3500);
   };
 
   const copyLine = (text: string) => {
@@ -718,6 +1161,22 @@ export function SubtitlesPanel({
           </button>
           <button
             className="mini-btn"
+            disabled={!lines.length}
+            title="跳到总结页并用当前字幕生成总结"
+            onClick={() => onOpenSummary?.()}
+          >
+            总结
+          </button>
+          <button
+            className="mini-btn"
+            disabled={!lines.length}
+            title="用 AI 按内容切章节，并在总结页查看 / 点击跳转"
+            onClick={() => onOpenChapters?.()}
+          >
+            章节
+          </button>
+          <button
+            className="mini-btn"
             disabled={!lines.length || checkingQuality}
             title="检查时间轴、覆盖率、语速、重复等问题"
             onClick={() => void checkQuality()}
@@ -759,8 +1218,16 @@ export function SubtitlesPanel({
           >
             <Search size={13} />
           </button>
-          <button className="icon-btn" title="复制全部字幕" onClick={copyAll}>
+          <button className="icon-btn" title="复制全部字幕" disabled={!lines.length} onClick={copyAll}>
             <Copy size={13} />
+          </button>
+          <button
+            className="icon-btn"
+            title="清空字幕显示（不删除本地库与缓存）"
+            disabled={!lines.length}
+            onClick={clearSubtitles}
+          >
+            <Trash2 size={13} />
           </button>
           <button className="icon-btn" title="刷新" onClick={refresh}>
             <RefreshCw size={13} className={loading ? 'spin' : ''} />
@@ -1054,6 +1521,14 @@ export function SubtitlesPanel({
             身份 <code>{bundle.identity || '未知'}</code>
           </div>
           <div className="diag-row">来源：{bundle.sources.join(' · ') || '无'}</div>
+          {bundle.diagnostics?.apiTrackCount != null && (
+            <div className="diag-row">
+              官方接口 {bundle.diagnostics.apiTrackCount} 轨
+              {bundle.diagnostics.apiFiltered
+                ? ` · 因不一致丢弃 ${bundle.diagnostics.apiFiltered} 轨`
+                : ''}
+            </div>
+          )}
           <div className="diag-row">
             分组：{(bundle.diagnostics?.groups || []).join(' · ') || '无'}
           </div>
@@ -1061,14 +1536,66 @@ export function SubtitlesPanel({
             嗅探 {bundle.diagnostics?.sniffCount || 0} 条 · 过期{' '}
             {bundle.diagnostics?.staleSniffCount || 0} 条
           </div>
+          {bundle.diagnostics?.identityMismatch && (
+            <div className="diag-row diag-warn">身份不一致：请求的字幕与当前页面不一致，已丢弃</div>
+          )}
+          {bundle.diagnostics?.identityUnstable && (
+            <div className="diag-row diag-warn">页面身份不稳定：URL / 初始状态 / 分P 对不上</div>
+          )}
+          {bundle.diagnostics?.signatureChanged && (
+            <div className="diag-row diag-warn">采集期间视频已切换，本次结果作废</div>
+          )}
           <div className="diag-row">
             丢弃外来轨：{(bundle.diagnostics?.foreignTracks || []).length}
           </div>
+          {(bundle.diagnostics?.foreignTracks || []).length > 0 && (
+            <details className="diag-sub">
+              <summary>查看被排除的外来轨</summary>
+              {(bundle.diagnostics?.foreignTracks || []).map((item, index) => (
+                <div className="diag-foreign" key={`${item.url}-${index}`} title={item.url}>
+                  {item.from || item.source || '未知来源'}
+                  {item.cid ? ` · cid ${item.cid}` : ''}
+                  {item.lan ? ` · ${item.lan}` : ''}
+                  {item.url ? ` · ${item.url}` : ''}
+                </div>
+              ))}
+            </details>
+          )}
+          {trackChecks.length > 0 && (
+            <details className="diag-sub" open>
+              <summary>
+                候选轨判定 · {trackChecks.filter((item) => item.ok).length}/{trackChecks.length} 可用
+              </summary>
+              {trackChecks.map((item) => (
+                <div
+                  className={`diag-check ${item.ok ? 'is-ok' : 'is-bad'}`}
+                  key={item.url}
+                  title={item.url}
+                >
+                  <span>
+                    {item.lanDoc} · {item.source}
+                    {item.isAi ? ' · AI' : ''}
+                  </span>
+                  <span className="diag-check-reason">
+                    {item.ok ? '✓' : '✕'} {item.reason}
+                  </span>
+                </div>
+              ))}
+            </details>
+          )}
           {bundle.diagnostics?.reason && (
             <div className="diag-row">{bundle.diagnostics.reason}</div>
           )}
           {bundle.errors.length > 0 && (
-            <div className="diag-errors">{bundle.errors.join('；')}</div>
+            <div className="diag-errors">
+              {bundle.errors.map((item, index) => (
+                <div className="diag-error-row" key={`${item.source}-${index}`}>
+                  <code>{item.source || '未知来源'}</code>
+                  {item.code != null && <span className="diag-code">code {String(item.code)}</span>}
+                  <span>{item.message || '未知错误'}</span>
+                </div>
+              ))}
+            </div>
           )}
           <div className="diag-tracks">
             {bundle.tracks.map((item) => (
@@ -1102,17 +1629,31 @@ export function SubtitlesPanel({
 
       {bundle && bundle.tracks.length > 0 && (
         <div className="track-list">
-          {bundle.tracks.map((item) => (
-            <button
-              key={`${item.lan}-${item.url}`}
-              className={`track-chip${track?.url === item.url ? ' is-active' : ''}`}
-              title={`${item.source || '未知来源'} · ${item.lan}`}
-              onClick={() => setTrack(item)}
-            >
-              {item.lanDoc || item.lan || '未知语言'}
-              {item.isAi && <span className="ai-badge">AI</span>}
-            </button>
-          ))}
+          {bundle.tracks.map((item) => {
+            const check = checkByUrl.get(item.url);
+            const invalid = check ? !check.ok : false;
+            return (
+              <button
+                key={`${item.lan}-${item.url}`}
+                className={`track-chip${track?.url === item.url ? ' is-active' : ''}${
+                  invalid ? ' is-invalid' : ''
+                }`}
+                title={`${item.source || '未知来源'} · ${item.lan}${
+                  check ? ` · ${check.reason}` : ''
+                }`}
+                disabled={invalid}
+                onClick={() => {
+                  failedTrackUrlsRef.current.clear();
+                  setError(null);
+                  setTrack(item);
+                }}
+              >
+                {item.lanDoc || item.lan || '未知语言'}
+                {item.isAi && <span className="ai-badge">AI</span>}
+                {invalid && <span className="ai-badge">不可用</span>}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -1131,6 +1672,17 @@ export function SubtitlesPanel({
         <div className="panel-empty">
           没有找到字幕轨
           {bundle.sources.length > 0 && <div className="panel-hint">来源：{bundle.sources.join(' · ')}</div>}
+          <div className="panel-empty-actions">
+            <button className="primary-btn" onClick={refresh}>
+              重新获取字幕
+            </button>
+            <button className="mini-btn" onClick={() => void startAsr()}>
+              改为语音转录
+            </button>
+            <button className="mini-btn" onClick={() => void triggerMenu()}>
+              让播放器重新请求
+            </button>
+          </div>
         </div>
       )}
 
@@ -1168,9 +1720,26 @@ export function SubtitlesPanel({
                   title={`${fmtTime(line.start)} – ${fmtTime(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
                     1,
                     Math.round(line.text.length / 4)
-                  )} 秒`}
+                  )} 秒${translated?.[index]?.text ? `\n译文：${translated[index].text}` : ''}`}
                 >
-                  {line.text}
+                  {viewMode !== 'translated' && (
+                    <span className="sub-text-row">
+                      {subtitleQuery.trim()
+                        ? highlightMatch(line.text, subtitleQuery)
+                        : line.text}
+                    </span>
+                  )}
+                  {viewMode !== 'original' && (
+                    <span className={`sub-text-row${viewMode === 'bilingual' ? ' sub-text-translated' : ''}`}>
+                      {subtitleQuery.trim()
+                        ? highlightMatch(
+                            translated?.[index]?.text || (viewMode === 'translated' ? line.text : ''),
+                            subtitleQuery
+                          )
+                        : translated?.[index]?.text ||
+                          (viewMode === 'translated' ? line.text : '')}
+                    </span>
+                  )}
                 </span>
               )}
               <button
@@ -1189,7 +1758,7 @@ export function SubtitlesPanel({
                 title="复制此行"
                 onClick={(event) => {
                   event.stopPropagation();
-                  copyLine(line.text);
+                  copyLine(displayText(line, index));
                 }}
               >
                 <Copy size={10} />
@@ -1203,7 +1772,9 @@ export function SubtitlesPanel({
         <div className="panel-foot">
           <span>
             {lines.length > 0
-              ? `${lines.length} 行 · ${stats.chars} 字 · 覆盖 ${Math.round(stats.coverage * 100)}%`
+              ? `${lines.length} 行 · ${stats.chars} 字 · 朗读约 ${fmtTime(stats.speech)} · 覆盖 ${Math.round(
+                  stats.coverage * 100
+                )}%`
               : ''}
           </span>
           {bundle?.identity && <span className="mono" title={bundle.identity}>{bundle.identity}</span>}

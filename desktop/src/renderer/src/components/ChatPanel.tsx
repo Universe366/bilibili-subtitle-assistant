@@ -171,14 +171,19 @@ export function ChatPanel({
     if (!track) {
       const cached = fallback();
       if (cached) return cached;
-      throw new Error('当前视频没有可用字幕，无法对话');
+      // 没有字幕也能对话：只带视频信息，模型会说明哪些内容没有字幕依据。
+      const context = { info, lines: [] };
+      contextRef.current = context;
+      return context;
     }
 
     const body = await window.bsub.getTrackBody(track.url);
     if (!body.ok) {
       const cached = fallback();
       if (cached) return cached;
-      throw new Error(body.error);
+      const context = { info, lines: [] };
+      contextRef.current = context;
+      return context;
     }
     const context = { info, lines: body.data.lines };
     contextRef.current = context;

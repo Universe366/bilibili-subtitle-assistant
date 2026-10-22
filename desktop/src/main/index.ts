@@ -15,6 +15,7 @@ import {
 } from './library';
 import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
+import { verifySummary } from './verify';
 import { searchWeb } from './search';
 import { applyCorrectionToText } from './correction';
 import { transcribe, transcribeFile } from './asr';
@@ -28,12 +29,13 @@ import { skillPrompt } from './skills';
 import { chat } from './chat';
 import { rankReferences } from './search';
 import { batchUrls } from './urlbatch';
-import { testPlatformConnection } from './platform';
+import { probePlatformModels, testPlatformConnection } from './platform';
 import { backupData, restoreData } from './backup';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
+import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -55,9 +57,9 @@ function fatal(tag: string, error: unknown): void {
 
 process.on('uncaughtException', (error) => fatal('uncaughtException', error));
 process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason));
-writeLog('startup.log', `boot packaged=${app.isPackaged}`);
 
-// 开发期可用 BSUB_USER_DATA 指定会话目录（例如复用已登录的 Electron profile）
+// 自定义数据目录必须早于任何 userData 读写；环境变量仅用于开发期覆盖。
+const dataDirOverride = applyDataDirOverride();
 if (process.env.BSUB_USER_DATA) {
   try {
     fs.mkdirSync(process.env.BSUB_USER_DATA, { recursive: true });
@@ -66,6 +68,7 @@ if (process.env.BSUB_USER_DATA) {
     console.warn('[app] 无法设置 userData:', (error as Error).message);
   }
 }
+writeLog('startup.log', `boot packaged=${app.isPackaged} dataDir=${dataDirOverride || ''}`);
 
 let mainWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
@@ -273,6 +276,451 @@ function createWindow(): void {
           console.log('[mcp-chat-test]', JSON.stringify(result));
         } catch (error) {
           console.warn('[mcp-chat-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_ANTHROPIC_TOOL_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'anthropic-mock',
+              name: 'Anthropic Mock',
+              baseUrl: process.env.BSUB_MOCK_ANTHROPIC || 'http://127.0.0.1:8891/v1',
+              apiKey: 'mock',
+              model: 'claude-mock',
+              kind: 'anthropic'
+            }
+          ];
+          settings.ai.activeId = 'anthropic-mock';
+          settings.mcp.enabled = true;
+          settings.mcp.servers = [
+            {
+              id: 'mock',
+              name: 'Mock MCP',
+              url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
+              token: '',
+              headers: {},
+              enabled: true,
+              transport: 'http'
+            }
+          ];
+          saveSettings(settings);
+          const result = await chat({
+            info: {
+              kind: 'video',
+              bvid: 'BV1',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '测试视频',
+              owner: '测试UP',
+              desc: '',
+              duration: 10,
+              url: '',
+              signature: 'test'
+            },
+            lines: [{ start: 0, end: 2, text: '测试字幕' }],
+            messages: [{ role: 'user', content: '调用工具' }]
+          });
+          console.log('[anthropic-tool-test]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[anthropic-tool-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_SETTINGS_MIGRATE_TEST === '1') {
+      setTimeout(() => {
+        try {
+          const saved = saveSettings(loadSettings());
+          console.log(
+            '[settings-migrate-test]',
+            JSON.stringify({
+              presetVersion: saved.ai.presetVersion,
+              platforms: saved.ai.platforms.length,
+              hasAnthropic: saved.ai.platforms.some((item) => item.id === 'anthropic'),
+              asr: {
+                chunkSeconds: saved.asr.chunkSeconds,
+                concurrency: saved.asr.concurrency,
+                maxFileMb: saved.asr.maxFileMb,
+                timeoutSeconds: saved.asr.timeoutSeconds
+              },
+              cacheDays: saved.general.subtitleCacheDays,
+              skills: {
+                version: saved.skills.builtinVersion,
+                ids: saved.skills.items.map((item) => item.id)
+              }
+            })
+          );
+        } catch (error) {
+          console.warn('[settings-migrate-test] failed', (error as Error).message);
+        }
+      }, 3000);
+    }
+
+    if (process.env.BSUB_CHAT_NOSUB_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          settings.mcp.enabled = false;
+          settings.search.enabled = false;
+          saveSettings(settings);
+          const result = await chat({
+            info: {
+              kind: 'video',
+              bvid: 'BV1',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '测试视频',
+              owner: '测试UP',
+              desc: '这是视频简介。',
+              duration: 10,
+              url: '',
+              signature: 'test'
+            },
+            lines: [],
+            messages: [{ role: 'user', content: '这个视频讲了什么？' }]
+          });
+          console.log('[chat-nosub-test]', JSON.stringify({ ok: true, len: result.text.length }));
+        } catch (error) {
+          console.warn('[chat-nosub-test] failed', (error as Error).message);
+        }
+      }, 4000);
+    }
+
+    if (process.env.BSUB_VERIFY_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'verify-mock',
+              name: 'Verify Mock',
+              baseUrl: process.env.BSUB_MOCK_VERIFY_AI || 'http://127.0.0.1:8888/v1',
+              apiKey: 'mock',
+              model: 'mock-verify'
+            }
+          ];
+          settings.ai.activeId = 'verify-mock';
+          settings.search.enabled = true;
+          settings.search.activeId = 'verify-search';
+          settings.search.platforms = [
+            {
+              id: 'verify-search',
+              name: 'Verify Search',
+              kind: 'custom',
+              baseUrl:
+                process.env.BSUB_MOCK_VERIFY_SEARCH || 'http://127.0.0.1:8892/search',
+              apiKey: ''
+            }
+          ];
+          settings.search.verifySummary = true;
+          settings.search.verifyItemCount = 4;
+          settings.search.aiQueryGeneration = true;
+          settings.search.extraVerifyQueries = '额外查询 测试';
+          settings.search.keylessFallback = false;
+          settings.search.includeContent = false;
+          settings.search.maxResults = 3;
+          saveSettings(settings);
+
+          const info = {
+            kind: 'video' as const,
+            bvid: 'BV1',
+            aid: 1,
+            cid: 1,
+            epId: null,
+            seasonId: null,
+            page: 1,
+            partTitle: '',
+            parts: [],
+            title: '测试视频 2026 发布',
+            owner: '测试UP',
+            desc: '',
+            duration: 60,
+            url: '',
+            signature: 'test'
+          };
+          const lines = [
+            { start: 0, end: 5, text: '测试视频在 2026 年发布。' },
+            { start: 5, end: 10, text: 'DeepSeek V4 参数量达到 6710 亿。' },
+            { start: 10, end: 15, text: '这是第三句普通字幕。' },
+            { start: 15, end: 20, text: '这是第四句普通字幕。' }
+          ];
+          const result = await verifySummary(settings, info, lines, undefined, (done, total, label) =>
+            console.log('[verify-test] progress', done, total, label)
+          );
+          console.log(
+            '[verify-test]',
+            JSON.stringify({
+              attempted: result.attempted,
+              queries: result.items.map((item) => item.label || item.query),
+              itemRefs: result.items.map((item) => item.references.length),
+              references: result.references.length,
+              judged: result.judged,
+              dropped: result.dropped,
+              supplements: result.supplements
+            })
+          );
+        } catch (error) {
+          console.warn('[verify-test] failed', (error as Error).message);
+        }
+      }, 4000);
+    }
+
+    if (process.env.BSUB_WIZARD_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!mainWindow) return;
+          const result = await mainWindow.webContents.executeJavaScript(
+            'window.bsub.finishWizard().then((r) => r)'
+          );
+          console.log(
+            '[wizard-test]',
+            JSON.stringify({
+              ok: result?.ok,
+              done: result?.data?.settings?.general?.wizardDone
+            })
+          );
+        } catch (error) {
+          console.warn('[wizard-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_UI_STATE_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!mainWindow) return;
+          const measure = () =>
+            mainWindow!.webContents.executeJavaScript(`(() => {
+              const pick = (selector) => {
+                const el = document.querySelector(selector);
+                if (!el) return null;
+                const rect = el.getBoundingClientRect();
+                const x = rect.left + Math.min(20, rect.width / 2);
+                const y = rect.top + Math.min(20, rect.height / 2);
+                const hit = document.elementFromPoint(x, y);
+                return {
+                  rect: rect.toJSON(),
+                  hit: hit ? (hit.className || hit.tagName) : null
+                };
+              };
+              return {
+                viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
+                sidebar: pick('.sidebar'),
+                toolbar: pick('.panel-toolbar'),
+                tabstrip: pick('.tab-strip'),
+                address: pick('.address-bar'),
+                overlay: Boolean(document.querySelector('.wizard-overlay')),
+                wizard: document.body.innerText.includes('欢迎使用')
+              };
+            })()`);
+
+          const log = async (label: string) => {
+            const dom = await measure();
+            console.log(
+              label,
+              JSON.stringify({
+                dom,
+                view: tabManager?.getActiveViewState(),
+                window: mainWindow?.getBounds(),
+                content: mainWindow?.getContentBounds()
+              })
+            );
+          };
+
+          await log('[ui-state-startup]');
+
+          await mainWindow.webContents.executeJavaScript(
+            'window.bsub.setWizardVisible(true).then((r) => r.ok)'
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          await log('[ui-state-wizard]');
+
+          await mainWindow.webContents.executeJavaScript(
+            'window.bsub.finishWizard().then((r) => r.ok)'
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          await log('[ui-state-normal]');
+        } catch (error) {
+          console.warn('[ui-state] failed', (error as Error).message);
+        }
+      }, 6000);
+    }
+
+    if (process.env.BSUB_SUMMARY_LONG_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          settings.ai.preProofread = false;
+          settings.search.enabled = false;
+          settings.ai.stream = true;
+          saveSettings(settings);
+
+          const lines = Array.from({ length: 5000 }, (_, index) => ({
+            start: index * 2,
+            end: index * 2 + 2,
+            text: `这是第 ${index + 1} 句用于验证长视频分段总结的字幕内容。`
+          }));
+          const statuses: string[] = [];
+          let deltas = 0;
+          const result = await summarize({
+            info: {
+              kind: 'video',
+              bvid: 'BV1',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '长视频测试',
+              owner: '测试UP',
+              desc: '',
+              duration: 10000,
+              url: '',
+              signature: 'test'
+            },
+            lines,
+            onStatus: (status) => statuses.push(status),
+            onDelta: () => {
+              deltas += 1;
+            }
+          });
+          console.log(
+            '[summary-long-test]',
+            JSON.stringify({
+              chars: result.text.length,
+              deltas,
+              chunkStatus: statuses.filter((item) => item.includes('长视频分段总结')).length,
+              mergeStatus: statuses.filter((item) => item.includes('正在合并')).length,
+              last: statuses[statuses.length - 1]
+            })
+          );
+        } catch (error) {
+          console.warn('[summary-long-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_PANEL_PERSIST_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!mainWindow) return;
+          const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const clickNav = (label) => {
+              const el = [...document.querySelectorAll('.side-nav-item')].find((item) =>
+                String(item.textContent || '').includes(label)
+              );
+              if (el) el.click();
+              return Boolean(el);
+            };
+            const snapshot = () => [...document.querySelectorAll('.side-panel')].map((panel) => ({
+              active: panel.classList.contains('is-active'),
+              children: panel.children.length
+            }));
+            clickNav('字幕');
+            await wait(400);
+            const active = document.querySelector('.side-panel.is-active > .panel');
+            if (active) active.setAttribute('data-marker', 'keep');
+            const before = snapshot();
+            clickNav('设置');
+            await wait(600);
+            const during = snapshot();
+            const markerKept = Boolean(document.querySelector('[data-marker="keep"]'));
+            clickNav('字幕');
+            await wait(400);
+            return {
+              before,
+              during,
+              markerKept,
+              afterActive: document.querySelectorAll('.side-panel.is-active').length
+            };
+          })()`);
+          console.log('[panel-persist-test]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[panel-persist-test] failed', (error as Error).message);
+        }
+      }, 6000);
+    }
+
+    if (process.env.BSUB_SUMMARY_FORMAT_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'mock',
+              name: 'Mock',
+              baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+              apiKey: 'mock',
+              model: 'mock'
+            }
+          ];
+          settings.ai.activeId = 'mock';
+          settings.ai.preProofread = false;
+          settings.search.enabled = false;
+          saveSettings(settings);
+          const result = await summarize({
+            info: {
+              kind: 'video',
+              bvid: 'BV1',
+              aid: 1,
+              cid: 1,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: '格式测试',
+              owner: '测试UP',
+              desc: '',
+              duration: 20,
+              url: '',
+              signature: 'test'
+            },
+            lines: [
+              { start: 0, end: 4, text: '这是第一句字幕。' },
+              { start: 4, end: 8, text: '这是第二句字幕。' }
+            ]
+          });
+          console.log('[summary-format-test]', JSON.stringify({ chars: result.text.length }));
+        } catch (error) {
+          console.warn('[summary-format-test] failed', (error as Error).message);
         }
       }, 5000);
     }
@@ -735,6 +1183,83 @@ function createWindow(): void {
           console.log('[chat-test]', JSON.stringify(result));
         } catch (error) {
           console.warn('[chat-test] failed', (error as Error).message);
+        }
+      }, 5000);
+    }
+
+    if (process.env.BSUB_ANTHROPIC_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const settings = loadSettings();
+          settings.ai.platforms = [
+            {
+              id: 'anthropic-mock',
+              name: 'Anthropic Mock',
+              baseUrl: process.env.BSUB_MOCK_ANTHROPIC || 'http://127.0.0.1:8891/v1',
+              apiKey: 'mock',
+              model: 'claude-mock',
+              kind: 'anthropic'
+            }
+          ];
+          settings.ai.activeId = 'anthropic-mock';
+          settings.ai.preProofread = false;
+          settings.ai.stream = true;
+          settings.search.enabled = false;
+          saveSettings(settings);
+
+          const info = {
+            title: '测试视频',
+            owner: '测试UP',
+            duration: 60,
+            bvid: 'BV1',
+            cid: 1,
+            url: '',
+            kind: 'video' as const,
+            aid: 1,
+            epId: null,
+            seasonId: null,
+            page: 1,
+            partTitle: '',
+            parts: [],
+            desc: '',
+            signature: 'test'
+          };
+          const lines = [
+            { start: 0, end: 5, text: '这是第一句字幕。' },
+            { start: 5, end: 10, text: '这是第二句字幕。' }
+          ];
+          let streamed = '';
+          const summary = await summarize({
+            info,
+            lines,
+            onDelta: (delta) => {
+              streamed += delta;
+            }
+          });
+          const translated = await translateLines(lines, 'English', () => undefined);
+
+          const models = await probePlatformModels('ai', settings.ai.platforms[0]);
+          const connection = await testPlatformConnection('ai', settings.ai.platforms[0]);
+
+          // 非流式路径（chatOnce）也要走同一套协议。
+          settings.ai.stream = false;
+          saveSettings(settings);
+          const quick = await summarize({ info, lines });
+
+          console.log(
+            '[anthropic-test]',
+            JSON.stringify({
+              ok: true,
+              summary: summary.text.slice(0, 40),
+              streamed: streamed.length,
+              quick: quick.text.slice(0, 40),
+              translated: translated.lines.map((line) => line.text),
+              models: models.models,
+              connection: connection.sample
+            })
+          );
+        } catch (error) {
+          console.log('[anthropic-test] failed', (error as Error).message);
         }
       }, 5000);
     }
@@ -1687,6 +2212,7 @@ app.whenReady().then(() => {
   });
   initLibrary();
   writeLog('startup.log', 'library ready');
+  scheduleOldDataCleanup();
   createWindow();
   writeLog('startup.log', 'window created');
   createTray();

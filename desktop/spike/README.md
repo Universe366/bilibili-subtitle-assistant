@@ -28,6 +28,17 @@ unset ELECTRON_RUN_AS_NODE
 | `spike/cdp-test.mjs` | CDP 最小诊断（Page.enable 等） |
 | `spike/edge-mem.ps1` | 同页 Edge 内存对照 |
 
+本地 mock 服务（验证用，不属于产品）：
+
+```bash
+node spike/mock-ai.mjs          # OpenAI 兼容流式总结
+node spike/mock-anthropic.mjs   # Anthropic /v1/messages（流式 / 工具 / 模型列表）
+node spike/mock-verify.mjs      # 总结核对：检索词生成 + 自定义检索 + 语义判定
+node spike/mock-mcp.mjs         # MCP HTTP
+node spike/mock-mcp-sse.mjs     # MCP SSE
+node spike/mock-asr.mjs         # ASR
+```
+
 ## 结果（Windows 11 / Electron 45 / Chromium 156）
 
 | 项目 | 结果 |

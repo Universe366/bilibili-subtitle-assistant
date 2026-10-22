@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Loader2, Sparkles, Square } from 'lucide-react';
+import { AlertTriangle, Copy, Loader2, Sparkles, Square } from 'lucide-react';
 import type {
   Chapter,
   PageInfo,
@@ -54,6 +54,9 @@ export function SummaryPanel({
   const [chaptersLoading, setChaptersLoading] = useState(false);
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [preProofread, setPreProofread] = useState(false);
+  const [reasoning, setReasoning] = useState('');
   const requestRef = useRef('');
   const streamingRef = useRef(false);
   const liveRef = useRef<HTMLPreElement>(null);
@@ -160,11 +163,16 @@ export function SummaryPanel({
       if (event.requestId !== requestRef.current) return;
       setStatus(event.status);
     });
+    const offReasoning = window.bsub.onAiReasoning((event) => {
+      if (event.requestId !== requestRef.current) return;
+      setReasoning((previous) => previous + event.delta);
+    });
     return () => {
       offDelta();
       offDone();
       offError();
       offStatus();
+      offReasoning();
     };
   }, []);
 
@@ -172,6 +180,15 @@ export function SummaryPanel({
     const element = liveRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   }, [streamText]);
+
+  useEffect(() => {
+    void window.bsub.getSettings().then((response) => {
+      if (response.ok) setPreProofread(response.data.settings.ai.preProofread === true);
+    });
+    return window.bsub.onSettingsChanged((snapshot) => {
+      setPreProofread(snapshot.settings.ai.preProofread === true);
+    });
+  }, []);
 
   const ensureLines = useCallback(async () => {
     const infoResponse = await window.bsub.getPageInfo();
@@ -218,7 +235,7 @@ export function SummaryPanel({
     return { info: currentInfo, track: chosen, lines: body.data.lines };
   }, []);
 
-  const generate = async () => {
+  const generate = async (skipProofread = false) => {
     if (streaming) return;
     setError(null);
     streamingRef.current = true;
@@ -226,6 +243,7 @@ export function SummaryPanel({
     setSummaryVideoKey(videoKey);
     setStreamText('');
     setSummary('');
+    setReasoning('');
     setVerification(null);
     setFromSaved(false);
     setStatus('准备字幕…');
@@ -237,7 +255,8 @@ export function SummaryPanel({
       const started = await window.bsub.summarize({
         requestId,
         info: data.info,
-        lines: data.lines
+        lines: data.lines,
+        skipProofread
       });
       if (!started.ok) throw new Error(started.error);
     } catch (caught) {
@@ -278,6 +297,14 @@ export function SummaryPanel({
     }
   };
 
+  useEffect(() => {
+    const handler = () => {
+      void loadChapters();
+    };
+    window.addEventListener('bsub:chapters-request', handler);
+    return () => window.removeEventListener('bsub:chapters-request', handler);
+  });
+
   const showSettingsHint =
     Boolean(error) &&
     /Key|模型|平台|设置|401|403|404/.test(error || '');
@@ -295,7 +322,30 @@ export function SummaryPanel({
           >
             {chaptersLoading ? <Loader2 size={12} className="spin" /> : '章节'}
           </button>
+          {summary && (
+            <button
+              className="mini-btn"
+              title="复制总结 Markdown"
+              onClick={() => {
+                void window.bsub.writeClipboard(summary);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              <Copy size={12} /> {copied ? '已复制' : ''}
+            </button>
+          )}
           {summary && <ExportMenu info={info} track={track} lines={lines} summary={summary} />}
+          {!streaming && preProofread && (
+            <button
+              className="mini-btn"
+              disabled={!isVideoPage || loading || !activeTab}
+              onClick={() => void generate(true)}
+              title="跳过校对，直接生成总结（更快、更省额度）"
+            >
+              快速
+            </button>
+          )}
           {streaming ? (
             <button className="mini-btn" onClick={cancel} title="停止生成">
               <Square size={11} /> 停止
@@ -305,7 +355,15 @@ export function SummaryPanel({
               className="mini-btn primary"
               disabled={!isVideoPage || loading || !activeTab}
               onClick={() => void generate()}
-              title={summary ? '重新生成' : '生成 AI 总结'}
+              title={
+                preProofread
+                  ? summary
+                    ? '重新生成（先校对）'
+                    : '生成总结（先校对）'
+                  : summary
+                    ? '重新生成'
+                    : '生成 AI 总结'
+              }
             >
               {summary ? '重生成' : '生成'}
             </button>
@@ -376,6 +434,13 @@ export function SummaryPanel({
         </div>
       )}
 
+      {reasoning && (
+        <details className="chat-reasoning">
+          <summary>💭 思考过程{streaming ? '（生成中）' : ''}</summary>
+          <pre>{reasoning}</pre>
+        </details>
+      )}
+
       {streaming && (
         <>
           {status && <div className="status-line">{status}</div>}
@@ -412,14 +477,14 @@ export function SummaryPanel({
       )}
 
       {!streaming && verification && (
-        <div className="verify-card">
-          <div className="verify-head">
+        <details className="verify-card">
+          <summary className="verify-head">
             <span>本次联网核对</span>
             <span className="verify-stats">
               {verification.attempted} 项 · {verification.references.length} 条证据
               {verification.judged ? ` · 丢弃 ${verification.dropped}` : ' · 未判定'}
             </span>
-          </div>
+          </summary>
           {verification.error && (
             <div className="verify-error">核对失败：{verification.error}</div>
           )}
@@ -430,44 +495,56 @@ export function SummaryPanel({
               ))}
             </div>
           )}
-          <details className="verify-details">
-            <summary>查看待核实项与证据</summary>
-            {verification.items.filter((item) => item.references.length > 0).length === 0 && (
-              <div className="verify-none">本次没有取得可用证据</div>
-            )}
-            {verification.items
-              .filter((item) => item.references.length > 0)
-              .map((item, index) => (
-              <div key={`${index}-${item.query}`} className="verify-item">
-                <div className="verify-query">
-                  {item.label || item.query}
-                  <span className="verify-line">字幕：{item.line}</span>
-                </div>
-                {item.references.length === 0 ? (
-                  <div className="verify-none">没有可用证据</div>
-                ) : (
-                  item.references.map((reference) => (
-                    <button
-                      key={reference.url}
-                      className="verify-ref"
-                      title={reference.url}
-                      onClick={() => void window.bsub.openExternal(reference.url)}
-                    >
-                      <span className={`verify-verdict ${reference.verdict || 'unknown'}`}>
-                        {reference.verdict === 'support'
-                          ? '支持'
-                          : reference.verdict === 'refute'
-                            ? '反驳'
-                            : '未判定'}
-                      </span>
-                      <span className="verify-title">{reference.title}</span>
-                    </button>
-                  ))
-                )}
+          <div className="verify-list">
+            {!verification.judged ? (
+              <div className="verify-none">
+                语义判定未完成，已跳过逐条证据展示；总结只使用上面整理出的外部补充。
               </div>
-            ))}
-          </details>
-        </div>
+            ) : (
+              <>
+                {verification.items.filter((item) => item.references.length > 0).length === 0 && (
+                  <div className="verify-none">本次没有取得可用证据</div>
+                )}
+                {verification.items
+                  .filter((item) => item.references.length > 0)
+                  .map((item, index) => (
+                  <div key={`${index}-${item.query}`} className="verify-item">
+                    <div className="verify-query">
+                      {item.label || item.query}
+                      <span className="verify-line">字幕：{item.line}</span>
+                    </div>
+                    {item.references.map((reference) => (
+                      <button
+                        key={reference.url}
+                        className="verify-ref"
+                        title={reference.url}
+                        onClick={() => void window.bsub.openExternal(reference.url)}
+                      >
+                        <span className={`verify-verdict ${reference.verdict || 'unknown'}`}>
+                          {reference.verdict === 'support'
+                            ? '支持'
+                            : reference.verdict === 'refute'
+                              ? '反驳'
+                              : '未判定'}
+                        </span>
+                        <span className="verify-title">{reference.title}</span>
+                        {reference.site && (
+                          <span className="verify-site">{reference.site}</span>
+                        )}
+                        {reference.consistency === 'multi' && (
+                          <span className="verify-tag">多源</span>
+                        )}
+                        {reference.consistency === 'conflict' && (
+                          <span className="verify-tag conflict">冲突</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </details>
       )}
 
       {!streaming && summary && (

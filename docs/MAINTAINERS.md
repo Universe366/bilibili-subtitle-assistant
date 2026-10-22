@@ -1,6 +1,7 @@
 # 维护者手册
 
 > 读者：下一个接手仓库的人（或 AI）。这里只记录**发布流程、易踩坑和不能随便改的约束**。
+> 桌面端模块/数据流/安装器细节见 [`../desktop/docs/ARCHITECTURE.md`](../desktop/docs/ARCHITECTURE.md)；
 > 环境限制与历史复盘见 [`../bilibili-subtitle-assistant/AGENTS.md`](../bilibili-subtitle-assistant/AGENTS.md) 和
 > [`../bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md`](../bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md)。
 
@@ -15,8 +16,10 @@
 | `bilibili-subtitle-assistant/src/shared/` | 设置、常量、存储、校验 |
 | `desktop/` | Windows 桌面端（Electron + React + SQLite） |
 | `desktop/src/main/` | 主进程：窗口、WebContentsView 标签、CDP 注入、IPC、更新、托盘 |
+| `desktop/src/main/dataDir.ts` | 自定义数据目录、迁移、旧目录清理 |
 | `desktop/src/renderer/` | 桌面端 React UI（浏览器区域 + 侧栏 + 设置） |
-| `desktop/build/installer.nsh` | NSIS 自定义卸载页（可选删除本地数据） |
+| `desktop/src/renderer/src/lib/` | ASR / 翻译会话缓存 |
+| `desktop/build/installer.nsh` | NSIS 自定义安装目录与卸载页（可选删除本地数据） |
 | `verify/` | 测试与发布脚本（不属于扩展运行时） |
 | `docs/screenshots/` | README / 商店用界面截图 |
 | `docs/EDGE-STORE.md` | Edge 提交材料、权限理由、认证备注 |
@@ -28,15 +31,18 @@
 一次版本 bump 至少检查这些位置：
 
 ```text
-bilibili-subtitle-assistant/manifest.json
+bilibili-subtitle-assistant/manifest.json                     2.18.1
 bilibili-subtitle-assistant/src/shared/constants.js          VERSION
 bilibili-subtitle-assistant/src/content/content.js            CONTENT_VERSION
 bilibili-subtitle-assistant/src/content/page-bridge.js        bridge version
-verify/package.json
-verify/bg-test.js / content-test.js / flow2.js / panel-test.js  测试固定版本
+desktop/package.json                                          0.30.12
+desktop/package-lock.json                                     顶层与 packages[""].version
+desktop/README.md / CHANGELOG.md                              产物名与版本说明
+verify/package.json                                           测试包版本（按需同步）
 ```
 
-`verify/panel-test.js` 里的「构建指纹」断言最容易漏。
+`verify/panel-test.js` 里的「构建指纹」断言最容易漏；扩展版本改动后先跑
+`node panel-test.js`，再跑浏览器冒烟。
 
 ### 2.2 跑测试
 
@@ -97,6 +103,9 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
   `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`
 - `ffmpeg-static` 约 82MB，已配置 `asarUnpack`；不要把它打进 asar，否则 ASR 找不到可执行文件。
 - 打包产物在 `desktop/release/`，已被 `.gitignore` 忽略，不要提交。
+- 本机证书下载失败时，可复用已安装的 Electron 目录先验证 NSIS：
+  `npx electron-builder --win nsis --publish never --config.electronDist=node_modules/electron/dist`；
+  正式发布不要带这个参数。
 
 #### 版本与发布
 
@@ -113,13 +122,24 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - 自定义 generic 源通过设置 `update.feedUrl`，修改后下次启动生效。
 - 未签名时 SmartScreen 仍会提示；签名后再谈“无感更新”。
 
-#### 卸载与数据
+#### 数据目录、迁移与卸载
 
+- 默认数据在 `%APPDATA%\bsub-desktop`；设置 → 数据与备份 → 更改位置可迁移。
+- 自定义位置写在 `%APPDATA%\bsub-desktop-location.txt`（纯文本路径）；启动时
+  `applyDataDirOverride()` 必须早于任何 `userData` 读写。
+- 迁移只复制、不立即删旧目录；新进程启动后 `scheduleOldDataCleanup()` 删除旧目录，
+  失败路径写入 `%APPDATA%\bsub-desktop-cleanup.txt`，下次启动重试。
+- 复制前 `checkpointLibrary()` + `closeLibrary()`；核心文件未复制成功不写指向、不删旧数据；
+  失败会 `initLibrary()` 重开原库。
 - 安装包 `nsis.include=build/installer.nsh`，`deleteAppDataOnUninstall=false`。
-- 自定义卸载页默认只删程序；勾选后删除 `%APPDATA%\bsub-desktop` 与 `%LOCALAPPDATA%\bsub-desktop-updater`。
-- NSIS 开了 `-WX`（警告即错误）：`Var` 不能声明在安装器也会编译到的顶层；当前把 `Var DeleteAppData` 放在 `customUnWelcomePage` 宏里。
-- 改卸载页后必须跑一次 `npm run dist` 验证 NSIS 能编译，不要只改 `.nsh` 不打包。
-- 用户改过自定义数据目录时，卸载器只清默认 `%APPDATA%\bsub-desktop`，不会清自定义目录。
+- 自定义卸载页默认只删程序；勾选后删除默认数据目录、自定义位置（读指向文件）、
+  待清理旧目录、`%LOCALAPPDATA%\bsub-desktop-updater` 和 `%TEMP%\bsub-asr-*`。
+- 静默卸载 `/S` 不会弹数据页，默认保留数据。
+- NSIS 开了 `-WX`（警告即错误）：`Var` 不能声明在安装器也会编译到的顶层；当前把
+  `Var DeleteAppData` 放在 `customUnWelcomePage` 宏里。
+- 安装目录页用 `.onVerifyInstDir` 立即补全 `父目录\B站字幕助手`；
+  不要用全局 `MUI_PAGE_CUSTOMFUNCTION_LEAVE`（会接管安装模式页并让卸载器构建失败）。
+- 改 `installer.nsh` 后必须真的打一次包验证 NSIS 编译。
 
 ### 2.6 代码签名
 
@@ -141,10 +161,18 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 
 **字幕身份**：
 
+- **只信 WBI 签名接口 `/x/player/wbi/v2`**。无签名的 `/x/player/v2` 在风控降级时会
+  返回别的视频的字幕，且请求间结果会变；它是「视频对、字幕串片」的根因。
+- 页面桥先请求 WBI；`code===0` 时只返回它的结果（包括 0 条）；播放器实例、
+  无签名接口、`__INITIAL_STATE__`、网络嗅探只在 WBI 失败时兜底。
 - IPC `page:subtitles` 接收 `expectSignature`；页面桥 `getSubtitleBundle` 用它做 identity guard。
 - 渲染层先取 `PageInfo`，再带 `signature` 请求字幕；返回 `bundle.identity` 不一致必须丢弃。
-- 多轨自动选择只在字幕末句覆盖视频 ≥70%、且不超时长 20% 的候选里选正文最多；不要无脑选最长轨（会选到别片/广告轨）。
+- 自动选轨：末句超出片尾 8%+8s、覆盖率低于 `minCoverageOf(duration)` 直接拒绝；
+  非全片覆盖再做标题/简介关键词校验；通过后优先「结束时间与片长对齐」的轨，再选正文最多。
+  不要无脑选最长轨。
+- 播放器时长未就绪时先等待；被拒轨重取最多 4 次，仍失败显示明确错误，不硬塞。
 - 无官方字幕视频优先显示空状态 + 转录；不要把上一页的 `track` 状态留着。
+- 扩展字幕缓存 key 带 `v2`；旧缓存可能来自无签名接口，升级后必须失效。
 
 **总结跨页**：
 
@@ -212,8 +240,20 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 
 - 平台预设集中放在 `desktop/src/shared/presets.ts`，由插件 `settings.js` 导出；AI/检索/ASR 的 ID、模型、地址不要散落在 UI。
 - 旧配置迁移靠 `ai.presetVersion`；新增内置平台时提高版本号，并确保用户删掉的平台不会被反复加回。
-- 当前 AI 只接 OpenAI 兼容协议；Anthropic 原生协议未接，不要把它硬塞进列表冒充可用。
+- 当前 AI 同时支持 OpenAI 兼容协议与 **Anthropic 原生 `/v1/messages`**（`aiClient.ts`）；新增平台时两种 `kind` 都要考虑。
 - 设置快照会掩码 API Key；保存时靠 `mergeSecrets` 保留未修改的 Key，清空要用显式 `__CLEAR__`。
+
+### 3.8 封面、ASR 与翻译缓存
+
+- B 站图片 CDN 按 Referer 防盗链：`localhost` / `file://` 会 403。渲染页
+  `index.html` 的 `<meta name="referrer" content="no-referrer">` 不能删；新增图片
+  请求也不要覆盖成发送本地 Referer。
+- ASR 结果缓存在 `src/renderer/src/lib/asrStore.ts`，翻译在 `translationStore.ts`，
+  都是**渲染进程内存缓存**：刷新/切视频可恢复，退出应用丢失。
+- 翻译 key 是 `videoKey + 轨路径`；编辑、优化、清空、重新转录必须调用
+  `clearTranslationResult()`，否则译文会和改过的原文对不上。
+- 无官方轨时刷新要恢复 ASR 结果，并在 `bundle.tracks` 里补一个「语音转录」伪轨，
+  否则会出现“转录后一刷新就没了”。
 
 ## 4. 调试与诊断
 
@@ -232,7 +272,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 | 版本 / 修复 | `CHANGELOG.md`、Release notes |
 | 权限 / 隐私 / 商店文案 | `PRIVACY.md`、`docs/EDGE-STORE.md` |
 | 测试命令 / 新增套件 | `verify/README.md`、根 README |
-| 架构 / 环境坑 | `AGENTS.md`、本文件 |
+| 架构 / 环境坑 | `AGENTS.md`、本文件、`desktop/docs/ARCHITECTURE.md` |
 | 桌面端功能 / 平台 / 验收 | `desktop/README.md`、`desktop/docs/PARITY.md`、`desktop/docs/PLATFORMS.md` |
 | 桌面端真实回归 | `desktop/docs/REAL-REGRESSION.md` |
 

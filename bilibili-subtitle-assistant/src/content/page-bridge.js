@@ -976,6 +976,56 @@
       return ok;
     };
 
+    // ① 先走 WBI 签名接口（最快、也是唯一可信的归属来源）。
+    // 成功就直接返回，不再发无签名 player/v2 的请求 —— 既提速，
+    // 也避免风控降级把别的视频的字幕混进来。
+    try {
+      const params = { cid };
+      if (aid) params.aid = aid;
+      if (bvid) params.bvid = bvid;
+      const out = await signedPlayerApi(params);
+      if (out && out.json && out.json.code === 0) {
+        const list = tracksFromPlayerData(out.json.data);
+        const needLogin = !!(out.json.data && out.json.data.need_login_subtitle);
+        const sigAtEnd = currentSignature();
+        if (sigAtStart && sigAtEnd && sigAtStart !== sigAtEnd) {
+          return {
+            tracks: [],
+            sources: ['采集期间视频已切换，结果作废'],
+            errors,
+            needLogin,
+            sniffCount: 0,
+            staleSniffCount: 0,
+            foreignTracks: [],
+            signatureChanged: true,
+            fromSignature: sigAtStart,
+            toSignature: sigAtEnd,
+            groups: ['wbiV2'],
+            sniffed: []
+          };
+        }
+        return {
+          tracks: list,
+          sources: [list.length ? 'player/wbi/v2' : 'player/wbi/v2（空）'],
+          errors,
+          needLogin,
+          sniffCount: 0,
+          staleSniffCount: 0,
+          foreignTracks: [],
+          signatureChanged: false,
+          groups: ['wbiV2'],
+          sniffed: []
+        };
+      }
+      errors.push({
+        source: 'player/wbi/v2',
+        code: out && out.json && out.json.code,
+        message: out && out.json && out.json.message
+      });
+    } catch (err) {
+      errors.push({ source: 'player/wbi/v2', message: String(err && err.message) });
+    }
+
     // ① 播放器实例
     //
     // ⚠ 这一路最容易拿到上一个视频的轨：B 站是单页应用，
@@ -1028,17 +1078,22 @@
     }
 
     // ③ 带 wbi 签名的接口
+    //
+    // 这是唯一可信的「当前视频字幕」来源：
+    // 无签名的 /x/player/v2 在风控降级时会随机返回**别的视频的字幕**
+    // （社区已确认：缺 Wbi 签名会被降级，症状就是字幕张冠李戴）。
+    // 因此 wbi 请求只要成功（code=0），就以它的结果为准，哪怕返回 0 条。
+    let wbiOk = false;
     try {
       const params = { cid };
       if (aid) params.aid = aid;
       if (bvid) params.bvid = bvid;
       const out = await signedPlayerApi(params);
       if (out && out.json && out.json.code === 0) {
+        wbiOk = true;
         const list = tracksFromPlayerData(out.json.data);
-        if (list.length) {
-          groups.wbiV2 = list;
-          sources.push('player/wbi/v2');
-        }
+        groups.wbiV2 = list;
+        sources.push(list.length ? 'player/wbi/v2' : 'player/wbi/v2（空）');
       } else if (out) {
         errors.push({ source: 'player/wbi/v2', code: out.json && out.json.code, message: out.json && out.json.message });
       }
@@ -1087,7 +1142,10 @@
       for (const t of list || []) if (t && t.url) knownPaths.add(subtitlePathKey(t.url));
     }
     const freshSniff = freshSniffed();
-    const sniffed = freshSniff.filter((s) => !knownPaths.size || knownPaths.has(subtitlePathKey(s.url)));
+    // wbi 签名结果可信时，不再混入网络嗅探的正文（嗅探可能来自上一个视频的请求）。
+    const sniffed = wbiOk
+      ? []
+      : freshSniff.filter((s) => !knownPaths.size || knownPaths.has(subtitlePathKey(s.url)));
     for (const s of freshSniff) {
       if (!sniffed.includes(s)) foreign.push({ from: 'network-sniff', lan: '', url: String(s.url || '').slice(0, 120) });
     }
@@ -1130,7 +1188,10 @@
       };
     }
 
-    const tracks = mergeTracks(groups.player, groups.playerV2, groups.wbiV2, groups.initialState, groups.sniffed);
+    // wbi 成功时只信 wbi：无签名 player/v2 可能被风控降级成别的视频的字幕。
+    const tracks = wbiOk
+      ? mergeTracks(groups.wbiV2)
+      : mergeTracks(groups.player, groups.playerV2, groups.wbiV2, groups.initialState, groups.sniffed);
     return {
       tracks,
       sources,
@@ -2244,7 +2305,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '2.17.8',
+    version: '2.18.1',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

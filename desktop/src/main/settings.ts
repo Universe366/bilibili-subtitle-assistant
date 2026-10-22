@@ -1,4 +1,4 @@
-import { app, session } from 'electron';
+import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
@@ -17,6 +17,7 @@ import {
   ASR_PRESETS,
   SEARCH_PRESETS
 } from '../shared/presets';
+import { testAiConnection } from './aiClient';
 
 export const DEFAULT_PROMPT =
   '整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）';
@@ -87,11 +88,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
     closeToTray: true,
     suspendMinutes: 5,
     cacheSubtitles: true,
+    subtitleCacheDays: 30,
     fontScale: 1,
     sidebarWidth: 320,
     sidebarPosition: 'left',
     sidebarCollapsed: false,
-    autoFollow: true
+    autoFollow: true,
+    wizardDone: false
   },
   ai: {
     activeId: 'deepseek',
@@ -114,12 +117,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
       models: [...(platform.models || [])]
     })),
     language: 'auto',
-    chunkSeconds: 120,
+    // 与插件对齐：分片越少越好（每多一片就多一次请求与失败机会），
+    // 415s 这类常见时长在 600s 下只需 1 片；并发 4 路。
+    chunkSeconds: 600,
     transport: 'auto',
     audioFormat: 'auto',
-    concurrency: 1,
-    timeoutSeconds: 120,
-    maxFileMb: 20,
+    concurrency: 4,
+    timeoutSeconds: 180,
+    maxFileMb: 50,
     overlapSeconds: 4,
     autoOptimizeAfter: false,
     autoApplyAfter: false
@@ -132,6 +137,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   skills: {
     enabled: true,
+    builtinVersion: 2,
     items: [
       {
         id: 'skill_deep_summary',
@@ -158,6 +164,28 @@ export const DEFAULT_SETTINGS: AppSettings = {
           '- 没有明确答案的问题标注「视频未回答」。',
         enabled: false,
         source: 'builtin'
+      },
+      {
+        id: 'skill_glossary',
+        name: '术语表',
+        description: '抽取专有名词并给出一句话解释',
+        icon: '📚',
+        body:
+          '从本期视频中抽取所有专有名词、缩写与产品名，输出 Markdown 表格：' +
+          '| 术语 | 一句话解释 | 首次出现(mm:ss) |',
+        enabled: true,
+        source: 'builtin'
+      },
+      {
+        id: 'skill_timeline',
+        name: '时间轴',
+        description: '生成章节化的时间轴目录',
+        icon: '🧭',
+        body:
+          '为本期视频生成章节时间轴，输出 Markdown 列表，每行形如 ' +
+          '`mm:ss 章节标题 — 一句话说明`，章节数量控制在 6~12 个。',
+        enabled: true,
+        source: 'builtin'
       }
     ]
   },
@@ -180,11 +208,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     verifySummary: true,
     verifyItemCount: 12,
     keylessFallback: true,
+    keylessOrder: ['exa', 'anysearch'],
     cacheMinutes: 5,
     autoSearchOnChat: false,
     alwaysSearchOnChat: false,
     useVideoMeta: true,
-    useComments: true
+    useComments: true,
+    aiQueryGeneration: true,
+    extraVerifyQueries: ''
   },
   correction: {
     enabled: true,
@@ -221,6 +252,10 @@ function normalize(raw: any): AppSettings {
       base.general.theme = THEME_MODES.includes(theme) ? theme : 'system';
       base.general.closeToTray = raw.general.closeToTray !== false;
       base.general.cacheSubtitles = raw.general.cacheSubtitles !== false;
+      const cacheDays = Number(raw.general.subtitleCacheDays);
+      if (Number.isFinite(cacheDays)) {
+        base.general.subtitleCacheDays = Math.min(365, Math.max(0, Math.round(cacheDays)));
+      }
       const fontScale = Number(raw.general.fontScale);
       if (Number.isFinite(fontScale)) {
         base.general.fontScale = Math.min(1.6, Math.max(0.8, Math.round(fontScale * 100) / 100));
@@ -232,6 +267,7 @@ function normalize(raw: any): AppSettings {
       base.general.sidebarPosition = raw.general.sidebarPosition === 'right' ? 'right' : 'left';
       base.general.sidebarCollapsed = raw.general.sidebarCollapsed === true;
       base.general.autoFollow = raw.general.autoFollow !== false;
+      base.general.wizardDone = raw.general.wizardDone === true;
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
         base.general.suspendMinutes = Math.min(120, Math.max(1, Math.round(minutes)));
@@ -303,6 +339,14 @@ function normalize(raw: any): AppSettings {
     base.ai.expandReasoning = raw.ai?.expandReasoning === true;
 
     if (raw.asr && typeof raw.asr === 'object') {
+      // 旧默认值（120s / 1 并发 / 20MB / 120s 超时）是历史遗留：
+      // 与插件对齐后应迁移到 600s / 4 并发 / 50MB / 180s。
+      // 只有四项都仍是旧默认值时才迁移，用户手动改过的配置不动。
+      const legacyAsrDefaults =
+        Number(raw.asr.chunkSeconds) === 120 &&
+        Number(raw.asr.concurrency) === 1 &&
+        Number(raw.asr.maxFileMb) === 20 &&
+        Number(raw.asr.timeoutSeconds) === 120;
       const asrIncoming = Array.isArray(raw.asr.platforms) ? raw.asr.platforms : [];
       if (asrIncoming.length) {
         const platforms: AsrPlatform[] = [];
@@ -358,8 +402,14 @@ function normalize(raw: any): AppSettings {
       const overlap = Number(raw.asr.overlapSeconds);
       if (Number.isFinite(overlap)) {
         base.asr.overlapSeconds = Math.min(30, Math.max(0, Math.round(overlap)));
+      }
       base.asr.autoOptimizeAfter = raw.asr.autoOptimizeAfter === true;
       base.asr.autoApplyAfter = raw.asr.autoApplyAfter === true;
+      if (legacyAsrDefaults) {
+        base.asr.chunkSeconds = 600;
+        base.asr.concurrency = 4;
+        base.asr.maxFileMb = 50;
+        base.asr.timeoutSeconds = 180;
       }
     }
 
@@ -471,6 +521,16 @@ function normalize(raw: any): AppSettings {
             source: ['builtin', 'manual', 'file'].includes(item.source) ? item.source : 'manual'
           }));
       }
+      // 新增内置技能时补进老配置；版本号避免用户删掉后又被加回来。
+      const skillsVersion = Number(raw.skills.builtinVersion) || 0;
+      if (skillsVersion < 2) {
+        for (const builtin of DEFAULT_SETTINGS.skills.items) {
+          if (!base.skills.items.some((item) => item.id === builtin.id)) {
+            base.skills.items.push({ ...builtin });
+          }
+        }
+      }
+      base.skills.builtinVersion = 2;
     }
 
     if (raw.search && typeof raw.search === 'object') {
@@ -533,6 +593,14 @@ function normalize(raw: any): AppSettings {
         Math.min(20, Number(raw.search.verifyItemCount) || 12)
       );
       base.search.keylessFallback = raw.search.keylessFallback !== false;
+      const keylessOrder = Array.isArray(raw.search.keylessOrder)
+        ? raw.search.keylessOrder
+            .map((item: any) => String(item || '').trim().toLowerCase())
+            .filter((item: string) => ['exa', 'anysearch', 'searxng'].includes(item))
+        : [];
+      base.search.keylessOrder = keylessOrder.length
+        ? [...new Set<string>(keylessOrder)]
+        : ['exa', 'anysearch'];
       const cacheMinutes = Number(raw.search.cacheMinutes);
       if (Number.isFinite(cacheMinutes)) {
         base.search.cacheMinutes = Math.min(60, Math.max(0, Math.round(cacheMinutes)));
@@ -542,6 +610,10 @@ function normalize(raw: any): AppSettings {
       base.search.useVideoMeta = raw.search.useVideoMeta !== false;
       base.search.useComments =
         raw.search.useComments === undefined ? true : raw.search.useComments === true;
+      base.search.aiQueryGeneration = raw.search.aiQueryGeneration !== false;
+      if (typeof raw.search.extraVerifyQueries === 'string') {
+        base.search.extraVerifyQueries = raw.search.extraVerifyQueries.slice(0, 4000);
+      }
     }
 
     if (raw.correction && typeof raw.correction === 'object') {
@@ -708,30 +780,5 @@ export function settingsSnapshot(): SettingsSnapshot {
 }
 
 export async function testPlatform(platform: AiPlatform): Promise<{ latencyMs: number; message: string }> {
-  if (!platform.baseUrl.trim()) throw new Error('请填写 Base URL');
-  if (!platform.model.trim()) throw new Error('请填写模型名');
-  if (!platform.apiKey.trim()) throw new Error('请填写 API Key');
-
-  const base = platform.baseUrl.replace(/\/+$/, '');
-  const started = Date.now();
-  const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${platform.apiKey.trim()}`
-    },
-    signal: AbortSignal.timeout(30000),
-    body: JSON.stringify({
-      model: platform.model.trim(),
-      max_tokens: 4,
-      stream: false,
-      messages: [{ role: 'user', content: 'ping' }]
-    })
-  });
-  const text = await response.text();
-  const latencyMs = Date.now() - started;
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}：${text.slice(0, 200)}`);
-  }
-  return { latencyMs, message: '连接成功' };
+  return testAiConnection(platform);
 }

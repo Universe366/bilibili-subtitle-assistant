@@ -1,4 +1,3 @@
-import { session } from 'electron';
 import type {
   AppSettings,
   OptimizeSuggestion,
@@ -6,6 +5,7 @@ import type {
   WebReference
 } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
+import { chatOnce } from './aiClient';
 import { glossaryTerms } from './correction';
 import { rankReferences, searchWeb } from './search';
 
@@ -14,14 +14,6 @@ const MAX_BATCH_CHARS = 5000;
 const REQUEST_TIMEOUT_MS = 180000;
 
 type Progress = (percent: number, message: string) => void;
-
-function errorForStatus(status: number, body: string): string {
-  if (status === 401 || status === 403) return 'API Key 无效或没有权限（401/403）';
-  if (status === 404) return '地址或模型不存在（404）';
-  if (status === 429) return '请求过于频繁或额度不足（429）';
-  if (status >= 500) return `服务端错误（${status}）`;
-  return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
-}
 
 function batchesOf(lines: SubtitleLine[]): SubtitleLine[][] {
   const batches: SubtitleLine[][] = [];
@@ -129,37 +121,24 @@ async function verifySuggestions(
   }));
 
   try {
-    const base = platform.baseUrl.replace(/\/+$/, '');
-    const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${platform.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: platform.model.trim(),
-        stream: false,
-        temperature: 0,
-        max_tokens: 2000,
-        messages: [
-          {
-            role: 'system',
-            content:
-              '你是事实核查员。对每条字幕修改，统计 evidence 中支持/反对修改的条数，并给出 overall verdict：support=支持，refute=反对，unknown=证据不足或冲突无法判断。' +
-              '必须从 evidence 中逐字引用 4-50 字作为 quote；找不到就输出 unknown。' +
-              '只输出 JSON 数组：[{"index":0,"verdict":"support","support":2,"refute":0,"quote":"证据原文"}]，不要解释。'
-          },
-          {
-            role: 'user',
-            content: JSON.stringify(payload)
-          }
-        ]
-      }),
-      signal
-    });
-    if (!response.ok) throw new Error(`核对请求失败 HTTP ${response.status}`);
-    const json: any = await response.json();
-    const content = String(json?.choices?.[0]?.message?.content || '');
+    const result = await chatOnce(
+      platform,
+      [
+        {
+          role: 'system',
+          content:
+            '你是事实核查员。对每条字幕修改，统计 evidence 中支持/反对修改的条数，并给出 overall verdict：support=支持，refute=反对，unknown=证据不足或冲突无法判断。' +
+            '必须从 evidence 中逐字引用 4-50 字作为 quote；找不到就输出 unknown。' +
+            '只输出 JSON 数组：[{"index":0,"verdict":"support","support":2,"refute":0,"quote":"证据原文"}]，不要解释。'
+        },
+        {
+          role: 'user',
+          content: JSON.stringify(payload)
+        }
+      ],
+      { temperature: 0, maxTokens: 2000, signal }
+    );
+    const content = result.text;
     const start = content.indexOf('[');
     const end = content.lastIndexOf(']');
     const parsed = start >= 0 && end > start ? JSON.parse(content.slice(start, end + 1)) : [];
@@ -227,7 +206,6 @@ export async function optimizeLines(
 
   const batches = batchesOf(lines);
   const suggestions: OptimizeSuggestion[] = [];
-  const base = platform.baseUrl.replace(/\/+$/, '');
   let offset = 0;
 
   for (let index = 0; index < batches.length; index += 1) {
@@ -239,63 +217,40 @@ export async function optimizeLines(
       `校对第 ${index + 1} / ${batches.length} 批（${batch.length} 行）`
     );
 
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(new Error('校对请求超时（3 分钟）')),
-      REQUEST_TIMEOUT_MS
-    );
-    const forwardAbort = () => controller.abort();
-    signal?.addEventListener('abort', forwardAbort, { once: true });
-
-    try {
-      const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${platform.apiKey.trim()}`
+    const result = await chatOnce(
+      platform,
+      [
+        {
+          role: 'system',
+          content: `${settings.prompt.optimize}${glossaryBlock}`
         },
-        body: JSON.stringify({
-          model: platform.model.trim(),
-          stream: false,
-          temperature: 0.1,
-          max_tokens: settings.ai.maxTokens || undefined,
-          messages: [
-            {
-              role: 'system',
-              content: `${settings.prompt.optimize}${glossaryBlock}`
-            },
-            {
-              role: 'user',
-              content: `共 ${batch.length} 条字幕，请逐条校对：\n${numbered}`
-            }
-          ]
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        throw new Error(errorForStatus(response.status, body));
-      }
-      const json: any = await response.json();
-      const content = String(json?.choices?.[0]?.message?.content || '');
-      const rows = parseSuggestions(content, batch);
-      if (!rows.length) throw new Error('AI 没有返回可解析的结果');
-
-      for (let lineIndex = 0; lineIndex < batch.length; lineIndex += 1) {
-        const original = batch[lineIndex].text;
-        const suggestion = String(rows[lineIndex] || '').trim();
-        if (suggestion && suggestion !== original.trim()) {
-          suggestions.push({
-            index: offset + lineIndex,
-            original,
-            suggestion
-          });
+        {
+          role: 'user',
+          content: `共 ${batch.length} 条字幕，请逐条校对：\n${numbered}`
         }
+      ],
+      {
+        temperature: 0.1,
+        maxTokens: settings.ai.maxTokens || undefined,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        signal
       }
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', forwardAbort);
+    );
+
+    const content = result.text;
+    const rows = parseSuggestions(content, batch);
+    if (!rows.length) throw new Error('AI 没有返回可解析的结果');
+
+    for (let lineIndex = 0; lineIndex < batch.length; lineIndex += 1) {
+      const original = batch[lineIndex].text;
+      const suggestion = String(rows[lineIndex] || '').trim();
+      if (suggestion && suggestion !== original.trim()) {
+        suggestions.push({
+          index: offset + lineIndex,
+          original,
+          suggestion
+        });
+      }
     }
 
     offset += batch.length;

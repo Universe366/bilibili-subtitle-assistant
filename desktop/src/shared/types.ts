@@ -75,22 +75,44 @@ export interface SubtitleTrack {
 export interface SubtitleDiagnostics {
   groups?: string[];
   sniffed?: unknown[];
-  foreignTracks?: Array<{ cid?: string; source?: string; url?: string }>;
+  foreignTracks?: Array<{
+    from?: string;
+    cid?: string;
+    lan?: string;
+    source?: string;
+    url?: string;
+  }>;
   sniffCount?: number;
   staleSniffCount?: number;
   signatureChanged?: boolean;
   identityMismatch?: boolean;
   identityUnstable?: boolean;
   reason?: string;
+  /** 官方 player/v2 返回的轨数（交叉核对） */
+  apiTrackCount?: number;
+  /** 因与官方接口不一致被丢弃的轨数 */
+  apiFiltered?: number;
 }
 
 export interface SubtitleBundle {
   needLogin: boolean;
   tracks: SubtitleTrack[];
   sources: string[];
-  errors: Array<{ source?: string; message?: string }>;
+  errors: Array<{ source?: string; code?: number | string; message?: string }>;
   identity?: string;
   diagnostics?: SubtitleDiagnostics;
+}
+
+export interface SubtitleTrackCheck {
+  url: string;
+  lanDoc: string;
+  source: string;
+  isAi: boolean;
+  lines: number;
+  lastEnd: number;
+  coverage: number;
+  ok: boolean;
+  reason: string;
 }
 
 export interface SubtitleLine {
@@ -355,11 +377,17 @@ export interface SearchSettings {
   verifySummary: boolean;
   verifyItemCount: number;
   keylessFallback: boolean;
+  /** 无 Key 兜底引擎顺序：exa / anysearch / searxng */
+  keylessOrder: string[];
   cacheMinutes: number;
   autoSearchOnChat: boolean;
   alwaysSearchOnChat: boolean;
   useVideoMeta: boolean;
   useComments: boolean;
+  /** 总结前让 AI 从字幕里挑「实体 + 具体说法」生成检索词 */
+  aiQueryGeneration: boolean;
+  /** 用户补充的核实查询，每行一条 */
+  extraVerifyQueries: string;
 }
 
 export type AsrTransport = 'auto' | 'multipart' | 'base64-json' | 'chat-audio';
@@ -398,6 +426,9 @@ export type VerifyVerdict = 'support' | 'refute' | 'irrelevant';
 
 export interface VerifiedReference extends WebReference {
   verdict?: VerifyVerdict;
+  /** 可注册域，用于「多来源一致 / 冲突」统计 */
+  site?: string;
+  consistency?: 'multi' | 'single' | 'conflict';
 }
 
 export interface VerificationItem {
@@ -449,11 +480,15 @@ export interface AppSettings {
     closeToTray: boolean;
     suspendMinutes: number;
     cacheSubtitles: boolean;
+    /** 字幕正文缓存天数（0 = 不缓存） */
+    subtitleCacheDays: number;
     fontScale: number;
     sidebarWidth: number;
     sidebarPosition: 'left' | 'right';
     sidebarCollapsed: boolean;
     autoFollow: boolean;
+    /** 首次使用向导是否已完成 */
+    wizardDone: boolean;
   };
   ai: {
     activeId: string;
@@ -483,6 +518,7 @@ export interface AppSettings {
   };
   skills: {
     enabled: boolean;
+    builtinVersion: number;
     items: SkillItem[];
   };
   search: SearchSettings;
@@ -578,6 +614,11 @@ export interface AiDeltaEvent {
 export interface AiStatusEvent {
   requestId: string;
   status: string;
+}
+
+export interface AiReasoningEvent {
+  requestId: string;
+  delta: string;
 }
 
 export interface ChatMessage {
@@ -689,6 +730,8 @@ export interface SummarizeRequest {
   requestId?: string;
   info: PageInfo;
   lines: SubtitleLine[];
+  /** 跳过「先校对字幕」直接生成（快速总结） */
+  skipProofread?: boolean;
 }
 
 export interface AiDoneEvent {

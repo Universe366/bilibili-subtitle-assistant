@@ -68,6 +68,56 @@ function SettingsSection({
   );
 }
 
+function ModelChips({
+  models,
+  current,
+  probed,
+  onPick
+}: {
+  models: string[];
+  current: string;
+  probed: boolean;
+  onPick: (model: string) => void;
+}) {
+  const [filter, setFilter] = useState('');
+  if (!models.length) return null;
+  const keyword = filter.trim().toLowerCase();
+  const shown = keyword
+    ? models.filter((model) => model.toLowerCase().includes(keyword))
+    : models;
+
+  return (
+    <div className="model-picker">
+      <div className="settings-hint">
+        {probed ? `平台返回 ${models.length} 个模型` : `内置预设 ${models.length} 个（未核实）`}
+        {keyword ? ` · 匹配 ${shown.length} 个` : ''}
+      </div>
+      {models.length > 16 && (
+        <input
+          className="settings-input"
+          placeholder="筛选模型，例如 qwen / claude"
+          value={filter}
+          spellCheck={false}
+          onChange={(event) => setFilter(event.target.value)}
+        />
+      )}
+      <div className="model-chips">
+        {shown.map((model) => (
+          <button
+            key={model}
+            className={`mini-btn${current === model ? ' is-active' : ''}`}
+            title={model}
+            onClick={() => onPick(model)}
+          >
+            {model}
+          </button>
+        ))}
+        {!shown.length && <span className="settings-hint">没有匹配的模型</span>}
+      </div>
+    </div>
+  );
+}
+
 function updateText(status: UpdateStatus | null): string {
   if (!status) return '尚未检查';
   switch (status.state) {
@@ -104,9 +154,11 @@ const EXPORT_LABELS: Record<ExportFormat, string> = {
 export function SettingsPanel() {
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [dataDir, setDataDir] = useState('');
+  const [migrating, setMigrating] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [version, setVersion] = useState('');
   const [message, setMessage] = useState('');
+  const [installingExtension, setInstallingExtension] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -839,6 +891,28 @@ export function SettingsPanel() {
     setMessage(response.data.canceled ? '已取消' : `数据已备份到：${response.data.path || ''}`);
   };
 
+  const changeDataLocation = async () => {
+    if (migrating) return;
+    setMigrating(true);
+    setError('');
+    try {
+      const response = await window.bsub.changeDataDir();
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      if (response.data.canceled) {
+        setMessage('已取消');
+        return;
+      }
+      setMessage(`数据已迁移到：${response.data.target || ''}，正在重启…`);
+    } catch (err) {
+      setError((err as Error).message || '迁移失败');
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   const restoreAll = async () => {
     if (
       !window.confirm(
@@ -995,8 +1069,23 @@ export function SettingsPanel() {
             checked={draft.general.cacheSubtitles !== false}
             onChange={(event) => updateGeneral({ cacheSubtitles: event.target.checked })}
           />
-          缓存字幕正文（30 分钟，最多 100 条）
+          缓存字幕正文（最多 100 条）
         </label>
+        {draft.general.cacheSubtitles !== false && (
+          <div className="settings-field">
+            <div className="settings-label">字幕缓存天数（0 = 不缓存）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={0}
+              max={365}
+              value={draft.general.subtitleCacheDays ?? 30}
+              onChange={(event) =>
+                updateGeneral({ subtitleCacheDays: Number(event.target.value) || 0 })
+              }
+            />
+          </div>
+        )}
 
         <label className="settings-check">
           <input
@@ -1130,7 +1219,7 @@ export function SettingsPanel() {
           onChange={(event) => updatePlatform({ model: event.target.value })}
         />
         <datalist id={`ai-models-${active.id}`}>
-          {(active.models || []).map((model) => (
+          {(modelCache[active.id] || active.models || []).map((model) => (
             <option key={model} value={model} />
           ))}
         </datalist>
@@ -1154,26 +1243,13 @@ export function SettingsPanel() {
           </button>
         </div>
         {platformStatusNode('ai')}
-        {(() => {
-          const models = modelCache[active.id] || active.models || [];
-          if (!models.length) return null;
-          return (
-            <div className="settings-inline">
-              <span className="settings-hint">
-                {modelCache[active.id] ? `平台返回 ${models.length} 个` : `内置预设 ${models.length} 个（未核实）`}
-              </span>
-              {models.slice(0, 12).map((model) => (
-                <button
-                  key={model}
-                  className={`mini-btn${active.model === model ? ' is-active' : ''}`}
-                  onClick={() => updatePlatform({ model })}
-                >
-                  {model}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
+        <ModelChips
+          key={active.id}
+          models={modelCache[active.id] || active.models || []}
+          current={active.model}
+          probed={Boolean(modelCache[active.id])}
+          onPick={(model) => updatePlatform({ model })}
+        />
         {(active.homepage || active.keyUrl) && (
           <div className="settings-inline">
             {active.homepage && (
@@ -1363,7 +1439,7 @@ export function SettingsPanel() {
           onChange={(event) => updateAsrPlatform({ model: event.target.value })}
         />
         <datalist id={`asr-models-${activeAsr.id}`}>
-          {(activeAsr.models || []).map((model) => (
+          {(modelCache[activeAsr.id] || activeAsr.models || []).map((model) => (
             <option key={model} value={model} />
           ))}
         </datalist>
@@ -1387,26 +1463,13 @@ export function SettingsPanel() {
           </button>
         </div>
         {platformStatusNode('asr')}
-        {(() => {
-          const models = modelCache[activeAsr.id] || activeAsr.models || [];
-          if (!models.length) return null;
-          return (
-            <div className="settings-inline">
-              <span className="settings-hint">
-                {modelCache[activeAsr.id] ? `平台返回 ${models.length} 个` : `内置预设 ${models.length} 个（未核实）`}
-              </span>
-              {models.slice(0, 8).map((model) => (
-                <button
-                  key={model}
-                  className={`mini-btn${activeAsr.model === model ? ' is-active' : ''}`}
-                  onClick={() => updateAsrPlatform({ model })}
-                >
-                  {model}
-                </button>
-              ))}
-            </div>
-          );
-        })()}
+        <ModelChips
+          key={activeAsr.id}
+          models={modelCache[activeAsr.id] || activeAsr.models || []}
+          current={activeAsr.model}
+          probed={Boolean(modelCache[activeAsr.id])}
+          onPick={(model) => updateAsrPlatform({ model })}
+        />
         {(activeAsr.homepage || activeAsr.keyUrl) && (
           <div className="settings-inline">
             {activeAsr.homepage && (
@@ -1935,19 +1998,41 @@ export function SettingsPanel() {
           总结前联网核对字幕（抽具体数字/术语逐条检索，推荐）
         </label>
         {draft.search.verifySummary !== false && (
-          <div className="settings-field">
-            <div className="settings-label">每次核对条数</div>
-            <input
+          <>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={draft.search.aiQueryGeneration !== false}
+                onChange={(event) =>
+                  updateSearch({ aiQueryGeneration: event.target.checked })
+                }
+              />
+              让 AI 挑选待核实项（关闭则只用规则抽数字/术语，省一次小调用）
+            </label>
+            <div className="settings-field">
+              <div className="settings-label">每次核对条数</div>
+              <input
+                className="settings-input"
+                type="number"
+                min={1}
+                max={20}
+                value={draft.search.verifyItemCount || 12}
+                onChange={(event) =>
+                  updateSearch({ verifyItemCount: Number(event.target.value) || 12 })
+                }
+              />
+            </div>
+            <div className="settings-label">额外核实查询（每行一条，可留空）</div>
+            <textarea
               className="settings-input"
-              type="number"
-              min={1}
-              max={20}
-              value={draft.search.verifyItemCount || 12}
+              rows={3}
+              placeholder="例如：DeepSeek V4 发布时间"
+              value={draft.search.extraVerifyQueries || ''}
               onChange={(event) =>
-                updateSearch({ verifyItemCount: Number(event.target.value) || 12 })
+                updateSearch({ extraVerifyQueries: event.target.value })
               }
             />
-          </div>
+          </>
         )}
 
         <label className="settings-check">
@@ -1956,8 +2041,26 @@ export function SettingsPanel() {
             checked={draft.search.keylessFallback !== false}
             onChange={(event) => updateSearch({ keylessFallback: event.target.checked })}
           />
-          配置的平台失败时用免费引擎兜底（Exa）
+          配置的平台失败时用免费引擎兜底
         </label>
+        {draft.search.keylessFallback !== false && (
+          <div className="settings-field">
+            <div className="settings-label">兜底顺序（exa / anysearch / searxng，逗号分隔）</div>
+            <input
+              className="settings-input"
+              value={(draft.search.keylessOrder || []).join(', ')}
+              placeholder="exa, anysearch"
+              onChange={(event) =>
+                updateSearch({
+                  keylessOrder: event.target.value
+                    .split(/[,\s]+/)
+                    .map((item) => item.trim().toLowerCase())
+                    .filter((item) => ['exa', 'anysearch', 'searxng'].includes(item))
+                })
+              }
+            />
+          </div>
+        )}
 
         <label className="settings-check">
           <input
@@ -2220,6 +2323,34 @@ export function SettingsPanel() {
           />
           启用本机接收
         </label>
+        <div className="settings-inline">
+          <button
+            className="mini-btn primary"
+            disabled={installingExtension}
+            onClick={async () => {
+              setInstallingExtension(true);
+              setError('');
+              try {
+                const response = await window.bsub.installExtension();
+                if (response.ok) {
+                  setMessage(
+                    `插件目录：${response.data.path}${response.data.browser ? ` · ${response.data.browser}` : ''}`
+                  );
+                } else {
+                  setError(response.error);
+                }
+              } finally {
+                setInstallingExtension(false);
+              }
+            }}
+          >
+            {installingExtension ? <Loader2 size={12} className="spin" /> : '安装浏览器插件'}
+          </button>
+          <span className="settings-hint">准备扩展目录并打开浏览器扩展页</span>
+        </div>
+        <div className="settings-hint">
+          扩展会自动发现本机桌面端，正常情况下无需填写下面的端口和 Token。
+        </div>
 
         <div className="settings-label">端口</div>
         <input
@@ -2596,7 +2727,7 @@ export function SettingsPanel() {
         />
         {mcpResult && <pre className="correction-preview">{mcpResult}</pre>}
         <div className="settings-hint">
-          点击工具名用上方参数调用。当前是手动调用；自动接入 AI 工具循环待补。
+          点击工具名用上方参数手动调用；对话时会自动把已启用的 MCP 工具接进工具循环。
         </div>
       </SettingsSection>
 
@@ -2726,6 +2857,9 @@ export function SettingsPanel() {
           >
             反馈
           </button>
+          <button className="mini-btn" onClick={() => void window.bsub.setWizardVisible(true)}>
+            重新显示引导
+          </button>
         </div>
       </SettingsSection>
 
@@ -2744,6 +2878,13 @@ export function SettingsPanel() {
           <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
             <FolderOpen size={12} /> 打开目录
           </button>
+          <button
+            className="mini-btn"
+            onClick={() => void changeDataLocation()}
+            disabled={migrating}
+          >
+            <FolderOpen size={12} /> {migrating ? '迁移中…' : '更改位置'}
+          </button>
           <button className="mini-btn" onClick={() => void exportSettings()}>
             <Download size={12} /> 导出设置
           </button>
@@ -2760,8 +2901,9 @@ export function SettingsPanel() {
           </button>
         </div>
         <div className="settings-hint">
+          更改位置会把设置、字幕库、总结、登录状态和日志复制到新目录，然后自动重启；
+          缓存类文件不会复制。日志在数据目录的 startup.log / fatal.log。
           导出设置只含配置；备份数据会复制 settings.json 和 library.db（含 API Key、桥 Token、字幕、总结、历史），请妥善保管。
-          日志在数据目录的 startup.log / fatal.log。
         </div>
       </SettingsSection>
 

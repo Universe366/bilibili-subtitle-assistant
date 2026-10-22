@@ -31,6 +31,36 @@ function json(response: http.ServerResponse, status: number, payload: unknown): 
   response.end(body);
 }
 
+function extOrigin(request: http.IncomingMessage): string {
+  return String(request.headers.origin || '');
+}
+
+function allowedDiscoveryOrigin(origin: string): boolean {
+  // 扩展的 fetch 会带 chrome-extension://<id>；网页则带 https://…
+  // 只让扩展读取 token，普通网站拿不到（浏览器会因缺少 ACAO 阻止读取）。
+  if (!origin) return true; // 本机进程/curl
+  return /^(chrome|moz)-extension:\/\//i.test(origin);
+}
+
+function jsonWithOrigin(
+  response: http.ServerResponse,
+  status: number,
+  payload: unknown,
+  origin: string
+): void {
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': String(Buffer.byteLength(body)),
+    'access-control-allow-origin': origin || '*',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    vary: 'origin'
+  };
+  response.writeHead(status, headers);
+  response.end(body);
+}
+
 function authorized(request: http.IncomingMessage, token: string): boolean {
   if (!token) return false;
   return String(request.headers.authorization || '') === `Bearer ${token}`;
@@ -123,6 +153,30 @@ function createHandler(win: BrowserWindow, token: string) {
       }
 
       const url = new URL(request.url || '/', 'http://127.0.0.1');
+
+      // 扩展自动发现：不需要用户填端口/Token。
+      // 只允许扩展来源读取；网页 Origin 会因缺少 ACAO 被浏览器拦截。
+      if (url.pathname === '/v1/hello' && request.method === 'GET') {
+        const origin = extOrigin(request);
+        if (!allowedDiscoveryOrigin(origin)) {
+          json(response, 403, { ok: false, error: '只允许浏览器扩展访问' });
+          return;
+        }
+        jsonWithOrigin(
+          response,
+          200,
+          {
+            ok: true,
+            app: 'bsub-desktop',
+            name: 'B站字幕助手',
+            version: app.getVersion(),
+            port: runningPort || loadSettings().bridge.port,
+            token
+          },
+          origin
+        );
+        return;
+      }
 
       if (url.pathname === '/v1/health') {
         if (!authorized(request, token)) {

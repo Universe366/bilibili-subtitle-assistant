@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { FindResult, Section, TabInfo } from '../../shared/types';
+import type { FindResult, Section, SettingsSnapshot, TabInfo } from '../../shared/types';
 import { TabStrip } from './components/TabStrip';
 import { AddressBar } from './components/AddressBar';
 import { FindBar } from './components/FindBar';
 import { Sidebar } from './components/Sidebar';
 import { BrowserStage } from './components/BrowserStage';
+import { FirstRunWizard } from './components/FirstRunWizard';
 
 export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
@@ -30,6 +31,14 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
   const [hasUpdate, setHasUpdate] = useState(false);
+  const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
+
+  // 内置浏览器是原生 WebContentsView，永远盖在 renderer 上面。
+  // 向导是 renderer 里的全屏遮罩，不隐藏页面就会出现「卡片被页面挡住、
+  // 只剩左侧点不了」的情况。
+  useEffect(() => {
+    void window.bsub.setBrowserVisible(!wizard);
+  }, [wizard]);
 
   const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
@@ -91,11 +100,14 @@ export default function App() {
       if (response.ok) {
         setFontScale(response.data.settings.general.fontScale || 1);
         applyLayout(response.data);
+        if (!response.data.settings.general.wizardDone) setWizard(response.data);
       }
     });
     return window.bsub.onSettingsChanged((snapshot) => {
       setFontScale(snapshot.settings.general.fontScale || 1);
       applyLayout(snapshot);
+      if (snapshot.settings.general.wizardDone) setWizard(null);
+      else setWizard(snapshot);
     });
   }, []);
 
@@ -200,6 +212,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [active, findOpen, findQuery]);
 
+  const finishWizard = (openSettings: boolean) => {
+    setWizard(null);
+    if (openSettings) setSection('settings');
+    void window.bsub.finishWizard();
+  };
+
   return (
     <div className="app-shell">
       <TabStrip tabs={tabs} />
@@ -232,7 +250,11 @@ export default function App() {
           hasUpdate={hasUpdate}
           onOpenSummary={() => {
             setSection('summary');
-            window.setTimeout(() => window.dispatchEvent(new Event('bsub:summary-request')), 80);
+            window.setTimeout(() => window.dispatchEvent(new Event('bsub:summary-request')), 200);
+          }}
+          onOpenChapters={() => {
+            setSection('summary');
+            window.setTimeout(() => window.dispatchEvent(new Event('bsub:chapters-request')), 250);
           }}
         />
         <BrowserStage
@@ -243,6 +265,7 @@ export default function App() {
           snapshot={dragSnapshot}
         />
       </div>
+      {wizard && <FirstRunWizard snapshot={wizard} onFinish={finishWizard} />}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { session } from 'electron';
 import type { AiPlatform, AppSettings, AsrPlatform, SearchPlatform } from '../shared/types';
 import { isMaskedSecret, loadSettings, testPlatform } from './settings';
 import { searchWeb } from './search';
+import { listAiModels } from './aiClient';
 
 type Kind = 'ai' | 'asr' | 'search';
 
@@ -30,6 +31,9 @@ export async function probePlatformModels(
   platform: AiPlatform | AsrPlatform
 ): Promise<{ models: string[]; url: string }> {
   const target = resolved(kind, platform);
+  if (kind === 'ai') {
+    return listAiModels(target as AiPlatform);
+  }
   const base = String(target.baseUrl || '').replace(/\/+$/, '');
   if (!base) throw new Error('请先填写接口地址');
   if (!target.apiKey) throw new Error('请先填写 API Key');

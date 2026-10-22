@@ -1,3 +1,4 @@
+import { session } from 'electron';
 import type { WebContents } from 'electron';
 import type { PageInfo, SubtitleBundle, SubtitleLine, SubtitleTrack, TrackBody } from '../shared/types';
 import { loadSettings } from './settings';
@@ -61,7 +62,6 @@ function bridgeScript(method: string, params: unknown, helperTimeoutMs: number):
 // 页面桥只有一个 DOM 信箱：并发请求会互相覆盖，必须按 webContents 串行。
 const pageQueues = new WeakMap<WebContents, Promise<unknown>>();
 
-const TRACK_CACHE_TTL = 30 * 60 * 1000;
 const TRACK_CACHE_MAX = 100;
 const trackCache = new Map<string, { at: number; lines: SubtitleLine[] }>();
 
@@ -164,6 +164,112 @@ export async function getPageInfo(wc: WebContents): Promise<PageInfo> {
   return info;
 }
 
+function subtitlePathKey(url: string): string {
+  try {
+    const text = String(url || '').startsWith('//') ? `https:${url}` : String(url || '');
+    const parsed = new URL(text);
+    return `${parsed.hostname.toLowerCase()}${parsed.pathname}`;
+  } catch {
+    return '';
+  }
+}
+
+async function biliCookieHeader(): Promise<string> {
+  try {
+    const cookies = await session.defaultSession.cookies.get({
+      url: 'https://api.bilibili.com/'
+    });
+    return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
+  } catch {
+    return '';
+  }
+}
+
+// 官方 player/v2 接口是「当前 bvid+cid 有没有字幕」的最权威来源。
+// B 站页面在 SPA/预取时会把别的视频的轨挂进来；用它做一次交叉核对。
+const subtitleApiCache = new Map<
+  string,
+  {
+    at: number;
+    value: {
+      paths: Set<string>;
+      tracks: SubtitleTrack[];
+      count: number;
+      needLogin: boolean;
+      meta?: Record<string, unknown>;
+    };
+  }
+>();
+
+async function authoritativeSubtitlePaths(info: PageInfo | null): Promise<{
+  paths: Set<string>;
+  tracks: SubtitleTrack[];
+  count: number;
+  needLogin: boolean;
+  meta?: Record<string, unknown>;
+} | null> {
+  if (!info?.bvid || !info.cid) return null;
+  const cacheKey = `${info.bvid}:${info.cid}`;
+  const cached = subtitleApiCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < 5000) return cached.value;
+  try {
+    const query = new URLSearchParams({
+      bvid: String(info.bvid),
+      cid: String(info.cid)
+    });
+    if (info.aid) query.set('aid', String(info.aid));
+    const headers: Record<string, string> = {
+      'user-agent': UA,
+      referer: info.url || `https://www.bilibili.com/video/${info.bvid}`
+    };
+    // AI 字幕需要登录态；session.fetch 会因 CORS 被拦，改为带 Cookie 的 Node fetch。
+    const cookie = await biliCookieHeader();
+    if (cookie) headers.cookie = cookie;
+    const response = await fetch(`https://api.bilibili.com/x/player/v2?${query.toString()}`, {
+      headers,
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) return null;
+    const json: any = await response.json().catch(() => null);
+    if (!json || json.code !== 0) return null;
+    const subtitle = json.data?.subtitle || {};
+    const rows = Array.isArray(subtitle.subtitles) ? subtitle.subtitles : [];
+    const tracks: SubtitleTrack[] = rows
+      .map((row: any) => {
+        const rawUrl = String(row?.subtitle_url || row?.url || '');
+        const url = rawUrl.startsWith('//') ? `https:${rawUrl}` : rawUrl;
+        if (!url) return null;
+        return {
+          lan: String(row?.lan || ''),
+          lanDoc: String(row?.lan_doc || row?.lan || ''),
+          url,
+          isAi: /^ai-/.test(String(row?.lan || '')) || /ai_?subtitle|aisubtitle/i.test(url),
+          aiStatus: null,
+          source: 'player/v2'
+        } satisfies SubtitleTrack;
+      })
+      .filter((track: SubtitleTrack | null): track is SubtitleTrack => Boolean(track));
+
+    const result = {
+      paths: new Set(tracks.map((track) => subtitlePathKey(track.url)).filter(Boolean)),
+      tracks,
+      count: rows.length,
+      needLogin: Boolean(json.data?.need_login_subtitle),
+      meta: {
+        cid: json.data?.cid,
+        bvid: json.data?.bvid,
+        aid: json.data?.aid,
+        rowKeys: rows[0] ? Object.keys(rows[0]) : []
+      }
+    };
+    subtitleApiCache.set(cacheKey, { at: Date.now(), value: result });
+    return result;
+  } catch (error) {
+    console.warn('[m2] api-check failed', (error as Error).message);
+    return null;
+  }
+}
+
 export async function getSubtitles(
   wc: WebContents,
   expectSignature?: string
@@ -174,7 +280,7 @@ export async function getSubtitles(
     expectSignature ? { expectSignature } : {},
     35000
   );
-  const tracks: SubtitleTrack[] = (raw && Array.isArray(raw.tracks) ? raw.tracks : [])
+  let tracks: SubtitleTrack[] = (raw && Array.isArray(raw.tracks) ? raw.tracks : [])
     .filter((track: any) => track && track.url)
     .map((track: any) => ({
       lan: String(track.lan || ''),
@@ -205,6 +311,10 @@ export async function getSubtitles(
   };
 }
 
+export async function triggerSubtitleMenu(wc: WebContents): Promise<void> {
+  await callPage(wc, 'triggerSubtitleMenu', {}, 12000);
+}
+
 export async function getTrackBody(url: string): Promise<TrackBody> {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
@@ -214,10 +324,13 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     throw new Error(`字幕地址不在允许的域名内：${parsed.hostname}`);
   }
 
-  const cacheEnabled = loadSettings().general.cacheSubtitles !== false;
+  const settings = loadSettings();
+  const cacheEnabled = settings.general.cacheSubtitles !== false;
+  const cacheDays = Math.max(0, Number(settings.general.subtitleCacheDays) || 0);
+  const ttlMs = cacheDays > 0 ? cacheDays * 24 * 60 * 60 * 1000 : 0;
   const cacheKey = trackCacheKey(url);
-  const cached = cacheEnabled ? trackCache.get(cacheKey) : undefined;
-  if (cached && Date.now() - cached.at < TRACK_CACHE_TTL) {
+  const cached = cacheEnabled && ttlMs > 0 ? trackCache.get(cacheKey) : undefined;
+  if (cached && Date.now() - cached.at < ttlMs) {
     return { lines: cached.lines.map((line) => ({ ...line })) };
   }
 
@@ -245,7 +358,7 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
   }));
 
   const result = { lines };
-  if (cacheEnabled) {
+  if (cacheEnabled && ttlMs > 0) {
     trackCache.set(cacheKey, { at: Date.now(), lines });
     if (trackCache.size > TRACK_CACHE_MAX) {
       const oldest = trackCache.keys().next().value;

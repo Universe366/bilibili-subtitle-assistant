@@ -47,6 +47,7 @@ export function Sidebar({
   onToggleCollapse,
   onDragSnapshot,
   onOpenSummary,
+  onOpenChapters,
   hasUpdate = false
 }: {
   section: Section;
@@ -63,10 +64,19 @@ export function Sidebar({
   onToggleCollapse?: (collapsed: boolean) => void;
   onDragSnapshot?: (snapshot: string | null) => void;
   onOpenSummary?: () => void;
+  onOpenChapters?: () => void;
   hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
+  const [visited, setVisited] = useState<Set<Section>>(() => new Set([section]));
   const dragActiveRef = useRef(false);
+
+  // 面板首次显示后保持挂载：切换导航只切显示，正在跑的任务/会话状态不会丢。
+  useEffect(() => {
+    setVisited((previous) =>
+      previous.has(section) ? previous : new Set(previous).add(section)
+    );
+  }, [section]);
 
   const beginViewDrag = () => {
     dragActiveRef.current = true;
@@ -237,25 +247,44 @@ export function Sidebar({
         />
       )}
       <div className="side-content" style={{ zoom: fontScale }}>
-        {section === 'subtitles' && (
-          <SubtitlesPanel activeTab={activeTab} onOpenSummary={onOpenSummary} />
-        )}
+        <div className={`side-panel${section === 'subtitles' ? ' is-active' : ''}`}>
+          {visited.has('subtitles') && (
+            <SubtitlesPanel
+              activeTab={activeTab}
+              active={section === 'subtitles' && !collapsed}
+              onOpenSummary={onOpenSummary}
+              onOpenChapters={onOpenChapters}
+            />
+          )}
+        </div>
 
-        {section === 'chat' && (
-          <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
-        )}
+        <div className={`side-panel${section === 'chat' ? ' is-active' : ''}`}>
+          {visited.has('chat') && (
+            <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+          )}
+        </div>
 
-        {section === 'summary' && (
-          <SummaryPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
-        )}
+        <div className={`side-panel${section === 'summary' ? ' is-active' : ''}`}>
+          {visited.has('summary') && (
+            <SummaryPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+          )}
+        </div>
 
-        {section === 'library' && <LibraryPanel />}
+        <div className={`side-panel${section === 'library' ? ' is-active' : ''}`}>
+          {visited.has('library') && <LibraryPanel />}
+        </div>
 
-        {section === 'batch' && <BatchPanel />}
+        <div className={`side-panel${section === 'batch' ? ' is-active' : ''}`}>
+          {visited.has('batch') && <BatchPanel />}
+        </div>
 
-        {section === 'history' && <HistoryPanel />}
+        <div className={`side-panel${section === 'history' ? ' is-active' : ''}`}>
+          {visited.has('history') && <HistoryPanel />}
+        </div>
 
-        {section === 'settings' && <SettingsPanel />}
+        <div className={`side-panel${section === 'settings' ? ' is-active' : ''}`}>
+          {visited.has('settings') && <SettingsPanel />}
+        </div>
       </div>
 
       <div className="side-footer">

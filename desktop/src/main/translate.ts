@@ -1,20 +1,12 @@
-import { session } from 'electron';
 import type { AppSettings, SubtitleLine } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
+import { chatOnce } from './aiClient';
 
 const MAX_BATCH_LINES = 40;
 const MAX_BATCH_CHARS = 6000;
 const REQUEST_TIMEOUT_MS = 180000;
 
 type Progress = (percent: number, message: string) => void;
-
-function errorForStatus(status: number, body: string): string {
-  if (status === 401 || status === 403) return 'API Key 无效或没有权限（401/403）';
-  if (status === 404) return '地址或模型不存在（404）';
-  if (status === 429) return '请求过于频繁或额度不足（429）';
-  if (status >= 500) return `服务端错误（${status}）`;
-  return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
-}
 
 function batchesOf(lines: SubtitleLine[]): SubtitleLine[][] {
   const batches: SubtitleLine[][] = [];
@@ -77,7 +69,6 @@ export async function translateLines(
 
   const batches = batchesOf(lines);
   const translated: string[] = [];
-  const base = platform.baseUrl.replace(/\/+$/, '');
 
   for (let index = 0; index < batches.length; index += 1) {
     if (signal?.aborted) throw new Error('已终止');
@@ -88,54 +79,30 @@ export async function translateLines(
       `翻译第 ${index + 1} / ${batches.length} 批（${batch.length} 行）`
     );
 
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(new Error('翻译请求超时（3 分钟）')),
-      REQUEST_TIMEOUT_MS
-    );
-    const forwardAbort = () => controller.abort();
-    signal?.addEventListener('abort', forwardAbort, { once: true });
-
-    try {
-      const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${platform.apiKey.trim()}`
+    const result = await chatOnce(
+      platform,
+      [
+        {
+          role: 'system',
+          content: `${settings.prompt.translate}\n\n目标语言：${target}`
         },
-        body: JSON.stringify({
-          model: platform.model.trim(),
-          stream: false,
-          temperature: 0.2,
-          max_tokens: settings.ai.maxTokens || undefined,
-          messages: [
-            {
-              role: 'system',
-              content: `${settings.prompt.translate}\n\n目标语言：${target}`
-            },
-            {
-              role: 'user',
-              content: `共 ${batch.length} 条字幕，请逐条翻译：\n${numbered}`
-            }
-          ]
-        }),
-        signal: controller.signal
-      });
+        {
+          role: 'user',
+          content: `共 ${batch.length} 条字幕，请逐条翻译：\n${numbered}`
+        }
+      ],
+      {
+        temperature: 0.2,
+        maxTokens: settings.ai.maxTokens || undefined,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        signal
+      }
+    );
 
-      if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        throw new Error(errorForStatus(response.status, body));
-      }
-      const json: any = await response.json();
-      const content = String(json?.choices?.[0]?.message?.content || '');
-      const rows = parseTranslatedLines(content, batch.length);
-      if (!rows.some(Boolean)) throw new Error('AI 没有返回可解析的译文');
-      for (let lineIndex = 0; lineIndex < batch.length; lineIndex += 1) {
-        translated.push(rows[lineIndex] || batch[lineIndex].text);
-      }
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', forwardAbort);
+    const rows = parseTranslatedLines(result.text, batch.length);
+    if (!rows.some(Boolean)) throw new Error('AI 没有返回可解析的译文');
+    for (let lineIndex = 0; lineIndex < batch.length; lineIndex += 1) {
+      translated.push(rows[lineIndex] || batch[lineIndex].text);
     }
   }
 

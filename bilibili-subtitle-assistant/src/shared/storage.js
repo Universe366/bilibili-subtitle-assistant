@@ -142,7 +142,8 @@ export function subtitleCacheKey(parts) {
   } catch (err) {
     /* 保留原样 */
   }
-  return ['sub', bvid || '-', cid || '-', page == null ? '-' : String(page), lang || '-', pathKey].join('|');
+  // v2：WBI 签名接口修复后，旧缓存可能来自无签名接口的串片结果，整体失效。
+  return ['sub', 'v2', bvid || '-', cid || '-', page == null ? '-' : String(page), lang || '-', pathKey].join('|');
 }
 
 export function stripQuery(url) {

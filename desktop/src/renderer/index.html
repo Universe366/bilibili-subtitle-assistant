@@ -2,6 +2,9 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- B 站图片 CDN 按 Referer 防盗链：localhost/file:// 会被 403，不发送 Referer 才正常。
+         只影响渲染进程里的封面等图片请求，不影响内嵌网页。 -->
+    <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>B站字幕助手</title>

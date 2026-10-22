@@ -36,6 +36,17 @@ const server = http.createServer((request, response) => {
         // ignore
       }
       console.log('[mock-ai] request', payload.model, 'stream=', payload.stream);
+      const system = String(payload?.messages?.[0]?.content || '');
+      const user = String(payload?.messages?.[1]?.content || '');
+      console.log(
+        '[mock-ai] prompt',
+        JSON.stringify({
+          formatRules: system.includes('输出风格'),
+          skills: system.includes('可用技能'),
+          systemLen: system.length,
+          userLen: user.length
+        })
+      );
 
       if (!payload.stream) {
         response.writeHead(200, { 'content-type': 'application/json' });

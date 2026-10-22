@@ -145,15 +145,19 @@ img-src 'self' data: blob: https:; connect-src 'self' https: http:
 - 侧边栏的 `chrome.runtime.onMessage` **只处理广播，不要对所有消息 `sendResponse`**。曾经它抢在后台前回 `{ok:true}`，导致「▣」按钮拿到空响应、提示与实际相反。
 - 后台做 embed 动作后要回查内容脚本 `state`，按真实 `open/collapsed` 返回。
 
-### 3.9 字幕身份：四层防线，不要拆
+### 3.9 字幕身份：五层防线，不要拆
 
-1. `pageIdentity()` 统一 bvid/cid/signature；
-2. `getSubtitleBundle` 接收 `expectSignature`，采集前后校验；
-3. `player.getSubtitle()` / `__INITIAL_STATE__` 的无标识字幕轨，只有来源自身 cid 与当前一致才采用，否则丢弃；
-4. 网络嗅探正文只保留路径能匹配当前轨的条目；缓存写入/读取带 `signature`，旧缓存自动删除。
+1. **只信 WBI 签名接口 `/x/player/wbi/v2`**：`code===0` 时只返回它的结果（包括 0 条）。
+   无签名的 `/x/player/v2` 在风控降级时会返回**别的视频的字幕**，且不同请求结果会变；
+   它是「标题对、字幕串片」的根因。
+2. `pageIdentity()` 统一 bvid/cid/signature；`getSubtitleBundle` 接收 `expectSignature`，采集前后校验。
+3. 播放器实例 / `__INITIAL_STATE__` / 无签名接口只在 WBI 失败时兜底；无标识轨只有来源自身 cid 与当前一致才采用。
+4. 网络嗅探正文只保留路径能匹配当前轨的条目；缓存写入/读取带 `signature`。
+5. 字幕缓存 key 带 `v2` 前缀；旧缓存可能来自无签名接口，升级后必须失效。
 
 诊断看 `foreignTracks`、`identityMismatch`、候选轨 `cacheRejected`。
-**不要恢复“抽不到标识就放行”**；那会直接复现「标题对、字幕是别的视频」。
+**不要恢复“抽不到标识就放行”**，也不要把无签名 `player/v2` 重新合并进 WBI 结果；
+那会直接复现「标题对、字幕是别的视频」。
 
 ### 3.10 设置页与字幕行
 

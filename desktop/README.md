@@ -1,6 +1,6 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.7**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.12**。
 
 > 维护、发布、常见坑见根目录 [`docs/MAINTAINERS.md`](../docs/MAINTAINERS.md) 的桌面端章节。
 
@@ -50,12 +50,12 @@ docs/          V1 方案
 - 地址栏：BV 号 / 链接 / 搜索词自动识别
 - 前进、后退、刷新/停止、新建/关闭标签
 - 打开 B 站首页，页面内新窗口请求自动转为新标签
-- 启动时通过 CDP 注入 `page-bridge.js`，页面加载后日志可见 `bridge=2.17.8`
+- 启动时通过 CDP 注入 `page-bridge.js`，页面加载后日志可见 `bridge=2.18.0`
 - Patina 风格界面：浅/深色自动跟随系统，侧栏「字幕 / 总结 / 库 / 设置」
 - **M2 字幕面板**：视频信息卡（封面 / 标题 / UP / 时长 / BV / 播放量）、字幕轨列表（多轨 + AI 标识）、字幕正文下载、跟随播放高亮、点击字幕跳转、未登录提示与登录入口
 - **M3 本地库**：SQLite（`node:sqlite`，无需重编译原生模块）、一键入库、视频列表、字幕全文搜索（FTS5 trigram，短词退化 LIKE）、点击搜索结果回到对应时间、删除入库视频
 - **M4 总结与导出**：AI 流式总结（OpenAI 兼容）、零依赖 Markdown 渲染、总结存库、导出 Markdown / SRT / TXT / JSON；设置页可配置 AI 平台、Key、模型、总结提示词、数据目录与连接测试
-- **M5 插件桥 / 托盘 / 打包**：本地 HTTP 桥（`127.0.0.1` + Bearer token，`GET /v1/health`、`POST /v1/ingest`）、设置页显示端口/Token/运行状态、关闭到托盘、NSIS 安装包 + 绿色 zip
+- **M5 插件桥 / 托盘 / 打包**：本地 HTTP 桥（`127.0.0.1` + Bearer token，`GET /v1/hello`、`GET /v1/health`、`POST /v1/ingest`）、扩展自动发现（零配置）、设置页「安装浏览器插件」、关闭到托盘、NSIS 安装包 + 绿色 zip
 - **字幕校对**：规则组（正则/大小写）+ 术语表，读取/推送时应用，支持预览
 - **MCP**：HTTP JSON-RPC 工具调用，对话自动工具循环
 - **Skills**：SKILL.md 导入与提示词注入
@@ -65,14 +65,15 @@ docs/          V1 方案
 - **批量总结**：勾选库内视频批量生成总结，带进度/停止
 - **历史**：查看/打开/删除/清空总结历史
 - **数据备份**：一键备份设置 + 字幕库；恢复前自动保留当前数据并重启
+- **数据位置迁移**：设置 → 数据与备份 → 更改位置，复制设置/字幕库/登录状态/日志到新目录，重启后自动删除旧目录（失败会保留待清理标记）
 - **导出**：6 种格式（MD/SRT/VTT/ASS/TXT/JSON）+ 4 种 Markdown 模板
 - **AI 优化**：批量校对，逐条 diff 勾选应用
 - **字幕翻译**：保留时间轴，原文/译文/双语视图，可随字幕导出
 - **语音转录**：无官方字幕时用音轨转写，支持 M4A/WAV 与多传输回退
 - **AI 对话**：基于当前字幕流式提问，支持停止/清空/建议问题、图片、思维链折叠、本轮 Skills 选择
 - **侧栏交互**：拖拽调宽、拖到窄处折叠、标题栏换边、折叠图标随侧别变化
-- **多平台**：AI 27 家、检索 12 家、ASR 3 家，每平台独立 Key/模型/地址；详见 `docs/PLATFORMS.md`
-- **卸载**：NSIS 自定义卸载页，可选保留或删除本地数据
+- **多平台**：AI 28 家（含 Anthropic 原生协议）、检索 12 家、ASR 3 家，每平台独立 Key/模型/地址；详见 `docs/PLATFORMS.md`
+- **卸载**：NSIS 自定义卸载页，可选保留或删除本地数据；勾选时会同时清理自定义数据位置、更新缓存与临时转写文件
 - **联网检索**：Exa / AnySearch 免 Key，Tavily / Brave 需 Key；结果作为总结参考资料
 - **设置页**：主题、关闭到托盘、休眠时长、AI 平台/温度/token/流式、提示词模板、导出默认值、设置导入导出
 - **自动更新**：默认启动检查、可选自动下载、状态卡片、更新说明、失败重试；安装版读取 GitHub Release 的 `latest.yml`，绿色版需手动替换
@@ -87,28 +88,28 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.30.7.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.30.7-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.30.12.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.30.12-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
-| `release/bilibili-subtitle-assistant-v2.17.8.zip` | 浏览器插件（由 CI 打包） |
+| `release/bilibili-subtitle-assistant-v2.18.0.zip` | 浏览器插件（由 CI 打包） |
 
 当前发布未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。签名接入见 [`../docs/SIGNING.md`](../docs/SIGNING.md)。
 
 ### 发布
 
-发布使用**合并 Release**：一个 tag（插件版本号，例如 `v2.17.8`）同时提供插件 zip 和桌面端安装包/绿色包。
+发布使用**合并 Release**：一个 tag（插件版本号，例如 `v2.18.0`）同时提供插件 zip 和桌面端安装包/绿色包。
 这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
 
-1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.17.8）。
-2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.30.7 --no-git-tag-version`）。
+1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.18.0）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.30.12 --no-git-tag-version`）。
 3. `npm run dist` 本地确认能构建。
 4. `npm run release:notes` 生成发布说明。
 5. 打 tag 并推送：
 
 ```bash
-git tag v2.17.8
+git tag v2.18.0
 git push origin master
-git push origin v2.17.8
+git push origin v2.18.0
 ```
 
 GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner 上重新构建，
@@ -120,11 +121,19 @@ GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner
 
 ## 数据
 
-- 数据库：`%APPDATA%\bsub-desktop\library.db`（开发期可用 `BSUB_USER_DATA` 指定目录）
-- 设置：同目录 `settings.json`（AI 平台、Key、提示词、插件桥端口与 Token）
+- 默认数据目录：`%APPDATA%\bsub-desktop`（开发期可用 `BSUB_USER_DATA` 指定）
+- 数据库：同目录 `library.db`；设置：`settings.json`（AI 平台、Key、提示词、插件桥端口与 Token）
+- 设置 → 数据与备份 → **更改位置** 可迁移到空目录：
+  - 复制设置、字幕库、总结、登录状态、日志；
+  - 写入 `%APPDATA%\bsub-desktop-location.txt` 后自动重启；
+  - 新进程启动后删除旧目录，失败则记录到 `%APPDATA%\bsub-desktop-cleanup.txt` 下次重试。
+- 卸载时勾选「同时删除本地数据」会读取上述指向文件，把自定义位置也删掉。
 - 只存字幕、总结、元数据与封面地址，不落音视频
 - 去重：同一视频（bvid + cid）更新而不是重复插入；同一字幕轨重复入库会替换旧分段
 - 总结会随视频一起入库，重复生成会覆盖旧总结
+- ASR 与翻译结果按视频/轨缓存在渲染进程内存中：刷新可恢复，退出应用后清空
+
+模块、数据流和安装器维护细节见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ## 本地测试
 
@@ -141,7 +150,9 @@ BSUB_M4_TEST=1 npm run dev
 ## 插件桥
 
 桌面端在 `127.0.0.1:47821` 起一个本地 HTTP 服务，用 Bearer Token 鉴权；
-设置页「插件桥」可以看到端口、Token 和运行状态。
+设置页「插件桥」可以看到端口、Token 和运行状态，并提供 **「安装浏览器插件」**（准备扩展目录、复制路径、打开 Edge/Chrome 扩展页）。
+
+扩展会自动请求 `GET /v1/hello` 发现端口与 Token，**正常情况不用手填**；只有自动发现失败时才需要手动配置。
 
 ```bash
 # 模拟插件推送（需要桌面端已启动）
@@ -158,7 +169,7 @@ node spike/bridge-test.mjs
 - API Key 与桥 Token 以明文保存在本机 `settings.json`，后续接系统钥匙串
 - 总结字幕上下文上限约 20 万字符，极端超长视频仍会头尾保留、中间省略
 - 未签名，SmartScreen 会提示
-- 桌面端 0.30.7 已随 `v2.17.8` 合并发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换。安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
+- 桌面端 0.30.12 已随下一版合并发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
 - 更新检查默认开启；若最新 Release 仍是旧桌面资产，会显示已是最新。安装版才支持自动更新
 - 插件桥需要桌面端先运行，并在插件「设置 → 桌面端」填入端口 / Token
 - 休眠标签切回会重新加载页面（滚动位置与播放进度不保留）

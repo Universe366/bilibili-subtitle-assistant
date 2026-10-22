@@ -1,6 +1,7 @@
-import { session } from 'electron';
-import type { AiPlatform, AppSettings, ChatMessage, PageInfo, SubtitleLine } from '../shared/types';
+import type { ChatMessage, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
+import { chatOnce, chatStream, chatToolLoop } from './aiClient';
+import type { AiMessage, AiPart } from './aiClient';
 import { buildTranscript } from './ai';
 import { glossaryTerms } from './correction';
 import { searchWeb } from './search';
@@ -39,7 +40,9 @@ export async function chat(
   if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
 
   const transcript = buildTranscript(options.info, options.lines);
-  if (!transcript.trim()) throw new Error('没有可用的字幕内容');
+  // 对话不强依赖字幕：没有字幕时仍可提问（联网 / 简介 / 通用问答），
+  // 但要在提示里说清“没有字幕依据”，避免模型假装看过视频。
+  const hasTranscript = Boolean(transcript.trim());
 
   const glossary = glossaryTerms(settings);
   const glossaryBlock = glossary.length
@@ -83,34 +86,37 @@ export async function chat(
     ...(settings.search.useVideoMeta !== false && options.info.desc
       ? [`视频简介：${options.info.desc.slice(0, 2000)}`]
       : []),
+    ...(hasTranscript
+      ? []
+      : ['当前视频没有可用字幕：可以基于问题本身、视频简介和联网结果回答，但要明确说明“没有字幕依据”。']),
     webBlock
   ]
     .filter(Boolean)
     .join('\n\n');
 
-  const history = options.messages.slice(-MAX_HISTORY).map((message) => {
+  const history: AiMessage[] = options.messages.slice(-MAX_HISTORY).map((message) => {
     const text = String(message.content || '').slice(0, 4000);
     if (message.role === 'user' && Array.isArray(message.images) && message.images.length) {
-      return {
-        role: 'user',
-        content: [
-          { type: 'text', text },
-          ...message.images.slice(0, 3).map((url) => ({
-            type: 'image_url',
-            image_url: { url }
-          }))
-        ]
-      };
+      const parts: AiPart[] = [{ type: 'text', text }];
+      for (const url of message.images.slice(0, 3)) {
+        const match = /^data:([^;,]+);base64,(.*)$/s.exec(String(url || ''));
+        if (match) parts.push({ type: 'image', mime: match[1], data: match[2] });
+      }
+      return { role: 'user', content: parts };
     }
     return { role: message.role, content: text };
   });
 
-  const messages = [
+  const messages: AiMessage[] = [
     { role: 'system', content: system },
-    {
-      role: 'user',
-      content: `以下是当前视频的字幕（带时间戳），请作为回答依据：\n\n${transcript}`
-    },
+    ...(hasTranscript
+      ? [
+          {
+            role: 'user' as const,
+            content: `以下是当前视频的字幕（带时间戳），请作为回答依据：\n\n${transcript}`
+          }
+        ]
+      : []),
     ...history
   ];
 
@@ -133,200 +139,65 @@ export async function chat(
   }
 
   if (toolBindings.length) {
-    return chatWithTools({
+    const result = await chatToolLoop(
       platform,
       messages,
-      settings,
-      toolBindings,
-      signal: options.signal,
-      onDelta: options.onDelta
-    });
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('AI 请求超时（5 分钟）')), REQUEST_TIMEOUT_MS);
-  const forwardAbort = () => controller.abort();
-  options.signal?.addEventListener('abort', forwardAbort, { once: true });
-
-  try {
-    const base = platform.baseUrl.replace(/\/+$/, '');
-    const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${platform.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: platform.model.trim(),
-        stream: settings.ai.stream !== false,
+      toolBindings.map((binding) => ({
+        name: binding.qualifiedName,
+        description: binding.tool.description,
+        parameters: binding.tool.inputSchema
+      })),
+      {
         temperature: settings.ai.temperature,
-        max_tokens: settings.ai.maxTokens || undefined,
-        messages
-      }),
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(errorForStatus(response.status, body));
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!response.body || !contentType.includes('text/event-stream')) {
-      const json: any = await response.json();
-      const text = String(json?.choices?.[0]?.message?.content || '');
-      const reasoning = String(json?.choices?.[0]?.message?.reasoning_content || '');
-      if (!text.trim()) throw new Error('AI 返回为空');
-      options.onDelta?.(text);
-      if (reasoning) options.onReasoning?.(reasoning);
-      return { text, model: platform.model, reasoning };
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let text = '';
-    let reasoning = '';
-    let finished = false;
-
-    while (!finished) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let newline = buffer.indexOf('\n');
-      while (newline >= 0) {
-        const rawLine = buffer.slice(0, newline).replace(/\r$/, '');
-        buffer = buffer.slice(newline + 1);
-        newline = buffer.indexOf('\n');
-        if (!rawLine.startsWith('data:')) continue;
-        const data = rawLine.slice(5).trim();
-        if (!data) continue;
-        if (data === '[DONE]') {
-          finished = true;
-          break;
-        }
-        try {
-          const json = JSON.parse(data);
-          const delta = json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.text ?? '';
-          const think = json?.choices?.[0]?.delta?.reasoning_content;
-          if (typeof think === 'string' && think) {
-            reasoning += think;
-            options.onReasoning?.(think);
-          }
-          if (typeof delta === 'string' && delta) {
-            text += delta;
-            options.onDelta?.(delta);
-          }
-        } catch {
-          // 忽略非 JSON 行
-        }
-      }
-    }
-
-    if (!text.trim()) throw new Error('AI 返回为空');
-    return { text, model: platform.model, reasoning };
-  } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener('abort', forwardAbort);
-  }
-}
-
-
-async function chatWithTools(options: {
-  platform: AiPlatform;
-  messages: any[];
-  settings: AppSettings;
-  toolBindings: Array<{ server: McpServer; tool: McpTool; qualifiedName: string }>;
-  signal?: AbortSignal;
-  onDelta?: (delta: string) => void;
-}): Promise<{ text: string; model: string; reasoning: string }> {
-  const { platform, settings, toolBindings } = options;
-  const base = platform.baseUrl.replace(/\/+$/, '');
-  const tools = toolBindings.map((binding) => ({
-    type: 'function',
-    function: {
-      name: binding.qualifiedName,
-      description: (binding.tool.description || '').slice(0, 1024),
-      parameters:
-        (binding.tool.inputSchema as Record<string, unknown>) || {
-          type: 'object',
-          properties: {}
-        }
-    }
-  }));
-  const convo = options.messages.map((message) => ({ ...message }));
-
-  for (let round = 0; round < Math.max(1, settings.mcp.maxToolRounds || 6); round += 1) {
-    if (options.signal?.aborted) throw new Error('已终止');
-    const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${platform.apiKey.trim()}`
+        maxTokens: settings.ai.maxTokens || undefined,
+        maxRounds: settings.mcp.maxToolRounds || 6,
+        signal: options.signal
       },
-      body: JSON.stringify({
-        model: platform.model.trim(),
-        stream: false,
-        temperature: settings.ai.temperature,
-        max_tokens: settings.ai.maxTokens || undefined,
-        messages: convo,
-        tools,
-        tool_choice: 'auto'
-      }),
-      signal: options.signal
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(errorForStatus(response.status, body));
-    }
-    const json: any = await response.json();
-    const message = json?.choices?.[0]?.message;
-    const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
-
-    if (calls.length) {
-      convo.push({
-        role: 'assistant',
-        content: message?.content ?? null,
-        tool_calls: calls
-      });
-      for (const call of calls) {
-        const name = String(call?.function?.name || '');
-        const binding = toolBindings.find((item) => item.qualifiedName === name);
+      async (call) => {
+        const binding = toolBindings.find((item) => item.qualifiedName === call.name);
+        if (!binding) return '工具不存在';
         let args: Record<string, unknown> = {};
         try {
-          args = JSON.parse(String(call?.function?.arguments || '{}'));
+          args = JSON.parse(String(call.arguments || '{}'));
         } catch {
           args = {};
         }
-        let content = '工具不存在';
-        if (binding) {
-          try {
-            content = await callMcpTool(
-              binding.server,
-              binding.tool.name,
-              args,
-              settings.mcp.callTimeoutMs || 60000
-            );
-          } catch (error) {
-            content = `工具调用失败：${(error as Error).message}`;
-          }
+        try {
+          return await callMcpTool(
+            binding.server,
+            binding.tool.name,
+            args,
+            settings.mcp.callTimeoutMs || 60000
+          );
+        } catch (error) {
+          return `工具调用失败：${(error as Error).message}`;
         }
-        convo.push({
-          role: 'tool',
-          tool_call_id: String(call?.id || ''),
-          name,
-          content: content.slice(0, 4000)
-        });
       }
-      continue;
-    }
-
-    const text = String(message?.content || '');
-    if (!text.trim()) throw new Error('AI 返回为空');
-    options.onDelta?.(text);
-    return { text, model: platform.model, reasoning: '' };
+    );
+    options.onDelta?.(result.text);
+    if (result.reasoning) options.onReasoning?.(result.reasoning);
+    return { text: result.text, model: platform.model, reasoning: result.reasoning };
   }
 
-  throw new Error('工具调用轮数过多（超过 6 轮）');
+  const chatOptions = {
+    temperature: settings.ai.temperature,
+    maxTokens: settings.ai.maxTokens || undefined,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    signal: options.signal
+  };
+
+  if (settings.ai.stream === false) {
+    const result = await chatOnce(platform, messages, chatOptions);
+    if (!result.text.trim()) throw new Error('AI 返回为空');
+    options.onDelta?.(result.text);
+    if (result.reasoning) options.onReasoning?.(result.reasoning);
+    return { text: result.text, model: platform.model, reasoning: result.reasoning };
+  }
+
+  const result = await chatStream(platform, messages, {
+    ...chatOptions,
+    onDelta: options.onDelta,
+    onReasoning: options.onReasoning
+  });
+  return { text: result.text, model: platform.model, reasoning: result.reasoning };
 }

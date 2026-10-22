@@ -2,7 +2,7 @@
 
 > 与插件 `settings.js` 的默认平台目录对齐；密钥一律为空，由用户填写。
 
-- AI：**27 家**（均为 OpenAI 兼容协议；Anthropic 原生协议暂未接入，未列入）
+- AI：**28 家**（Anthropic 走原生 `/v1/messages` 协议，其余为 OpenAI 兼容）
 - 检索：**12 家**
 - ASR：**3 家**
 
@@ -13,6 +13,7 @@
 | `deepseek` | DeepSeek | `deepseek-chat` | deepseek-chat, deepseek-reasoner |
 | `siliconflow-ai` | 硅基流动（AI） | `Qwen/Qwen3-8B` | Qwen/Qwen3-8B, deepseek-ai/DeepSeek-V3 |
 | `openai` | OpenAI | `gpt-4o-mini` | gpt-4o-mini, gpt-4o |
+| `anthropic` | Anthropic Claude（原生协议） | `claude-sonnet-4-5` | claude-sonnet-4-5, claude-opus-4-1, claude-3-5-haiku-latest |
 | `groq` | Groq | `llama-3.3-70b-versatile` | llama-3.3-70b-versatile, llama-3.1-8b-instant |
 | `dashscope` | 阿里云百炼（DashScope） | `qwen-plus` | qwen-plus, qwen-max, qwen-turbo, qwen3-max |
 | `moonshot` | Moonshot（Kimi） | `moonshot-v1-8k` | moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k |
@@ -39,6 +40,9 @@
 | `custom-ai` | 自定义（OpenAI 兼容） | `` | — |
 
 每个平台可配置：名称、Base URL、模型（内置下拉 + 手填）、API Key、官网、获取 Key 链接。
+
+> Anthropic 使用 `x-api-key` + `anthropic-version`，请求发往 `/v1/messages`；模型列表走 `/v1/models`。
+> 其余平台使用 `Authorization: Bearer` + `/chat/completions`。
 
 ## 检索平台
 

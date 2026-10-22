@@ -26,6 +26,7 @@ import { SEARCH_ENGINES, EXPORT_FORMATS, EXPORT_TEMPLATES, DEFAULT_SYSTEM_PROMPT
 import { exportRuleGroups, parseRuleGroups } from './optimize.js';
 import { downloadFile } from './dom.js';
 import { batchAdd, batchRemove, batchCancel, batchPause, batchClearDone, expandCollectionsFromText } from './context.js';
+import { discoverDesktop } from './desktop-bridge.js';
 import * as SKILLS from '../../shared/skills.js';
 import { TIME_PRESETS, normalizeTimeRange } from '../../shared/time-range.js';
 
@@ -2048,13 +2049,23 @@ function desktopGroup(d) {
     body.appendChild(
       h('div', {
         class: 'note',
-        text: '把当前视频的字幕与总结推送到本机桌面端。先在桌面端「设置 → 插件桥」复制端口和 Token；填写后点顶部「保存」，下面的「保存并测试」也会先保存。'
+        text: '把当前视频的字幕与总结推送到本机桌面端。桌面端运行时会自动发现，端口与 Token 都不用填；下面的「连接」按钮可以立即检测一次。'
       })
     );
+    const desktopStatus = h('div', { class: 'note muted', text: '正在检测桌面端…' });
+    body.appendChild(desktopStatus);
+    discoverDesktop(cfg.port).then((found) => {
+      if (found) {
+        desktopStatus.textContent = `已发现桌面端 ${found.version || ''} · 127.0.0.1:${found.port}`;
+        desktopStatus.style.color = '';
+      } else {
+        desktopStatus.textContent = '未检测到桌面端（启动桌面端后会自动连接，不需要填写端口/Token）';
+      }
+    });
     body.appendChild(checkbox(cfg.enabled !== false, (v) => { cfg.enabled = v; markDirty(); }, '启用「发送到桌面」'));
     body.appendChild(
       field(
-        '端口',
+        '端口（可选）',
         numberInput(cfg.port || 47821, (v) => {
           cfg.port = Math.max(1024, Math.min(65535, Math.round(Number(v) || 47821)));
           markDirty();
@@ -2063,28 +2074,34 @@ function desktopGroup(d) {
     );
     body.appendChild(
       field(
-        'Token',
+        'Token（可选）',
         textInput(cfg.token || '', (v) => {
           cfg.token = String(v || '').trim();
           markDirty();
-        }, { placeholder: '桌面端「插件桥」里的 Token' })
+        }, { placeholder: '留空即可，会自动发现桌面端' })
       )
     );
     body.appendChild(
       field(
         '连接',
-        button('保存并测试', async () => {
+        button('自动检测并保存', async () => {
           try {
+            const found = await discoverDesktop(cfg.port);
+            if (found) {
+              cfg.port = found.port;
+              cfg.token = found.token;
+              markDirty();
+            } else if (!String(cfg.token || '').trim()) {
+              throw new Error('没有检测到桌面端。请先启动桌面端，再点一次。');
+            }
+
             // 先保存：测试成功必须代表「已保存的配置」可用。
-            // 之前只测草稿，用户不点保存就去发送，发送读到的还是旧 Token。
             await save();
             if (state.dirty) throw new Error('设置保存失败，请查看提示');
 
             const saved = (store.get().settings && store.get().settings.desktop) || {};
             const port = Number(saved.port) || 47821;
             const token = String(saved.token || '').trim();
-            if (!token) throw new Error('Token 为空：请填写后重试');
-
             const res = await fetch(`http://127.0.0.1:${port}/v1/health`, {
               headers: { authorization: `Bearer ${token}` }
             });
@@ -2102,7 +2119,7 @@ function desktopGroup(d) {
             toast({ title: '连接失败', detail: String((e && e.message) || e) }, 'error', 4200);
           }
         }, { small: true }),
-        '需要桌面端正在运行；按钮会先保存，成功即代表「发送到桌面」也能用。'
+        '需要桌面端正在运行；自动发现失败时才需要手动填上面的端口/Token。'
       )
     );
   });

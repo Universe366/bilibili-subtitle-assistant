@@ -135,6 +135,9 @@ export class TabManager {
 
       this.win.contentView.addChildView(view);
       view.setBounds(this.bounds);
+      // 向导/拖拽期间 activeViewVisible 可能是 false：
+      // 新建视图不能无脑显示，否则会把向导遮罩盖住。
+      view.setVisible(this.activeViewVisible);
       this.wire(record);
 
       // prepare 会先导航到 about:blank 来挂 CDP；这里先把目标地址记下来，
@@ -343,7 +346,7 @@ export class TabManager {
     for (const [tabId, record] of this.tabs) {
       if (!record.view) continue;
       try {
-        record.view.setVisible(tabId === id);
+        record.view.setVisible(tabId === id && this.activeViewVisible);
       } catch {
         // setVisible 不可用时忽略
       }
@@ -380,7 +383,7 @@ export class TabManager {
             });
           } else {
             try {
-              nextRecord.view.setVisible(true);
+              nextRecord.view.setVisible(this.activeViewVisible);
             } catch {
               // ignore
             }

@@ -1,17 +1,9 @@
-import { session } from 'electron';
 import type { Chapter, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
+import { chatOnce } from './aiClient';
 import { buildTranscript } from './ai';
 
 const REQUEST_TIMEOUT_MS = 180000;
-
-function errorForStatus(status: number, body: string): string {
-  if (status === 401 || status === 403) return 'API Key 无效或没有权限（401/403）';
-  if (status === 404) return '地址或模型不存在（404）';
-  if (status === 429) return '请求过于频繁或额度不足（429）';
-  if (status >= 500) return `服务端错误（${status}）`;
-  return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
-}
 
 function parseTime(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, value);
@@ -86,51 +78,25 @@ export async function generateChapters(
   if (!lines.length) throw new Error('没有可用的字幕内容');
 
   const transcript = buildTranscript(info, lines);
-  const base = platform.baseUrl.replace(/\/+$/, '');
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new Error('章节生成超时（3 分钟）')),
-    REQUEST_TIMEOUT_MS
-  );
-  const forwardAbort = () => controller.abort();
-  signal?.addEventListener('abort', forwardAbort, { once: true });
-
-  try {
-    const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${platform.apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: platform.model.trim(),
-        stream: false,
-        temperature: 0.2,
-        max_tokens: settings.ai.maxTokens || undefined,
-        messages: [
-          { role: 'system', content: settings.prompt.chapters },
-          {
-            role: 'user',
-            content: `视频标题：${info.title || '未知'}\n视频时长：${Math.round(
-              info.duration || 0
-            )} 秒\n\n字幕：\n${transcript}`
-          }
-        ]
-      }),
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(errorForStatus(response.status, body));
+  const result = await chatOnce(
+    platform,
+    [
+      { role: 'system', content: settings.prompt.chapters },
+      {
+        role: 'user',
+        content: `视频标题：${info.title || '未知'}\n视频时长：${Math.round(
+          info.duration || 0
+        )} 秒\n\n字幕：\n${transcript}`
+      }
+    ],
+    {
+      temperature: 0.2,
+      maxTokens: settings.ai.maxTokens || undefined,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      signal
     }
-    const json: any = await response.json();
-    const content = String(json?.choices?.[0]?.message?.content || '');
-    const chapters = parseChapters(content, info.duration);
-    if (!chapters.length) throw new Error('AI 没有返回可解析的章节');
-    return chapters;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', forwardAbort);
-  }
+  );
+  const chapters = parseChapters(result.text, info.duration);
+  if (!chapters.length) throw new Error('AI 没有返回可解析的章节');
+  return chapters;
 }

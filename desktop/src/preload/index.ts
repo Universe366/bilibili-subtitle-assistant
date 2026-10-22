@@ -5,6 +5,7 @@ import type {
   AiDoneEvent,
   AiErrorEvent,
   AiStatusEvent,
+  AiReasoningEvent,
   AiPlatform,
   AsrPlatform,
   SearchPlatform,
@@ -90,6 +91,8 @@ const api: BsubApi = {
   getPageInfo: () => ipcRenderer.invoke('page:info') as Promise<Result<PageInfo>>,
   getSubtitles: (expectSignature?: string) =>
     ipcRenderer.invoke('page:subtitles', expectSignature) as Promise<Result<SubtitleBundle>>,
+  triggerSubtitleMenu: () =>
+    ipcRenderer.invoke('page:trigger-subtitle') as Promise<Result<boolean>>,
   getTrackBody: (url: string) => ipcRenderer.invoke('page:track-body', url) as Promise<Result<TrackBody>>,
   getTime: () =>
     ipcRenderer.invoke('page:time') as Promise<Result<{ currentTime: number; duration: number }>>,
@@ -121,6 +124,10 @@ const api: BsubApi = {
     ipcRenderer.invoke('settings:sidebar-width', width) as Promise<Result<SettingsSnapshot>>,
   saveSettings: (next: AppSettings) =>
     ipcRenderer.invoke('settings:set', next) as Promise<Result<SettingsSnapshot>>,
+  finishWizard: () =>
+    ipcRenderer.invoke('settings:wizard', true) as Promise<Result<SettingsSnapshot>>,
+  setWizardVisible: (visible: boolean) =>
+    ipcRenderer.invoke('settings:wizard', !visible) as Promise<Result<SettingsSnapshot>>,
   exportSettings: () =>
     ipcRenderer.invoke('settings:export') as Promise<Result<{ canceled: boolean; path?: string }>>,
   importSettings: () =>
@@ -164,8 +171,16 @@ const api: BsubApi = {
     ipcRenderer.invoke('data:restore') as Promise<
       Result<{ canceled: boolean; restored?: boolean }>
     >,
+  changeDataDir: () =>
+    ipcRenderer.invoke('data:change-dir') as Promise<
+      Result<{ canceled: boolean; target?: string; failed?: number }>
+    >,
   getBridgeStatus: () =>
     ipcRenderer.invoke('bridge:status') as Promise<Result<BridgeStatus>>,
+  installExtension: () =>
+    ipcRenderer.invoke('bridge:install-extension') as Promise<
+      Result<{ path: string; browser: string; opened: boolean }>
+    >,
   writeClipboard: (text: string) =>
     ipcRenderer.invoke('clipboard:write', text) as Promise<void>,
 
@@ -191,6 +206,8 @@ const api: BsubApi = {
   onAiDone: (cb: (event: AiDoneEvent) => void) => on<AiDoneEvent>('ai:done', cb),
   onAiError: (cb: (event: AiErrorEvent) => void) => on<AiErrorEvent>('ai:error', cb),
   onAiStatus: (cb: (event: AiStatusEvent) => void) => on<AiStatusEvent>('ai:status', cb),
+  onAiReasoning: (cb: (event: AiReasoningEvent) => void) =>
+    on<AiReasoningEvent>('ai:reasoning', cb),
 
   chat: (payload: ChatRequest) =>
     ipcRenderer.invoke('chat:send', payload) as Promise<Result<{ requestId: string }>>,

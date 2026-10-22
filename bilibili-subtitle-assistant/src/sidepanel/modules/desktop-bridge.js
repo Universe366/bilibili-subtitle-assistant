@@ -7,7 +7,62 @@
 // 这里只负责构造 payload 和发请求，不碰 UI；按钮在 panel-actions 的「⋯」菜单里。
 
 import { CONTENT_VERSION } from '../../shared/constants.js';
-import { store } from './store.js';
+import { saveSettings, store } from './store.js';
+
+const DISCOVERY_PORTS = Array.from({ length: 10 }, (_, index) => 47821 + index);
+
+async function fetchHello(port) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 900);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/v1/hello`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    const data = await response.json().catch(() => null);
+    if (!data || data.app !== 'bsub-desktop' || !data.token) return null;
+    return {
+      port: Number(data.port) || port,
+      token: String(data.token),
+      version: String(data.version || '')
+    };
+  } catch (err) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 自动发现本机桌面端：依次探测 47821~47830（桌面端端口被占用时会顺延）。
+export async function discoverDesktop(preferredPort) {
+  const ports = [
+    ...new Set([Number(preferredPort) || 0, ...DISCOVERY_PORTS].filter(Boolean))
+  ];
+  for (const port of ports) {
+    const found = await fetchHello(port);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function persistConnection(found, settings) {
+  try {
+    const next = {
+      ...(settings || store.get().settings || {}),
+      desktop: {
+        ...((settings || store.get().settings || {}).desktop || {}),
+        enabled: true,
+        port: found.port,
+        token: found.token
+      }
+    };
+    await saveSettings(next);
+  } catch (err) {
+    // 发现成功但保存失败不影响本次发送
+  }
+}
 
 function detectBrowser() {
   try {
@@ -97,33 +152,59 @@ export async function sendToDesktop(state = store.get()) {
   const cfg = settings.desktop || {};
   if (cfg.enabled === false) throw new Error('桌面端推送已在设置里关闭');
 
-  const port = Number(cfg.port) || 47821;
-  const token = String(cfg.token || '').trim();
-  if (!token) throw new Error('先在 设置 → 桌面端 填写 Token');
-
   const payload = buildDesktopPayload(state);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const preferredPort = Number(cfg.port) || 47821;
+  let connection = {
+    port: preferredPort,
+    token: String(cfg.token || '').trim()
+  };
+
+  // 没填 Token：自动发现；填了也允许在失败后重新发现（桌面端换端口/Token 后不用手改）。
+  if (!connection.token) {
+    const found = await discoverDesktop(preferredPort);
+    if (!found) {
+      throw new Error('没有检测到桌面端。请先启动桌面端，扩展会自动连接，不需要填端口或 Token。');
+    }
+    connection = found;
+    await persistConnection(found, settings);
+  }
+
+  const post = async (target) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(`http://127.0.0.1:${target.port}/v1/ingest`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${target.token}`
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || `桌面端返回 HTTP ${response.status}`);
+      }
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/v1/ingest`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || `桌面端返回 HTTP ${response.status}`);
-    }
-    return data;
+    return await post(connection);
   } catch (error) {
     if (error && error.name === 'AbortError') throw new Error('连接桌面端超时（15 秒）');
+    // Token 过期 / 桌面端换了端口：再发现一次并重试。
+    const found = await discoverDesktop(preferredPort);
+    if (found && (found.port !== connection.port || found.token !== connection.token)) {
+      await persistConnection(found, settings);
+      return post(found);
+    }
+    if (error instanceof TypeError) {
+      throw new Error('连接不到桌面端。请确认桌面端正在运行（本机 127.0.0.1）。');
+    }
     throw error;
-  } finally {
-    clearTimeout(timer);
   }
 }

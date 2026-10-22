@@ -3,6 +3,7 @@ import type {
   AiDoneEvent,
   AiErrorEvent,
   AiStatusEvent,
+  AiReasoningEvent,
   AiPlatform,
   AsrPlatform,
   SearchPlatform,
@@ -74,6 +75,7 @@ export interface BsubApi {
 
   getPageInfo(): Promise<Result<PageInfo>>;
   getSubtitles(expectSignature?: string): Promise<Result<SubtitleBundle>>;
+  triggerSubtitleMenu(): Promise<Result<boolean>>;
   getTrackBody(url: string): Promise<Result<TrackBody>>;
   getTime(): Promise<Result<{ currentTime: number; duration: number }>>;
   seek(time: number): Promise<void>;
@@ -87,6 +89,8 @@ export interface BsubApi {
   getSettings(): Promise<Result<SettingsSnapshot>>;
   getDiagnostics(): Promise<Result<DiagnosticsInfo>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
+  finishWizard(): Promise<Result<SettingsSnapshot>>;
+  setWizardVisible(visible: boolean): Promise<Result<SettingsSnapshot>>;
   setSidebarWidth(width: number): Promise<Result<SettingsSnapshot>>;
   setBrowserVisible(visible: boolean): Promise<void>;
   beginSidebarDrag(): Promise<Result<string | null>>;
@@ -116,7 +120,11 @@ export interface BsubApi {
   openExternal(url: string): Promise<void>;
   backupData(): Promise<Result<{ canceled: boolean; path?: string }>>;
   restoreData(): Promise<Result<{ canceled: boolean; restored?: boolean }>>;
+  changeDataDir(): Promise<
+    Result<{ canceled: boolean; target?: string; failed?: number }>
+  >;
   getBridgeStatus(): Promise<Result<BridgeStatus>>;
+  installExtension(): Promise<Result<{ path: string; browser: string; opened: boolean }>>;
   writeClipboard(text: string): Promise<void>;
 
   getUpdateStatus(): Promise<Result<UpdateStatus>>;
@@ -134,6 +142,7 @@ export interface BsubApi {
   onAiDone(cb: (event: AiDoneEvent) => void): () => void;
   onAiError(cb: (event: AiErrorEvent) => void): () => void;
   onAiStatus(cb: (event: AiStatusEvent) => void): () => void;
+  onAiReasoning(cb: (event: AiReasoningEvent) => void): () => void;
 
   chat(payload: ChatRequest): Promise<Result<{ requestId: string }>>;
   cancelChat(requestId: string): Promise<void>;

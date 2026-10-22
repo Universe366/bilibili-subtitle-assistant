@@ -579,6 +579,25 @@ async function searchCustom(
   }));
 }
 
+function freePlatform(id: 'anysearch' | 'searxng'): SearchPlatform {
+  if (id === 'anysearch') {
+    return {
+      id: 'keyless-anysearch',
+      name: 'AnySearch（免费兜底）',
+      kind: 'anysearch',
+      baseUrl: 'https://api.anysearch.com/v1/search',
+      apiKey: ''
+    };
+  }
+  return {
+    id: 'keyless-searxng',
+    name: 'SearXNG（公共实例）',
+    kind: 'searxng',
+    baseUrl: 'https://searx.be/search',
+    apiKey: ''
+  };
+}
+
 export async function searchWeb(settings: AppSettings, query: string): Promise<WebReference[]> {
   if (!settings.search.enabled) return [];
   const platform = activePlatform(settings);
@@ -617,15 +636,27 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
     }
     throw new Error('没有返回结果');
   } catch (error) {
-    if (settings.search.keylessFallback !== false && kind !== 'exa') {
-      try {
-        const fallback = normalize(await searchExa(query, settings), max);
-        if (fallback.length) {
-          if (ttl > 0) searchCache.set(cacheKey, { at: Date.now(), refs: fallback });
-          return fallback;
+    if (settings.search.keylessFallback !== false) {
+      // 无 Key 兜底：按用户配置的顺序逐个尝试（exa / anysearch / searxng）。
+      const order =
+        Array.isArray(settings.search.keylessOrder) && settings.search.keylessOrder.length
+          ? settings.search.keylessOrder
+          : ['exa', 'anysearch'];
+      for (const id of order) {
+        if (id === kind) continue;
+        try {
+          let rows: WebReference[] = [];
+          if (id === 'exa') rows = await searchExa(query, settings);
+          else if (id === 'anysearch') rows = await searchAnySearch(settings, freePlatform('anysearch'), query);
+          else if (id === 'searxng') rows = await searchSearxng(settings, freePlatform('searxng'), query);
+          const fallback = normalize(rows, max);
+          if (fallback.length) {
+            if (ttl > 0) searchCache.set(cacheKey, { at: Date.now(), refs: fallback });
+            return fallback;
+          }
+        } catch {
+          // 继续尝试下一个免费引擎
         }
-      } catch {
-        // 兜底失败时保留原错误
       }
     }
     throw new Error(`检索失败（${platform.name}）：${(error as Error).message}`);

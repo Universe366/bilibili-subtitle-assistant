@@ -8,6 +8,7 @@ import type {
   AiDoneEvent,
   AiErrorEvent,
   AiStatusEvent,
+  AiReasoningEvent,
   AiPlatform,
   SearchPlatform,
   AsrPlatform,
@@ -59,7 +60,7 @@ import type {
   LibrarySearchResult
 } from '../shared/types';
 import type { TabManager } from './tabs';
-import { getPageInfo, getSubtitles, getTime, getTrackBody, seek } from './page';
+import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
 import {
   clearHistory,
   deleteHistoryItem,
@@ -83,6 +84,7 @@ import {
   testPlatform
 } from './settings';
 import { bridgeStatus, restartBridge } from './bridge';
+import { installBrowserExtension } from './extension-install';
 import { checkForUpdates, downloadUpdate, installUpdate, skipUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
 import { chat } from './chat';
@@ -99,6 +101,7 @@ import { readSkillFile } from './skills';
 import { testSearch } from './search';
 import { probePlatformModels, testPlatformConnection } from './platform';
 import { backupData, restoreData } from './backup';
+import { changeDataDir } from './dataDir';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
 
@@ -193,6 +196,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     } catch (error) {
       console.warn('[m2] subtitles failed:', (error as Error).message);
       return failure<SubtitleBundle>(error);
+    }
+  });
+
+  ipcMain.handle('page:trigger-subtitle', async (): Promise<Result<boolean>> => {
+    const wc = tabs.activeWebContents();
+    if (!wc) return { ok: false, error: '没有打开的页面' };
+    try {
+      await triggerSubtitleMenu(wc);
+      return { ok: true, data: true };
+    } catch (error) {
+      return failure<boolean>(error);
     }
   });
 
@@ -316,6 +330,19 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('settings:wizard', async (_event, done: boolean): Promise<Result<ReturnType<typeof settingsSnapshot>>> => {
+    try {
+      const settings = loadSettings();
+      settings.general.wizardDone = done === true;
+      saveSettings(settings);
+      const snapshot = settingsSnapshot();
+      send('settings:changed', snapshot);
+      return { ok: true, data: snapshot };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
   ipcMain.handle(
     'settings:export',
     async (): Promise<Result<{ canceled: boolean; path?: string }>> => {
@@ -364,6 +391,14 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return { ok: true, data: bridgeStatus() };
     } catch (error) {
       return failure<BridgeStatus>(error);
+    }
+  });
+
+  ipcMain.handle('bridge:install-extension', async (): Promise<Result<{ path: string; browser: string; opened: boolean }>> => {
+    try {
+      return { ok: true, data: await installBrowserExtension(win) };
+    } catch (error) {
+      return failure<{ path: string; browser: string; opened: boolean }>(error);
     }
   });
 
@@ -539,6 +574,28 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('data:change-dir', async () => {
+    try {
+      const result = await changeDataDir();
+      if (result.canceled || !result.target) {
+        return { ok: true, data: result };
+      }
+      await dialog.showMessageBox({
+        type: 'info',
+        title: '迁移完成',
+        message: '数据已迁移到新位置',
+        detail: `应用现在会重启，之后将从以下目录读写数据：\n${result.target}${
+          result.failed ? `\n\n有 ${result.failed} 个缓存/锁定文件未复制，不影响设置与字幕库。` : ''
+        }\n\n旧数据目录会在新进程启动后自动删除。`
+      });
+      app.relaunch();
+      app.exit(0);
+      return { ok: true, data: result };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
   ipcMain.handle('diagnostics:get', () => {
     try {
       const dataDir = app.getPath('userData');
@@ -597,15 +654,21 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           const result = await summarize({
             info: payload.info,
             lines: payload.lines,
+            skipProofread: payload.skipProofread === true,
             signal: controller.signal,
             onDelta: (delta) => send('ai:delta', { requestId, delta } satisfies AiDeltaEvent),
-            onStatus: (status) => send('ai:status', { requestId, status } satisfies AiStatusEvent)
+            onStatus: (status) => send('ai:status', { requestId, status } satisfies AiStatusEvent),
+            onReasoning: (delta) =>
+              send('ai:reasoning', { requestId, delta } satisfies AiReasoningEvent)
           });
           const saved = saveSummary(payload.info, result.text, result.model);
           console.log(
             '[m4] verification',
             result.verification
-              ? `${result.verification.attempted}/${result.verification.references.length}`
+              ? `${result.verification.attempted}/${result.verification.references.length}` +
+                  (result.verification.judged
+                    ? ` judged dropped=${result.verification.dropped} supplements=${result.verification.supplements.length}`
+                    : ' judged=false')
               : 'none'
           );
           send(
