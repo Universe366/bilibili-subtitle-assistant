@@ -48,6 +48,26 @@ function highlightMatch(text: string, query: string) {
   return parts;
 }
 
+async function pickFullestTrack(
+  tracks: SubtitleTrack[],
+  info: PageInfo | null
+): Promise<SubtitleTrack | null> {
+  const initial = pickTrack(tracks, info);
+  if (tracks.length <= 1) return initial;
+  const candidates = tracks.filter((item) => item.url && item.source !== 'asr').slice(0, 6);
+  if (candidates.length <= 1) return initial;
+  let best = initial;
+  let bestCount = 0;
+  for (const candidate of candidates) {
+    const result = await window.bsub.getTrackBody(candidate.url);
+    if (result.ok && result.data.lines.length > bestCount) {
+      best = candidate;
+      bestCount = result.data.lines.length;
+    }
+  }
+  return bestCount > 0 ? best : initial;
+}
+
 export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [info, setInfo] = useState<PageInfo | null>(null);
   const [bundle, setBundle] = useState<SubtitleBundle | null>(null);
@@ -390,7 +410,18 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
         if (subtitlesResult.ok) {
           const infoData = infoResult.ok ? infoResult.data : null;
           setBundle(subtitlesResult.data);
-          setTrack(pickTrack(subtitlesResult.data.tracks, infoData));
+          const initialTrack = pickTrack(subtitlesResult.data.tracks, infoData);
+          setTrack(initialTrack);
+          if (subtitlesResult.data.tracks.length > 1) {
+            const initialUrl = initialTrack?.url || '';
+            void pickFullestTrack(subtitlesResult.data.tracks, infoData).then((best) => {
+              if (!cancelled && best && best.url !== initialUrl) {
+                setTrack((current) =>
+                  current?.url === initialUrl || !current ? best : current
+                );
+              }
+            });
+          }
         } else {
           setBundle(null);
           setTrack(null);

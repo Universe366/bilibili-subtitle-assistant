@@ -121,6 +121,8 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
         if (referencesBlock) {
           options.onStatus?.(
             `已核对 ${verified.attempted} 项，取得 ${verified.references.length} 条证据` +
+              (verified.judged ? `，判定丢弃 ${verified.dropped} 条` : '') +
+              (verified.supplements.length ? `，${verified.supplements.length} 条补充` : '') +
               (verified.failed ? `，${verified.failed} 项失败` : '')
           );
         } else {

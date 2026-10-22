@@ -891,9 +891,20 @@ function createWindow(): void {
           const bundle = await getSubtitles(wc);
           console.log('[live-ai] info', info.title, 'tracks', bundle.tracks.length, 'needLogin', bundle.needLogin);
           if (!bundle.tracks.length) throw new Error('没有字幕轨');
-          const track = bundle.tracks[0];
-          const body = await getTrackBody(track.url);
-          const lines = body.lines;
+          let track = bundle.tracks[0];
+          let lines: any[] = [];
+          for (const candidate of bundle.tracks.slice(0, 6)) {
+            try {
+              const body = await getTrackBody(candidate.url);
+              if (body.lines.length > lines.length) {
+                track = candidate;
+                lines = body.lines;
+              }
+            } catch {
+              // 单轨失败不影响其他候选
+            }
+          }
+          if (!lines.length) throw new Error('字幕正文为空');
           console.log('[live-ai] lines', lines.length, 'track', track.lanDoc || track.lan);
 
           const summary = await summarize({
