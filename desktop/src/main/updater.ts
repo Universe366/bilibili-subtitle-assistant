@@ -3,7 +3,7 @@ import type { BrowserWindow } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import type { UpdateInfo } from 'electron-updater';
 import type { UpdateStatus } from '../shared/types';
-import { loadSettings } from './settings';
+import { loadSettings, saveSettings } from './settings';
 
 let win: BrowserWindow | null = null;
 let status: UpdateStatus = {
@@ -64,6 +64,16 @@ export function initUpdater(window: BrowserWindow): void {
   autoUpdater.on('checking-for-update', () => setStatus({ state: 'checking', error: undefined }));
   autoUpdater.on('update-available', (info) => {
     console.log('[update] available', info.version);
+    const latest = loadSettings();
+    if (!status.manual && latest.update.skippedVersion === info.version) {
+      setStatus({
+        state: 'not-available',
+        version: info.version,
+        checkedAt: Date.now(),
+        error: undefined
+      });
+      return;
+    }
     setStatus({
       state: 'available',
       version: info.version,
@@ -71,7 +81,7 @@ export function initUpdater(window: BrowserWindow): void {
       checkedAt: Date.now(),
       error: undefined
     });
-    if (settings.update.autoDownload === true) {
+    if (latest.update.autoDownload === true) {
       void downloadUpdate();
     }
   });
@@ -141,6 +151,19 @@ export async function downloadUpdate(): Promise<UpdateStatus> {
 export function installUpdate(): void {
   if (status.state !== 'downloaded') return;
   autoUpdater.quitAndInstall(false, true);
+}
+
+export function skipUpdate(version: string): UpdateStatus {
+  const settings = loadSettings();
+  settings.update.skippedVersion = String(version || '').trim();
+  saveSettings(settings);
+  setStatus({
+    state: 'not-available',
+    version: settings.update.skippedVersion,
+    checkedAt: Date.now(),
+    error: undefined
+  });
+  return status;
 }
 
 export function updateStatus(): UpdateStatus {

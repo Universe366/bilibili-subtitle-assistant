@@ -1,6 +1,6 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.0**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.1**。
 
 > 维护、发布、常见坑见根目录 [`docs/MAINTAINERS.md`](../docs/MAINTAINERS.md) 的桌面端章节。
 
@@ -86,8 +86,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.30.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.30.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.30.1.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.30.1-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.17.1.zip` | 浏览器插件（由 CI 打包） |
 

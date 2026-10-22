@@ -463,6 +463,7 @@ export interface AppSettings {
     autoCheck: boolean;
     autoDownload: boolean;
     feedUrl: string;
+    skippedVersion: string;
   };
   dataDir: string;
 }

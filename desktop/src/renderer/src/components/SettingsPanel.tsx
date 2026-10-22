@@ -736,6 +736,17 @@ export function SettingsPanel() {
     }
   };
 
+  const skipCurrentUpdate = async () => {
+    if (!updateState?.version) return;
+    const response = await window.bsub.skipUpdate(updateState.version);
+    if (response.ok) {
+      setUpdateState(response.data);
+      setMessage(`已跳过 v${updateState.version}，下次自动检查不再提示`);
+    } else {
+      setError(response.error);
+    }
+  };
+
   const testSearch = async () => {
     setSearchTesting(true);
     setMessage('');
@@ -2278,15 +2289,23 @@ export function SettingsPanel() {
             <RefreshCw size={12} /> {updateState?.state === 'error' ? '重试' : '检查'}
           </button>
           {updateState?.state === 'available' && (
-            <button className="mini-btn primary" onClick={() => void window.bsub.downloadUpdate()}>
-              <Download size={12} /> 下载
-            </button>
+            <>
+              <button className="mini-btn primary" onClick={() => void window.bsub.downloadUpdate()}>
+                <Download size={12} /> 下载
+              </button>
+              <button className="mini-btn" onClick={() => void skipCurrentUpdate()}>
+                跳过此版本
+              </button>
+            </>
           )}
           {updateState?.state === 'downloaded' && (
             <button className="mini-btn primary" onClick={() => void window.bsub.installUpdate()}>
               重启安装
             </button>
           )}
+          <button className="mini-btn" onClick={() => void window.bsub.openReleasesPage()}>
+            打开发布页
+          </button>
         </div>
 
         <label className="settings-check">

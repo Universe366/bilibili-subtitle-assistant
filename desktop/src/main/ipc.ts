@@ -83,7 +83,7 @@ import {
   testPlatform
 } from './settings';
 import { bridgeStatus, restartBridge } from './bridge';
-import { checkForUpdates, downloadUpdate, installUpdate, updateStatus } from './updater';
+import { checkForUpdates, downloadUpdate, installUpdate, skipUpdate, updateStatus } from './updater';
 import { summarize } from './ai';
 import { chat } from './chat';
 import { transcribe } from './asr';
@@ -392,6 +392,16 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     } catch (error) {
       return failure<UpdateStatus>(error);
     }
+  });
+
+  ipcMain.handle('update:skip', (_event, version: string) => {
+    return { ok: true, data: skipUpdate(version) };
+  });
+
+  ipcMain.handle('update:open-releases', async () => {
+    await shell.openExternal(
+      'https://github.com/Universe366/bilibili-subtitle-assistant/releases/latest'
+    );
   });
 
   ipcMain.handle('update:install', () => {

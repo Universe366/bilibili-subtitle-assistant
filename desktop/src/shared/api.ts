@@ -118,6 +118,8 @@ export interface BsubApi {
   checkForUpdates(): Promise<Result<UpdateStatus>>;
   downloadUpdate(): Promise<Result<UpdateStatus>>;
   installUpdate(): Promise<void>;
+  skipUpdate(version: string): Promise<Result<UpdateStatus>>;
+  openReleasesPage(): Promise<void>;
   onUpdateStatus(cb: (status: UpdateStatus) => void): () => void;
 
   summarize(payload: SummarizeRequest): Promise<Result<{ requestId: string }>>;

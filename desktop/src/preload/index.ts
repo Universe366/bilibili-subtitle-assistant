@@ -164,6 +164,9 @@ const api: BsubApi = {
   downloadUpdate: () =>
     ipcRenderer.invoke('update:download') as Promise<Result<UpdateStatus>>,
   installUpdate: () => ipcRenderer.invoke('update:install') as Promise<void>,
+  skipUpdate: (version: string) =>
+    ipcRenderer.invoke('update:skip', version) as Promise<Result<UpdateStatus>>,
+  openReleasesPage: () => ipcRenderer.invoke('update:open-releases') as Promise<void>,
   onUpdateStatus: (cb: (status: UpdateStatus) => void) => on<UpdateStatus>('update:status', cb),
 
   summarize: (payload: SummarizeRequest) =>
