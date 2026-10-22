@@ -539,6 +539,41 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('diagnostics:get', () => {
+    try {
+      const dataDir = app.getPath('userData');
+      const logs = ['startup.log', 'fatal.log']
+        .map((name) => {
+          const file = path.join(dataDir, name);
+          try {
+            const stat = fs.statSync(file);
+            return { name, size: stat.size, modified: stat.mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+        .filter((item): item is { name: string; size: number; modified: number } => Boolean(item));
+      return {
+        ok: true,
+        data: {
+          version: app.getVersion(),
+          electron: process.versions.electron || '',
+          chrome: process.versions.chrome || '',
+          node: process.versions.node || '',
+          platform: process.platform,
+          arch: process.arch,
+          dataDir,
+          settingsPath: path.join(dataDir, 'settings.json'),
+          dbPath: path.join(dataDir, 'library.db'),
+          logs,
+          library: listLibrary().stats
+        }
+      };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
   ipcMain.handle('settings:open-data', async () => {
     await shell.openPath(app.getPath('userData'));
   });

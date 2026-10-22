@@ -126,6 +126,26 @@ export interface LibraryStats {
   bytes: number;
 }
 
+export interface DiagnosticsLog {
+  name: string;
+  size: number;
+  modified: number;
+}
+
+export interface DiagnosticsInfo {
+  version: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  arch: string;
+  dataDir: string;
+  settingsPath: string;
+  dbPath: string;
+  logs: DiagnosticsLog[];
+  library: LibraryStats;
+}
+
 export interface LibraryList {
   videos: LibraryVideo[];
   stats: LibraryStats;

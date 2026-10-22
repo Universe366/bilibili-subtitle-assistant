@@ -9,6 +9,7 @@ import type {
   AsrPlatform,
   SearchPlatform,
   AppSettings,
+  DiagnosticsInfo,
   CorrectionRuleGroup,
   BridgeStatus,
   ChatDeltaEvent,
@@ -103,6 +104,7 @@ const api: BsubApi = {
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),
 
   getSettings: () => ipcRenderer.invoke('settings:get') as Promise<Result<SettingsSnapshot>>,
+  getDiagnostics: () => ipcRenderer.invoke('diagnostics:get') as Promise<Result<DiagnosticsInfo>>,
   beginSidebarDrag: () =>
     ipcRenderer.invoke('browser:begin-drag') as Promise<Result<string | null>>,
   endSidebarDrag: () => ipcRenderer.invoke('browser:end-drag') as Promise<void>,

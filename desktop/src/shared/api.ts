@@ -7,6 +7,7 @@ import type {
   AsrPlatform,
   SearchPlatform,
   AppSettings,
+  DiagnosticsInfo,
   CorrectionRuleGroup,
   BridgeStatus,
   ChatDeltaEvent,
@@ -84,6 +85,7 @@ export interface BsubApi {
   onLibraryChanged(cb: () => void): () => void;
 
   getSettings(): Promise<Result<SettingsSnapshot>>;
+  getDiagnostics(): Promise<Result<DiagnosticsInfo>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
   setSidebarWidth(width: number): Promise<Result<SettingsSnapshot>>;
   setBrowserVisible(visible: boolean): Promise<void>;

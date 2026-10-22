@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { DiagnosticsInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import {
   Download,
@@ -103,6 +104,7 @@ const EXPORT_LABELS: Record<ExportFormat, string> = {
 export function SettingsPanel() {
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [dataDir, setDataDir] = useState('');
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [version, setVersion] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -144,6 +146,12 @@ export function SettingsPanel() {
       if (response.ok) setUpdateState(response.data);
     });
     return window.bsub.onUpdateStatus((status) => setUpdateState(status));
+  }, []);
+
+  useEffect(() => {
+    void window.bsub.getDiagnostics().then((response) => {
+      if (response.ok) setDiagnostics(response.data);
+    });
   }, []);
 
   useEffect(() => {
@@ -747,6 +755,35 @@ export function SettingsPanel() {
     }
   };
 
+  const refreshDiagnostics = async () => {
+    const response = await window.bsub.getDiagnostics();
+    if (response.ok) {
+      setDiagnostics(response.data);
+      setMessage('诊断信息已刷新');
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const copyDiagnostics = async () => {
+    const data = diagnostics;
+    if (!data) return;
+    const text = [
+      `版本: ${data.version}`,
+      `Electron: ${data.electron}`,
+      `Chrome: ${data.chrome}`,
+      `Node: ${data.node}`,
+      `系统: ${data.platform} ${data.arch}`,
+      `数据目录: ${data.dataDir}`,
+      `设置: ${data.settingsPath}`,
+      `数据库: ${data.dbPath}`,
+      `库: ${data.library.videos} 视频 / ${data.library.segments} 段`,
+      `日志: ${data.logs.map((log) => `${log.name}=${log.size}B`).join(', ')}`
+    ].join('\n');
+    await window.bsub.writeClipboard(text);
+    setMessage('诊断信息已复制');
+  };
+
   const testSearch = async () => {
     setSearchTesting(true);
     setMessage('');
@@ -909,7 +946,7 @@ export function SettingsPanel() {
         </div>
 
         <div className="settings-toc">
-          {['通用', 'AI', '语音', '提示词', '检索', '校对', '导出', 'MCP', 'Skills', '更新', '数据'].map(
+          {['通用', 'AI', '语音', '提示词', '检索', '校对', '导出', 'MCP', 'Skills', '更新', '数据', '诊断'].map(
             (label) => (
               <button key={label} className="settings-chip" onClick={() => jumpToSection(label)}>
                 {label}
@@ -2609,6 +2646,79 @@ export function SettingsPanel() {
           </div>
         ))}
         <div className="settings-hint">启用后会注入总结和对话的系统提示词。</div>
+      </SettingsSection>
+
+      <SettingsSection title="诊断与关于" defaultOpen={false}>
+        <div className="settings-row">
+          <span>桌面端版本</span>
+          <code>{diagnostics?.version || version || '读取中'}</code>
+        </div>
+        <div className="settings-row">
+          <span>Electron / Chrome / Node</span>
+          <code>
+            {diagnostics
+              ? `${diagnostics.electron} / ${diagnostics.chrome} / ${diagnostics.node}`
+              : '读取中'}
+          </code>
+        </div>
+        <div className="settings-row">
+          <span>系统</span>
+          <code>
+            {diagnostics ? `${diagnostics.platform} ${diagnostics.arch}` : '读取中'}
+          </code>
+        </div>
+        <div className="settings-row">
+          <span>本地库</span>
+          <code>
+            {diagnostics
+              ? `${diagnostics.library.videos} 视频 / ${diagnostics.library.segments} 段 / ${(
+                  diagnostics.library.bytes / 1024 / 1024
+                ).toFixed(1)} MB`
+              : '读取中'}
+          </code>
+        </div>
+        <div className="settings-row">
+          <span>日志</span>
+          <code>
+            {diagnostics?.logs.length
+              ? diagnostics.logs.map((log) => `${log.name} ${(log.size / 1024).toFixed(1)} KB`).join(' · ')
+              : '暂无日志'}
+          </code>
+        </div>
+        <pre className="settings-diagnostics">
+          {[
+            `版本: ${diagnostics?.version || version}`,
+            `Electron: ${diagnostics?.electron || ''}`,
+            `Chrome: ${diagnostics?.chrome || ''}`,
+            `Node: ${diagnostics?.node || ''}`,
+            `系统: ${diagnostics?.platform || ''} ${diagnostics?.arch || ''}`,
+            `数据目录: ${diagnostics?.dataDir || dataDir}`,
+            `设置: ${diagnostics?.settingsPath || ''}`,
+            `数据库: ${diagnostics?.dbPath || ''}`,
+            `库: ${diagnostics?.library.videos || 0} 视频 / ${diagnostics?.library.segments || 0} 段`
+          ].join('\n')}
+        </pre>
+        <div className="settings-inline">
+          <button className="mini-btn" onClick={() => void refreshDiagnostics()}>
+            <RefreshCw size={12} /> 刷新
+          </button>
+          <button className="mini-btn" onClick={() => void copyDiagnostics()}>
+            复制诊断
+          </button>
+          <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
+            <FolderOpen size={12} /> 打开数据目录
+          </button>
+          <button
+            className="mini-btn"
+            onClick={() =>
+              void window.bsub.openExternal(
+                'https://github.com/Universe366/bilibili-subtitle-assistant/issues'
+              )
+            }
+          >
+            反馈
+          </button>
+        </div>
       </SettingsSection>
 
       <SettingsSection title="数据与备份" defaultOpen={false}>
