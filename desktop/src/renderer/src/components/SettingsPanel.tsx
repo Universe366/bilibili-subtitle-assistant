@@ -1941,6 +1941,15 @@ export function SettingsPanel() {
           总结/对话时带视频简介
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.useComments === true}
+            onChange={(event) => updateSearch({ useComments: event.target.checked })}
+          />
+          总结时带热门评论（默认关闭；仅作观众观点参考）
+        </label>
+
         <div className="settings-label">检索结果缓存（分钟，0 = 关闭）</div>
         <input
           className="settings-input"

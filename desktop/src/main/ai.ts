@@ -3,6 +3,7 @@ import type { AiPlatform, PageInfo, SubtitleLine, VerificationSummary } from '..
 import { activePlatform, activePrompt, loadSettings } from './settings';
 import { buildSearchQuery, rankReferences, searchWeb } from './search';
 import { buildVerifyBlock, verifySummary } from './verify';
+import { fetchHotComments } from './comments';
 import { glossaryTerms } from './correction';
 import { skillPrompt } from './skills';
 import { optimizeLines } from './optimize';
@@ -91,6 +92,27 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
   const transcript = buildTranscript(info, workingLines);
   if (!transcript.trim()) throw new Error('没有可用的字幕内容');
 
+  let commentsBlock = '';
+  if (settings.search.useComments && info.aid) {
+    options.onStatus?.('正在获取热门评论…');
+    try {
+      const comments = await fetchHotComments(info, 12);
+      if (comments.length) {
+        commentsBlock = [
+          '',
+          '热门评论（仅作观众观点参考，不代表事实；不要逐条复述）：',
+          ...comments.map(
+            (comment, index) =>
+              `${index + 1}. [${comment.like} 赞] ${comment.author}：${comment.content.slice(0, 160)}`
+          )
+        ].join('\n');
+        options.onStatus?.(`已获取 ${comments.length} 条热门评论`);
+      }
+    } catch (error) {
+      options.onStatus?.(`评论获取失败：${(error as Error).message}（继续总结）`);
+    }
+  }
+
   const userContent = [
     `视频标题：${info.title || '未知'}`,
     `UP 主：${info.owner || '未知'}`,
@@ -99,6 +121,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
     ...(settings.search.useVideoMeta !== false && info.desc
       ? [`视频简介：${info.desc.slice(0, 2000)}`]
       : []),
+    ...(commentsBlock ? [commentsBlock] : []),
     '',
     '字幕（带时间戳）：',
     transcript

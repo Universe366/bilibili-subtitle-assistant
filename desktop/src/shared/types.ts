@@ -339,6 +339,7 @@ export interface SearchSettings {
   autoSearchOnChat: boolean;
   alwaysSearchOnChat: boolean;
   useVideoMeta: boolean;
+  useComments: boolean;
 }
 
 export type AsrTransport = 'auto' | 'multipart' | 'base64-json' | 'chat-audio';

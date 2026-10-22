@@ -197,7 +197,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     cacheMinutes: 5,
     autoSearchOnChat: false,
     alwaysSearchOnChat: false,
-    useVideoMeta: true
+    useVideoMeta: true,
+    useComments: false
   },
   correction: {
     enabled: true,
@@ -545,6 +546,7 @@ function normalize(raw: any): AppSettings {
       base.search.autoSearchOnChat = raw.search.autoSearchOnChat === true;
       base.search.alwaysSearchOnChat = raw.search.alwaysSearchOnChat === true;
       base.search.useVideoMeta = raw.search.useVideoMeta !== false;
+      base.search.useComments = raw.search.useComments === true;
     }
 
     if (raw.correction && typeof raw.correction === 'object') {
