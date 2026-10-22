@@ -1,4 +1,4 @@
-# Edge Add-ons 提交材料（2.17.3）
+# Edge Add-ons 提交材料（2.17.4）
 
 > 官方流程：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/publish-extension>
 > 开发者注册：<https://learn.microsoft.com/zh-cn/microsoft-edge/extensions/publish/create-dev-account>（免费，需要 Microsoft 账号 + Partner Center）
@@ -9,7 +9,7 @@ Edge 使用与 Chrome 相同的 MV3 包。**zip 根目录必须直接有 `manife
 
 ```bash
 cd repo
-git archive --format=zip -o edge-2.17.3.zip HEAD:bilibili-subtitle-assistant \
+git archive --format=zip -o edge-2.17.4.zip HEAD:bilibili-subtitle-assistant \
   manifest.json rules.json src vendor icons _locales LICENSE THIRD-PARTY-NOTICES.md LICENSES
 ```
 
@@ -18,11 +18,11 @@ git archive --format=zip -o edge-2.17.3.zip HEAD:bilibili-subtitle-assistant \
 上传前检查：
 
 ```bash
-unzip -l edge-2.17.3.zip | head
-unzip -p edge-2.17.3.zip manifest.json | head
+unzip -l edge-2.17.4.zip | head
+unzip -p edge-2.17.4.zip manifest.json | head
 ```
 
-- 版本：**2.17.3**
+- 版本：**2.17.4**
 - 运行时文件约 11 MB（主要是 `vendor/ffmpeg/ffmpeg-core.wasm`，31 MB 未压缩）
 - `rules.json` 是静态 DNR 规则；`src/background/header-rules.js` 会在会话中为 TokenRhythm 动态加规则
 - 包含 `_locales/zh_CN` 与 `_locales/en`，Partner Center 才能识别中文/英文列表语言
@@ -188,7 +188,7 @@ AI 总结、语音转录、联网检索是可选功能，需要用户自备第�
 ## 7. 提交步骤
 
 1. 注册 Partner Center → Microsoft Edge 计划（免费）。
-2. **Create new extension** → 上传 `edge-2.17.3.zip`。
+2. **Create new extension** → 上传 `edge-2.17.4.zip`。
 3. **Availability**：Public；市场默认全部（或按需选择）。
 4. **Properties**：类别 Productivity；网站填 GitHub 仓库；支持链接填 Issues。
 5. **Privacy**：按第 4、5 节填写 Single purpose、权限理由、Remote code=No、Data usage、Privacy URL。
@@ -214,7 +214,7 @@ AI 总结、语音转录、联网检索是可选功能，需要用户自备第�
 
 1. Partner Center → 该扩展 → Submission status；
 2. 如果状态是 **In review**，找 **Withdraw / Cancel review**（不同界面文案可能不同）；
-3. 撤回后回到 **Packages**，上传最新的 `edge-2.17.3.zip`；
+3. 撤回后回到 **Packages**，上传最新的 `edge-2.17.4.zip`；
 4. 如果功能/文案有变化，顺手更新 Store listing（尤其是“页面内嵌 / 多语言 / AI 翻译”这些新能力）；
 5. 重新 **Publish**，会重新排队认证。
 

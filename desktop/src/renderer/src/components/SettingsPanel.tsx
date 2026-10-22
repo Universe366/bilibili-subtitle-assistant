@@ -943,16 +943,24 @@ export function SettingsPanel() {
               清除
             </button>
           )}
-        </div>
-
-        <div className="settings-toc">
-          {['通用', 'AI', '语音', '提示词', '检索', '校对', '导出', 'MCP', 'Skills', '更新', '数据', '诊断'].map(
-            (label) => (
-              <button key={label} className="settings-chip" onClick={() => jumpToSection(label)}>
-                {label}
-              </button>
-            )
-          )}
+          <select
+            className="settings-jump"
+            value=""
+            title="跳转到分组"
+            onChange={(event) => {
+              if (event.target.value) jumpToSection(event.target.value);
+              event.target.value = '';
+            }}
+          >
+            <option value="">分组</option>
+            {['通用', 'AI', '语音', '提示词', '检索', '校对', '导出', 'MCP', 'Skills', '更新', '数据', '诊断'].map(
+              (label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              )
+            )}
+          </select>
         </div>
 
         {settingsQuery && (

@@ -2116,8 +2116,8 @@ button:disabled {
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 2px 4px 8px 0;
+  gap: 4px;
+  padding: 0 4px 6px 0;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
@@ -2131,9 +2131,7 @@ button:disabled {
   min-width: 64px;
 }
 
-.settings-panel > .settings-section,
-.settings-panel > .panel-foot,
-.settings-panel > .settings-diagnostics {
+.settings-diagnostics {
   max-height: 180px;
   overflow: auto;
   margin: 7px 0;
@@ -2164,6 +2162,19 @@ button:disabled {
   align-items: center;
   gap: 6px;
   color: var(--faint);
+}
+
+.settings-jump {
+  flex-shrink: 0;
+  width: 84px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10px;
+  padding: 0 3px;
+  outline: none;
 }
 
 .settings-search-input {
