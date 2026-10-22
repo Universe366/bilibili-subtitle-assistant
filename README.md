@@ -74,7 +74,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 除了浏览器扩展，仓库里还有一个 Windows 桌面端 `desktop/`：把 B 站浏览器、字幕、AI 和本地库放进同一个程序，适合不想开浏览器扩展、或需要本地库/批量处理的场景。
 
 <p align="center">
-  <img src="docs/screenshots/desktop-sidebar.png" alt="桌面端侧栏：本地字幕库" width="332" />
+  <img src="docs/screenshots/desktop-sidebar.png" alt="桌面端侧栏：本地字幕库" width="422" />
 </p>
 <p align="center"><sub>桌面端侧栏：本地字幕库；截图使用演示数据</sub></p>
 
