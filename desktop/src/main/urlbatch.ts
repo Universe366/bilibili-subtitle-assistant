@@ -35,7 +35,8 @@ export function parseVideoUrls(text: string): string[] {
     } else if (/^https?:\/\//i.test(line)) {
       try {
         const parsed = new URL(line);
-        if (!/bilibili\.com$|b23\.tv$|bilivideo\./i.test(parsed.hostname)) continue;
+        if (!/bilibili\.com$|b23\.tv$/i.test(parsed.hostname)) continue;
+        if (/bilibili\.com$/i.test(parsed.hostname) && !/^\/video\//.test(parsed.pathname)) continue;
         url = parsed.toString();
       } catch {
         continue;
@@ -73,14 +74,34 @@ export async function batchUrls(
   const settings = loadSettings();
   let succeeded = 0;
   const failed: UrlBatchResult['failed'] = [];
+  const targets: string[] = [];
 
-  for (let index = 0; index < urls.length; index += 1) {
+  for (const item of urls) {
+    let valid = false;
+    try {
+      const parsed = new URL(item);
+      valid =
+        /^https?:$/.test(parsed.protocol) &&
+        ((/bilibili\.com$/i.test(parsed.hostname) && /^\/video\//.test(parsed.pathname)) ||
+          /b23\.tv$/i.test(parsed.hostname));
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      failed.push({ url: item, error: '不是 B 站视频链接' });
+      continue;
+    }
+    if (targets.includes(item)) continue;
+    targets.push(item);
+  }
+
+  for (let index = 0; index < targets.length; index += 1) {
     if (signal?.aborted) throw new Error('已终止');
-    const url = urls[index];
+    const url = targets[index];
     let tabId = '';
     let title = '';
     try {
-      onProgress(index, urls.length, url, '', '打开页面', 0);
+      onProgress(index, targets.length, url, '', '打开页面', 0);
       tabId = await tabs.create(url, { activate: false, wait: true });
       const wc = tabs.webContentsOf(tabId);
       if (!wc) throw new Error('标签页创建失败');
@@ -89,7 +110,7 @@ export async function batchUrls(
       let bundle: SubtitleBundle | null = null;
       for (let attempt = 0; attempt < 30; attempt += 1) {
         if (signal?.aborted) throw new Error('已终止');
-        onProgress(index, urls.length, url, title, '等待视频信息', (attempt / 30) * 100);
+        onProgress(index, targets.length, url, title, '等待视频信息', (attempt / 30) * 100);
         try {
           const current = await getPageInfo(wc);
           if (current && current.title) {
@@ -110,17 +131,17 @@ export async function batchUrls(
 
       const track = chooseTrack(bundle, info);
       if (!track) throw new Error('没有可用字幕轨');
-      onProgress(index, urls.length, url, title, '下载字幕', 40);
+      onProgress(index, targets.length, url, title, '下载字幕', 40);
       const body = await getTrackBody(track.url);
       const lines: SubtitleLine[] = applyCorrectionToLines(body.lines, settings);
       if (!lines.length) throw new Error('字幕正文为空');
 
-      onProgress(index, urls.length, url, title, '写入本地库', 65);
+      onProgress(index, targets.length, url, title, '写入本地库', 65);
       ingestVideo({ info, track, lines });
       succeeded += 1;
 
       if (withSummary) {
-        onProgress(index, urls.length, url, title, '生成总结', 80);
+        onProgress(index, targets.length, url, title, '生成总结', 80);
         try {
           const result = await summarize({ info, lines, signal });
           saveSummary(info, result.text, result.model);
@@ -132,7 +153,7 @@ export async function batchUrls(
           });
         }
       }
-      onProgress(index, urls.length, url, title, '完成', 100);
+      onProgress(index, targets.length, url, title, '完成', 100);
     } catch (error) {
       if (signal?.aborted) throw new Error('已终止');
       failed.push({ url, title, error: (error as Error)?.message || String(error) });

@@ -801,6 +801,34 @@ function createWindow(): void {
       }, 8000);
     }
 
+    if (process.env.BSUB_LIVE_URLBATCH_FAIL_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!tabManager) throw new Error('标签管理器未就绪');
+          const valid = 'https://www.bilibili.com/video/BV1GJ411x7h7';
+          const urls = [valid, 'https://example.com/not-a-video', valid];
+          const result = await batchUrls(
+            tabManager,
+            urls,
+            false,
+            (index, total, url, title, stage, percent) =>
+              console.log('[live-urlbatch-fail]', index + 1, total, stage, Math.round(percent), title),
+          );
+          const library = listLibrary().videos;
+          console.log(
+            '[live-urlbatch-fail] done',
+            JSON.stringify({
+              result,
+              libraryCount: library.length,
+              items: library.map((item) => ({ title: item.title, lines: item.lineCount }))
+            })
+          );
+        } catch (error) {
+          console.warn('[live-urlbatch-fail] failed', (error as Error).message);
+        }
+      }, 7000);
+    }
+
     if (process.env.BSUB_LIVE_AI_TEST === '1') {
       setTimeout(async () => {
         try {
