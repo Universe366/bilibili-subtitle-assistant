@@ -535,12 +535,34 @@ export class TabManager {
 
   // 拖拽侧栏时暂时隐藏页面，避免鼠标进入 WebContentsView 后
   // 渲染层收不到 mousemove / mouseup。
+  private activeViewVisible = true;
+
   setActiveViewVisible(visible: boolean): void {
+    this.activeViewVisible = visible;
     const record = this.activeRecord();
     try {
       record?.view?.setVisible(visible);
+      if (visible && record?.view) {
+        record.view.setBounds(this.bounds);
+        record.view.webContents.invalidate();
+      }
     } catch {
       // ignore
+    }
+  }
+
+  getActiveViewState(): { visible: boolean; bounds: unknown } {
+    return { visible: this.activeViewVisible, bounds: this.activeRecord()?.view?.getBounds() };
+  }
+
+  async captureActiveView(): Promise<string | null> {
+    const record = this.activeRecord();
+    if (!record?.view) return null;
+    try {
+      const image = await record.view.webContents.capturePage();
+      return image.isEmpty() ? null : image.toDataURL();
+    } catch {
+      return null;
     }
   }
 

@@ -780,13 +780,17 @@ function createWindow(): void {
                 element.dispatchEvent(new MouseEvent('mousedown', {
                   bubbles: true, clientX: startX, clientY: rect.top + 12
                 }));
+                await wait(450);
+                const snapshot = Boolean(document.querySelector('.drag-snapshot'));
                 window.dispatchEvent(new MouseEvent('mousemove', {
                   bubbles: true, clientX: endX, clientY: rect.top + 12
                 }));
+                await wait(80);
                 window.dispatchEvent(new MouseEvent('mouseup', {
                   bubbles: true, clientX: endX, clientY: rect.top + 12
                 }));
-                await wait(650);
+                await wait(700);
+                return { snapshot, snapshotAfter: Boolean(document.querySelector('.drag-snapshot')) };
               };
               const collapseIcon = () =>
                 document.querySelector('.sidebar-collapse svg')?.getAttribute('class') || '';
@@ -797,25 +801,28 @@ function createWindow(): void {
                 title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
                 icon: collapseIcon()
               };
-              await drag(brand, 80, window.innerWidth - 50);
+              const dockDrag = await drag(brand, 80, window.innerWidth - 50);
               const afterDock = {
                 body: document.querySelector('.app-body')?.className,
                 width: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width || 0),
                 title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
-                icon: collapseIcon()
+                icon: collapseIcon(),
+                ...dockDrag
               };
               const resizer = document.querySelector('.sidebar-resizer');
-              if (resizer) await drag(resizer, 900, 1180);
+              const collapseDrag = resizer ? await drag(resizer, 900, 1180) : {};
               const afterCollapse = {
                 body: document.querySelector('.app-body')?.className,
                 width: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width || 0),
                 title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
-                icon: collapseIcon()
+                icon: collapseIcon(),
+                ...collapseDrag
               };
               return { before, afterDock, afterCollapse };
             })()
           `);
           console.log('[dock-test]', JSON.stringify(result));
+          console.log('[dock-test-view]', JSON.stringify(tabManager?.getActiveViewState()));
         } catch (error) {
           console.warn('[dock-test] failed', (error as Error).message);
         }

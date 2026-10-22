@@ -350,7 +350,16 @@ button:disabled {
   order: 1;
 }
 
-.app-body.sidebar-right .sidebar-resizer {
+.app-body.sidebar-right .drag-snapshot {
+  position: fixed;
+  z-index: 60;
+  object-fit: cover;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar-resizer {
   right: auto;
   left: 0;
 }

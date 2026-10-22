@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   Captions,
@@ -60,6 +60,37 @@ export function Sidebar({
   onToggleCollapse?: (collapsed: boolean) => void;
 }) {
   const [version, setVersion] = useState('');
+  const [dragSnapshot, setDragSnapshot] = useState<{
+    src: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const dragActiveRef = useRef(false);
+
+  const beginViewDrag = () => {
+    const rect = document.querySelector('.browser-stage')?.getBoundingClientRect();
+    dragActiveRef.current = true;
+    void window.bsub.beginSidebarDrag().then((response) => {
+      if (!dragActiveRef.current) return;
+      if (response.ok && response.data && rect) {
+        setDragSnapshot({
+          src: response.data,
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height
+        });
+      }
+    });
+  };
+
+  const endViewDrag = () => {
+    dragActiveRef.current = false;
+    setDragSnapshot(null);
+    void window.bsub.endSidebarDrag();
+  };
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
       if (response.ok) setVersion(response.data.version);
@@ -68,12 +99,12 @@ export function Sidebar({
 
   const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    void window.bsub.setBrowserVisible(false);
+    beginViewDrag();
     let restored = false;
     const restoreView = () => {
       if (restored) return;
       restored = true;
-      window.setTimeout(() => void window.bsub.setBrowserVisible(true), 80);
+      endViewDrag();
     };
     const startX = event.clientX;
     const startWidth = sidebarWidth;
@@ -122,12 +153,12 @@ export function Sidebar({
     const target = event.target as HTMLElement;
     if (target.closest('button')) return;
     event.preventDefault();
-    void window.bsub.setBrowserVisible(false);
+    beginViewDrag();
     let restored = false;
     const restoreView = () => {
       if (restored) return;
       restored = true;
-      window.setTimeout(() => void window.bsub.setBrowserVisible(true), 80);
+      endViewDrag();
     };
     const startX = event.clientX;
     let moved = false;
@@ -230,6 +261,20 @@ export function Sidebar({
 
         {section === 'settings' && <SettingsPanel />}
       </div>
+
+      {dragSnapshot && (
+        <img
+          className="drag-snapshot"
+          src={dragSnapshot.src}
+          alt=""
+          style={{
+            left: dragSnapshot.left,
+            top: dragSnapshot.top,
+            width: dragSnapshot.width,
+            height: dragSnapshot.height
+          }}
+        />
+      )}
 
       <div className="side-footer">
         <span className={`dot${tabCount > 0 ? ' is-on' : ''}`} />

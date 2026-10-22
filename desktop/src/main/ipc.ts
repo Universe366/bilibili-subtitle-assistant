@@ -467,6 +467,41 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  let dragRestoreTimer: NodeJS.Timeout | null = null;
+  let dragActive = false;
+
+  ipcMain.handle('browser:begin-drag', async () => {
+    try {
+      if (dragRestoreTimer) clearTimeout(dragRestoreTimer);
+      dragActive = true;
+      const snapshot = await tabs.captureActiveView();
+      if (!dragActive) {
+        tabs.setActiveViewVisible(true);
+        return { ok: true, data: null };
+      }
+      tabs.setActiveViewVisible(false);
+      dragRestoreTimer = setTimeout(() => {
+        dragActive = false;
+        tabs.setActiveViewVisible(true);
+        dragRestoreTimer = null;
+      }, 12000);
+      return { ok: true, data: snapshot };
+    } catch (error) {
+      dragActive = false;
+      tabs.setActiveViewVisible(true);
+      return failure(error);
+    }
+  });
+
+  ipcMain.handle('browser:end-drag', () => {
+    dragActive = false;
+    if (dragRestoreTimer) {
+      clearTimeout(dragRestoreTimer);
+      dragRestoreTimer = null;
+    }
+    tabs.setActiveViewVisible(true);
+  });
+
   ipcMain.handle('browser:set-visible', (_event, visible: boolean) => {
     tabs.setActiveViewVisible(visible === true);
   });
