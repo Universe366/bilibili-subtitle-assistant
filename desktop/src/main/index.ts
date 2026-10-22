@@ -801,6 +801,33 @@ function createWindow(): void {
       }, 8000);
     }
 
+    if (process.env.BSUB_LIVE_MCP_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const server = {
+            id: 'exa-live',
+            name: 'Exa MCP',
+            url: process.env.BSUB_LIVE_MCP_URL || 'https://mcp.exa.ai/mcp',
+            token: '',
+            headers: {},
+            enabled: true,
+            transport: 'http' as const
+          };
+          const tools = await listMcpTools(server);
+          console.log('[live-mcp] tools', tools.map((tool) => tool.name));
+          const result = await callMcpTool(
+            server,
+            'web_search_exa',
+            { query: 'OpenAI GPT-5', numResults: 2 },
+            45000
+          );
+          console.log('[live-mcp] result', result.slice(0, 500));
+        } catch (error) {
+          console.warn('[live-mcp] failed', (error as Error).message);
+        }
+      }, 6000);
+    }
+
     if (process.env.BSUB_LIVE_URLBATCH_404_TEST === '1') {
       setTimeout(async () => {
         try {
