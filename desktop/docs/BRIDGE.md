@@ -38,7 +38,7 @@ Content-Type: application/json
   "protocolVersion": 1,
   "clientId": "browser-profile-uuid",
   "browserKind": "chrome",
-  "extensionVersion": "2.17.1",
+  "extensionVersion": "2.17.2",
   "video": {
     "bvid": "BV1xrnz6gEVD",
     "cid": 42926145926,
