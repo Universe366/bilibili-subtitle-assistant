@@ -29,7 +29,7 @@ import { chat } from './chat';
 import { rankReferences } from './search';
 import { batchUrls } from './urlbatch';
 import { testPlatformConnection } from './platform';
-import { backupData } from './backup';
+import { backupData, restoreData } from './backup';
 import { buildExport } from './exporters';
 import { loadSettings, saveSettings, settingsSnapshot } from './settings';
 import { startBridge, stopBridge } from './bridge';
@@ -766,6 +766,17 @@ function createWindow(): void {
           applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
         );
       }, 4000);
+    }
+
+    if (process.env.BSUB_RESTORE_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const result = await restoreData();
+          console.log('[restore-test]', JSON.stringify(result));
+        } catch (error) {
+          console.warn('[restore-test] failed', (error as Error).message);
+        }
+      }, 5000);
     }
 
     if (process.env.BSUB_BACKUP_TEST === '1') {

@@ -70,13 +70,16 @@ export async function backupData(): Promise<{ canceled: boolean; path?: string }
 }
 
 export async function restoreData(): Promise<{ canceled: boolean; restored?: boolean }> {
-  const result = await dialog.showOpenDialog({
-    title: '选择 bsub-backup-* 备份目录',
-    properties: ['openDirectory']
-  });
-  if (result.canceled || !result.filePaths[0]) return { canceled: true };
-
-  const source = result.filePaths[0];
+  const direct = String(process.env.BSUB_RESTORE_DIR || '').trim();
+  let source = direct;
+  if (!source) {
+    const result = await dialog.showOpenDialog({
+      title: '选择 bsub-backup-* 备份目录',
+      properties: ['openDirectory']
+    });
+    if (result.canceled || !result.filePaths[0]) return { canceled: true };
+    source = result.filePaths[0];
+  }
   const manifestFile = path.join(source, 'manifest.json');
   if (!fs.existsSync(manifestFile)) throw new Error('所选目录不是 B站字幕助手 备份（缺少 manifest.json）');
   let data: any = null;
@@ -112,9 +115,11 @@ export async function restoreData(): Promise<{ canceled: boolean; restored?: boo
     fs.copyFileSync(settingsSource, path.join(dataDir, 'settings.json'));
   }
 
-  setTimeout(() => {
-    app.relaunch();
-    app.exit(0);
-  }, 300);
+  if (process.env.BSUB_RESTORE_NO_RELAUNCH !== '1') {
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 300);
+  }
   return { canceled: false, restored: true };
 }
