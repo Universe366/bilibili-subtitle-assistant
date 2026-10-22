@@ -41,9 +41,12 @@ export function readSkillFile(file: string): SkillItem {
   return parseSkillMarkdown(text, fallback);
 }
 
-export function skillPrompt(settings: AppSettings): string {
+export function skillPrompt(settings: AppSettings, skillIds?: string[]): string {
   if (!settings.skills.enabled) return '';
-  const items = settings.skills.items.filter((item) => item.enabled && item.body.trim());
+  const enabled = settings.skills.items.filter((item) => item.enabled && item.body.trim());
+  const items = Array.isArray(skillIds)
+    ? enabled.filter((item) => skillIds.includes(item.id))
+    : enabled;
   if (!items.length) return '';
   const menu = items.map((item) => `- ${item.name}：${item.description || '（无描述）'}`).join('\n');
   let budget = 12000;

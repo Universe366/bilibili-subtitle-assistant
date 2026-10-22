@@ -544,6 +544,7 @@ export interface ChatRequest {
   info: PageInfo;
   lines: SubtitleLine[];
   messages: ChatMessage[];
+  skillIds?: string[];
 }
 
 export interface ChatDeltaEvent {

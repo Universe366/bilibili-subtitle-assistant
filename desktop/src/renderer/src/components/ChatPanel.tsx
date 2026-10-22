@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ImagePlus, Loader2, Send, Square, Trash2, X } from 'lucide-react';
-import type { ChatMessage, PageInfo, SubtitleLine, TabInfo } from '../../../shared/types';
+import type { ChatMessage, PageInfo, SkillItem, SubtitleLine, TabInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { pickTrack, videoKeyOf } from '../lib/video';
 import { getAsrResult } from '../lib/asrStore';
@@ -48,6 +48,8 @@ export function ChatPanel({
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
+  const [skills, setSkills] = useState<SkillItem[]>([]);
+  const [skillId, setSkillId] = useState('');
   const [sendOnEnter, setSendOnEnter] = useState(true);
   const [expandReasoning, setExpandReasoning] = useState(false);
   const [streamReasoning, setStreamReasoning] = useState('');
@@ -58,6 +60,18 @@ export function ChatPanel({
 
   const videoKey = videoKeyOf(activeTab?.url);
   const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
+
+  useEffect(() => {
+    void (async () => {
+      const response = await window.bsub.getSettings();
+      if (!response.ok) return;
+      const items = response.data.settings.skills.items.filter(
+        (item) => item.enabled && item.body.trim()
+      );
+      setSkills(items);
+      setSkillId((current) => (items.some((item) => item.id === current) ? current : ''));
+    })();
+  }, []);
 
   useEffect(() => {
     if (requestRef.current) {
@@ -197,7 +211,8 @@ export function ChatPanel({
         requestId,
         info: context.info,
         lines: context.lines,
-        messages: nextMessages
+        messages: nextMessages,
+        skillIds: skillId ? [skillId] : []
       });
       if (!started.ok) throw new Error(started.error);
     } catch (caught) {
@@ -374,6 +389,22 @@ export function ChatPanel({
             event.target.value = '';
           }}
         />
+        {skills.length > 0 && (
+          <select
+            className="chat-skill-select"
+            title="选择本轮使用的技能"
+            value={skillId}
+            disabled={streaming}
+            onChange={(event) => setSkillId(event.target.value)}
+          >
+            <option value="">✨ 技能</option>
+            {skills.map((skill) => (
+              <option key={skill.id} value={skill.id}>
+                {skill.icon || '✨'} {skill.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           className="icon-btn"
           title="添加图片（也可粘贴/拖入）"

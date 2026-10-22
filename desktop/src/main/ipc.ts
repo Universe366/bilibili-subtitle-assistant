@@ -601,6 +601,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           info: payload.info,
           lines: payload.lines,
           messages: payload.messages,
+          skillIds: payload.skillIds,
           signal: controller.signal,
           onDelta: (delta) => send('chat:delta', { requestId, delta } satisfies ChatDeltaEvent),
           onReasoning: (reasoning) =>

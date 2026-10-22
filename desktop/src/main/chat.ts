@@ -15,6 +15,7 @@ export interface ChatOptions {
   info: PageInfo;
   lines: SubtitleLine[];
   messages: ChatMessage[];
+  skillIds?: string[];
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
   onReasoning?: (delta: string) => void;
@@ -76,7 +77,7 @@ export async function chat(
   const system = [
     settings.prompt.chat,
     glossaryBlock,
-    skillPrompt(settings),
+    skillPrompt(settings, options.skillIds),
     `视频标题：${options.info.title || '未知'}`,
     `UP 主：${options.info.owner || '未知'}`,
     ...(settings.search.useVideoMeta !== false && options.info.desc
