@@ -8,7 +8,7 @@ import { glossaryTerms } from './correction';
 import { skillPrompt } from './skills';
 import { optimizeLines } from './optimize';
 
-const MAX_TRANSCRIPT_CHARS = 64000;
+const MAX_TRANSCRIPT_CHARS = 200000;
 const REQUEST_TIMEOUT_MS = 300000;
 
 export interface SummarizeOptions {

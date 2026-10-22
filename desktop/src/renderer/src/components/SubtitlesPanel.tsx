@@ -60,7 +60,16 @@ async function pickFullestTrack(
   let bestCount = 0;
   for (const candidate of candidates) {
     const result = await window.bsub.getTrackBody(candidate.url);
-    if (result.ok && result.data.lines.length > bestCount) {
+    if (!result.ok || !result.data.lines.length) continue;
+    const duration = Number(info?.duration || 0);
+    const lastEnd = result.data.lines.reduce(
+      (max, line) => Math.max(max, Number(line.end || line.start || 0)),
+      0
+    );
+    if (duration > 0 && lastEnd > duration * 1.2 + 15) continue;
+    const coverage = duration > 0 ? lastEnd / duration : 1;
+    if (duration > 0 && coverage < 0.7) continue;
+    if (result.data.lines.length > bestCount) {
       best = candidate;
       bestCount = result.data.lines.length;
     }
@@ -401,10 +410,19 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
         let subtitlesResult = await window.bsub.getSubtitles();
         for (let attempt = 0; attempt < 4; attempt += 1) {
           if (cancelled) return;
+          const identity =
+            infoResult.ok && infoResult.data.signature
+              ? infoResult.data.signature
+              : '';
+          const bundleIdentity = subtitlesResult.ok
+            ? subtitlesResult.data.identity || ''
+            : '';
+          const identityMatches = !identity || !bundleIdentity || identity === bundleIdentity;
           const ready =
             infoResult.ok &&
             infoResult.data.bvid &&
             subtitlesResult.ok &&
+            identityMatches &&
             (subtitlesResult.data.tracks.length > 0 || subtitlesResult.data.needLogin);
           if (ready) break;
           await new Promise((resolve) => setTimeout(resolve, 700));
@@ -412,6 +430,20 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           subtitlesResult = await window.bsub.getSubtitles();
         }
         if (cancelled) return;
+        if (
+          infoResult.ok &&
+          subtitlesResult.ok &&
+          infoResult.data.signature &&
+          subtitlesResult.data.identity &&
+          infoResult.data.signature !== subtitlesResult.data.identity
+        ) {
+          setInfo(infoResult.data);
+          setBundle(null);
+          setTrack(null);
+          setLines([]);
+          setError('字幕身份与当前视频不一致，已丢弃；请刷新页面或重新获取');
+          return;
+        }
 
         if (infoResult.ok) setInfo(infoResult.data);
         else {

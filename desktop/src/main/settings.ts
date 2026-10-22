@@ -96,7 +96,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai: {
     activeId: 'deepseek',
     temperature: 0.3,
-    maxTokens: 8192,
+    maxTokens: 64000,
     stream: true,
     preProofread: false,
     sendOnEnter: true,
