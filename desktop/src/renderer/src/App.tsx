@@ -42,6 +42,13 @@ export default function App() {
     });
   };
 
+  const commitSidebarPosition = (position: 'left' | 'right') => {
+    setSidebarPosition(position);
+    void window.bsub.setSidebarLayout({ position }).then((response) => {
+      if (response.ok) applyLayout(response.data);
+    });
+  };
+
   const commitSidebarToggle = (collapsed: boolean) => {
     setSidebarCollapsed(collapsed);
     void window.bsub.setSidebarLayout({ collapsed }).then((response) => {
@@ -207,6 +214,8 @@ export default function App() {
           onWidthChange={setSidebarWidth}
           onWidthCommit={commitSidebarWidth}
           collapsed={sidebarCollapsed}
+          position={sidebarPosition}
+          onDockChange={commitSidebarPosition}
           onToggleCollapse={commitSidebarToggle}
         />
         <BrowserStage hasTab={Boolean(active)} />

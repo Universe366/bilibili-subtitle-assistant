@@ -42,6 +42,8 @@ export function Sidebar({
   onWidthChange,
   onWidthCommit,
   collapsed = false,
+  position = 'left',
+  onDockChange,
   onToggleCollapse
 }: {
   section: Section;
@@ -53,6 +55,8 @@ export function Sidebar({
   onWidthChange?: (width: number) => void;
   onWidthCommit?: (width: number) => void;
   collapsed?: boolean;
+  position?: 'left' | 'right';
+  onDockChange?: (position: 'left' | 'right') => void;
   onToggleCollapse?: (collapsed: boolean) => void;
 }) {
   const [version, setVersion] = useState('');
@@ -66,13 +70,34 @@ export function Sidebar({
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    const startPosition = position;
+    const crossedAt = (clientX: number) =>
+      startPosition === 'left'
+        ? clientX > window.innerWidth * 0.62
+        : clientX < window.innerWidth * 0.38;
     const move = (moveEvent: MouseEvent) => {
-      const width = Math.min(560, Math.max(260, startWidth + moveEvent.clientX - startX));
+      const delta =
+        startPosition === 'left'
+          ? moveEvent.clientX - startX
+          : startX - moveEvent.clientX;
+      const width = crossedAt(moveEvent.clientX)
+        ? startWidth
+        : Math.min(560, Math.max(260, startWidth + delta));
       onWidthChange?.(width);
     };
     const up = (upEvent: MouseEvent) => {
-      const width = Math.min(560, Math.max(260, startWidth + upEvent.clientX - startX));
-      onWidthCommit?.(width);
+      const crossed = crossedAt(upEvent.clientX);
+      const delta =
+        startPosition === 'left' ? upEvent.clientX - startX : startX - upEvent.clientX;
+      const width = crossed
+        ? startWidth
+        : Math.min(560, Math.max(260, startWidth + delta));
+      if (crossed) {
+        onDockChange?.(startPosition === 'left' ? 'right' : 'left');
+      } else {
+        onWidthCommit?.(width);
+      }
+
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       window.removeEventListener('mousemove', move);
@@ -119,7 +144,12 @@ export function Sidebar({
       </nav>
 
       {!collapsed && (
-        <div className="sidebar-resizer" onMouseDown={startResize} title="拖动调整侧栏宽度" />
+        <div
+          className="sidebar-resizer"
+          onMouseDown={startResize}
+          onDoubleClick={() => onDockChange?.(position === 'left' ? 'right' : 'left')}
+          title="拖动调整宽度；拖过页面中线或双击切换到另一侧"
+        />
       )}
       <div className="side-content" style={{ zoom: fontScale }}>
         {section === 'subtitles' && <SubtitlesPanel activeTab={activeTab} />}

@@ -767,6 +767,49 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_DOCK_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          const result = await win.webContents.executeJavaScript(`
+            (async () => {
+              const resizer = document.querySelector('.sidebar-resizer');
+              if (!resizer) return { error: 'no resizer' };
+              const rect = resizer.getBoundingClientRect();
+              resizer.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true, clientX: rect.left + 2, clientY: rect.top + 20
+              }));
+              window.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true, clientX: window.innerWidth - 40, clientY: rect.top + 20
+              }));
+              window.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true, clientX: window.innerWidth - 40, clientY: rect.top + 20
+              }));
+              await new Promise((resolve) => setTimeout(resolve, 700));
+              return {
+                bodyClass: document.querySelector('.app-body')?.className || '',
+                sidebarWidth: document.querySelector('.sidebar')?.getBoundingClientRect().width || 0,
+                stageWidth: document.querySelector('.browser-stage')?.getBoundingClientRect().width || 0
+              };
+            })()
+          `);
+          console.log('[dock-test]', JSON.stringify(result));
+          await win.webContents.executeJavaScript(`
+            (async () => {
+              const resizer = document.querySelector('.sidebar-resizer');
+              if (!resizer) return;
+              const rect = resizer.getBoundingClientRect();
+              resizer.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: rect.left + 2 }));
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            })()
+          `);
+        } catch (error) {
+          console.warn('[dock-test] failed', (error as Error).message);
+        }
+      }, 5500);
+    }
+
     if (process.env.BSUB_FULLSCREEN_TEST === '1') {
       setTimeout(async () => {
         try {
