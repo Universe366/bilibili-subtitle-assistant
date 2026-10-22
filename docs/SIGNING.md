@@ -2,17 +2,47 @@
 
 > 当前公开安装包**未签名**，SmartScreen 会提示。本文是签名接入流程，不代表证书已经配置。
 
-## 1. 证书选择
+## 1. 先选路线
 
-- **OV 代码签名证书**：普通软件签名，适合本项目；CI 可用 PFX。
-- **EV 代码签名证书**：SmartScreen 信誉更好，但很多是 USB Token，不能直接放进 GitHub Actions。
-  - 若使用 Token，需要自建 Windows runner 或云签名服务。
-- **Azure Trusted Signing**：微软云签名，适合 CI；需要在 workflow 里接自定义签名步骤，本文不展开。
-- 不建议购买“个人开发者”无法核验的便宜证书；签名主体要与产品一致。
+| 路线 | 适合 | 大概成本 | CI 友好度 |
+|---|---|---|---|
+| **SignPath Foundation** | 开源项目 | 免费 | 高（GitHub App / 上传产物） |
+| **Certum Open Source Cloud** | 开源项目 | €49/年左右 | 中（云签名工具） |
+| **Azure Trusted Signing** | 符合地区/主体资格 | 约 $10/月 | 高（electron-builder 原生支持） |
+| **SSL.com eSigner OV** | 个人/组织 | 约 $129/年起 | 中（eSigner/自定义签名） |
+| **传统 OV/EV + USB Token** | 有 Windows runner | 数百美元/年 | 低（需插 Token） |
+
+> 价格与资格会变，以厂商页面为准。自 2023 年起代码签名私钥必须放在硬件/云 HSM，**不要默认还能拿到可导出的 PFX**。
+
+### 对当前项目的建议顺序
+
+1. **先申请 SignPath Foundation**：开源项目可免费签名，最省钱。
+2. 如果不满足/不想等：**Certum 开源云签名**（约 €49/年）。
+3. 如果你在美国/加拿大/欧盟/英国且有主体：**Azure Trusted Signing**，约 $10/月，electron-builder 直接支持。
+4. 预算充足且需要商业支持：SSL.com eSigner / DigiCert / Sectigo 的云签名。
+
+不建议买 USB Token 版本：GitHub Actions 的 Windows runner 插不了 Token，除非自建 runner。
+
+## 1.1 SignPath Foundation
+
+- 免费给符合条件的开源项目做 Authenticode 签名；
+- 通过 GitHub App/工作流上传待签产物，签完再发布；
+- 需要申请审核，签名主体是 SignPath Foundation；
+- 适合本项目这种 MIT 开源、GitHub Release 分发。
+
+申请入口：<https://signpath.org/>
+
+## 1.2 Certum 开源云签名
+
+- Certum 有 Open Source Code Signing Cloud，约 **€49/年**；优秀开源项目可申请免费；
+- 私钥在云 HSM，不导出 PFX；
+- 通常用 SimplySign/云签名工具，CI 需要该厂商的签名方式，不能直接当 `CSC_LINK` PFX 用。
 
 ## 2. GitHub Actions 接入
 
-工作流 `.github/workflows/desktop-release.yml` 已经预留：
+### 2.1 PFX（仅当厂商允许导出）
+
+工作流已经预留：
 
 ```yaml
 env:
@@ -35,6 +65,38 @@ PFX 转 base64（PowerShell）：
 ```
 
 不要把 PFX、密码、base64 提交进仓库或贴到 Issue。
+
+### 2.2 Azure Trusted Signing（electron-builder 原生）
+
+先确认资格：当前 Microsoft 文档写的是组织限美国/加拿大/欧盟/英国，个人开发者限美国/加拿大；中国大陆主体通常不满足，需用 Certum/SSL.com/SignPath。
+
+符合资格时，在 `desktop/package.json` 的 `build.win` 里加：
+
+```json
+"azureSignOptions": {
+  "publisherName": "你的证书主体名称",
+  "endpoint": "https://<region>.codesigning.azure.net",
+  "certificateProfileName": "你的 Certificate Profile",
+  "codeSigningAccountName": "你的 Trusted Signing Account"
+}
+```
+
+并在 GitHub Secrets 配置服务主体：
+
+- `AZURE_TENANT_ID`
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+
+workflow 已把这些变量传给 electron-builder。electron-builder 会调用
+`Invoke-TrustedSigning`，不需要 PFX。
+
+> 没有 `azureSignOptions` 时不会走 Azure；只配 Secrets 不会自动签名。
+
+### 2.3 SignPath / 云签名
+
+SignPath、Certum SimplySign、SSL.com eSigner 这类方案不走 `CSC_LINK` PFX，
+需要在 workflow 里增加“上传产物 → 调用签名服务 → 下载已签产物”的步骤，
+或者用 `win.signtoolOptions.sign` 指定自定义签名命令。不要把它们误配成 PFX。
 
 ## 3. 本地签名
 
