@@ -80,7 +80,19 @@ function scoreTerms(text: string): Map<string, TermScore> {
 
 function topTerms(bag: Map<string, TermScore>, limit: number): TermScore[] {
   return [...bag.values()]
-    .filter((item) => item.kind !== 'cn' || item.count >= 2)
+    .filter((item) => {
+      if (item.kind === 'cn') return item.count >= 2;
+      if (item.kind === 'en') {
+        // 短的全大写/全小写词只出现一次，多半是语音错字或泛词（DOO/app）。
+        if (item.count < 2 && !/\d/.test(item.term)) {
+          if (item.term.length <= 3) return false;
+          if (/^[A-Z]{2,5}$/.test(item.term)) return false;
+          if (/^[a-z]+$/.test(item.term)) return false;
+        }
+        return item.term.length >= 4 || /\d/.test(item.term);
+      }
+      return true;
+    })
     .sort((a, b) => b.score - a.score || b.term.length - a.term.length)
     .slice(0, Math.max(0, limit));
 }
@@ -317,10 +329,19 @@ export async function verifySummary(
   let failed = 0;
   const results = await mapLimit(items, 2, async (item) => {
     if (signal?.aborted) throw new Error('已终止');
+    const line = clean(item.line);
+    const index = line.toLowerCase().indexOf(item.query.toLowerCase());
+    const context =
+      index >= 0
+        ? line.slice(Math.max(0, index - 8), Math.min(line.length, index + item.query.length + 8))
+        : '';
+    const searchQuery = /^[0-9]|年|次|%|％/.test(item.query) && context
+      ? `${item.query} ${context}`.slice(0, 48)
+      : item.query;
     try {
-      const raw = await searchWeb(settings, item.query);
-      const ranked = rankReferences(item.query, raw)
-        .filter((reference) => relevant(item.query, reference))
+      const raw = await searchWeb(settings, searchQuery);
+      const ranked = rankReferences(searchQuery, raw)
+        .filter((reference) => relevant(searchQuery, reference))
         .slice(0, 2);
       done += 1;
       onProgress(done, items.length, item.query);
