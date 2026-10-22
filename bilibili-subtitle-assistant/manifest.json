@@ -4,11 +4,13 @@
   "short_name": "__MSG_extensionShortName__",
   "description": "__MSG_extensionDescription__",
   "default_locale": "zh_CN",
-  "version": "2.17.2",
+  "version": "2.17.3",
   "minimum_chrome_version": "116",
   "commands": {
     "toggle-embed-panel": {
-      "suggested_key": { "default": "Alt+Shift+B" },
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      },
       "description": "__MSG_commandToggleEmbed__"
     }
   },
@@ -75,16 +77,26 @@
   ],
   "content_scripts": [
     {
-      "matches": ["*://*.bilibili.com/*"],
-      "js": ["src/content/page-bridge.js"],
+      "matches": [
+        "*://*.bilibili.com/*"
+      ],
+      "js": [
+        "src/content/page-bridge.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["*://*.bilibili.com/*"],
-      "js": ["src/content/content.js"],
-      "css": ["src/content/content.css"],
+      "matches": [
+        "*://*.bilibili.com/*"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
+      "css": [
+        "src/content/content.css"
+      ],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": false
@@ -92,8 +104,13 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/content/*", "src/sidepanel/*"],
-      "matches": ["*://*.bilibili.com/*"]
+      "resources": [
+        "src/content/*",
+        "src/sidepanel/*"
+      ],
+      "matches": [
+        "*://*.bilibili.com/*"
+      ]
     }
   ],
   "content_security_policy": {

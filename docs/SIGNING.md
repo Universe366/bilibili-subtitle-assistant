@@ -113,7 +113,7 @@ electron-builder 会给应用 exe、安装包、卸载器签名。
 ## 4. 验证
 
 ```powershell
-signtool verify /pa /v release\bsub-desktop-setup-0.30.1.exe
+signtool verify /pa /v release\bsub-desktop-setup-0.30.2.exe
 signtool verify /pa /v release\win-unpacked\B站字幕助手.exe
 ```
 
@@ -137,6 +137,6 @@ signtool verify /pa /v release\win-unpacked\B站字幕助手.exe
 
 ## 7. 当前状态
 
-- 0.30.1 及更早安装包均未签名；
+- 0.30.2 及更早安装包均未签名；
 - 工作流已预留签名环境变量；
 - 证书、Secret、签名验证尚未配置。
