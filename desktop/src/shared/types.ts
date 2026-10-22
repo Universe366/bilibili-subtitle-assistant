@@ -292,6 +292,7 @@ export interface SkillItem {
   id: string;
   name: string;
   description: string;
+  icon: string;
   body: string;
   enabled: boolean;
   source: 'builtin' | 'manual' | 'file';
@@ -333,6 +334,9 @@ export interface SearchSettings {
   verify: boolean;
   keylessFallback: boolean;
   cacheMinutes: number;
+  autoSearchOnChat: boolean;
+  alwaysSearchOnChat: boolean;
+  useVideoMeta: boolean;
 }
 
 export type AsrTransport = 'auto' | 'multipart' | 'base64-json' | 'chat-audio';
@@ -349,6 +353,8 @@ export interface AsrSettings {
   timeoutSeconds: number;
   maxFileMb: number;
   overlapSeconds: number;
+  autoOptimizeAfter: boolean;
+  autoApplyAfter: boolean;
 }
 
 export interface PromptTemplate {
@@ -397,6 +403,7 @@ export interface AppSettings {
     cacheSubtitles: boolean;
     fontScale: number;
     sidebarWidth: number;
+    autoFollow: boolean;
   };
   ai: {
     activeId: string;
@@ -406,6 +413,7 @@ export interface AppSettings {
     stream: boolean;
     preProofread: boolean;
     sendOnEnter: boolean;
+    expandReasoning: boolean;
     presetVersion: number;
   };
   asr: AsrSettings;
@@ -420,6 +428,8 @@ export interface AppSettings {
   mcp: {
     enabled: boolean;
     servers: McpServer[];
+    callTimeoutMs: number;
+    maxToolRounds: number;
   };
   skills: {
     enabled: boolean;
@@ -522,6 +532,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   images?: string[];
+  reasoning?: string;
 }
 
 export interface ChatRequest {
@@ -534,12 +545,14 @@ export interface ChatRequest {
 export interface ChatDeltaEvent {
   requestId: string;
   delta: string;
+  reasoning?: string;
 }
 
 export interface ChatDoneEvent {
   requestId: string;
   text: string;
   model: string;
+  reasoning?: string;
 }
 
 export interface ChatErrorEvent {

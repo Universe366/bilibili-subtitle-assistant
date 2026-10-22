@@ -102,7 +102,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     suspendMinutes: 5,
     cacheSubtitles: true,
     fontScale: 1,
-    sidebarWidth: 320
+    sidebarWidth: 320,
+    autoFollow: true
   },
   ai: {
     activeId: 'deepseek',
@@ -111,6 +112,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     stream: true,
     preProofread: false,
     sendOnEnter: true,
+    expandReasoning: false,
     presetVersion: AI_PRESET_VERSION,
     platforms: AI_PRESETS.map((platform) => ({
       ...platform,
@@ -130,11 +132,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
     concurrency: 1,
     timeoutSeconds: 120,
     maxFileMb: 20,
-    overlapSeconds: 4
+    overlapSeconds: 4,
+    autoOptimizeAfter: false,
+    autoApplyAfter: false
   },
   mcp: {
     enabled: false,
-    servers: []
+    servers: [],
+    callTimeoutMs: 60000,
+    maxToolRounds: 6
   },
   skills: {
     enabled: true,
@@ -143,6 +149,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         id: 'skill_deep_summary',
         name: '深度总结',
         description: '按主题分节，给出要点、结论与时间轴',
+        icon: '📝',
         body:
           '请对本期视频做一份深度总结：\n' +
           '1. 先用一句话概括主题；\n' +
@@ -155,6 +162,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         id: 'skill_qa_extract',
         name: '提取问答',
         description: '把视频里的问题与回答整理成问答对',
+        icon: '💬',
         body:
           '把视频内容整理成问答对：\n' +
           '- 只保留视频中明确提出的问题；\n' +
@@ -182,7 +190,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     timeRange: 'any',
     verify: false,
     keylessFallback: true,
-    cacheMinutes: 5
+    cacheMinutes: 5,
+    autoSearchOnChat: false,
+    alwaysSearchOnChat: false,
+    useVideoMeta: true
   },
   correction: {
     enabled: true,
@@ -227,6 +238,7 @@ function normalize(raw: any): AppSettings {
       if (Number.isFinite(sidebarWidth)) {
         base.general.sidebarWidth = Math.min(560, Math.max(260, Math.round(sidebarWidth)));
       }
+      base.general.autoFollow = raw.general.autoFollow !== false;
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
         base.general.suspendMinutes = Math.min(120, Math.max(1, Math.round(minutes)));
@@ -295,6 +307,7 @@ function normalize(raw: any): AppSettings {
     base.ai.stream = raw.ai?.stream !== false;
     base.ai.preProofread = raw.ai?.preProofread === true;
     base.ai.sendOnEnter = raw.ai?.sendOnEnter !== false;
+    base.ai.expandReasoning = raw.ai?.expandReasoning === true;
 
     if (raw.asr && typeof raw.asr === 'object') {
       const asrIncoming = Array.isArray(raw.asr.platforms) ? raw.asr.platforms : [];
@@ -352,6 +365,8 @@ function normalize(raw: any): AppSettings {
       const overlap = Number(raw.asr.overlapSeconds);
       if (Number.isFinite(overlap)) {
         base.asr.overlapSeconds = Math.min(30, Math.max(0, Math.round(overlap)));
+      base.asr.autoOptimizeAfter = raw.asr.autoOptimizeAfter === true;
+      base.asr.autoApplyAfter = raw.asr.autoApplyAfter === true;
       }
     }
 
@@ -410,6 +425,14 @@ function normalize(raw: any): AppSettings {
 
     if (raw.mcp && typeof raw.mcp === 'object') {
       base.mcp.enabled = raw.mcp.enabled === true;
+      const callTimeout = Number(raw.mcp.callTimeoutMs);
+      if (Number.isFinite(callTimeout)) {
+        base.mcp.callTimeoutMs = Math.min(300000, Math.max(5000, Math.round(callTimeout)));
+      }
+      const maxRounds = Number(raw.mcp.maxToolRounds);
+      if (Number.isFinite(maxRounds)) {
+        base.mcp.maxToolRounds = Math.min(12, Math.max(1, Math.round(maxRounds)));
+      }
       if (Array.isArray(raw.mcp.servers)) {
         base.mcp.servers = raw.mcp.servers
           .filter((server: any) => server && typeof server === 'object' && String(server.id || '').trim())
@@ -442,6 +465,7 @@ function normalize(raw: any): AppSettings {
             name: String(item.name || '未命名技能'),
             description: String(item.description || ''),
             body: String(item.body || ''),
+            icon: String(item.icon || '✨'),
             enabled: item.enabled !== false,
             source: ['builtin', 'manual', 'file'].includes(item.source) ? item.source : 'manual'
           }));
@@ -507,6 +531,9 @@ function normalize(raw: any): AppSettings {
       if (Number.isFinite(cacheMinutes)) {
         base.search.cacheMinutes = Math.min(60, Math.max(0, Math.round(cacheMinutes)));
       }
+      base.search.autoSearchOnChat = raw.search.autoSearchOnChat === true;
+      base.search.alwaysSearchOnChat = raw.search.alwaysSearchOnChat === true;
+      base.search.useVideoMeta = raw.search.useVideoMeta !== false;
     }
 
     if (raw.correction && typeof raw.correction === 'object') {

@@ -68,13 +68,23 @@ async function postHttp(server: McpServer, body: unknown, timeoutMs = 40000): Pr
   return response;
 }
 
-async function rpcHttp(server: McpServer, method: string, params: unknown, id: number): Promise<any> {
-  const response = await postHttp(server, {
-    jsonrpc: '2.0',
-    id,
-    method,
-    ...(params === undefined ? {} : { params })
-  });
+async function rpcHttp(
+  server: McpServer,
+  method: string,
+  params: unknown,
+  id: number,
+  timeoutMs = 40000
+): Promise<any> {
+  const response = await postHttp(
+    server,
+    {
+      jsonrpc: '2.0',
+      id,
+      method,
+      ...(params === undefined ? {} : { params })
+    },
+    timeoutMs
+  );
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`MCP 服务返回 HTTP ${response.status}：${text.slice(0, 200)}`);
@@ -177,11 +187,17 @@ async function rpcSse(
   }
 }
 
-async function rpc(server: McpServer, method: string, params: unknown, id: number): Promise<any> {
+async function rpc(
+  server: McpServer,
+  method: string,
+  params: unknown,
+  id: number,
+  timeoutMs = 40000
+): Promise<any> {
   if (server.transport === 'sse') {
-    return rpcSse(server, { jsonrpc: '2.0', id, method, params }, id);
+    return rpcSse(server, { jsonrpc: '2.0', id, method, params }, id, timeoutMs);
   }
-  return rpcHttp(server, method, params, id);
+  return rpcHttp(server, method, params, id, timeoutMs);
 }
 
 async function notifyInitialized(server: McpServer): Promise<void> {
@@ -222,10 +238,17 @@ export async function listMcpTools(server: McpServer): Promise<McpTool[]> {
 export async function callMcpTool(
   server: McpServer,
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  timeoutMs = 40000
 ): Promise<string> {
   await ensureSession(server);
-  const result = await rpc(server, 'tools/call', { name, arguments: args }, nextId());
+  const result = await rpc(
+    server,
+    'tools/call',
+    { name, arguments: args },
+    nextId(),
+    timeoutMs
+  );
   const content = Array.isArray(result?.content) ? result.content : [];
   const text = content
     .map((item: any) => {

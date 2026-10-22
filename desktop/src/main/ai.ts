@@ -95,7 +95,9 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
     `UP 主：${info.owner || '未知'}`,
     `视频时长：${clock(info.duration)}`,
     `链接：${info.url || ''}`,
-    ...(info.desc ? [`视频简介：${info.desc.slice(0, 2000)}`] : []),
+    ...(settings.search.useVideoMeta !== false && info.desc
+      ? [`视频简介：${info.desc.slice(0, 2000)}`]
+      : []),
     '',
     '字幕（带时间戳）：',
     transcript

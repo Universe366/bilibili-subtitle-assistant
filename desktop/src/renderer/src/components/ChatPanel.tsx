@@ -20,6 +20,20 @@ function newRequestId(): string {
   }
 }
 
+function ReasoningBlock({ text, defaultOpen }: { text: string; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details
+      className="chat-reasoning"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>💭 思考过程</summary>
+      <pre>{text}</pre>
+    </details>
+  );
+}
+
 export function ChatPanel({
   activeTab,
   onOpenSettings
@@ -35,6 +49,8 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [sendOnEnter, setSendOnEnter] = useState(true);
+  const [expandReasoning, setExpandReasoning] = useState(false);
+  const [streamReasoning, setStreamReasoning] = useState('');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef('');
   const contextRef = useRef<{ info: PageInfo; lines: SubtitleLine[] } | null>(null);
@@ -61,14 +77,19 @@ export function ChatPanel({
   useEffect(() => {
     const offDelta = window.bsub.onChatDelta((event) => {
       if (event.requestId === requestRef.current) {
-        setStreamText((previous) => previous + event.delta);
+        if (event.delta) setStreamText((previous) => previous + event.delta);
+        if (event.reasoning) setStreamReasoning((previous) => previous + event.reasoning);
       }
     });
     const offDone = window.bsub.onChatDone((event) => {
       if (event.requestId !== requestRef.current) return;
-      setMessages((previous) => [...previous, { role: 'assistant', content: event.text }]);
+      setMessages((previous) => [
+        ...previous,
+        { role: 'assistant', content: event.text, reasoning: event.reasoning }
+      ]);
       setStreaming(false);
       setStreamText('');
+      setStreamReasoning('');
       setStatus('');
       requestRef.current = '';
     });
@@ -258,7 +279,12 @@ export function ChatPanel({
               {message.role === 'assistant' && <div className="chat-avatar">AI</div>}
               <div className="chat-bubble">
                 {message.role === 'assistant' ? (
-                  <Markdown content={message.content} />
+                  <>
+                    {message.reasoning && (
+                      <ReasoningBlock text={message.reasoning} defaultOpen={expandReasoning} />
+                    )}
+                    <Markdown content={message.content} />
+                  </>
                 ) : (
                   <>
                     {message.images?.length ? (

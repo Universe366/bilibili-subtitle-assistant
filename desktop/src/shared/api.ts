@@ -7,6 +7,7 @@ import type {
   AsrPlatform,
   SearchPlatform,
   AppSettings,
+  CorrectionRuleGroup,
   BridgeStatus,
   ChatDeltaEvent,
   ChatDoneEvent,
@@ -90,6 +91,8 @@ export interface BsubApi {
   onSettingsChanged(cb: (snapshot: SettingsSnapshot) => void): () => void;
   testSearch(query: string): Promise<Result<WebReference[]>>;
   previewCorrection(text: string, settings?: AppSettings): Promise<Result<string>>;
+  exportRuleGroup(group: CorrectionRuleGroup): Promise<Result<{ canceled: boolean; path?: string }>>;
+  importRuleGroups(): Promise<Result<CorrectionRuleGroup[]>>;
   testAi(platform?: AiPlatform): Promise<Result<{ latencyMs: number; message: string }>>;
   probePlatformModels(
     kind: 'ai' | 'asr',

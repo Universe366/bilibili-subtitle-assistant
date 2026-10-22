@@ -311,6 +311,7 @@ export function SettingsPanel() {
           id: uid('skill'),
           name: '新技能',
           description: '',
+          icon: '✨',
           body: '',
           enabled: true,
           source: 'manual'
@@ -512,6 +513,32 @@ export function SettingsPanel() {
         group.id === id ? { ...group, ...patch } : group
       )
     });
+  };
+
+  const exportRuleGroup = async (group: CorrectionRuleGroup) => {
+    const response = await window.bsub.exportRuleGroup(group);
+    if (response.ok) {
+      setMessage(response.data.canceled ? '已取消' : `已导出规则组：${response.data.path || ''}`);
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const importRuleGroups = async () => {
+    if (!draft) return;
+    const response = await window.bsub.importRuleGroups();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    if (!response.data.length) {
+      setMessage('未选择规则组文件');
+      return;
+    }
+    updateCorrection({
+      groups: [...draft.correction.groups, ...response.data]
+    });
+    setMessage(`已导入 ${response.data.length} 个规则组`);
   };
 
   const addGroup = () => {
@@ -885,6 +912,15 @@ export function SettingsPanel() {
           缓存字幕正文（30 分钟，最多 100 条）
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.general.autoFollow !== false}
+            onChange={(event) => updateGeneral({ autoFollow: event.target.checked })}
+          />
+          字幕默认跟随播放高亮
+        </label>
+
         <div className="settings-label">
           界面字号（{Math.round((draft.general.fontScale || 1) * 100)}%）
         </div>
@@ -1143,6 +1179,15 @@ export function SettingsPanel() {
             onChange={(event) => updateAi({ sendOnEnter: event.target.checked })}
           />
           回车发送消息（关闭后改为 Ctrl / Cmd + 回车）
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.ai.expandReasoning === true}
+            onChange={(event) => updateAi({ expandReasoning: event.target.checked })}
+          />
+          思维链默认展开（推理模型会显示思考过程）
         </label>
 
         <button className="mini-btn" disabled={testing} onClick={() => void test()}>
@@ -1783,6 +1828,33 @@ export function SettingsPanel() {
           配置的平台失败时用免费引擎兜底（Exa）
         </label>
 
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.autoSearchOnChat === true}
+            onChange={(event) => updateSearch({ autoSearchOnChat: event.target.checked })}
+          />
+          对话自动联网（问题涉及最新/是谁/多少钱等）
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.alwaysSearchOnChat === true}
+            onChange={(event) => updateSearch({ alwaysSearchOnChat: event.target.checked })}
+          />
+          每轮对话都联网（最准，但每次都消耗检索额度）
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.search.useVideoMeta !== false}
+            onChange={(event) => updateSearch({ useVideoMeta: event.target.checked })}
+          />
+          总结/对话时带视频简介
+        </label>
+
         <div className="settings-label">检索结果缓存（分钟，0 = 关闭）</div>
         <input
           className="settings-input"
@@ -1838,6 +1910,9 @@ export function SettingsPanel() {
           <button className="mini-btn" onClick={addGroup}>
             <Plus size={12} /> 规则组
           </button>
+          <button className="mini-btn" onClick={() => void importRuleGroups()}>
+            <Upload size={12} /> 导入
+          </button>
         </div>
 
         {draft.correction.groups.map((group) => (
@@ -1856,6 +1931,13 @@ export function SettingsPanel() {
                 />
                 启用
               </label>
+              <button
+                className="mini-btn"
+                title="导出规则组"
+                onClick={() => void exportRuleGroup(group)}
+              >
+                <Download size={12} />
+              </button>
               <button
                 className="mini-btn"
                 title="删除规则组"
@@ -2295,6 +2377,35 @@ export function SettingsPanel() {
             ) : null}
           </div>
         ))}
+
+        <div className="settings-inline">
+          <div className="settings-field">
+            <div className="settings-label">单次工具调用超时（秒）</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={5}
+              max={300}
+              value={Math.round((draft.mcp.callTimeoutMs || 60000) / 1000)}
+              onChange={(event) =>
+                updateMcp({ callTimeoutMs: (Number(event.target.value) || 60) * 1000 })
+              }
+            />
+          </div>
+          <div className="settings-field">
+            <div className="settings-label">最多工具轮数</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={1}
+              max={12}
+              value={draft.mcp.maxToolRounds || 6}
+              onChange={(event) =>
+                updateMcp({ maxToolRounds: Number(event.target.value) || 6 })
+              }
+            />
+          </div>
+        </div>
 
         <div className="settings-label">调用参数（JSON）</div>
         <textarea

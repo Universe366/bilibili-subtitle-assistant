@@ -3,6 +3,7 @@ import type { AiPlatform, AppSettings, ChatMessage, PageInfo, SubtitleLine } fro
 import { activePlatform, loadSettings } from './settings';
 import { buildTranscript } from './ai';
 import { glossaryTerms } from './correction';
+import { searchWeb } from './search';
 import { listMcpTools, callMcpTool } from './mcp';
 import type { McpServer, McpTool } from '../shared/types';
 import { skillPrompt } from './skills';
@@ -16,6 +17,7 @@ export interface ChatOptions {
   messages: ChatMessage[];
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
+  onReasoning?: (delta: string) => void;
 }
 
 function errorForStatus(status: number, body: string): string {
@@ -26,7 +28,9 @@ function errorForStatus(status: number, body: string): string {
   return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
 }
 
-export async function chat(options: ChatOptions): Promise<{ text: string; model: string }> {
+export async function chat(
+  options: ChatOptions
+): Promise<{ text: string; model: string; reasoning: string }> {
   const settings = loadSettings();
   const platform = activePlatform(settings);
   if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
@@ -44,13 +48,41 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
         .join('\n')}`
     : '';
 
+  let webBlock = '';
+  const lastUser = [...options.messages].reverse().find((message) => message.role === 'user');
+  const question = String(lastUser?.content || '').trim();
+  const wantsSearch =
+    settings.search.enabled &&
+    question &&
+    (settings.search.alwaysSearchOnChat ||
+      (settings.search.autoSearchOnChat &&
+        /最新|今天|现在|谁|多少|价格|新闻|发布|核实|查一下|搜索|什么时候|latest|news|price|who|when/i.test(
+          question
+        )));
+  if (wantsSearch) {
+    try {
+      const refs = await searchWeb(settings, question.slice(0, 80));
+      if (refs.length) {
+        webBlock = `联网参考（回答外部事实时可使用；与字幕冲突时以字幕为准）：\n${refs
+          .slice(0, 5)
+          .map((ref, index) => `${index + 1}. ${ref.title}｜${ref.url}\n${ref.snippet.slice(0, 300)}`)
+          .join('\n')}`;
+      }
+    } catch (error) {
+      console.warn('[chat] 联网检索失败', (error as Error).message);
+    }
+  }
+
   const system = [
     settings.prompt.chat,
     glossaryBlock,
     skillPrompt(settings),
     `视频标题：${options.info.title || '未知'}`,
     `UP 主：${options.info.owner || '未知'}`,
-    ...(options.info.desc ? [`视频简介：${options.info.desc.slice(0, 2000)}`] : [])
+    ...(settings.search.useVideoMeta !== false && options.info.desc
+      ? [`视频简介：${options.info.desc.slice(0, 2000)}`]
+      : []),
+    webBlock
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -142,15 +174,18 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
     if (!response.body || !contentType.includes('text/event-stream')) {
       const json: any = await response.json();
       const text = String(json?.choices?.[0]?.message?.content || '');
+      const reasoning = String(json?.choices?.[0]?.message?.reasoning_content || '');
       if (!text.trim()) throw new Error('AI 返回为空');
       options.onDelta?.(text);
-      return { text, model: platform.model };
+      if (reasoning) options.onReasoning?.(reasoning);
+      return { text, model: platform.model, reasoning };
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let text = '';
+    let reasoning = '';
     let finished = false;
 
     while (!finished) {
@@ -173,6 +208,11 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
         try {
           const json = JSON.parse(data);
           const delta = json?.choices?.[0]?.delta?.content ?? json?.choices?.[0]?.text ?? '';
+          const think = json?.choices?.[0]?.delta?.reasoning_content;
+          if (typeof think === 'string' && think) {
+            reasoning += think;
+            options.onReasoning?.(think);
+          }
           if (typeof delta === 'string' && delta) {
             text += delta;
             options.onDelta?.(delta);
@@ -184,7 +224,7 @@ export async function chat(options: ChatOptions): Promise<{ text: string; model:
     }
 
     if (!text.trim()) throw new Error('AI 返回为空');
-    return { text, model: platform.model };
+    return { text, model: platform.model, reasoning };
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', forwardAbort);
@@ -199,7 +239,7 @@ async function chatWithTools(options: {
   toolBindings: Array<{ server: McpServer; tool: McpTool; qualifiedName: string }>;
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
-}): Promise<{ text: string; model: string }> {
+}): Promise<{ text: string; model: string; reasoning: string }> {
   const { platform, settings, toolBindings } = options;
   const base = platform.baseUrl.replace(/\/+$/, '');
   const tools = toolBindings.map((binding) => ({
@@ -216,7 +256,7 @@ async function chatWithTools(options: {
   }));
   const convo = options.messages.map((message) => ({ ...message }));
 
-  for (let round = 0; round < 6; round += 1) {
+  for (let round = 0; round < Math.max(1, settings.mcp.maxToolRounds || 6); round += 1) {
     if (options.signal?.aborted) throw new Error('已终止');
     const response = await session.defaultSession.fetch(`${base}/chat/completions`, {
       method: 'POST',
@@ -261,7 +301,12 @@ async function chatWithTools(options: {
         let content = '工具不存在';
         if (binding) {
           try {
-            content = await callMcpTool(binding.server, binding.tool.name, args);
+            content = await callMcpTool(
+              binding.server,
+              binding.tool.name,
+              args,
+              settings.mcp.callTimeoutMs || 60000
+            );
           } catch (error) {
             content = `工具调用失败：${(error as Error).message}`;
           }
@@ -279,7 +324,7 @@ async function chatWithTools(options: {
     const text = String(message?.content || '');
     if (!text.trim()) throw new Error('AI 返回为空');
     options.onDelta?.(text);
-    return { text, model: platform.model };
+    return { text, model: platform.model, reasoning: '' };
   }
 
   throw new Error('工具调用轮数过多（超过 6 轮）');

@@ -86,6 +86,9 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
   const [subtitleQuery, setSubtitleQuery] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
   const [customTarget, setCustomTarget] = useState('');
+  const autoOptimizeAfterRef = useRef(false);
+  const autoApplyAfterRef = useRef(false);
+  const autoOptimizePendingRef = useRef(false);
   const infoRef = useRef<PageInfo | null>(null);
   const videoKeyRef = useRef('');
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -204,6 +207,21 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
           ? `发现 ${event.suggestions.length} 处改动`
           : '没有发现需要修改的地方'
       );
+      if (autoApplyAfterRef.current && event.suggestions.length) {
+        autoApplyAfterRef.current = false;
+        const byIndex = new Map(event.suggestions.map((item) => [item.index, item.suggestion]));
+        setLines((previous) =>
+          previous.map((line, index) =>
+            byIndex.has(index) ? { ...line, text: byIndex.get(index) || line.text } : line
+          )
+        );
+        setSuggestions(null);
+        setSelectedSuggestions(new Set());
+        setTranslated(null);
+        setTranslatedLang('');
+        setViewMode('original');
+        setOptimizeMessage(`已自动应用 ${event.suggestions.length} 处修改`);
+      }
     });
     const offOptimizeError = window.bsub.onOptimizeError((event) => {
       if (event.requestId !== optimizeRequestRef.current) return;
@@ -340,6 +358,12 @@ export function SubtitlesPanel({ activeTab }: { activeTab: TabInfo | null }) {
     setViewMode('original');
     setOptimizeMessage(`已应用 ${chosen.length} 处修改`);
   };
+
+  useEffect(() => {
+    if (!autoOptimizePendingRef.current || !lines.length || optimizing) return;
+    autoOptimizePendingRef.current = false;
+    void startOptimize();
+  }, [lines, optimizing]);
 
   // 页面加载完成后读取视频信息与字幕轨
   useEffect(() => {

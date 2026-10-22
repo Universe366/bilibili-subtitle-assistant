@@ -28,6 +28,7 @@ export function parseSkillMarkdown(text: string, fallbackName = '导入技能'):
     id: `skill_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
     name: String(data.name || fallbackName).trim() || fallbackName,
     description: String(data.description || '').trim().slice(0, 200),
+    icon: String(data.icon || '✨').trim().slice(0, 8) || '✨',
     body: body.trim(),
     enabled: true,
     source: 'file'

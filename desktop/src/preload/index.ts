@@ -9,6 +9,7 @@ import type {
   AsrPlatform,
   SearchPlatform,
   AppSettings,
+  CorrectionRuleGroup,
   BridgeStatus,
   ChatDeltaEvent,
   ChatDoneEvent,
@@ -116,6 +117,12 @@ const api: BsubApi = {
     on<SettingsSnapshot>('settings:changed', cb),
   testSearch: (query: string) =>
     ipcRenderer.invoke('search:test', query) as Promise<Result<WebReference[]>>,
+  exportRuleGroup: (group: CorrectionRuleGroup) =>
+    ipcRenderer.invoke('rules:export', group) as Promise<
+      Result<{ canceled: boolean; path?: string }>
+    >,
+  importRuleGroups: () =>
+    ipcRenderer.invoke('rules:import') as Promise<Result<CorrectionRuleGroup[]>>,
   previewCorrection: (text: string, settings?: AppSettings) =>
     ipcRenderer.invoke('correction:preview', text, settings) as Promise<Result<string>>,
   probePlatformModels: (kind: 'ai' | 'asr', platform: AiPlatform | AsrPlatform) =>
