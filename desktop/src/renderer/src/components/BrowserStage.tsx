@@ -1,8 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { MonitorPlay } from 'lucide-react';
 
-export function BrowserStage({ hasTab }: { hasTab: boolean }) {
+export function BrowserStage({
+  hasTab,
+  sidebarPosition = 'left',
+  sidebarCollapsed = false,
+  sidebarWidth = 320
+}: {
+  hasTab: boolean;
+  sidebarPosition?: 'left' | 'right';
+  sidebarCollapsed?: boolean;
+  sidebarWidth?: number;
+}) {
   const ref = useRef<HTMLElement>(null);
+  const reportRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     const element = ref.current;
@@ -18,6 +29,7 @@ export function BrowserStage({ hasTab }: { hasTab: boolean }) {
       });
     };
 
+    reportRef.current = report;
     report();
     const observer = new ResizeObserver(report);
     observer.observe(element);
@@ -28,6 +40,13 @@ export function BrowserStage({ hasTab }: { hasTab: boolean }) {
       window.removeEventListener('resize', report);
     };
   }, []);
+
+  // 侧栏换边只改变位置、不改变尺寸，ResizeObserver 不会触发；
+  // 这里在位置/折叠/宽度变化后强制重报一次，避免 WebContentsView 留在旧坐标。
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => reportRef.current());
+    return () => cancelAnimationFrame(frame);
+  }, [sidebarPosition, sidebarCollapsed, sidebarWidth]);
 
   return (
     <section ref={ref} className="browser-stage">

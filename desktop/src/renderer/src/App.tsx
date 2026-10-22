@@ -218,7 +218,12 @@ export default function App() {
           onDockChange={commitSidebarPosition}
           onToggleCollapse={commitSidebarToggle}
         />
-        <BrowserStage hasTab={Boolean(active)} />
+        <BrowserStage
+          hasTab={Boolean(active)}
+          sidebarPosition={sidebarPosition}
+          sidebarCollapsed={sidebarCollapsed}
+          sidebarWidth={sidebarWidth}
+        />
       </div>
     </div>
   );

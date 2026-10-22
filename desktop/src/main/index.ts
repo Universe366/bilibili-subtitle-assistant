@@ -767,6 +767,46 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_DOCK_ONLY_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          const dom = await win.webContents.executeJavaScript(`
+            (async () => {
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const brand = document.querySelector('.brand');
+              if (!brand) return { error: 'no brand' };
+              const rect = brand.getBoundingClientRect();
+              brand.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true, clientX: 80, clientY: rect.top + 12
+              }));
+              await wait(450);
+              window.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true, clientX: window.innerWidth - 50, clientY: rect.top + 12
+              }));
+              window.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true, clientX: window.innerWidth - 50, clientY: rect.top + 12
+              }));
+              await wait(900);
+              const stage = document.querySelector('.browser-stage')?.getBoundingClientRect();
+              return {
+                body: document.querySelector('.app-body')?.className,
+                stage: stage ? { x: Math.round(stage.left), w: Math.round(stage.width) } : null
+              };
+            })()
+          `);
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          console.log(
+            '[dock-only]',
+            JSON.stringify({ dom, view: tabManager?.getActiveViewState() })
+          );
+        } catch (error) {
+          console.warn('[dock-only] failed', (error as Error).message);
+        }
+      }, 5500);
+    }
+
     if (process.env.BSUB_DOCK_TEST === '1') {
       setTimeout(async () => {
         try {
