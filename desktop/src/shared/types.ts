@@ -332,6 +332,8 @@ export interface SearchSettings {
   includeContent: boolean;
   timeRange: SearchTimeRange;
   verify: boolean;
+  verifySummary: boolean;
+  verifyItemCount: number;
   keylessFallback: boolean;
   cacheMinutes: number;
   autoSearchOnChat: boolean;

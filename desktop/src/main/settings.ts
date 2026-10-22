@@ -191,6 +191,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     includeContent: true,
     timeRange: 'any',
     verify: false,
+    verifySummary: true,
+    verifyItemCount: 12,
     keylessFallback: true,
     cacheMinutes: 5,
     autoSearchOnChat: false,
@@ -530,6 +532,11 @@ function normalize(raw: any): AppSettings {
         ? raw.search.timeRange
         : 'any';
       base.search.verify = raw.search.verify === true;
+      base.search.verifySummary = raw.search.verifySummary !== false;
+      base.search.verifyItemCount = Math.max(
+        1,
+        Math.min(20, Number(raw.search.verifyItemCount) || 12)
+      );
       base.search.keylessFallback = raw.search.keylessFallback !== false;
       const cacheMinutes = Number(raw.search.cacheMinutes);
       if (Number.isFinite(cacheMinutes)) {

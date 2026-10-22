@@ -2,6 +2,7 @@ import { session } from 'electron';
 import type { AiPlatform, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
 import { buildSearchQuery, rankReferences, searchWeb } from './search';
+import { buildVerifyBlock, verifySummary } from './verify';
 import { glossaryTerms } from './correction';
 import { skillPrompt } from './skills';
 import { optimizeLines } from './optimize';
@@ -105,30 +106,55 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
 
   let referencesBlock = '';
   if (settings.search.enabled) {
-    options.onStatus?.('正在联网检索参考资料…');
-    try {
-      const searchQuery = buildSearchQuery(info.title, info.owner);
-      const references = rankReferences(searchQuery, await searchWeb(settings, searchQuery));
-      if (references.length) {
-        let budget = 6000;
-        const rows: string[] = [];
-        references.forEach((ref, index) => {
-          if (budget <= 0) return;
-          const snippet = ref.snippet.slice(0, Math.min(900, budget));
-          budget -= snippet.length;
-          rows.push(`[${index + 1}] ${ref.title}\n${ref.url}\n${snippet}`);
-        });
-        referencesBlock = [
-          '',
-          '联网参考资料（仅用于核对和补充，不要照抄；与字幕冲突时以字幕为准；使用到的地方用 [n] 标注来源）：',
-          rows.join('\n\n')
-        ].join('\n');
-        options.onStatus?.(`已检索到 ${references.length} 条参考资料`);
-      } else {
-        options.onStatus?.('没有检索到参考资料，仅根据字幕总结');
+    if (settings.search.verifySummary !== false) {
+      options.onStatus?.('正在从字幕抽取待核实项…');
+      try {
+        const verified = await verifySummary(
+          settings,
+          info,
+          workingLines,
+          options.signal,
+          (done, total, query) =>
+            options.onStatus?.(`联网核对 ${done}/${total}：${query.slice(0, 28)}`)
+        );
+        referencesBlock = buildVerifyBlock(verified);
+        if (referencesBlock) {
+          options.onStatus?.(
+            `已核对 ${verified.attempted} 项，取得 ${verified.references.length} 条证据` +
+              (verified.failed ? `，${verified.failed} 项失败` : '')
+          );
+        } else {
+          options.onStatus?.('没有取得可用证据，仅根据字幕总结');
+        }
+      } catch (error) {
+        options.onStatus?.(`联网核对失败：${(error as Error).message}（继续总结）`);
       }
-    } catch (error) {
-      options.onStatus?.(`检索失败：${(error as Error).message}（继续总结）`);
+    } else {
+      options.onStatus?.('正在联网检索参考资料…');
+      try {
+        const searchQuery = buildSearchQuery(info.title, info.owner);
+        const references = rankReferences(searchQuery, await searchWeb(settings, searchQuery));
+        if (references.length) {
+          let budget = 6000;
+          const rows: string[] = [];
+          references.forEach((ref, index) => {
+            if (budget <= 0) return;
+            const snippet = ref.snippet.slice(0, Math.min(900, budget));
+            budget -= snippet.length;
+            rows.push(`[${index + 1}] ${ref.title}\n${ref.url}\n${snippet}`);
+          });
+          referencesBlock = [
+            '',
+            '联网参考资料（仅用于核对和补充，不要照抄；与字幕冲突时以字幕为准；使用到的地方用 [n] 标注来源）：',
+            rows.join('\n\n')
+          ].join('\n');
+          options.onStatus?.(`已检索到 ${references.length} 条参考资料`);
+        } else {
+          options.onStatus?.('没有检索到参考资料，仅根据字幕总结');
+        }
+      } catch (error) {
+        options.onStatus?.(`检索失败：${(error as Error).message}（继续总结）`);
+      }
     }
   }
 

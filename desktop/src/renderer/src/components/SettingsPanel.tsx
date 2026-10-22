@@ -1884,6 +1884,30 @@ export function SettingsPanel() {
         <label className="settings-check">
           <input
             type="checkbox"
+            checked={draft.search.verifySummary !== false}
+            onChange={(event) => updateSearch({ verifySummary: event.target.checked })}
+          />
+          总结前联网核对字幕（抽具体数字/术语逐条检索，推荐）
+        </label>
+        {draft.search.verifySummary !== false && (
+          <div className="settings-field">
+            <div className="settings-label">每次核对条数</div>
+            <input
+              className="settings-input"
+              type="number"
+              min={1}
+              max={20}
+              value={draft.search.verifyItemCount || 12}
+              onChange={(event) =>
+                updateSearch({ verifyItemCount: Number(event.target.value) || 12 })
+              }
+            />
+          </div>
+        )}
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
             checked={draft.search.keylessFallback !== false}
             onChange={(event) => updateSearch({ keylessFallback: event.target.checked })}
           />
