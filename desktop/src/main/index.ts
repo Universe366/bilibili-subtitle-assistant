@@ -1292,6 +1292,9 @@ function createWindow(): void {
                 panel: panel ? panel.getBoundingClientRect().width : 0,
                 panelScroll: panel ? panel.scrollWidth : 0,
                 sticky: sticky ? sticky.getBoundingClientRect().height : 0,
+                nav: document.querySelector('.side-nav')?.getBoundingClientRect().height || 0,
+                content:
+                  document.querySelector('.side-content')?.getBoundingClientRect().height || 0,
                 sections: sections.length,
                 open: sections.filter((item) => item.open).length,
                 overflow

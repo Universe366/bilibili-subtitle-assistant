@@ -1,6 +1,6 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.3**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.4**。
 
 > 维护、发布、常见坑见根目录 [`docs/MAINTAINERS.md`](../docs/MAINTAINERS.md) 的桌面端章节。
 
@@ -50,7 +50,7 @@ docs/          V1 方案
 - 地址栏：BV 号 / 链接 / 搜索词自动识别
 - 前进、后退、刷新/停止、新建/关闭标签
 - 打开 B 站首页，页面内新窗口请求自动转为新标签
-- 启动时通过 CDP 注入 `page-bridge.js`，页面加载后日志可见 `bridge=2.17.4`
+- 启动时通过 CDP 注入 `page-bridge.js`，页面加载后日志可见 `bridge=2.17.5`
 - Patina 风格界面：浅/深色自动跟随系统，侧栏「字幕 / 总结 / 库 / 设置」
 - **M2 字幕面板**：视频信息卡（封面 / 标题 / UP / 时长 / BV / 播放量）、字幕轨列表（多轨 + AI 标识）、字幕正文下载、跟随播放高亮、点击字幕跳转、未登录提示与登录入口
 - **M3 本地库**：SQLite（`node:sqlite`，无需重编译原生模块）、一键入库、视频列表、字幕全文搜索（FTS5 trigram，短词退化 LIKE）、点击搜索结果回到对应时间、删除入库视频
@@ -87,28 +87,28 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.30.3.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.30.3-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.30.4.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.30.4-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
-| `release/bilibili-subtitle-assistant-v2.17.4.zip` | 浏览器插件（由 CI 打包） |
+| `release/bilibili-subtitle-assistant-v2.17.5.zip` | 浏览器插件（由 CI 打包） |
 
 当前发布未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。签名接入见 [`../docs/SIGNING.md`](../docs/SIGNING.md)。
 
 ### 发布
 
-发布使用**合并 Release**：一个 tag（插件版本号，例如 `v2.17.4`）同时提供插件 zip 和桌面端安装包/绿色包。
+发布使用**合并 Release**：一个 tag（插件版本号，例如 `v2.17.5`）同时提供插件 zip 和桌面端安装包/绿色包。
 这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
 
-1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.17.4）。
-2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.30.3 --no-git-tag-version`）。
+1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.17.5）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.30.4 --no-git-tag-version`）。
 3. `npm run dist` 本地确认能构建。
 4. `npm run release:notes` 生成发布说明。
 5. 打 tag 并推送：
 
 ```bash
-git tag v2.17.4
+git tag v2.17.5
 git push origin master
-git push origin v2.17.4
+git push origin v2.17.5
 ```
 
 GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner 上重新构建，
@@ -158,7 +158,7 @@ node spike/bridge-test.mjs
 - API Key 与桥 Token 以明文保存在本机 `settings.json`，后续接系统钥匙串
 - 字幕超过约 3 万字会被截断（长视频尚未做分段总结）
 - 未签名，SmartScreen 会提示
-- 桌面 0.30.3 随 `v2.17.4` 合并 Release 发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
+- 桌面 0.30.4 随 `v2.17.5` 合并 Release 发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
 - 更新检查默认开启；若最新 Release 仍是旧桌面资产，会显示已是最新。安装版才支持自动更新
 - 插件桥需要桌面端先运行，并在插件「设置 → 桌面端」填入端口 / Token
 - 休眠标签切回会重新加载页面（滚动位置与播放进度不保留）
