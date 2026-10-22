@@ -165,6 +165,7 @@ npm run dist
 | [`desktop/docs/REAL-REGRESSION.md`](desktop/docs/REAL-REGRESSION.md) | 真实平台回归前置条件与清单 |
 | [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) | 发布清单、桌面端构建/更新/卸载、易踩坑与商店提交注意事项 |
 | [`SECURITY.md`](SECURITY.md) | 安全问题与密钥泄露的处理方式 |
+| [`docs/SIGNING.md`](docs/SIGNING.md) | Windows 代码签名、CI Secrets 与验证 |
 | [`LICENSE`](LICENSE) | MIT（本项目代码） |
 | [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方组件许可证 |
 | [`bilibili-subtitle-assistant/CHANGELOG.md`](bilibili-subtitle-assistant/CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |

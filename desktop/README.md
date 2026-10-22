@@ -92,7 +92,7 @@ npm run dist
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.17.1.zip` | 浏览器插件（由 CI 打包） |
 
-未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。
+当前发布未签名，首次运行可能触发 SmartScreen；选择「更多信息 → 仍要运行」。签名接入见 [`../docs/SIGNING.md`](../docs/SIGNING.md)。
 
 ### 发布
 

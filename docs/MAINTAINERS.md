@@ -121,6 +121,13 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - 改卸载页后必须跑一次 `npm run dist` 验证 NSIS 能编译，不要只改 `.nsh` 不打包。
 - 用户改过自定义数据目录时，卸载器只清默认 `%APPDATA%\bsub-desktop`，不会清自定义目录。
 
+### 2.6 代码签名
+
+- 工作流已预留 `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` 两个 Secrets；为空时走未签名构建。
+- 签名后必须用 `signtool verify /pa /v` 验证 setup 与主 exe，并检查时间戳。
+- 更换证书前先测试旧版本自动更新；publisher 不一致会导致更新失败，保留手动下载入口。
+- 详细流程见 [`SIGNING.md`](SIGNING.md)。
+
 ## 3. 不能随便改的约束
 
 ### 3.1 内嵌面板：Shadow DOM + 延迟挂载
