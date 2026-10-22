@@ -67,6 +67,32 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 | **导出** | SRT / WebVTT / ASS / TXT / Markdown / JSON，6 种格式 × 4 种模板。 |
 | **批量与历史** | 批量队列、章节、质量自检、历史记录、操作留痕。 |
 
+## 桌面端（Windows）
+
+除了浏览器扩展，仓库里还有一个 Windows 桌面端 `desktop/`：把 B 站浏览器、字幕、AI 和本地库放进同一个程序，适合不想开浏览器扩展、或需要本地库/批量处理的场景。
+
+- 内置 B 站浏览器（多标签、登录、播放、弹幕、评论），扩展里的字幕/总结/翻译/优化/章节/ASR/MCP/Skills 都有对应原生入口
+- 本地 SQLite 字幕库：入库、全文搜索、历史、批量总结、URL 批量抓取
+- 字幕诊断、质量检查、6 种导出格式、自动更新、托盘、标签休眠
+- 侧栏可拖拽调宽、折叠成图标栏、左右换边；卸载时可选择是否删除本地数据
+
+源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.30.0**）。GitHub Release 里的桌面资产可能落后于源码，下载前以 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准。
+
+安装版直接运行 `bsub-desktop-setup-*.exe`，绿色版解压后双击 `B站字幕助手.exe`。数据默认在 `%APPDATA%\bsub-desktop`（设置、字幕库、登录态、缓存、日志）；卸载页默认保留数据，勾选后才会删除。
+
+开发与打包：
+
+```bash
+cd desktop
+npm install
+unset ELECTRON_RUN_AS_NODE   # Windows 本机若设置过，必须清掉
+npm run dev                  # Electron + Vite
+npm run typecheck
+npm run dist                 # NSIS 安装包 + 绿色 zip + latest.yml
+```
+
+详见 [`desktop/README.md`](desktop/README.md)、[`desktop/docs/PARITY.md`](desktop/docs/PARITY.md)、[`desktop/docs/PLATFORMS.md`](desktop/docs/PLATFORMS.md)。
+
 ## 快速开始
 
 1. 从 **[Releases](https://github.com/Universe366/bilibili-subtitle-assistant/releases)** 下载最新 zip，解压。
@@ -119,6 +145,10 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 |---|---|
 | [`bilibili-subtitle-assistant/README.md`](bilibili-subtitle-assistant/README.md) | 用户文档：安装、配置、功能、故障排查 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
+| [`desktop/README.md`](desktop/README.md) | 桌面端安装、开发、打包、数据与卸载 |
+| [`desktop/docs/PARITY.md`](desktop/docs/PARITY.md) | 桌面端 vs 插件功能矩阵与验收 |
+| [`desktop/docs/PLATFORMS.md`](desktop/docs/PLATFORMS.md) | 桌面端 AI / 检索 / ASR 平台目录 |
+| [`desktop/docs/REAL-REGRESSION.md`](desktop/docs/REAL-REGRESSION.md) | 真实平台回归前置条件与清单 |
 | [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) | 发布清单、易踩坑、版本同步与商店提交注意事项 |
 | [`SECURITY.md`](SECURITY.md) | 安全问题与密钥泄露的处理方式 |
 | [`LICENSE`](LICENSE) | MIT（本项目代码） |
@@ -132,7 +162,9 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 
 ## 说明
 
-- API Key 只保存在 `chrome.storage.local`，不同步到其他设备，也不会上传。
+- 桌面端数据默认在 `%APPDATA%\bsub-desktop`；卸载页默认保留，勾选后才删除。绿色版没有卸载器，退出后删除程序目录，需要彻底清理时再手动删数据目录。
+- 桌面端自动更新只对**安装版**有效，并且要求最新 Release 带 `latest.yml`；绿色版请手动替换。当前 GitHub Release 的桌面资产可能落后于源码，检查更新显示“已是最新”并不代表本地源码已发布。
+- 扩展的 API Key 只保存在 `chrome.storage.local`，不同步到其他设备，也不会上传。
 - MCP 只支持远程 `http` / `sse`；浏览器扩展无法启动本地进程，因此不支持 `stdio`。
 - 非 M4A 平台的语音转录会把音频解码进侧边栏内存，长视频转录时请保持侧边栏打开。
 - DeepSeek 官方搜索按**成功请求**计费（$0.75 / 1000 次），可在设置中换回免费引擎。

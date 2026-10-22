@@ -13,6 +13,10 @@
 | `bilibili-subtitle-assistant/src/content/` | `page-bridge.js`（MAIN world）+ `content.js`（ISOLATED） |
 | `bilibili-subtitle-assistant/src/sidepanel/` | 侧边栏 / 内嵌面板 UI |
 | `bilibili-subtitle-assistant/src/shared/` | 设置、常量、存储、校验 |
+| `desktop/` | Windows 桌面端（Electron + React + SQLite） |
+| `desktop/src/main/` | 主进程：窗口、WebContentsView 标签、CDP 注入、IPC、更新、托盘 |
+| `desktop/src/renderer/` | 桌面端 React UI（浏览器区域 + 侧栏 + 设置） |
+| `desktop/build/installer.nsh` | NSIS 自定义卸载页（可选删除本地数据） |
 | `verify/` | 测试与发布脚本（不属于扩展运行时） |
 | `docs/screenshots/` | README / 商店用界面截图 |
 | `docs/EDGE-STORE.md` | Edge 提交材料、权限理由、认证备注 |
@@ -76,6 +80,47 @@ GITHUB_TOKEN=... NODE_OPTIONS=--use-system-ca node tools/release.mjs --create --
 - 权限理由、隐私政策 URL、认证备注见 `docs/EDGE-STORE.md`；
 - 商店审核期间不要中途换包；审核通过后再提交新版本更新。
 
+## 2.5 桌面端（desktop/）
+
+### 构建与打包
+
+```bash
+cd desktop
+npm install
+unset ELECTRON_RUN_AS_NODE        # Windows 本机若设置过，必须清掉
+npm run typecheck
+npm run dist                      # NSIS + 绿色包 + latest.yml
+```
+
+- 国内下载 Electron 失败时用镜像：
+  `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`，
+  `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`
+- `ffmpeg-static` 约 82MB，已配置 `asarUnpack`；不要把它打进 asar，否则 ASR 找不到可执行文件。
+- 打包产物在 `desktop/release/`，已被 `.gitignore` 忽略，不要提交。
+
+### 版本与发布
+
+- 桌面版本在 `desktop/package.json`，同步更新 `desktop/CHANGELOG.md`、`desktop/README.md` 的产物名和版本说明。
+- 发布仍用**合并 Release**：一个 `v*` tag 同时带插件 zip 与桌面 setup/green/latest.yml。
+- CI 是 `.github/workflows/desktop-release.yml`；构建必须带 `--publish never`，由 workflow 自己创建 Release，否则 electron-builder 会抢先自动发布。
+- 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `bsub-desktop-setup-${version}.exe`）。
+- 当前最新 Release 的桌面资产可能落后于源码；发布前先确认 `desktop/package.json` 版本高于 Release 资产，否则客户端会显示“已是最新”。
+
+### 自动更新
+
+- `electron-updater` + GitHub provider；`autoCheck` 默认开启，`autoDownload` 默认关闭，安装仍要重启。
+- 只有**安装版**能自动更新；绿色版手动替换。
+- 自定义 generic 源通过设置 `update.feedUrl`，修改后下次启动生效。
+- 未签名时 SmartScreen 仍会提示；签名后再谈“无感更新”。
+
+### 卸载与数据
+
+- 安装包 `nsis.include=build/installer.nsh`，`deleteAppDataOnUninstall=false`。
+- 自定义卸载页默认只删程序；勾选后删除 `%APPDATA%\bsub-desktop` 与 `%LOCALAPPDATA%\bsub-desktop-updater`。
+- NSIS 开了 `-WX`（警告即错误）：`Var` 不能声明在安装器也会编译到的顶层；当前把 `Var DeleteAppData` 放在 `customUnWelcomePage` 宏里。
+- 改卸载页后必须跑一次 `npm run dist` 验证 NSIS 能编译，不要只改 `.nsh` 不打包。
+- 用户改过自定义数据目录时，卸载器只清默认 `%APPDATA%\bsub-desktop`，不会清自定义目录。
+
 ## 3. 不能随便改的约束
 
 ### 3.1 内嵌面板：Shadow DOM + 延迟挂载
@@ -120,6 +165,20 @@ GITHUB_TOKEN=... NODE_OPTIONS=--use-system-ca node tools/release.mjs --create --
 - 虚拟列表估算按固定行高，真实高度再测量修正；改行高/内边距时要同步 `estimate()`；
 - 编辑长句时通过 `data-editing` 临时恢复换行。
 
+### 3.6 桌面端页面视图与侧栏布局
+
+- `BrowserStage` 用 `ResizeObserver` 上报 `WebContentsView` 的 bounds；它**只监听尺寸，不监听位置**。侧栏左右换边只改位置、不改尺寸，所以位置/折叠/宽度变化必须额外强制上报一次，否则页面视图会留在旧 x 坐标（左边空白、右边被页面盖住）。
+- 拖拽侧栏时鼠标会跨到 `WebContentsView`，渲染层收不到 mouseup。拖拽期间隐藏视图，并在 `BrowserStage` 内部放页面快照占位；不要再用固定坐标快照，否则会和侧栏叠层。结束/失焦/12 秒兜底必须恢复视图。
+- 页面视图恢复时要重新 `setBounds` + `invalidate`，只 `setVisible(true)` 可能仍然空白。
+- 标题栏拖拽换边、边缘拖拽折叠、双击拖动条折叠、折叠图标方向都依赖 `sidebarPosition` / `sidebarCollapsed`；改布局时同步检查这四条路径。
+
+### 3.7 桌面端平台目录
+
+- 平台预设集中放在 `desktop/src/shared/presets.ts`，由插件 `settings.js` 导出；AI/检索/ASR 的 ID、模型、地址不要散落在 UI。
+- 旧配置迁移靠 `ai.presetVersion`；新增内置平台时提高版本号，并确保用户删掉的平台不会被反复加回。
+- 当前 AI 只接 OpenAI 兼容协议；Anthropic 原生协议未接，不要把它硬塞进列表冒充可用。
+- 设置快照会掩码 API Key；保存时靠 `mergeSecrets` 保留未修改的 Key，清空要用显式 `__CLEAR__`。
+
 ## 4. 调试与诊断
 
 - 内容脚本版本不一致：先刷新 B 站页面；`ping2` 握手只认新版。
@@ -138,6 +197,8 @@ GITHUB_TOKEN=... NODE_OPTIONS=--use-system-ca node tools/release.mjs --create --
 | 权限 / 隐私 / 商店文案 | `PRIVACY.md`、`docs/EDGE-STORE.md` |
 | 测试命令 / 新增套件 | `verify/README.md`、根 README |
 | 架构 / 环境坑 | `AGENTS.md`、本文件 |
+| 桌面端功能 / 平台 / 验收 | `desktop/README.md`、`desktop/docs/PARITY.md`、`desktop/docs/PLATFORMS.md` |
+| 桌面端真实回归 | `desktop/docs/REAL-REGRESSION.md` |
 
 ## 6. Issue 排查顺序
 

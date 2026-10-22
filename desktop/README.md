@@ -1,6 +1,8 @@
 # B站字幕助手 · 桌面端
 
-Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.11.0**。
+Windows 桌面端，内置 B 站浏览器 + 本地字幕/总结库。当前 **0.30.0**。
+
+> 维护、发布、常见坑见根目录 [`docs/MAINTAINERS.md`](../docs/MAINTAINERS.md) 的桌面端章节。
 
 ## 运行
 
@@ -66,10 +68,13 @@ docs/          V1 方案
 - **AI 优化**：批量校对，逐条 diff 勾选应用
 - **字幕翻译**：保留时间轴，原文/译文/双语视图，可随字幕导出
 - **语音转录**：无官方字幕时用音轨转写，支持 M4A/WAV 与多传输回退
-- **AI 对话**：基于当前字幕流式提问，支持停止/清空/建议问题
+- **AI 对话**：基于当前字幕流式提问，支持停止/清空/建议问题、图片、思维链折叠
+- **侧栏交互**：拖拽调宽、拖到窄处折叠、标题栏换边、折叠图标随侧别变化
+- **多平台**：AI 27 家、检索 12 家、ASR 3 家，每平台独立 Key/模型/地址；详见 `docs/PLATFORMS.md`
+- **卸载**：NSIS 自定义卸载页，可选保留或删除本地数据
 - **联网检索**：Exa / AnySearch 免 Key，Tavily / Brave 需 Key；结果作为总结参考资料
 - **设置页**：主题、关闭到托盘、休眠时长、AI 平台/温度/token/流式、提示词模板、导出默认值、设置导入导出
-- **自动更新**：设置页检查 / 下载 / 重启安装；默认关闭自动检查（发布首个桌面 Release 后可在设置里开启）；支持自定义 generic 更新源
+- **自动更新**：默认启动检查、可选自动下载、状态卡片、更新说明、失败重试；安装版读取 GitHub Release 的 `latest.yml`，绿色版需手动替换
 
 ## 打包
 
@@ -81,8 +86,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.11.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.11.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-setup-0.30.0.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.30.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.17.0.zip` | 浏览器插件（由 CI 打包） |
 
@@ -152,8 +157,8 @@ node spike/bridge-test.mjs
 - API Key 与桥 Token 以明文保存在本机 `settings.json`，后续接系统钥匙串
 - 字幕超过约 3 万字会被截断（长视频尚未做分段总结）
 - 未签名，SmartScreen 会提示
-- 尚未发布桌面 Release：检查更新会提示找不到可用版本；安装版更新走 GitHub Releases（需要发布 `latest.yml` + setup exe），绿色版建议手动替换
-- 自动检查默认关闭，避免未发布版本时每次启动报错；发布后可在设置里打开
+- 桌面 0.30.0 尚未发布到 GitHub Release；当前 Release 的桌面资产可能仍是旧版。安装版自动更新要求最新 Release 带 `latest.yml` 和 setup exe
+- 更新检查默认开启；若最新 Release 仍是旧桌面资产，会显示已是最新。安装版才支持自动更新
 - 插件桥需要桌面端先运行，并在插件「设置 → 桌面端」填入端口 / Token
 - 休眠标签切回会重新加载页面（滚动位置与播放进度不保留）
 
@@ -174,5 +179,5 @@ node spike/bridge-test.mjs
 - 安装版：Windows「设置 → 应用 → 已安装的应用」卸载「B站字幕助手」，或运行安装目录下的 `Uninstall B站字幕助手.exe`。
 - 卸载页可选择是否同时删除本地数据：
   - 默认只删除程序、快捷方式和卸载项；
-  - 勾选后额外删除 `%APPDATA%sub-desktop`（设置、字幕库、登录状态、缓存、日志）和更新缓存。
-- 绿色版没有卸载器：退出程序后删除程序目录；如需彻底清理，再手动删除 `%APPDATA%sub-desktop`。
+  - 勾选后额外删除 `%APPDATA%\bsub-desktop`（设置、字幕库、登录状态、缓存、日志）和更新缓存。
+- 绿色版没有卸载器：退出程序后删除程序目录；如需彻底清理，再手动删除 `%APPDATA%\bsub-desktop`。
