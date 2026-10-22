@@ -801,6 +801,32 @@ function createWindow(): void {
       }, 8000);
     }
 
+    if (process.env.BSUB_LIVE_URLBATCH_404_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!tabManager) throw new Error('标签管理器未就绪');
+          const started = Date.now();
+          const result = await batchUrls(
+            tabManager,
+            ['https://www.bilibili.com/video/BV0000000000'],
+            false,
+            (index, total, url, title, stage, percent) =>
+              console.log('[live-urlbatch-404]', index + 1, total, stage, Math.round(percent), title),
+          );
+          console.log(
+            '[live-urlbatch-404] done',
+            JSON.stringify({
+              seconds: Math.round((Date.now() - started) / 1000),
+              result,
+              tabs: tabManager.list().length
+            })
+          );
+        } catch (error) {
+          console.warn('[live-urlbatch-404] failed', (error as Error).message);
+        }
+      }, 7000);
+    }
+
     if (process.env.BSUB_LIVE_URLBATCH_FAIL_TEST === '1') {
       setTimeout(async () => {
         try {

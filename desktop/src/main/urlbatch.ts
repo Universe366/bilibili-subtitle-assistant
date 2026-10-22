@@ -114,13 +114,24 @@ export async function batchUrls(
         try {
           const current = await getPageInfo(wc);
           if (current && current.title) {
+            if (/出错啦|404|页面不存在|已失效/i.test(current.title)) {
+              throw new Error('视频页面无效或已失效');
+            }
             info = current;
             title = current.title;
           }
           bundle = await getSubtitles(wc);
           if (bundle.tracks.length || bundle.needLogin) break;
-        } catch {
+          if (info && info.duration > 0 && !bundle.tracks.length && attempt >= 8) {
+            throw new Error('没有可用字幕');
+          }
+        } catch (error) {
+          const message = (error as Error)?.message || '';
+          if (/视频页面无效|读取视频信息失败|没有可用字幕/.test(message)) throw error;
           // 页面还在加载，重试
+        }
+        if (!info && attempt >= 12) {
+          throw new Error('读取视频信息失败（页面无响应或视频不存在）');
         }
         await sleep(1000);
       }
