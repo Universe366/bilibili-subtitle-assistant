@@ -12,7 +12,7 @@
 | 字幕翻译 | ✅ | mock + 真实 DeepSeek（20 行 English，时间轴保持） | 已真实跑通 |
 | AI 优化字幕 | ✅ | mock + 真实 DeepSeek（30 行输入，10 处改动） | 已真实跑通 |
 | ASR 转录 | ✅ | mock + 真实 SiliconFlow（213 秒视频，2 段，10 行，29 秒） | 长视频成本/语种仍是风险 |
-| 批量 / 历史 | ✅ | 库内 1 视频批量总结成功；历史 1 条可查 | URL 批量需登录 B 站 |
+| 批量 / 历史 | ✅ | 库内批量总结；URL 批量 2/2 成功，库 3 视频 | 无字幕/失效链接分支待补 |
 | 导出扩展 | ✅ | VTT/ASS/笔记模板输出 | — |
 | 质量检查 / 章节 | ✅ | 质检 5 类问题；mock 2 段 + 真实 DeepSeek 12 段 | 质检为启发式，非 AI |
 | MCP / Skills | ✅ | HTTP 与 SSE 各完成 initialize/tools/list/tools/call；对话自动工具循环；Skills 注入 | 真实 MCP 服务需用户配置 |
@@ -84,5 +84,6 @@
 - 章节：12 段。
 - ASR：SiliconFlow SenseVoice，213 秒视频，2 段切片，10 行，29 秒。
 - 搜索：Exa 5 条；音轨 3 条候选 + Range 1KB。
+- URL 批量：2 个链接全部成功，库从 1 增至 3。
 
 详细命令与原始证据见 [`REAL-REGRESSION.md`](REAL-REGRESSION.md)。

@@ -768,6 +768,39 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_LIVE_URLBATCH_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          if (!tabManager) throw new Error('标签管理器未就绪');
+          const raw = String(process.env.BSUB_LIVE_URLBATCH_URLS || '').trim();
+          const urls = raw
+            ? raw.split(',').map((item) => item.trim()).filter(Boolean)
+            : [
+                'https://www.bilibili.com/video/BV1GJ411x7h7',
+                'https://www.bilibili.com/video/BV1xrnz6gEVD'
+              ];
+          const result = await batchUrls(
+            tabManager,
+            urls,
+            false,
+            (index, total, url, title, stage, percent) =>
+              console.log('[live-urlbatch]', index + 1, total, stage, Math.round(percent), title),
+          );
+          const library = listLibrary().videos;
+          console.log(
+            '[live-urlbatch] done',
+            JSON.stringify({
+              urls: urls.length,
+              result,
+              library: library.map((item) => ({ title: item.title, lines: item.lineCount }))
+            })
+          );
+        } catch (error) {
+          console.warn('[live-urlbatch] failed', (error as Error).message);
+        }
+      }, 8000);
+    }
+
     if (process.env.BSUB_LIVE_AI_TEST === '1') {
       setTimeout(async () => {
         try {
