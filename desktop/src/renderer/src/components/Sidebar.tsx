@@ -44,7 +44,8 @@ export function Sidebar({
   collapsed = false,
   position = 'left',
   onDockChange,
-  onToggleCollapse
+  onToggleCollapse,
+  onDragSnapshot
 }: {
   section: Section;
   onSelect: (section: Section) => void;
@@ -58,37 +59,25 @@ export function Sidebar({
   position?: 'left' | 'right';
   onDockChange?: (position: 'left' | 'right') => void;
   onToggleCollapse?: (collapsed: boolean) => void;
+  onDragSnapshot?: (snapshot: string | null) => void;
 }) {
   const [version, setVersion] = useState('');
-  const [dragSnapshot, setDragSnapshot] = useState<{
-    src: string;
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null>(null);
   const dragActiveRef = useRef(false);
 
   const beginViewDrag = () => {
-    const rect = document.querySelector('.browser-stage')?.getBoundingClientRect();
     dragActiveRef.current = true;
     void window.bsub.beginSidebarDrag().then((response) => {
       if (!dragActiveRef.current) return;
-      if (response.ok && response.data && rect) {
-        setDragSnapshot({
-          src: response.data,
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height
-        });
-      }
+      if (response.ok && response.data) onDragSnapshot?.(response.data);
     });
+    window.setTimeout(() => {
+      if (dragActiveRef.current) endViewDrag();
+    }, 12000);
   };
 
   const endViewDrag = () => {
     dragActiveRef.current = false;
-    setDragSnapshot(null);
+    onDragSnapshot?.(null);
     void window.bsub.endSidebarDrag();
   };
   useEffect(() => {
@@ -99,6 +88,13 @@ export function Sidebar({
 
   const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
+    beginViewDrag();
+    let restored = false;
+    const restoreView = () => {
+      if (restored) return;
+      restored = true;
+      endViewDrag();
+    };
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     const startPosition = position;
@@ -128,15 +124,18 @@ export function Sidebar({
         onWidthCommit?.(Math.min(560, Math.max(260, raw)));
       }
 
+      restoreView();
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      window.removeEventListener('blur', restoreView);
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
+    window.addEventListener('blur', restoreView, { once: true });
   };
 
   const startDockDrag = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -251,20 +250,6 @@ export function Sidebar({
 
         {section === 'settings' && <SettingsPanel />}
       </div>
-
-      {dragSnapshot && (
-        <img
-          className="drag-snapshot"
-          src={dragSnapshot.src}
-          alt=""
-          style={{
-            left: dragSnapshot.left,
-            top: dragSnapshot.top,
-            width: dragSnapshot.width,
-            height: dragSnapshot.height
-          }}
-        />
-      )}
 
       <div className="side-footer">
         <span className={`dot${tabCount > 0 ? ' is-on' : ''}`} />

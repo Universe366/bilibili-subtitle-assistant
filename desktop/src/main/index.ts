@@ -781,7 +781,8 @@ function createWindow(): void {
               resizer.dispatchEvent(new MouseEvent('mousedown', {
                 bubbles: true, clientX: rect.left + 2, clientY: rect.top + 30
               }));
-              await wait(120);
+              await wait(450);
+              const snapshotDuring = Boolean(document.querySelector('.stage-snapshot'));
               window.dispatchEvent(new MouseEvent('mousemove', {
                 bubbles: true, clientX: rect.left + 112, clientY: rect.top + 30
               }));
@@ -795,7 +796,8 @@ function createWindow(): void {
               return {
                 sidebar: sidebar ? Math.round(sidebar.width) : 0,
                 stage: stage ? { x: Math.round(stage.left), w: Math.round(stage.width) } : null,
-                snapshot: Boolean(document.querySelector('.drag-snapshot'))
+                snapshotDuring,
+                snapshotAfter: Boolean(document.querySelector('.stage-snapshot'))
               };
             })()
           `);

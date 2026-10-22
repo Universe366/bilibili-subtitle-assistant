@@ -5,12 +5,14 @@ export function BrowserStage({
   hasTab,
   sidebarPosition = 'left',
   sidebarCollapsed = false,
-  sidebarWidth = 320
+  sidebarWidth = 320,
+  snapshot = null
 }: {
   hasTab: boolean;
   sidebarPosition?: 'left' | 'right';
   sidebarCollapsed?: boolean;
   sidebarWidth?: number;
+  snapshot?: string | null;
 }) {
   const ref = useRef<HTMLElement>(null);
   const reportRef = useRef<() => void>(() => undefined);
@@ -50,6 +52,7 @@ export function BrowserStage({
 
   return (
     <section ref={ref} className="browser-stage">
+      {snapshot && <img className="stage-snapshot" src={snapshot} alt="" />}
       {!hasTab && (
         <div className="stage-empty">
           <div className="stage-empty-icon">

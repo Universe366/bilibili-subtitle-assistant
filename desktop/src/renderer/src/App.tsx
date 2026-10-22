@@ -28,6 +28,7 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>('left');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
 
   const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
@@ -217,12 +218,14 @@ export default function App() {
           position={sidebarPosition}
           onDockChange={commitSidebarPosition}
           onToggleCollapse={commitSidebarToggle}
+          onDragSnapshot={setDragSnapshot}
         />
         <BrowserStage
           hasTab={Boolean(active)}
           sidebarPosition={sidebarPosition}
           sidebarCollapsed={sidebarCollapsed}
           sidebarWidth={sidebarWidth}
+          snapshot={dragSnapshot}
         />
       </div>
     </div>

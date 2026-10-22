@@ -347,18 +347,12 @@ button:disabled {
 }
 
 .app-body.sidebar-right .browser-stage {
+  position: relative;
+  overflow: hidden;
   order: 1;
 }
 
-.app-body.sidebar-right .drag-snapshot {
-  position: fixed;
-  z-index: 60;
-  object-fit: cover;
-  pointer-events: none;
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-}
-
+.app-body.sidebar-right 
 .sidebar-resizer {
   right: auto;
   left: 0;
@@ -2543,4 +2537,14 @@ button:disabled {
 .sidebar-resizer:active {
   background: var(--accent);
   opacity: 0.45;
+}
+
+.stage-snapshot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  z-index: 3;
+  pointer-events: none;
 }
