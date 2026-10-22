@@ -99,13 +99,6 @@ export function Sidebar({
 
   const startResize = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    beginViewDrag();
-    let restored = false;
-    const restoreView = () => {
-      if (restored) return;
-      restored = true;
-      endViewDrag();
-    };
     const startX = event.clientX;
     const startWidth = sidebarWidth;
     const startPosition = position;
@@ -135,18 +128,15 @@ export function Sidebar({
         onWidthCommit?.(Math.min(560, Math.max(260, raw)));
       }
 
-      restoreView();
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
-      window.removeEventListener('blur', restoreView);
     };
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
-    window.addEventListener('blur', restoreView, { once: true });
   };
 
   const startDockDrag = (event: React.MouseEvent<HTMLDivElement>) => {

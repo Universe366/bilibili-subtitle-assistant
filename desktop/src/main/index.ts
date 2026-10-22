@@ -767,6 +767,48 @@ function createWindow(): void {
       }, 4000);
     }
 
+    if (process.env.BSUB_RESIZE_TEST === '1') {
+      setTimeout(async () => {
+        try {
+          const win = BrowserWindow.getAllWindows()[0];
+          if (!win) return;
+          const dom = await win.webContents.executeJavaScript(`
+            (async () => {
+              const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              const resizer = document.querySelector('.sidebar-resizer');
+              if (!resizer) return { error: 'no resizer' };
+              const rect = resizer.getBoundingClientRect();
+              resizer.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true, clientX: rect.left + 2, clientY: rect.top + 30
+              }));
+              await wait(120);
+              window.dispatchEvent(new MouseEvent('mousemove', {
+                bubbles: true, clientX: rect.left + 112, clientY: rect.top + 30
+              }));
+              await wait(120);
+              window.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true, clientX: rect.left + 112, clientY: rect.top + 30
+              }));
+              await wait(700);
+              const sidebar = document.querySelector('.sidebar')?.getBoundingClientRect();
+              const stage = document.querySelector('.browser-stage')?.getBoundingClientRect();
+              return {
+                sidebar: sidebar ? Math.round(sidebar.width) : 0,
+                stage: stage ? { x: Math.round(stage.left), w: Math.round(stage.width) } : null,
+                snapshot: Boolean(document.querySelector('.drag-snapshot'))
+              };
+            })()
+          `);
+          console.log(
+            '[resize-test]',
+            JSON.stringify({ dom, view: tabManager?.getActiveViewState() })
+          );
+        } catch (error) {
+          console.warn('[resize-test] failed', (error as Error).message);
+        }
+      }, 5500);
+    }
+
     if (process.env.BSUB_DOCK_ONLY_TEST === '1') {
       setTimeout(async () => {
         try {
