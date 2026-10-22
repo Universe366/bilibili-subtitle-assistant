@@ -9,6 +9,8 @@
   <img src="https://img.shields.io/badge/Manifest-V3-4285F4" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/Chrome-116%2B-4285F4" alt="Chrome 116+" />
   <img src="https://img.shields.io/badge/Edge-116%2B-0078D7" alt="Edge 116+" />
+  <img src="https://img.shields.io/badge/Windows-Desktop-0078D7" alt="Windows Desktop" />
+  <img src="https://img.shields.io/badge/Electron-45-47848F" alt="Electron 45" />
 </p>
 
 <p align="center">
@@ -56,7 +58,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 | 能力 | 说明 |
 |---|---|
 | **页面内嵌面板** | 默认在视频页右侧直接显示；Shadow DOM 隔离，不干扰 B 站评论区；可折叠、关闭、Alt+Shift+B 全局开关。 |
-| **字幕抓取** | 网络嗅探 / 播放器实例 / wbi 签名接口 / 无签名接口 / 主动触发，五路汇总；带时长、归属与缓存签名校验，避免串分 P、串视频。 |
+| **字幕抓取** | 优先请求 **WBI 签名接口** `/x/player/wbi/v2`，只信签名结果；签名失败才回退到播放器/嗅探。带时长、覆盖率、标题内容与缓存签名校验，避免串分 P、串视频。 |
 | **多语言与翻译** | 同一视频有多条官方字幕轨时可切换语言；支持 AI 翻译为常用/自定义目标语言，保留时间轴。 |
 | **跟随播放** | 字幕逐句高亮、自动滚动；拖动进度条大跳转时恢复到对应句。 |
 | **语音转录** | 没有官方字幕时：解析音轨 → 分块下载 → 解码 → 16 kHz 单声道 → 重叠切片 → 逐片识别 → 去重合并；支持 FFmpeg 流复制重封装、并发与随时终止。 |
@@ -74,13 +76,16 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 - 内置 B 站浏览器（多标签、登录、播放、弹幕、评论），扩展里的字幕/总结/翻译/优化/章节/ASR/MCP/Skills 都有对应原生入口
 - 本地 SQLite 字幕库：入库、全文搜索、历史、批量总结、URL 批量抓取
 - 字幕诊断、质量检查、6 种导出格式、自动更新、托盘、标签休眠
+- 字幕只信 WBI 签名接口；自动选轨做时长/覆盖率/标题校验，串视频时宁可显示无字幕
+- ASR 与翻译结果按视频/轨缓存，刷新面板不会丢
 - 总结核对、GFM 表格、64k 输出、字幕身份校验与行内编辑
 - 数据备份/恢复：设置 + 字幕库一键备份，恢复前自动保留当前数据
-- 侧栏可拖拽调宽、折叠成图标栏、左右换边；卸载时可选择是否删除本地数据
+- 数据位置迁移：复制到新目录并自动重启，成功后删除旧目录
+- 侧栏可拖拽调宽、折叠成图标栏、左右换边；安装时可输入新父目录，卸载时可选择是否删除本地数据（含自定义位置）
 
 源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.30.12**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
 
-安装版直接运行 `bsub-desktop-setup-*.exe`，绿色版解压后双击 `B站字幕助手.exe`。数据默认在 `%APPDATA%\bsub-desktop`（设置、字幕库、登录态、缓存、日志）；卸载页默认保留数据，勾选后才会删除。
+安装版直接运行 `bsub-desktop-setup-*.exe`，绿色版解压后双击 `B站字幕助手.exe`。数据默认在 `%APPDATA%\bsub-desktop`（设置、字幕库、登录态、缓存、日志）；可在设置里迁移到其他目录，迁移成功后旧目录会自动删除。卸载页默认保留数据，勾选后才会删除（包括自定义位置）。
 
 开发与打包：
 
@@ -93,7 +98,7 @@ npm run typecheck
 npm run dist                 # NSIS 安装包 + 绿色 zip + latest.yml
 ```
 
-详见 [`desktop/README.md`](desktop/README.md)、[`desktop/docs/PARITY.md`](desktop/docs/PARITY.md)、[`desktop/docs/PLATFORMS.md`](desktop/docs/PLATFORMS.md)。
+详见 [`desktop/README.md`](desktop/README.md)、[`desktop/docs/ARCHITECTURE.md`](desktop/docs/ARCHITECTURE.md)、[`desktop/docs/PARITY.md`](desktop/docs/PARITY.md)、[`desktop/docs/PLATFORMS.md`](desktop/docs/PLATFORMS.md)。
 
 ## 快速开始
 
