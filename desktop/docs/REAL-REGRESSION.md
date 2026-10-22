@@ -1,6 +1,6 @@
 # 真实回归记录
 
-> 版本：0.30.7（源码；最新 Release 为 v2.17.7 / 0.30.6）
+> 版本：0.30.7（合并 Release v2.17.8）
 > 日期：2026-10-22
 > 环境：Windows、DeepSeek API Key、SiliconFlow ASR Key、B 站已登录（`SESSDATA` 存在）。
 
