@@ -66,6 +66,7 @@ import type {
   LibraryTag,
   LibraryCollection,
   LibraryNote,
+  CollectionSummary,
   JobRecord,
   GlobalSearchResult
 } from '../shared/types';
@@ -83,6 +84,7 @@ import {
   deleteHistoryItem,
   deleteTag,
   finishJob,
+  getCollectionSummary,
   getJob,
   getLibraryDetail,
   getNote,
@@ -111,6 +113,7 @@ import {
   updateJob,
   updateJobItem
 } from './library';
+import { summarizeCollection } from './collectionSummary';
 import {
   activePlatform,
   isMaskedSecret,
@@ -989,6 +992,73 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: { removed } };
       } catch (error) {
         return failure<{ removed: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'collection:summary',
+    (_event, collectionId: number): Result<CollectionSummary | null> => {
+      try {
+        return { ok: true, data: getCollectionSummary(Number(collectionId)) };
+      } catch (error) {
+        return failure<CollectionSummary | null>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'collection:summarize',
+    async (_event, collectionId: number): Promise<Result<{ requestId: string }>> => {
+      try {
+        const id = Number(collectionId);
+        const collection = listCollections().find((item) => item.id === id);
+        if (!collection) return { ok: false, error: '合集不存在' };
+        if (!collection.count) return { ok: false, error: '合集里还没有视频' };
+
+        const requestId = randomUUID();
+        const controller = new AbortController();
+        aiControllers.set(requestId, controller);
+        trackJob(() =>
+          createJob({
+            id: requestId,
+            type: 'collection-summary',
+            title: `合集对比 · ${collection.name}`,
+            meta: { collectionId: id }
+          })
+        );
+
+        void (async () => {
+          try {
+            const summary = await summarizeCollection(id, controller.signal, (status) => {
+              trackJob(() => updateJob(requestId, { message: status }));
+            });
+            trackJob(() =>
+              finishJob(
+                requestId,
+                'done',
+                null,
+                `完成 · ${summary.content.length.toLocaleString('zh-CN')} 字`
+              )
+            );
+            send('collection:summary-done', { collectionId: id, summary });
+          } catch (error) {
+            const message = controller.signal.aborted
+              ? '已取消'
+              : (error as Error)?.message || String(error);
+            console.warn('[collection-summary] failed:', message);
+            trackJob(() =>
+              finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+            );
+            send('collection:summary-error', { collectionId: id, error: message });
+          } finally {
+            aiControllers.delete(requestId);
+          }
+        })();
+
+        return { ok: true, data: { requestId } };
+      } catch (error) {
+        return failure<{ requestId: string }>(error);
       }
     }
   );

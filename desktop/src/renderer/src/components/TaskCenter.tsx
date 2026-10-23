@@ -8,7 +8,8 @@ export const JOB_TYPE_LABEL: Record<JobType, string> = {
   translate: '翻译',
   optimize: '校对',
   'batch-summary': '批量总结',
-  'url-batch': '链接批量'
+  'url-batch': '链接批量',
+  'collection-summary': '合集对比'
 };
 
 export const JOB_STATUS_LABEL: Record<JobStatus, string> = {

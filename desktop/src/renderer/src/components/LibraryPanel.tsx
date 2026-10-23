@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ExternalLink, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
+  CollectionSummary,
   LibraryCollection,
   LibraryDetail,
   LibraryList,
@@ -120,6 +121,10 @@ export function LibraryPanel() {
   const [bulkName, setBulkName] = useState('');
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const [summaryCollection, setSummaryCollection] = useState<LibraryCollection | null>(null);
+  const [collectionSummary, setCollectionSummary] = useState<CollectionSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -210,6 +215,25 @@ export function LibraryPanel() {
     setNoteNotice('');
     setNotePreview(false);
   }, [detail?.video.id]);
+
+  useEffect(() => {
+    const collectionId = summaryCollection?.id;
+    if (!collectionId) return;
+    const offDone = window.bsub.onCollectionSummaryDone((event) => {
+      if (event.collectionId !== collectionId) return;
+      setCollectionSummary(event.summary);
+      setSummaryLoading(false);
+    });
+    const offError = window.bsub.onCollectionSummaryError((event) => {
+      if (event.collectionId !== collectionId) return;
+      setSummaryError(event.error);
+      setSummaryLoading(false);
+    });
+    return () => {
+      offDone();
+      offError();
+    };
+  }, [summaryCollection?.id]);
 
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
   useEffect(() => {
@@ -503,6 +527,27 @@ export function LibraryPanel() {
       if (selectedId != null) void fetchDetail(selectedId);
     } else {
       setError(response.error);
+    }
+  };
+
+  const openCollectionSummary = async (collection: LibraryCollection) => {
+    setSummaryCollection(collection);
+    setSummaryError('');
+    setSummaryLoading(false);
+    setCollectionSummary(null);
+    const response = await window.bsub.getCollectionSummary(collection.id);
+    if (response.ok) setCollectionSummary(response.data);
+    else setSummaryError(response.error);
+  };
+
+  const generateCollectionSummary = async () => {
+    if (!summaryCollection) return;
+    setSummaryLoading(true);
+    setSummaryError('');
+    const response = await window.bsub.summarizeCollection(summaryCollection.id);
+    if (!response.ok) {
+      setSummaryError(response.error);
+      setSummaryLoading(false);
     }
   };
 
@@ -1329,6 +1374,13 @@ export function LibraryPanel() {
                       </span>
                       <button
                         className="mini-btn"
+                        disabled={item.count === 0}
+                        onClick={() => void openCollectionSummary(item)}
+                      >
+                        对比
+                      </button>
+                      <button
+                        className="mini-btn"
                         onClick={() => {
                           setRenameId(item.id);
                           setRenameDraft(item.name);
@@ -1353,6 +1405,59 @@ export function LibraryPanel() {
             <div className="confirm-actions">
               <button className="mini-btn" onClick={() => setManageOpen(false)}>
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {summaryCollection && (
+        <div
+          className="confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSummaryCollection(null);
+          }}
+        >
+          <div
+            className="confirm-card collection-summary"
+            role="dialog"
+            aria-label={`合集对比 ${summaryCollection.name}`}
+          >
+            <div className="confirm-title">合集对比 · {summaryCollection.name}</div>
+            <div className="collection-summary-body">
+              {summaryLoading && !collectionSummary && (
+                <div className="status-line">
+                  <Loader2 size={13} className="spin" />
+                  正在生成对比总结…
+                </div>
+              )}
+              {collectionSummary ? (
+                <Markdown content={collectionSummary.content} />
+              ) : (
+                !summaryLoading && <div className="panel-empty">还没有对比总结</div>
+              )}
+              {summaryLoading && collectionSummary && (
+                <div className="panel-hint">正在重新生成…</div>
+              )}
+              {summaryError && <div className="status-line error">{summaryError}</div>}
+              {collectionSummary && (
+                <div className="panel-hint">
+                  模型 {collectionSummary.model || 'AI'} · {collectionSummary.itemCount} 个视频 ·
+                  {' '}
+                  {fmtDateTime(collectionSummary.updatedAt)}
+                </div>
+              )}
+            </div>
+            <div className="confirm-actions">
+              <button className="mini-btn" onClick={() => setSummaryCollection(null)}>
+                关闭
+              </button>
+              <button
+                className="mini-btn primary"
+                disabled={summaryLoading}
+                onClick={() => void generateCollectionSummary()}
+              >
+                {summaryLoading ? '生成中…' : collectionSummary ? '重新生成' : '生成对比'}
               </button>
             </div>
           </div>

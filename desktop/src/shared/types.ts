@@ -160,6 +160,14 @@ export interface LibraryCollection {
   count: number;
 }
 
+export interface CollectionSummary {
+  collectionId: number;
+  content: string;
+  model: string;
+  itemCount: number;
+  updatedAt: number;
+}
+
 export interface LibraryStats {
   videos: number;
   tracks: number;
@@ -216,7 +224,8 @@ export type JobType =
   | 'translate'
   | 'optimize'
   | 'batch-summary'
-  | 'url-batch';
+  | 'url-batch'
+  | 'collection-summary';
 
 export type JobStatus = 'running' | 'paused' | 'done' | 'failed' | 'cancelled';
 

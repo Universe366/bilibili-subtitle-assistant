@@ -4253,3 +4253,19 @@ button:disabled {
 .note-foot {
   flex-wrap: wrap;
 }
+
+/* ---------- 合集对比 ---------- */
+.collection-summary {
+  max-height: 78vh;
+}
+
+.collection-summary-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 11.5px;
+}
+
+.collection-manage-row {
+  flex-wrap: wrap;
+}

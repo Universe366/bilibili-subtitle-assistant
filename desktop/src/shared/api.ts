@@ -65,6 +65,7 @@ import type {
   LibraryTag,
   LibraryCollection,
   LibraryNote,
+  CollectionSummary,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -113,6 +114,14 @@ export interface BsubApi {
   ): Promise<Result<{ collections: string[] }>>;
   renameCollection(id: number, name: string): Promise<Result<{ renamed: boolean }>>;
   deleteCollection(id: number): Promise<Result<{ removed: boolean }>>;
+  getCollectionSummary(collectionId: number): Promise<Result<CollectionSummary | null>>;
+  summarizeCollection(collectionId: number): Promise<Result<{ requestId: string }>>;
+  onCollectionSummaryDone(
+    cb: (event: { collectionId: number; summary: CollectionSummary }) => void
+  ): () => void;
+  onCollectionSummaryError(
+    cb: (event: { collectionId: number; error: string }) => void
+  ): () => void;
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
   globalSearch(query: string): Promise<Result<GlobalSearchResult>>;
   onSearchRequest(cb: () => void): () => void;

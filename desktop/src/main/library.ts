@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
+  CollectionSummary,
   GlobalSearchResult,
   JobItem,
   JobItemStatus,
@@ -130,6 +131,14 @@ CREATE TABLE IF NOT EXISTS collection_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_collection_items_video ON collection_items(video_id);
+
+CREATE TABLE IF NOT EXISTS collection_summaries (
+  collection_id INTEGER PRIMARY KEY REFERENCES collections(id) ON DELETE CASCADE,
+  content_md TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  item_count INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
@@ -783,6 +792,143 @@ export function deleteCollection(id: number): boolean {
   const database = requireDb();
   const result = database.prepare('DELETE FROM collections WHERE id = ?').run(Number(id));
   return toNumber(result.changes) > 0;
+}
+
+export interface CollectionMaterialBlock {
+  videoId: number;
+  title: string;
+  owner: string;
+  duration: number;
+  source: 'summary' | 'transcript';
+  text: string;
+}
+
+export interface CollectionMaterial {
+  id: number;
+  name: string;
+  itemCount: number;
+  blocks: CollectionMaterialBlock[];
+}
+
+const TRANSCRIPT_BUDGET = 12000;
+const TOTAL_BUDGET = 90000;
+
+export function getCollectionMaterial(collectionId: number): CollectionMaterial {
+  const database = requireDb();
+  const id = Number(collectionId);
+  const collection = database.prepare('SELECT id, name FROM collections WHERE id = ?').get(id) as
+    | { id: number; name: string }
+    | undefined;
+  if (!collection) throw new Error('合集不存在');
+
+  const rows = database
+    .prepare(
+      `SELECT v.id, v.title, v.owner, v.duration
+       FROM collection_items ci JOIN videos v ON v.id = ci.video_id
+       WHERE ci.collection_id = ?
+       ORDER BY ci.added_at ASC, v.id ASC`
+    )
+    .all(id) as Array<Record<string, unknown>>;
+
+  const blocks: CollectionMaterialBlock[] = [];
+  let remaining = TOTAL_BUDGET;
+
+  for (const row of rows) {
+    if (remaining <= 0) break;
+    const videoId = toNumber(row.id);
+    const summary = database
+      .prepare(
+        `SELECT content_md FROM summaries WHERE video_id = ?
+         ORDER BY updated_at DESC LIMIT 1`
+      )
+      .get(videoId) as { content_md: string } | undefined;
+
+    let source: CollectionMaterialBlock['source'] = 'summary';
+    let text = summary ? String(summary.content_md || '').trim() : '';
+    if (!text) {
+      source = 'transcript';
+      const lines = database
+        .prepare(
+          `SELECT sg.text FROM segments sg
+           WHERE sg.track_id = (
+             SELECT id FROM tracks WHERE video_id = ? ORDER BY line_count DESC LIMIT 1
+           )
+           ORDER BY sg.start_ms ASC`
+        )
+        .all(videoId) as Array<{ text: string }>;
+      text = lines.map((line) => String(line.text || '')).join('\n').trim();
+    }
+    if (!text) continue;
+    const budget = Math.min(TRANSCRIPT_BUDGET, remaining);
+    if (text.length > budget) {
+      text = `${text.slice(0, budget - 200)}\n…（内容过长，已截断）`;
+    }
+    remaining -= text.length;
+    blocks.push({
+      videoId,
+      title: String(row.title || ''),
+      owner: String(row.owner || ''),
+      duration: toNumber(row.duration),
+      source,
+      text
+    });
+  }
+
+  return {
+    id,
+    name: String(collection.name || ''),
+    itemCount: blocks.length,
+    blocks
+  };
+}
+
+export function getCollectionSummary(collectionId: number): CollectionSummary | null {
+  const database = requireDb();
+  const row = database
+    .prepare(
+      `SELECT collection_id, content_md, model, item_count, updated_at
+       FROM collection_summaries WHERE collection_id = ?`
+    )
+    .get(Number(collectionId)) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    collectionId: toNumber(row.collection_id),
+    content: String(row.content_md || ''),
+    model: String(row.model || ''),
+    itemCount: toNumber(row.item_count),
+    updatedAt: toNumber(row.updated_at)
+  };
+}
+
+export function saveCollectionSummary(
+  collectionId: number,
+  content: string,
+  model: string,
+  itemCount: number
+): CollectionSummary {
+  const database = requireDb();
+  const id = Number(collectionId);
+  const now = Date.now();
+  const text = String(content || '').trim();
+  if (!text) throw new Error('对比总结为空');
+  database
+    .prepare(
+      `INSERT INTO collection_summaries (collection_id, content_md, model, item_count, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(collection_id) DO UPDATE SET
+         content_md = excluded.content_md,
+         model = excluded.model,
+         item_count = excluded.item_count,
+         updated_at = excluded.updated_at`
+    )
+    .run(id, text, String(model || ''), Number(itemCount) || 0, now);
+  return {
+    collectionId: id,
+    content: text,
+    model: String(model || ''),
+    itemCount: Number(itemCount) || 0,
+    updatedAt: now
+  };
 }
 
 function sanitizeQuery(input: string): string {

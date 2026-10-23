@@ -67,6 +67,7 @@ import type {
   LibraryTag,
   LibraryCollection,
   LibraryNote,
+  CollectionSummary,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -168,6 +169,19 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:collection-delete', id) as Promise<
       Result<{ removed: boolean }>
     >,
+  getCollectionSummary: (collectionId: number) =>
+    ipcRenderer.invoke('collection:summary', collectionId) as Promise<
+      Result<CollectionSummary | null>
+    >,
+  summarizeCollection: (collectionId: number) =>
+    ipcRenderer.invoke('collection:summarize', collectionId) as Promise<
+      Result<{ requestId: string }>
+    >,
+  onCollectionSummaryDone: (
+    cb: (event: { collectionId: number; summary: CollectionSummary }) => void
+  ) => on<{ collectionId: number; summary: CollectionSummary }>('collection:summary-done', cb),
+  onCollectionSummaryError: (cb: (event: { collectionId: number; error: string }) => void) =>
+    on<{ collectionId: number; error: string }>('collection:summary-error', cb),
   searchLibrary: (query: string) =>
     ipcRenderer.invoke('library:search', query) as Promise<Result<LibrarySearchResult>>,
   globalSearch: (query: string) =>
