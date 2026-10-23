@@ -70,6 +70,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  CollectionResolveResult,
   ExportRecord,
   JobRecord,
   SummaryVersion,
@@ -93,6 +94,7 @@ export interface BsubApi {
   onTabs(cb: (tabs: TabInfo[]) => void): () => void;
 
   getPageInfo(): Promise<Result<PageInfo>>;
+  resolveCollection(input: string): Promise<Result<CollectionResolveResult>>;
   getSubtitles(expectSignature?: string): Promise<Result<SubtitleBundle>>;
   triggerSubtitleMenu(): Promise<Result<boolean>>;
   getTrackBody(url: string): Promise<Result<TrackBody>>;
@@ -114,6 +116,7 @@ export interface BsubApi {
   bulkCollection(videoIds: number[], name: string): Promise<Result<{ linked: number }>>;
   bulkRemove(videoIds: number[]): Promise<Result<{ removed: number }>>;
   listCollections(): Promise<Result<LibraryCollection[]>>;
+  createCollection(name: string): Promise<Result<LibraryCollection>>;
   addToCollection(videoId: number, name: string): Promise<Result<{ collections: string[] }>>;
   removeFromCollection(
     videoId: number,

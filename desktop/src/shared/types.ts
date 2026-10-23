@@ -198,6 +198,22 @@ export interface ExportRecord {
   createdAt: number;
 }
 
+export interface CollectionResolveItem {
+  url: string;
+  title: string;
+  bvid: string;
+  cid: number | null;
+  page: number | null;
+}
+
+export interface CollectionResolveResult {
+  kind: 'season' | 'pages' | 'single';
+  title: string;
+  total: number;
+  items: CollectionResolveItem[];
+  sourceUrl: string;
+}
+
 export interface LibraryStats {
   videos: number;
   tracks: number;

@@ -224,6 +224,7 @@ export function SubtitlesPanel({
   const [follow, setFollow] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [collectionImporting, setCollectionImporting] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [asrRunning, setAsrRunning] = useState(false);
   const [asrProgress, setAsrProgress] = useState(0);
@@ -1122,6 +1123,33 @@ export function SubtitlesPanel({
     }
   };
 
+  const importCollection = async () => {
+    if (!info?.url || collectionImporting) return;
+    setCollectionImporting(true);
+    setSaveMessage('');
+    try {
+      const resolved = await window.bsub.resolveCollection(info.url);
+      if (!resolved.ok) {
+        setSaveMessage(`识别失败：${resolved.error}`);
+        return;
+      }
+      if (resolved.data.total <= 1) {
+        setSaveMessage('当前视频不在合集或多 P 里，直接用「入库」即可');
+        return;
+      }
+      const urls = resolved.data.items.map((item) => item.url).join('\n');
+      const response = await window.bsub.batchUrls([urls], false);
+      setSaveMessage(
+        response.ok
+          ? `已开始导入《${resolved.data.title}》共 ${resolved.data.total} 个，进度见底部任务`
+          : `导入失败：${response.error}`
+      );
+    } finally {
+      setCollectionImporting(false);
+      window.setTimeout(() => setSaveMessage(''), 6000);
+    }
+  };
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -1134,6 +1162,14 @@ export function SubtitlesPanel({
             onClick={() => void ingest()}
           >
             {saving ? <Loader2 size={12} className="spin" /> : '入库'}
+          </button>
+          <button
+            className="mini-btn"
+            disabled={!info?.url || collectionImporting}
+            title="把当前视频所在的 UP 合集或多 P 全部入库（不自动总结）"
+            onClick={() => void importCollection()}
+          >
+            {collectionImporting ? <Loader2 size={12} className="spin" /> : '合集'}
           </button>
           <button
             className="mini-btn"

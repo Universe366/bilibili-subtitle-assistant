@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ExternalLink, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
+  CollectionResolveResult,
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
@@ -126,13 +127,20 @@ export function LibraryPanel() {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importSummary, setImportSummary] = useState(true);
+  const [resolving, setResolving] = useState(false);
+  const [resolved, setResolved] = useState<CollectionResolveResult | null>(null);
+  const [resolveNotice, setResolveNotice] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkKind, setBulkKind] = useState<'tag' | 'collection'>('tag');
   const [bulkName, setBulkName] = useState('');
   const [bulkInputOpen, setBulkInputOpen] = useState(false);
+  const [bulkCollectionOpen, setBulkCollectionOpen] = useState(false);
+  const [bulkCollectionName, setBulkCollectionName] = useState('');
   const [bulkConcurrency, setBulkConcurrency] = useState(2);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [newCollectionOpen, setNewCollectionOpen] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
   const [notice, setNotice] = useState('');
   const [summaryCollection, setSummaryCollection] = useState<LibraryCollection | null>(null);
   const [collectionSummary, setCollectionSummary] = useState<CollectionSummary | null>(null);
@@ -546,6 +554,36 @@ export function LibraryPanel() {
     flash(`已开始批量总结 ${ids.length} 个视频，进度见底部任务按钮`);
   };
 
+  const createStandaloneCollection = async () => {
+    const name = newCollectionName.trim();
+    if (!name) return;
+    const response = await window.bsub.createCollection(name);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    await loadCollections();
+    setFiltersOpen(true);
+    setNewCollectionOpen(false);
+    setNewCollectionName('');
+    flash(`已创建合集「${response.data.name}」，在「选择」模式里可以把视频加进来`);
+  };
+
+  const addSelectedToCollection = async (name: string) => {
+    const clean = name.trim();
+    if (!clean || !selectedIds.size) return;
+    const ids = [...selectedIds];
+    const response = await window.bsub.bulkCollection(ids, clean);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    await loadCollections();
+    setBulkCollectionOpen(false);
+    setBulkCollectionName('');
+    flash(`已把 ${response.data.linked} 个视频加入合集「${clean}」`);
+  };
+
   const startImportLinks = async () => {
     if (!importText.trim()) return;
     const response = await window.bsub.batchUrls([importText], importSummary);
@@ -555,7 +593,45 @@ export function LibraryPanel() {
     }
     setImportOpen(false);
     setImportText('');
+    setResolved(null);
     flash('已开始抓取链接，进度见底部任务按钮');
+  };
+
+  const resolveImportLinks = async () => {
+    const first = importText.trim().split(/\r?\n/)[0];
+    if (!first) return;
+    setResolving(true);
+    setResolveNotice('');
+    setResolved(null);
+    try {
+      const response = await window.bsub.resolveCollection(first);
+      if (!response.ok) {
+        setResolveNotice(`识别失败：${response.error}`);
+        return;
+      }
+      if (response.data.total <= 1) {
+        setResolveNotice('这个链接不是合集或多 P 视频，直接点「开始」导入即可');
+        return;
+      }
+      setResolved(response.data);
+      setResolveNotice('');
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const importResolved = async () => {
+    if (!resolved) return;
+    const urls = resolved.items.map((item) => item.url).join('\n');
+    const response = await window.bsub.batchUrls([urls], importSummary);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    flash(`已开始导入《${resolved.title}》共 ${resolved.total} 个，进度见底部任务按钮`);
+    setImportOpen(false);
+    setImportText('');
+    setResolved(null);
   };
 
   const toggleSelect = (id: number) => {
@@ -1170,6 +1246,13 @@ export function LibraryPanel() {
       <div className="panel-toolbar">
         <div className="panel-title">库</div>
         <div className="toolbar-actions">
+          <button
+            className="mini-btn"
+            title="新建一个合集，然后在「选择」模式里加视频"
+            onClick={() => setNewCollectionOpen(true)}
+          >
+            ＋合集
+          </button>
           <button className="mini-btn" onClick={() => setImportOpen(true)}>
             导入链接
           </button>
@@ -1319,7 +1402,7 @@ export function LibraryPanel() {
           <button className="mini-btn" onClick={() => openBulkInput('tag')}>
             加标签
           </button>
-          <button className="mini-btn" onClick={() => openBulkInput('collection')}>
+          <button className="mini-btn" onClick={() => setBulkCollectionOpen(true)}>
             加合集
           </button>
           <button
@@ -1574,8 +1657,39 @@ export function LibraryPanel() {
               value={importText}
               placeholder="https://www.bilibili.com/video/BV1xx411c7mD"
               spellCheck={false}
-              onChange={(event) => setImportText(event.target.value)}
+              onChange={(event) => {
+                setImportText(event.target.value);
+                setResolved(null);
+                setResolveNotice('');
+              }}
             />
+            <div className="import-resolve-row">
+              <button
+                className="mini-btn"
+                disabled={!importText.trim() || resolving}
+                onClick={() => void resolveImportLinks()}
+              >
+                {resolving ? '识别中…' : '识别合集 / 多 P'}
+              </button>
+              {resolveNotice && <span className="import-resolve-note">{resolveNotice}</span>}
+            </div>
+            {resolved && (
+              <div className="import-resolve-card">
+                <div className="import-resolve-title">
+                  《{resolved.title}》 ·{' '}
+                  {resolved.kind === 'season' ? 'UP 主合集' : '多 P 视频'} · 共 {resolved.total} 个
+                </div>
+                <div className="import-resolve-list">
+                  {resolved.items.slice(0, 5).map((item) => (
+                    <span key={`${item.bvid}-${item.page ?? 0}`}>{item.title}</span>
+                  ))}
+                  {resolved.items.length > 5 && <span>…</span>}
+                </div>
+                <button className="mini-btn primary" onClick={() => void importResolved()}>
+                  导入全部 {resolved.total} 个
+                </button>
+              </div>
+            )}
             <label className="settings-check">
               <input
                 type="checkbox"
@@ -1594,6 +1708,100 @@ export function LibraryPanel() {
                 onClick={() => void startImportLinks()}
               >
                 开始
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {newCollectionOpen && (
+        <div
+          className="confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setNewCollectionOpen(false);
+          }}
+        >
+          <div className="confirm-card" role="dialog" aria-label="新建合集">
+            <div className="confirm-title">新建合集</div>
+            <div className="confirm-desc">
+              先给合集起个名字；创建后在「选择」模式里勾视频，点「加合集」加入。
+            </div>
+            <input
+              className="tag-input collection-name-input"
+              autoFocus
+              value={newCollectionName}
+              placeholder="例如：课程、待看、项目资料"
+              onChange={(event) => setNewCollectionName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void createStandaloneCollection();
+                }
+              }}
+            />
+            <div className="confirm-actions">
+              <button className="mini-btn" onClick={() => setNewCollectionOpen(false)}>
+                取消
+              </button>
+              <button
+                className="mini-btn primary"
+                disabled={!newCollectionName.trim()}
+                onClick={() => void createStandaloneCollection()}
+              >
+                创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkCollectionOpen && (
+        <div
+          className="confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setBulkCollectionOpen(false);
+          }}
+        >
+          <div className="confirm-card" role="dialog" aria-label="加入合集">
+            <div className="confirm-title">把选中的 {selectedIds.size} 个视频加入合集</div>
+            <div className="collection-pick-list">
+              {allCollections.map((item) => (
+                <button
+                  key={item.id}
+                  className="mini-btn"
+                  onClick={() => void addSelectedToCollection(item.name)}
+                >
+                  {item.name}（{item.count}）
+                </button>
+              ))}
+              {!allCollections.length && (
+                <div className="panel-hint">还没有合集，直接在下面新建一个。</div>
+              )}
+            </div>
+            <div className="collection-pick-new">
+              <input
+                className="tag-input collection-name-input"
+                value={bulkCollectionName}
+                placeholder="新建合集名称"
+                onChange={(event) => setBulkCollectionName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void addSelectedToCollection(bulkCollectionName);
+                  }
+                }}
+              />
+              <button
+                className="mini-btn primary"
+                disabled={!bulkCollectionName.trim()}
+                onClick={() => void addSelectedToCollection(bulkCollectionName)}
+              >
+                新建并加入
+              </button>
+            </div>
+            <div className="confirm-actions">
+              <button className="mini-btn" onClick={() => setBulkCollectionOpen(false)}>
+                取消
               </button>
             </div>
           </div>

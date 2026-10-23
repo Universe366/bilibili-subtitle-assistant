@@ -4307,3 +4307,66 @@ button:disabled {
 .task-label {
   font-size: 10px;
 }
+
+/* ---------- 合集导入 ---------- */
+.import-resolve-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.import-resolve-note {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.import-resolve-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.import-resolve-title {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.import-resolve-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.import-resolve-list span {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.collection-name-input {
+  width: 100%;
+  height: 26px;
+  border-style: solid;
+  border-radius: 8px;
+}
+
+.collection-pick-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.collection-pick-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

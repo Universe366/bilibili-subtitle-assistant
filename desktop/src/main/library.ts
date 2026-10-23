@@ -671,6 +671,20 @@ export function addTagToVideos(videoIds: number[], name: string): number {
   }
 }
 
+export function createCollection(name: string): LibraryCollection {
+  const database = requireDb();
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) throw new Error('合集名称不能为空');
+  database
+    .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
+    .run(clean, Date.now());
+  const row = database.prepare('SELECT id, name FROM collections WHERE name = ?').get(clean) as
+    | { id: number; name: string }
+    | undefined;
+  if (!row) throw new Error('合集创建失败');
+  return { id: Number(row.id), name: String(row.name || clean), count: 0 };
+}
+
 export function addCollectionToVideos(videoIds: number[], name: string): number {
   const database = requireDb();
   const clean = String(name || '').trim().slice(0, 40);

@@ -71,6 +71,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  CollectionResolveResult,
   ExportRecord,
   JobRecord,
   GlobalSearchResult
@@ -85,6 +86,7 @@ import {
   clearExports,
   clearFinishedJobs,
   clearHistory,
+  createCollection,
   createJob,
   createJobItem,
   deleteCollection,
@@ -128,6 +130,7 @@ import {
   updateJobItem
 } from './library';
 import { summarizeCollection } from './collectionSummary';
+import { resolveBilibiliCollection } from './biliCollection';
 import {
   activePlatform,
   isMaskedSecret,
@@ -685,6 +688,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle(
+    'source:resolve-collection',
+    async (_event, input: string): Promise<Result<CollectionResolveResult>> => {
+      try {
+        return { ok: true, data: await resolveBilibiliCollection(String(input || '')) };
+      } catch (error) {
+        return failure<CollectionResolveResult>(error);
+      }
+    }
+  );
+
   ipcMain.handle('page:subtitles', async (_event, expectSignature?: string): Promise<Result<SubtitleBundle>> => {
     const wc = tabs.activeWebContents();
     if (!wc) return { ok: false, error: '没有打开的页面' };
@@ -1025,6 +1039,19 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: { removed } };
       } catch (error) {
         return failure<{ removed: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:collection-create',
+    (_event, name: string): Result<LibraryCollection> => {
+      try {
+        const collection = createCollection(String(name || ''));
+        send('library:changed', null);
+        return { ok: true, data: collection };
+      } catch (error) {
+        return failure<LibraryCollection>(error);
       }
     }
   );

@@ -72,6 +72,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  CollectionResolveResult,
   ExportRecord,
   JobRecord,
   SummaryVersion,
@@ -112,6 +113,10 @@ const api: BsubApi = {
   onTabs: (cb: (tabs: TabInfo[]) => void) => on<TabInfo[]>('tabs:changed', cb),
 
   getPageInfo: () => ipcRenderer.invoke('page:info') as Promise<Result<PageInfo>>,
+  resolveCollection: (input: string) =>
+    ipcRenderer.invoke('source:resolve-collection', input) as Promise<
+      Result<CollectionResolveResult>
+    >,
   getSubtitles: (expectSignature?: string) =>
     ipcRenderer.invoke('page:subtitles', expectSignature) as Promise<Result<SubtitleBundle>>,
   triggerSubtitleMenu: () =>
@@ -162,6 +167,10 @@ const api: BsubApi = {
     >,
   listCollections: () =>
     ipcRenderer.invoke('library:collections') as Promise<Result<LibraryCollection[]>>,
+  createCollection: (name: string) =>
+    ipcRenderer.invoke('library:collection-create', name) as Promise<
+      Result<LibraryCollection>
+    >,
   addToCollection: (videoId: number, name: string) =>
     ipcRenderer.invoke('library:collection-add', { videoId, name }) as Promise<
       Result<{ collections: string[] }>
