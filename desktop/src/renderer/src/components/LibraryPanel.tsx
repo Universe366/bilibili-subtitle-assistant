@@ -725,7 +725,7 @@ export function LibraryPanel() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索标题、UP 或字幕…"
+          placeholder="搜索标题、UP、标签、合集或字幕…"
           spellCheck={false}
         />
       </div>

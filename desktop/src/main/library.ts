@@ -638,11 +638,23 @@ function ftsExpression(terms: string[]): string {
   return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' AND ');
 }
 
-/** 标题 / UP 名命中：和字幕命中分开返回，避免用户搜标题时得到「没有匹配的字幕」。 */
+/** 标题 / UP / 标签 / 合集命中：和字幕命中分开返回，避免搜标题时得到「没有匹配的字幕」。 */
 function searchVideoRows(database: DatabaseSync, terms: string[]): LibraryVideo[] {
   if (!terms.length) return [];
-  const where = terms.map(() => '(v.title LIKE ? OR v.owner LIKE ?)').join(' AND ');
-  const params = terms.flatMap((term) => [`%${term}%`, `%${term}%`]);
+  const where = terms
+    .map(
+      () =>
+        `(v.title LIKE ? OR v.owner LIKE ?
+          OR v.id IN (SELECT vt.video_id FROM video_tags vt
+                      JOIN tags tg ON tg.id = vt.tag_id WHERE tg.name LIKE ?)
+          OR v.id IN (SELECT ci.video_id FROM collection_items ci
+                      JOIN collections cl ON cl.id = ci.collection_id WHERE cl.name LIKE ?))`
+    )
+    .join(' AND ');
+  const params = terms.flatMap((term) => {
+    const pattern = `%${term}%`;
+    return [pattern, pattern, pattern, pattern];
+  });
   const rows = database
     .prepare(`${VIDEO_COLUMNS} WHERE ${where} ORDER BY v.updated_at DESC LIMIT 20`)
     .all(...params) as Array<Record<string, unknown>>;
