@@ -72,3 +72,5 @@ shizi-extension/
    扩展目录 `shizi-extension/`。旧 `bsub-desktop` 只允许出现在数据迁移兼容代码/文档中。
 5. **改完跑**：`cd desktop && npm run typecheck && npm run lint && npm test && npm run smoke`；
    插件改完跑 `cd verify && node bundle.js && node panel-test.js`。
+6. **GitHub Releases 只保留 shizi 时代版本**（v2.18.3 起，对应桌面 0.33+）；
+   更早的 Release 已清理，tag 仍保留用于代码追溯。
