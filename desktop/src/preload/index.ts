@@ -146,6 +146,7 @@ const api: BsubApi = {
   globalSearch: (query: string) =>
     ipcRenderer.invoke('search:global', query) as Promise<Result<GlobalSearchResult>>,
   onSearchRequest: (cb: () => void) => on<null>('app:search', () => cb()),
+  onTasksRequest: (cb: () => void) => on<null>('app:tasks', () => cb()),
   removeLibrary: (id: number) =>
     ipcRenderer.invoke('library:remove', id) as Promise<Result<{ removed: boolean }>>,
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),

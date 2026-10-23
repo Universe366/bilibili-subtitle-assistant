@@ -106,6 +106,7 @@ export interface BsubApi {
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
   globalSearch(query: string): Promise<Result<GlobalSearchResult>>;
   onSearchRequest(cb: () => void): () => void;
+  onTasksRequest(cb: () => void): () => void;
   removeLibrary(id: number): Promise<Result<{ removed: boolean }>>;
   onLibraryChanged(cb: () => void): () => void;
 

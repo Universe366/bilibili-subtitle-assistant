@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { app, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeTheme, Notification, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -65,6 +65,7 @@ import type {
   LibrarySort,
   LibraryTag,
   LibraryCollection,
+  JobRecord,
   GlobalSearchResult
 } from '../shared/types';
 import type { TabManager } from './tabs';
@@ -172,7 +173,56 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
   };
-  setJobsListener(() => send('jobs:changed', listJobs()));
+  // 长任务结束时如果窗口不在前台，用系统通知提醒；点击回到任务中心。
+  let trackedRunning = new Map<string, { title: string; createdAt: number }>();
+
+  const showJobNotification = (job: JobRecord) => {
+    try {
+      if (!Notification.isSupported() || win.isFocused()) return;
+      if (Date.now() - job.createdAt < 5000) return;
+      const status =
+        job.status === 'done' ? '完成' : job.status === 'cancelled' ? '已停止' : '失败';
+      const body = [job.message, job.error].filter(Boolean).join(' · ').slice(0, 180);
+      const notification = new Notification({
+        title: `任务${status}：${job.title}`,
+        body: body || '点击查看任务中心',
+        silent: false
+      });
+      notification.on('click', () => {
+        if (win.isDestroyed()) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        send('app:tasks', null);
+      });
+      notification.show();
+      console.log('[jobs] notified', job.id, job.status);
+    } catch (error) {
+      console.warn('[jobs] 通知失败:', (error as Error).message);
+    }
+  };
+
+  setJobsListener(() => {
+    const jobs = listJobs();
+    send('jobs:changed', jobs);
+
+    const nextRunning = new Map<string, { title: string; createdAt: number }>();
+    for (const job of jobs) {
+      if (job.status === 'running' || job.status === 'paused') {
+        nextRunning.set(job.id, { title: job.title, createdAt: job.createdAt });
+      }
+    }
+    if (!win.isFocused()) {
+      for (const [id, previous] of trackedRunning) {
+        if (nextRunning.has(id)) continue;
+        const job = jobs.find((item) => item.id === id);
+        if (!job || (job.status !== 'done' && job.status !== 'failed')) continue;
+        if (Date.now() - previous.createdAt < 5000) continue;
+        showJobNotification(job);
+      }
+    }
+    trackedRunning = nextRunning;
+  });
 
   const markJobUnfinished = (
     jobId: string,

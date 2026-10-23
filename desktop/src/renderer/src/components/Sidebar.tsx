@@ -106,6 +106,11 @@ export function Sidebar({
     };
   }, []);
 
+  useEffect(
+    () => window.bsub.onTasksRequest(() => setTaskOpen(true)),
+    []
+  );
+
   const activeJobCount = jobs.filter(
     (job) => job.status === 'running' || job.status === 'paused'
   ).length;
