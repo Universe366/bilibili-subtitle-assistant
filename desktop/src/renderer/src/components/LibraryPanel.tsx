@@ -122,10 +122,16 @@ export function LibraryPanel() {
   const [tagRenameName, setTagRenameName] = useState('');
   const [tagRenameDraft, setTagRenameDraft] = useState('');
   const [pendingTagDelete, setPendingTagDelete] = useState<LibraryTag | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importSummary, setImportSummary] = useState(true);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkKind, setBulkKind] = useState<'tag' | 'collection'>('tag');
   const [bulkName, setBulkName] = useState('');
+  const [bulkInputOpen, setBulkInputOpen] = useState(false);
+  const [bulkConcurrency, setBulkConcurrency] = useState(2);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [summaryCollection, setSummaryCollection] = useState<LibraryCollection | null>(null);
@@ -518,7 +524,38 @@ export function LibraryPanel() {
     setSelectMode(false);
     setSelectedIds(new Set());
     setBulkName('');
+    setBulkInputOpen(false);
     setBulkDeleteOpen(false);
+  };
+
+  const openBulkInput = (kind: 'tag' | 'collection') => {
+    setBulkKind(kind);
+    setBulkName('');
+    setBulkInputOpen(true);
+  };
+
+  const startBulkSummary = async () => {
+    if (!selectedIds.size) return;
+    const ids = [...selectedIds];
+    const response = await window.bsub.batchSummarize(ids, bulkConcurrency);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    exitSelect();
+    flash(`已开始批量总结 ${ids.length} 个视频，进度见底部任务按钮`);
+  };
+
+  const startImportLinks = async () => {
+    if (!importText.trim()) return;
+    const response = await window.bsub.batchUrls([importText], importSummary);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setImportOpen(false);
+    setImportText('');
+    flash('已开始抓取链接，进度见底部任务按钮');
   };
 
   const toggleSelect = (id: number) => {
@@ -545,6 +582,7 @@ export function LibraryPanel() {
     const label = bulkKind === 'tag' ? '标签' : '合集';
     flash(`已为 ${response.data.linked} 个条目添加${label}「${name}」`);
     setBulkName('');
+    setBulkInputOpen(false);
     await loadTags();
     await loadCollections();
   };
@@ -1132,21 +1170,19 @@ export function LibraryPanel() {
       <div className="panel-toolbar">
         <div className="panel-title">库</div>
         <div className="toolbar-actions">
-          <select
-            className="mini-select"
-            title="排序"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as LibrarySort)}
+          <button className="mini-btn" onClick={() => setImportOpen(true)}>
+            导入链接
+          </button>
+          <button
+            className={`mini-btn${
+              filtersOpen || tagFilter || collectionFilter ? ' is-active' : ''
+            }`}
+            onClick={() => setFiltersOpen((value) => !value)}
           >
-            {SORTS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            筛选
+          </button>
           <button
             className={`mini-btn${selectMode ? ' is-active' : ''}`}
-            title="多选：批量加标签/合集或删除"
             disabled={!list?.videos.length}
             onClick={() => {
               if (selectMode) exitSelect();
@@ -1156,7 +1192,7 @@ export function LibraryPanel() {
               }
             }}
           >
-            多选
+            {selectMode ? '取消' : '选择'}
           </button>
           <button className="icon-btn" title="刷新" onClick={() => void load()}>
             <RefreshCw size={13} className={loading ? 'spin' : ''} />
@@ -1174,8 +1210,20 @@ export function LibraryPanel() {
         />
       </div>
 
-      {(allTags.length > 0 || allCollections.length > 0) && (
+      {filtersOpen && (
         <div className="library-filters">
+          <select
+            className="mini-select"
+            title="排序"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as LibrarySort)}
+          >
+            {SORTS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           {allTags.length > 0 && (
             <select
               className="mini-select"
@@ -1211,6 +1259,31 @@ export function LibraryPanel() {
               管理
             </button>
           )}
+          <button
+            className="mini-btn"
+            onClick={() => {
+              setTagFilter('');
+              setCollectionFilter('');
+            }}
+          >
+            清除
+          </button>
+        </div>
+      )}
+
+      {!filtersOpen && (tagFilter || collectionFilter) && (
+        <div className="filter-summary">
+          {tagFilter && <span>标签：{tagFilter}</span>}
+          {collectionFilter && <span>合集：{collectionFilter}</span>}
+          <button
+            className="mini-btn"
+            onClick={() => {
+              setTagFilter('');
+              setCollectionFilter('');
+            }}
+          >
+            清除
+          </button>
         </div>
       )}
 
@@ -1224,32 +1297,30 @@ export function LibraryPanel() {
           >
             全选
           </button>
+          <button
+            className="mini-btn primary"
+            disabled={!selectedIds.size}
+            onClick={() => void startBulkSummary()}
+          >
+            批量总结
+          </button>
           <select
             className="mini-select"
-            value={bulkKind}
-            onChange={(event) => setBulkKind(event.target.value as 'tag' | 'collection')}
+            title="批量并发"
+            value={bulkConcurrency}
+            onChange={(event) => setBulkConcurrency(Number(event.target.value))}
           >
-            <option value="tag">标签</option>
-            <option value="collection">合集</option>
+            {[1, 2, 3, 4].map((value) => (
+              <option key={value} value={value}>
+                并发 {value}
+              </option>
+            ))}
           </select>
-          <input
-            className="tag-input bulk-name"
-            value={bulkName}
-            placeholder="名称，回车应用"
-            onChange={(event) => setBulkName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void applyBulk();
-              }
-            }}
-          />
-          <button
-            className="mini-btn"
-            disabled={!selectedIds.size || !bulkName.trim()}
-            onClick={() => void applyBulk()}
-          >
-            应用
+          <button className="mini-btn" onClick={() => openBulkInput('tag')}>
+            加标签
+          </button>
+          <button className="mini-btn" onClick={() => openBulkInput('collection')}>
+            加合集
           </button>
           <button
             className="mini-btn danger"
@@ -1261,6 +1332,34 @@ export function LibraryPanel() {
           <button className="mini-btn" onClick={exitSelect}>
             取消
           </button>
+
+          {bulkInputOpen && (
+            <div className="bulk-input-row">
+              <input
+                className="tag-input bulk-name"
+                autoFocus
+                value={bulkName}
+                placeholder={bulkKind === 'tag' ? '标签名称' : '合集名称'}
+                onChange={(event) => setBulkName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void applyBulk();
+                  }
+                }}
+              />
+              <button
+                className="mini-btn primary"
+                disabled={!bulkName.trim()}
+                onClick={() => void applyBulk()}
+              >
+                应用
+              </button>
+              <button className="mini-btn" onClick={() => setBulkInputOpen(false)}>
+                取消
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1431,6 +1530,17 @@ export function LibraryPanel() {
             <div className="panel-empty">
               还没有入库的视频
               <div className="panel-hint">打开视频后，在「字幕」面板点「入库」。</div>
+              <div className="panel-empty-actions">
+                <button
+                  className="mini-btn primary"
+                  onClick={() => void window.bsub.newTab('https://www.bilibili.com/')}
+                >
+                  打开 B 站
+                </button>
+                <button className="mini-btn" onClick={() => setImportOpen(true)}>
+                  导入链接
+                </button>
+              </div>
             </div>
           )}
 
@@ -1443,6 +1553,50 @@ export function LibraryPanel() {
               仅显示最近 {list.videos.length} 条，共 {list.total} 条；搜索可以找到全部内容。
             </div>
           )}
+        </div>
+      )}
+
+      {importOpen && (
+        <div
+          className="confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setImportOpen(false);
+          }}
+        >
+          <div className="confirm-card import-links" role="dialog" aria-label="导入链接">
+            <div className="confirm-title">导入链接</div>
+            <div className="confirm-desc">
+              每行一个 B 站视频链接或 BV 号，最多 20 个。会在后台标签里逐个抓字幕入库。
+            </div>
+            <textarea
+              className="settings-textarea"
+              rows={6}
+              value={importText}
+              placeholder="https://www.bilibili.com/video/BV1xx411c7mD"
+              spellCheck={false}
+              onChange={(event) => setImportText(event.target.value)}
+            />
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={importSummary}
+                onChange={(event) => setImportSummary(event.target.checked)}
+              />
+              入库后同时生成总结
+            </label>
+            <div className="confirm-actions">
+              <button className="mini-btn" onClick={() => setImportOpen(false)}>
+                取消
+              </button>
+              <button
+                className="mini-btn primary"
+                disabled={!importText.trim()}
+                onClick={() => void startImportLinks()}
+              >
+                开始
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

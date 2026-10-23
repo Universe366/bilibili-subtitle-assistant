@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   Captions,
-  History as HistoryIcon,
   Library,
   ListChecks,
   MessageSquare,
@@ -14,8 +13,6 @@ import {
 import type { BridgeStatus, JobRecord, Section, TabInfo } from '../../../shared/types';
 import { SubtitlesPanel } from './SubtitlesPanel';
 import { ChatPanel } from './ChatPanel';
-import { BatchPanel } from './BatchPanel';
-import { HistoryPanel } from './HistoryPanel';
 import { LibraryPanel } from './LibraryPanel';
 import { SummaryPanel } from './SummaryPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -25,11 +22,9 @@ type IconComponent = ComponentType<{ size?: number | string; className?: string 
 
 const items: Array<{ id: Section; label: string; icon: IconComponent; hint: string }> = [
   { id: 'subtitles', label: '字幕', icon: Captions, hint: '当前视频的字幕与翻译' },
-  { id: 'chat', label: '对话', icon: MessageSquare, hint: '基于字幕向 AI 提问' },
   { id: 'summary', label: '总结', icon: Sparkles, hint: 'AI 总结、章节与问答' },
-  { id: 'library', label: '库', icon: Library, hint: '已入库的视频与笔记' },
-  { id: 'batch', label: '批量', icon: ListChecks, hint: '勾选库内视频批量生成总结' },
-  { id: 'history', label: '记录', icon: HistoryIcon, hint: '总结与任务记录' },
+  { id: 'chat', label: '对话', icon: MessageSquare, hint: '基于字幕向 AI 提问' },
+  { id: 'library', label: '库', icon: Library, hint: '已入库的视频、总结与笔记' },
   { id: 'settings', label: '设置', icon: Settings, hint: '平台、Key、提示词' }
 ];
 
@@ -49,7 +44,6 @@ export function Sidebar({
   onDragSnapshot,
   onOpenSummary,
   onOpenChapters,
-  onOpenLibraryItem,
   hasUpdate = false
 }: {
   section: Section;
@@ -67,7 +61,6 @@ export function Sidebar({
   onDragSnapshot?: (snapshot: string | null) => void;
   onOpenSummary?: () => void;
   onOpenChapters?: () => void;
-  onOpenLibraryItem?: (videoId: number) => void;
   hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
@@ -325,14 +318,6 @@ export function Sidebar({
           {visited.has('library') && <LibraryPanel />}
         </div>
 
-        <div className={`side-panel${section === 'batch' ? ' is-active' : ''}`}>
-          {visited.has('batch') && <BatchPanel />}
-        </div>
-
-        <div className={`side-panel${section === 'history' ? ' is-active' : ''}`}>
-          {visited.has('history') && <HistoryPanel onOpenLibraryItem={onOpenLibraryItem} />}
-        </div>
-
         <div className={`side-panel${section === 'settings' ? ' is-active' : ''}`}>
           {visited.has('settings') && <SettingsPanel />}
         </div>
@@ -344,11 +329,11 @@ export function Sidebar({
         {tabCount > 0 && <span>· {tabCount} 标签</span>}
         <button
           className={`task-toggle${activeJobCount ? ' is-active' : ''}`}
-          title={activeJobCount ? `${activeJobCount} 个任务进行中` : '任务中心'}
+          title={activeJobCount ? `${activeJobCount} 个任务进行中` : '任务与导出'}
           onClick={() => setTaskOpen((value) => !value)}
         >
           <ListChecks size={12} />
-          {activeJobCount > 0 && <span className="task-count">{activeJobCount}</span>}
+          <span className="task-label">{activeJobCount ? `任务 ${activeJobCount}` : '任务'}</span>
         </button>
         <span className="side-version">{version ? `v${version}` : ''}</span>
       </div>

@@ -15,8 +15,6 @@ export default function App() {
     return value === 'chat' ||
       value === 'summary' ||
       value === 'library' ||
-      value === 'batch' ||
-      value === 'history' ||
       value === 'settings' ||
       value === 'subtitles'
       ? value
@@ -266,16 +264,6 @@ export default function App() {
           onOpenChapters={() => {
             setSection('summary');
             window.setTimeout(() => window.dispatchEvent(new Event('bsub:chapters-request')), 250);
-          }}
-          onOpenLibraryItem={(videoId) => {
-            setSection('library');
-            window.setTimeout(
-              () =>
-                window.dispatchEvent(
-                  new CustomEvent('bsub:library-item', { detail: videoId })
-                ),
-              200
-            );
           }}
         />
         <BrowserStage

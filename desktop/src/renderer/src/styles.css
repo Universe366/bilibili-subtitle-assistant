@@ -4269,3 +4269,41 @@ button:disabled {
 .collection-manage-row {
   flex-wrap: wrap;
 }
+
+/* ---------- 简化后的库入口 ---------- */
+.filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.bulk-input-row {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: 4px;
+}
+
+.import-links {
+  width: 100%;
+}
+
+.import-links .settings-textarea {
+  min-height: 120px;
+}
+
+.task-toggle {
+  width: auto;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-label {
+  font-size: 10px;
+}

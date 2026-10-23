@@ -27,11 +27,9 @@ export interface LayoutRect {
 
 export type Section =
   | 'subtitles'
-  | 'chat'
   | 'summary'
+  | 'chat'
   | 'library'
-  | 'batch'
-  | 'history'
   | 'settings';
 
 export interface VideoPart {

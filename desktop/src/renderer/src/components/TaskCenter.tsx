@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
-import type { JobItemStatus, JobRecord, JobStatus, JobType } from '../../../shared/types';
+import { FolderOpen, X } from 'lucide-react';
+import type {
+  ExportRecord,
+  JobItemStatus,
+  JobRecord,
+  JobStatus,
+  JobType
+} from '../../../shared/types';
 
 export const JOB_TYPE_LABEL: Record<JobType, string> = {
   summary: '总结',
@@ -54,6 +60,15 @@ export function TaskCenter({
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState('');
+  const [tab, setTab] = useState<'tasks' | 'exports'>('tasks');
+  const [exports, setExports] = useState<ExportRecord[]>([]);
+
+  useEffect(() => {
+    if (!open || tab !== 'exports') return;
+    void window.bsub.listExports().then((response) => {
+      if (response.ok) setExports(response.data);
+    });
+  }, [open, tab]);
 
   useEffect(() => {
     if (!open) return;
@@ -103,6 +118,33 @@ export function TaskCenter({
     }
   };
 
+  const togglePause = async (job: JobRecord) => {
+    setError('');
+    setBusy(job.id);
+    try {
+      if (job.status === 'paused') await window.bsub.resumeBatch(job.id);
+      else await window.bsub.pauseBatch(job.id);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const openExport = async (item: ExportRecord) => {
+    const response = await window.bsub.openExport(item.path);
+    if (!response.ok) setError(response.error);
+  };
+
+  const revealExport = async (item: ExportRecord) => {
+    const response = await window.bsub.revealExport(item.path);
+    if (!response.ok) setError(response.error);
+  };
+
+  const removeExport = async (item: ExportRecord) => {
+    const response = await window.bsub.deleteExport(item.id);
+    if (!response.ok) setError(response.error);
+    else setExports((previous) => previous.filter((entry) => entry.id !== item.id));
+  };
+
   const clear = async () => {
     setError('');
     const response = await window.bsub.clearFinishedJobs();
@@ -112,15 +154,29 @@ export function TaskCenter({
   return (
     <div className="task-drawer" role="dialog" aria-label="任务中心">
       <div className="task-head">
-        <span className="task-head-title">任务</span>
+        <span className="task-head-title">任务与导出</span>
         <button
-          className="mini-btn"
-          disabled={!finished.length}
-          onClick={() => void clear()}
-          title="清除已完成 / 失败 / 已取消的任务"
+          className={`mini-btn${tab === 'tasks' ? ' is-active' : ''}`}
+          onClick={() => setTab('tasks')}
         >
-          清除已完成
+          任务
         </button>
+        <button
+          className={`mini-btn${tab === 'exports' ? ' is-active' : ''}`}
+          onClick={() => setTab('exports')}
+        >
+          导出
+        </button>
+        {tab === 'tasks' && (
+          <button
+            className="mini-btn"
+            disabled={!finished.length}
+            onClick={() => void clear()}
+            title="清除已完成 / 失败 / 已取消的任务"
+          >
+            清除
+          </button>
+        )}
         <button className="icon-btn" title="关闭" onClick={onClose}>
           <X size={13} />
         </button>
@@ -128,6 +184,7 @@ export function TaskCenter({
 
       {error && <div className="status-line error">{error}</div>}
 
+      {tab === 'tasks' ? (
       <div className="task-scroll">
         {!jobs.length && (
           <div className="panel-empty">
@@ -193,6 +250,15 @@ export function TaskCenter({
 
               {(active || canRetry) && (
                 <div className="task-actions">
+                  {active && job.type === 'batch-summary' && (
+                    <button
+                      className="mini-btn"
+                      disabled={busy === job.id}
+                      onClick={() => void togglePause(job)}
+                    >
+                      {job.status === 'paused' ? '继续' : '暂停'}
+                    </button>
+                  )}
                   {active && (
                     <button
                       className="mini-btn"
@@ -217,6 +283,39 @@ export function TaskCenter({
           );
         })}
       </div>
+      ) : (
+        <div className="task-scroll">
+          {exports.map((item) => (
+            <div key={item.id} className="task-card">
+              <div className="task-row">
+                <span className="job-chip">{item.kind || '文件'}</span>
+                <span className="task-title" title={item.title}>
+                  {item.title || item.path.split(/[\/]/).pop()}
+                </span>
+              </div>
+              <div className="task-meta">{item.path}</div>
+              <div className="task-meta">{fmtTime(item.createdAt)}</div>
+              <div className="task-actions">
+                <button className="mini-btn" onClick={() => void openExport(item)}>
+                  打开
+                </button>
+                <button className="mini-btn" onClick={() => void revealExport(item)}>
+                  <FolderOpen size={11} /> 定位
+                </button>
+                <button className="mini-btn" onClick={() => void removeExport(item)}>
+                  移除
+                </button>
+              </div>
+            </div>
+          ))}
+          {!exports.length && (
+            <div className="panel-empty">
+              还没有导出记录
+              <div className="panel-hint">导出字幕、总结、笔记或合集对比后，会出现在这里。</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
