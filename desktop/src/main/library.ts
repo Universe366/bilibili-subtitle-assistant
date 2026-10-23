@@ -10,6 +10,7 @@ import type {
   JobStatus,
   JobType,
   LibraryBundle,
+  LibraryCollection,
   LibraryDetail,
   LibraryHistoryItem,
   LibrarySort,
@@ -106,6 +107,21 @@ CREATE TABLE IF NOT EXISTS video_tags (
 );
 
 CREATE INDEX IF NOT EXISTS idx_video_tags_tag ON video_tags(tag_id);
+
+CREATE TABLE IF NOT EXISTS collections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_items (
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  added_at INTEGER NOT NULL,
+  PRIMARY KEY (collection_id, video_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_items_video ON collection_items(video_id);
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
@@ -365,6 +381,9 @@ const VIDEO_COLUMNS = `
             ORDER BY s.updated_at DESC LIMIT 1) AS summary_model,
          (SELECT group_concat(tg.name, char(31)) FROM video_tags vt
             JOIN tags tg ON tg.id = vt.tag_id WHERE vt.video_id = v.id) AS tags,
+         (SELECT group_concat(cl.name, char(30)) FROM collection_items ci
+            JOIN collections cl ON cl.id = ci.collection_id
+            WHERE ci.video_id = v.id) AS collections,
          (SELECT COALESCE(SUM(length(sg.text)), 0) FROM segments sg
             JOIN tracks t2 ON t2.id = sg.track_id WHERE t2.video_id = v.id) AS char_count
   FROM videos v`;
@@ -385,6 +404,8 @@ function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
     summaryUpdatedAt: summaryAt && summaryAt > 0 ? summaryAt : null,
     summaryModel: row.summary_model == null ? undefined : String(row.summary_model),
     tags: row.tags == null ? [] : String(row.tags).split('\u001f').filter(Boolean),
+    collections:
+      row.collections == null ? [] : String(row.collections).split('\u001e').filter(Boolean),
     trackCount: toNumber(row.track_count),
     lineCount: toNumber(row.line_count),
     chars: toNumber(row.char_count)
@@ -489,6 +510,93 @@ export function setVideoTags(videoId: number, names: string[]): string[] {
     throw error;
   }
   return clean;
+}
+
+export function listCollections(): LibraryCollection[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT cl.id, cl.name, COUNT(ci.video_id) AS count
+       FROM collections cl LEFT JOIN collection_items ci ON ci.collection_id = cl.id
+       GROUP BY cl.id
+       ORDER BY cl.name COLLATE NOCASE ASC`
+    )
+    .all() as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    name: String(row.name || ''),
+    count: toNumber(row.count)
+  }));
+}
+
+export function getVideoCollections(videoId: number): string[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT cl.name FROM collection_items ci
+       JOIN collections cl ON cl.id = ci.collection_id
+       WHERE ci.video_id = ? ORDER BY cl.name COLLATE NOCASE ASC`
+    )
+    .all(Number(videoId)) as Array<Record<string, unknown>>;
+  return rows.map((row) => String(row.name || '')).filter(Boolean);
+}
+
+export function addVideoToCollection(videoId: number, name: string): string[] {
+  const database = requireDb();
+  const id = Number(videoId);
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) throw new Error('合集名称不能为空');
+  if (!database.prepare('SELECT id FROM videos WHERE id = ?').get(id)) {
+    throw new Error('视频不存在');
+  }
+
+  const now = Date.now();
+  database.exec('BEGIN');
+  try {
+    database
+      .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
+      .run(clean, now);
+    const row = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
+      | { id: number }
+      | undefined;
+    if (row) {
+      database
+        .prepare('INSERT OR IGNORE INTO collection_items (collection_id, video_id, added_at) VALUES (?, ?, ?)')
+        .run(Number(row.id), id, now);
+    }
+    database.exec('COMMIT');
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+  return getVideoCollections(id);
+}
+
+export function removeVideoFromCollection(videoId: number, name: string): string[] {
+  const database = requireDb();
+  const id = Number(videoId);
+  const clean = String(name || '').trim();
+  const row = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
+    | { id: number }
+    | undefined;
+  if (row) {
+    const collectionId = Number(row.id);
+    database
+      .prepare('DELETE FROM collection_items WHERE collection_id = ? AND video_id = ?')
+      .run(collectionId, id);
+    // 合集空了就删掉，避免筛选器里堆一串空名字。
+    database
+      .prepare(
+        `DELETE FROM collections WHERE id = ? AND NOT EXISTS (
+           SELECT 1 FROM collection_items WHERE collection_id = ?)`
+      )
+      .run(collectionId, collectionId);
+  }
+  return getVideoCollections(id);
 }
 
 function sanitizeQuery(input: string): string {

@@ -4054,3 +4054,18 @@ button:disabled {
   min-width: 0;
   line-height: 1.4;
 }
+
+/* ---------- 合集 ---------- */
+.library-filters {
+  display: flex;
+  gap: 6px;
+}
+
+.library-filters .mini-select {
+  flex: 1;
+  max-width: none;
+}
+
+.collection-add-select {
+  max-width: 110px;
+}

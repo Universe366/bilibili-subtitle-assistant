@@ -142,6 +142,7 @@ export interface LibraryVideo {
   summaryUpdatedAt: number | null;
   summaryModel?: string;
   tags: string[];
+  collections: string[];
   trackCount: number;
   lineCount: number;
   /** 当前条目全部字幕轨的字符数（用于批量成本预估） */
@@ -149,6 +150,12 @@ export interface LibraryVideo {
 }
 
 export interface LibraryTag {
+  name: string;
+  count: number;
+}
+
+export interface LibraryCollection {
+  id: number;
   name: string;
   count: number;
 }

@@ -64,11 +64,13 @@ import type {
   LibraryDetail,
   LibrarySort,
   LibraryTag,
+  LibraryCollection,
   GlobalSearchResult
 } from '../shared/types';
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
 import {
+  addVideoToCollection,
   clearFinishedJobs,
   clearHistory,
   createJob,
@@ -81,6 +83,7 @@ import {
   getSummaryVersion,
   globalSearch,
   ingestVideo,
+  listCollections,
   listHistory,
   listJobs,
   listSummaryVersions,
@@ -88,6 +91,7 @@ import {
   listTranscriptions,
   listLibrary,
   removeVideo,
+  removeVideoFromCollection,
   restoreSummaryVersion,
   saveSummary,
   searchLibrary,
@@ -763,6 +767,52 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: { tags } };
       } catch (error) {
         return failure<{ tags: string[] }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('library:collections', (): Result<LibraryCollection[]> => {
+    try {
+      return { ok: true, data: listCollections() };
+    } catch (error) {
+      return failure<LibraryCollection[]>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'library:collection-add',
+    (
+      _event,
+      payload: { videoId: number; name: string }
+    ): Result<{ collections: string[] }> => {
+      try {
+        const collections = addVideoToCollection(
+          Number(payload?.videoId),
+          String(payload?.name || '')
+        );
+        send('library:changed', null);
+        return { ok: true, data: { collections } };
+      } catch (error) {
+        return failure<{ collections: string[] }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:collection-remove',
+    (
+      _event,
+      payload: { videoId: number; name: string }
+    ): Result<{ collections: string[] }> => {
+      try {
+        const collections = removeVideoFromCollection(
+          Number(payload?.videoId),
+          String(payload?.name || '')
+        );
+        send('library:changed', null);
+        return { ok: true, data: { collections } };
+      } catch (error) {
+        return failure<{ collections: string[] }>(error);
       }
     }
   );

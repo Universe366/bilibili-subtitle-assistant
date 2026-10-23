@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ExternalLink, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
+  LibraryCollection,
   LibraryDetail,
   LibraryList,
   LibrarySearchResult,
@@ -85,6 +86,9 @@ export function LibraryPanel() {
   const [allTags, setAllTags] = useState<LibraryTag[]>([]);
   const [tagFilter, setTagFilter] = useState('');
   const [tagDraft, setTagDraft] = useState('');
+  const [allCollections, setAllCollections] = useState<LibraryCollection[]>([]);
+  const [collectionFilter, setCollectionFilter] = useState('');
+  const [collectionDraft, setCollectionDraft] = useState('');
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -107,6 +111,11 @@ export function LibraryPanel() {
   const loadTags = useCallback(async () => {
     const response = await window.bsub.listTags();
     if (response.ok) setAllTags(response.data);
+  }, []);
+
+  const loadCollections = useCallback(async () => {
+    const response = await window.bsub.listCollections();
+    if (response.ok) setAllCollections(response.data);
   }, []);
 
   const loadVersions = useCallback(async (videoId: number) => {
@@ -140,20 +149,28 @@ export function LibraryPanel() {
   useEffect(() => {
     void load();
     void loadTags();
-  }, [load, loadTags]);
+    void loadCollections();
+  }, [load, loadTags, loadCollections]);
 
   useEffect(() => {
     if (tagFilter && !allTags.some((tag) => tag.name === tagFilter)) setTagFilter('');
   }, [allTags, tagFilter]);
 
   useEffect(() => {
+    if (collectionFilter && !allCollections.some((item) => item.name === collectionFilter)) {
+      setCollectionFilter('');
+    }
+  }, [allCollections, collectionFilter]);
+
+  useEffect(() => {
     return window.bsub.onLibraryChanged(() => {
       void load();
       void loadTags();
+      void loadCollections();
       if (selectedId != null) void fetchDetail(selectedId);
       setSearchNonce((value) => value + 1);
     });
-  }, [load, loadTags, selectedId, fetchDetail]);
+  }, [load, loadTags, loadCollections, selectedId, fetchDetail]);
 
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
   useEffect(() => {
@@ -282,6 +299,44 @@ export function LibraryPanel() {
     void saveTags(detail.video.tags.filter((tag) => tag !== name));
   };
 
+  const addToCollection = async (name: string) => {
+    const clean = name.trim();
+    if (!clean || !detail) return;
+    const response = await window.bsub.addToCollection(detail.video.id, clean);
+    if (response.ok) {
+      setDetail((previous) =>
+        previous
+          ? {
+              ...previous,
+              video: { ...previous.video, collections: response.data.collections }
+            }
+          : previous
+      );
+      setCollectionDraft('');
+      void loadCollections();
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const removeFromCollection = async (name: string) => {
+    if (!detail) return;
+    const response = await window.bsub.removeFromCollection(detail.video.id, name);
+    if (response.ok) {
+      setDetail((previous) =>
+        previous
+          ? {
+              ...previous,
+              video: { ...previous.video, collections: response.data.collections }
+            }
+          : previous
+      );
+      void loadCollections();
+    } else {
+      setError(response.error);
+    }
+  };
+
   const confirmDelete = async () => {
     const video = pendingDelete;
     setPendingDelete(null);
@@ -298,9 +353,11 @@ export function LibraryPanel() {
   const stats = list?.stats;
   const activeVideo = detail?.video ?? list?.videos.find((video) => video.id === selectedId) ?? null;
   const visibleVideos = list
-    ? tagFilter
-      ? list.videos.filter((video) => video.tags.includes(tagFilter))
-      : list.videos
+    ? list.videos.filter(
+        (video) =>
+          (!tagFilter || video.tags.includes(tagFilter)) &&
+          (!collectionFilter || video.collections.includes(collectionFilter))
+      )
     : [];
 
   if (selectedId != null) {
@@ -376,6 +433,48 @@ export function LibraryPanel() {
                 <option key={tag.name} value={tag.name} />
               ))}
             </datalist>
+          </div>
+        )}
+
+        {detail && (
+          <div className="tag-row collection-row">
+            {detail.video.collections.map((name) => (
+              <span key={name} className="tag-chip collection-chip">
+                {name}
+                <button title="移出合集" onClick={() => void removeFromCollection(name)}>
+                  ×
+                </button>
+              </span>
+            ))}
+            <select
+              className="mini-select collection-add-select"
+              value=""
+              onChange={(event) => {
+                const name = event.target.value;
+                if (name) void addToCollection(name);
+              }}
+            >
+              <option value="">加入合集…</option>
+              {allCollections
+                .filter((item) => !detail.video.collections.includes(item.name))
+                .map((item) => (
+                  <option key={item.id} value={item.name}>
+                    {item.name}（{item.count}）
+                  </option>
+                ))}
+            </select>
+            <input
+              className="tag-input"
+              value={collectionDraft}
+              placeholder="新建合集"
+              onChange={(event) => setCollectionDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void addToCollection(collectionDraft);
+                }
+              }}
+            />
           </div>
         )}
 
@@ -529,21 +628,6 @@ export function LibraryPanel() {
       <div className="panel-toolbar">
         <div className="panel-title">库</div>
         <div className="toolbar-actions">
-          {allTags.length > 0 && (
-            <select
-              className="mini-select tag-filter"
-              title="按标签筛选"
-              value={tagFilter}
-              onChange={(event) => setTagFilter(event.target.value)}
-            >
-              <option value="">全部标签</option>
-              {allTags.map((tag) => (
-                <option key={tag.name} value={tag.name}>
-                  {tag.name}（{tag.count}）
-                </option>
-              ))}
-            </select>
-          )}
           <select
             className="mini-select"
             title="排序"
@@ -571,6 +655,41 @@ export function LibraryPanel() {
           spellCheck={false}
         />
       </div>
+
+      {(allTags.length > 0 || allCollections.length > 0) && (
+        <div className="library-filters">
+          {allTags.length > 0 && (
+            <select
+              className="mini-select"
+              title="按标签筛选"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+            >
+              <option value="">全部标签</option>
+              {allTags.map((tag) => (
+                <option key={tag.name} value={tag.name}>
+                  {tag.name}（{tag.count}）
+                </option>
+              ))}
+            </select>
+          )}
+          {allCollections.length > 0 && (
+            <select
+              className="mini-select"
+              title="按合集筛选"
+              value={collectionFilter}
+              onChange={(event) => setCollectionFilter(event.target.value)}
+            >
+              <option value="">全部合集</option>
+              {allCollections.map((item) => (
+                <option key={item.id} value={item.name}>
+                  {item.name}（{item.count}）
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {stats && (
         <div className="library-stats">
