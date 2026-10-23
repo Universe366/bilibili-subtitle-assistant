@@ -27,6 +27,7 @@ export function BatchPanel() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState('');
   const [concurrency, setConcurrency] = useState(2);
+  const [collectionFilter, setCollectionFilter] = useState('');
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
@@ -212,11 +213,23 @@ export function BatchPanel() {
   };
 
   const keyword = filter.trim().toLowerCase();
-  const visibleVideos = keyword
-    ? videos.filter((video) =>
-        `${video.title} ${video.owner}`.toLowerCase().includes(keyword)
-      )
-    : videos;
+  const allCollectionNames = [...new Set(videos.flatMap((video) => video.collections))].sort(
+    (left, right) => left.localeCompare(right, 'zh-CN')
+  );
+  const visibleVideos = videos.filter(
+    (video) =>
+      (!keyword || `${video.title} ${video.owner}`.toLowerCase().includes(keyword)) &&
+      (!collectionFilter || video.collections.includes(collectionFilter))
+  );
+
+  useEffect(() => {
+    if (
+      collectionFilter &&
+      !videos.some((video) => video.collections.includes(collectionFilter))
+    ) {
+      setCollectionFilter('');
+    }
+  }, [videos, collectionFilter]);
 
   const selectedVideos = videos.filter((video) => selected.has(video.id));
   const selectedChars = selectedVideos.reduce((sum, video) => sum + (video.chars || 0), 0);
@@ -407,6 +420,22 @@ export function BatchPanel() {
 
       {mode === 'library' && videos.length > 0 && (
         <div className="batch-plan">
+          {allCollectionNames.length > 0 && (
+            <select
+              className="mini-select"
+              title="按合集筛选"
+              value={collectionFilter}
+              disabled={running}
+              onChange={(event) => setCollectionFilter(event.target.value)}
+            >
+              <option value="">全部合集</option>
+              {allCollectionNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
           <label className="batch-concurrency">
             并发
             <select

@@ -599,6 +599,26 @@ export function removeVideoFromCollection(videoId: number, name: string): string
   return getVideoCollections(id);
 }
 
+export function renameCollection(id: number, name: string): void {
+  const database = requireDb();
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) throw new Error('合集名称不能为空');
+  const exists = database.prepare('SELECT id FROM collections WHERE id = ?').get(Number(id));
+  if (!exists) throw new Error('合集不存在');
+  try {
+    database.prepare('UPDATE collections SET name = ? WHERE id = ?').run(clean, Number(id));
+  } catch (error) {
+    if (/UNIQUE/i.test((error as Error).message)) throw new Error('已有同名合集');
+    throw error;
+  }
+}
+
+export function deleteCollection(id: number): boolean {
+  const database = requireDb();
+  const result = database.prepare('DELETE FROM collections WHERE id = ?').run(Number(id));
+  return toNumber(result.changes) > 0;
+}
+
 function sanitizeQuery(input: string): string {
   return String(input || '')
     .replace(/[\u0000-\u001f]/g, ' ')

@@ -4069,3 +4069,36 @@ button:disabled {
 .collection-add-select {
   max-width: 110px;
 }
+
+/* ---------- 合集管理 ---------- */
+.collection-manage {
+  max-height: 70vh;
+}
+
+.collection-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.collection-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.collection-manage-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.collection-manage-count {
+  color: var(--faint);
+  font-size: 10px;
+}

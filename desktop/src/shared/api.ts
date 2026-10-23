@@ -101,6 +101,8 @@ export interface BsubApi {
     videoId: number,
     name: string
   ): Promise<Result<{ collections: string[] }>>;
+  renameCollection(id: number, name: string): Promise<Result<{ renamed: boolean }>>;
+  deleteCollection(id: number): Promise<Result<{ removed: boolean }>>;
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
   globalSearch(query: string): Promise<Result<GlobalSearchResult>>;
   onSearchRequest(cb: () => void): () => void;

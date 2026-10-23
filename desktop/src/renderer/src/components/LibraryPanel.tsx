@@ -89,6 +89,11 @@ export function LibraryPanel() {
   const [allCollections, setAllCollections] = useState<LibraryCollection[]>([]);
   const [collectionFilter, setCollectionFilter] = useState('');
   const [collectionDraft, setCollectionDraft] = useState('');
+  const [manageOpen, setManageOpen] = useState(false);
+  const [renameId, setRenameId] = useState(0);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [pendingCollectionDelete, setPendingCollectionDelete] =
+    useState<LibraryCollection | null>(null);
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -332,6 +337,33 @@ export function LibraryPanel() {
           : previous
       );
       void loadCollections();
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const saveRename = async (collection: LibraryCollection) => {
+    const name = renameDraft.trim();
+    if (!name) return;
+    const response = await window.bsub.renameCollection(collection.id, name);
+    if (response.ok) {
+      setRenameId(0);
+      await loadCollections();
+      if (selectedId != null) void fetchDetail(selectedId);
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const confirmCollectionDelete = async () => {
+    const target = pendingCollectionDelete;
+    setPendingCollectionDelete(null);
+    if (!target) return;
+    const response = await window.bsub.deleteCollection(target.id);
+    if (response.ok) {
+      if (collectionFilter === target.name) setCollectionFilter('');
+      await loadCollections();
+      if (selectedId != null) void fetchDetail(selectedId);
     } else {
       setError(response.error);
     }
@@ -688,6 +720,11 @@ export function LibraryPanel() {
               ))}
             </select>
           )}
+          {allCollections.length > 0 && (
+            <button className="mini-btn" onClick={() => setManageOpen(true)}>
+              管理
+            </button>
+          )}
         </div>
       )}
 
@@ -857,6 +894,78 @@ export function LibraryPanel() {
         </div>
       )}
 
+      {manageOpen && (
+        <div
+          className="confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setManageOpen(false);
+          }}
+        >
+          <div className="confirm-card collection-manage" role="dialog" aria-label="管理合集">
+            <div className="confirm-title">管理合集</div>
+            <div className="collection-manage-list">
+              {allCollections.map((item) => (
+                <div key={item.id} className="collection-manage-row">
+                  {renameId === item.id ? (
+                    <>
+                      <input
+                        className="tag-input"
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(event) => setRenameDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void saveRename(item);
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            setRenameId(0);
+                          }
+                        }}
+                      />
+                      <button className="mini-btn primary" onClick={() => void saveRename(item)}>
+                        保存
+                      </button>
+                      <button className="mini-btn" onClick={() => setRenameId(0)}>
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="collection-manage-name" title={item.name}>
+                        {item.name}
+                        <span className="collection-manage-count"> · {item.count}</span>
+                      </span>
+                      <button
+                        className="mini-btn"
+                        onClick={() => {
+                          setRenameId(item.id);
+                          setRenameDraft(item.name);
+                        }}
+                      >
+                        重命名
+                      </button>
+                      <button
+                        className="mini-btn danger"
+                        onClick={() => setPendingCollectionDelete(item)}
+                      >
+                        删除
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {!allCollections.length && <div className="panel-empty">还没有合集</div>}
+            </div>
+            <div className="confirm-actions">
+              <button className="mini-btn" onClick={() => setManageOpen(false)}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         title="从库中删除？"
@@ -868,6 +977,19 @@ export function LibraryPanel() {
         confirmText="删除"
         onConfirm={() => void confirmDelete()}
         onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingCollectionDelete)}
+        title="删除这个合集？"
+        description={
+          pendingCollectionDelete
+            ? `「${pendingCollectionDelete.name}」会被删除，合集里的视频、字幕和总结都不受影响。`
+            : undefined
+        }
+        confirmText="删除"
+        onConfirm={() => void confirmCollectionDelete()}
+        onCancel={() => setPendingCollectionDelete(null)}
       />
     </div>
   );

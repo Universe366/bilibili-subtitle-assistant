@@ -133,6 +133,14 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:collection-remove', { videoId, name }) as Promise<
       Result<{ collections: string[] }>
     >,
+  renameCollection: (id: number, name: string) =>
+    ipcRenderer.invoke('library:collection-rename', { id, name }) as Promise<
+      Result<{ renamed: boolean }>
+    >,
+  deleteCollection: (id: number) =>
+    ipcRenderer.invoke('library:collection-delete', id) as Promise<
+      Result<{ removed: boolean }>
+    >,
   searchLibrary: (query: string) =>
     ipcRenderer.invoke('library:search', query) as Promise<Result<LibrarySearchResult>>,
   globalSearch: (query: string) =>
