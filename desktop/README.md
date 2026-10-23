@@ -1,6 +1,6 @@
 # 拾字 · 桌面端
 
-Windows 桌面端，内置浏览器 + 本地字幕/总结库 + AI 工作台。对外显示名「拾字」，技术标识仍是 `bsub-desktop`（见 [`docs/REBRAND.md`](docs/REBRAND.md)）。当前 **0.32.0**。
+Windows 桌面端，内置浏览器 + 本地字幕/总结库 + AI 工作台。对外显示名「拾字」；`appId` 与仓库名仍是 `bsub-desktop`，userData 已迁到 `shizi`（见 [`docs/REBRAND.md`](docs/REBRAND.md)）。当前 **0.33.0**。
 
 开发中的浏览器/AI 能力：
 
@@ -103,8 +103,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/bsub-desktop-setup-0.32.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.32.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
+| `release/bsub-desktop-setup-0.33.0.exe` | NSIS 安装包，可选安装目录 |
+| `release/bsub-desktop-0.33.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.18.2.zip` | 浏览器插件（由 CI 打包） |
 
@@ -116,7 +116,7 @@ npm run dist
 这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
 
 1. 更新 `bilibili-subtitle-assistant/CHANGELOG.md` 与 `manifest.json` 版本（2.18.2）。
-2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.32.0 --no-git-tag-version`）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.33.0 --no-git-tag-version`）。
 3. `npm run dist` 本地确认能构建。
 4. `npm run release:notes` 生成发布说明。
 5. 打 tag 并推送：
@@ -136,12 +136,12 @@ GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner
 
 ## 数据
 
-- 默认数据目录：`%APPDATA%\bsub-desktop`（开发期可用 `BSUB_USER_DATA` 指定）
+- 默认数据目录：`%APPDATA%\shizi`（旧版 `bsub-desktop` 首次启动自动复制；开发期可用 `BSUB_USER_DATA` 指定）
 - 数据库：同目录 `library.db`；设置：`settings.json`（AI 平台、Key、提示词、插件桥端口与 Token）
 - 设置 → 数据与备份 → **更改位置** 可迁移到空目录：
   - 复制设置、字幕库、总结、登录状态、日志；
-  - 写入 `%APPDATA%\bsub-desktop-location.txt` 后自动重启；
-  - 新进程启动后删除旧目录，失败则记录到 `%APPDATA%\bsub-desktop-cleanup.txt` 下次重试。
+  - 写入 `%APPDATA%\shizi-location.txt` 后自动重启；
+  - 新进程启动后删除旧目录，失败则记录到 `%APPDATA%\shizi-cleanup.txt` 下次重试。
 - 卸载时勾选「同时删除本地数据」会读取上述指向文件，把自定义位置也删掉。
 - 只存字幕、总结、元数据与封面地址，不落音视频
 - 去重：同一视频（bvid + cid）更新而不是重复插入；同一字幕轨重复入库会替换旧分段
@@ -184,7 +184,7 @@ node spike/bridge-test.mjs
 - API Key 与桥 Token 以明文保存在本机 `settings.json`，后续接系统钥匙串
 - 总结字幕上下文上限约 20 万字符，极端超长视频仍会头尾保留、中间省略
 - 未签名，SmartScreen 会提示
-- 桌面端 0.32.0 已随本版合并发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
+- 桌面端 0.33.0 已随本版合并发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换
 - 更新检查默认开启；若最新 Release 仍是旧桌面资产，会显示已是最新。安装版才支持自动更新
 - 插件桥需要桌面端先运行，并在插件「设置 → 桌面端」填入端口 / Token
 - 休眠标签切回会重新加载页面（滚动位置与播放进度不保留）
@@ -206,5 +206,5 @@ node spike/bridge-test.mjs
 - 安装版：Windows「设置 → 应用 → 已安装的应用」卸载「拾字」，或运行安装目录下的 `Uninstall 拾字.exe`。
 - 卸载页可选择是否同时删除本地数据：
   - 默认只删除程序、快捷方式和卸载项；
-  - 勾选后额外删除 `%APPDATA%\bsub-desktop`（设置、字幕库、登录状态、缓存、日志）和更新缓存。
-- 绿色版没有卸载器：退出程序后删除程序目录；如需彻底清理，再手动删除 `%APPDATA%\bsub-desktop`。
+  - 勾选后额外删除 `%APPDATA%\shizi`（以及旧版 `bsub-desktop`：设置、字幕库、登录状态、缓存、日志）和更新缓存。
+- 绿色版没有卸载器：退出程序后删除程序目录；如需彻底清理，再手动删除 `%APPDATA%\shizi` 和旧版 `%APPDATA%\bsub-desktop`。

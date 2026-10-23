@@ -15,21 +15,23 @@ export const APP_TAGLINE = '视频与网页的 AI 笔记工作台';
 窗口标题、托盘 tooltip、首用向导、渲染页 `<title>` 已改用这个常量；
 安装包 `productName` / 快捷方式 / 可执行文件名也已改为「拾字」。
 
-## 为什么没有改技术标识
+## 已完成 / 仍保留的技术标识
 
-以下标识暂时保持 **bsub-desktop / B站字幕助手**，否则会打断自动更新和已有用户的数据目录：
+0.33.0 已完成：
+- 显示名、窗口标题、托盘、向导、HTML title：拾字；
+- 安装包 `productName`、快捷方式、可执行文件：拾字；
+- `package.json` `name` 与 userData：`shizi` / `%APPDATA%\shizi`，旧 `bsub-desktop` 首次启动自动迁移。
 
-- `appId`: `com.bsub.desktop`
-- `userData`: `%APPDATA%\bsub-desktop`
-- electron-builder `productName`: 已改为「拾字」；资产名仍由 `artifactName` 固定为 `bsub-desktop-*`
-- GitHub Release tag / 仓库名
-- 扩展桥的 `name` 字段
+仍保留：
+- `appId`: `com.bsub.desktop`（保证旧版本 NSIS 升级与自动更新 GUID 不变）
+- GitHub Release tag / 仓库名：`bilibili-subtitle-assistant` / `v2.x`
+- 安装包资产名：`artifactName` 固定为 `bsub-desktop-*`
+- 扩展桥的 `name` 字段：`bsub-desktop`
 
-## 正式改名时的清单
+## 如果要继续改 appId / 仓库名
 
 1. 定名（商标 / 域名 / GitHub 仓库名一起确认）；
-2. 改 `package.json` 的 `build.productName` 与 `description`，同步 `desktop/README.md`、安装器文案；
-3. 如需改 `appId`，先做旧版本自动更新过渡（旧包继续更新到最后一版，提示用户手动装新包）；
-4. 数据目录迁移：新目录为空时自动复制旧 `%APPDATA%\bsub-desktop`，保留回退；
-5. 同步 Release 资产名、`latest.yml`、`docs/SIGNING.md`、商店材料（当前资产名已保持 `bsub-desktop-*`，无需变动）；
-6. 改 `brand.ts` 一处即可让 UI 全量切换。
+2. 改 `appId` 前先做自动更新过渡：旧包继续更新到最后一版，提示用户手动装新包；
+3. 同步 Release 资产名、`latest.yml`、`docs/SIGNING.md`、商店材料；
+4. 改 `brand.ts` 一处即可让 UI 全量切换。
+

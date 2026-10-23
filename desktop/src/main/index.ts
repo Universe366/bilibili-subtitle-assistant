@@ -42,6 +42,7 @@ import { installCsp } from './csp';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
 import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
+import { migrateLegacyUserData } from './userDataMigration';
 import { loadSession, saveSession } from './session';
 import { APP_NAME } from '../shared/brand';
 import { registerDownloadItem, unregisterDownloadItem } from './downloads';
@@ -68,7 +69,26 @@ process.on('uncaughtException', (error) => fatal('uncaughtException', error));
 process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason));
 
 // 自定义数据目录必须早于任何 userData 读写；环境变量仅用于开发期覆盖。
+let migrationFallback: string | null = null;
+if (!process.env.BSUB_USER_DATA) {
+  const migration = migrateLegacyUserData();
+  if (migration.result.status !== 'none') {
+    console.log('[data] legacy migration', migration.result.status, migration.result.target || '');
+  }
+  if (migration.result.status === 'failed') {
+    migrationFallback = migration.fallback || null;
+    console.warn('[data] migration failed, fallback:', migration.result.error || 'unknown');
+  }
+}
 const dataDirOverride = applyDataDirOverride();
+if (!dataDirOverride && migrationFallback && !process.env.BSUB_USER_DATA) {
+  try {
+    app.setPath('userData', migrationFallback);
+    console.warn('[data] using legacy userData:', migrationFallback);
+  } catch {
+    // ignore
+  }
+}
 if (process.env.BSUB_USER_DATA) {
   try {
     fs.mkdirSync(process.env.BSUB_USER_DATA, { recursive: true });

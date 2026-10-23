@@ -42,7 +42,7 @@ desktop/
 ### 2.1 默认位置
 
 ```
-%APPDATA%\bsub-desktop\
+%APPDATA%\shizi\
 ├─ settings.json      设置（API Key 用 DPAPI 加密；桥 Token 仍为明文）
 ├─ permissions.json   站点权限记忆（摄像头/麦克风/通知等）
 ├─ library.db         SQLite：视频、字幕、总结、历史、回收站
@@ -54,23 +54,27 @@ desktop/
 └─ Cache / GPUCache / Code Cache ...   可再生成的缓存
 ```
 
+> 旧版目录是 `%APPDATA%\bsub-desktop`。0.33.0 起首次启动由
+> `userDataMigration.ts` 把核心数据复制到 `shizi`，旧目录保留作回退。
+
 ### 2.2 自定义位置
 
 - 用户可在 `设置 → 数据与备份 → 更改位置` 选择空目录。
 - 迁移成功后写：
 
 ```
-%APPDATA%\bsub-desktop-location.txt
+%APPDATA%\shizi-location.txt
 ```
 
 内容是**纯文本路径**，不是 JSON。启动时 `applyDataDirOverride()` 必须在任何
-`app.getPath('userData')` 读写之前执行，把 userData 指向该目录。
+`app.getPath('userData')` 读写之前执行，把 userData 指向该目录。旧版
+`bsub-desktop-location.txt` 仍可读取，并会复制成新文件名。
 
 - 旧目录不立即删除：迁移只负责复制并写指向文件，然后重启。
 - 新进程启动后 `scheduleOldDataCleanup()` 才删除旧目录；删除失败的路径写入：
 
 ```
-%APPDATA%\bsub-desktop-cleanup.txt
+%APPDATA%\shizi-cleanup.txt
 ```
 
 下次启动继续尝试。`%APPDATA%` 是固定位置，所以数据目录本身可以搬走。
@@ -88,11 +92,11 @@ desktop/
 
 - `nsis.deleteAppDataOnUninstall=false`，数据默认保留。
 - 自定义卸载页提供「同时删除本地数据」勾选：
-  - 删默认 `%APPDATA%\bsub-desktop`；
-  - 读 `bsub-desktop-location.txt` 删自定义位置；
-  - 读 `bsub-desktop-cleanup.txt` 删待清理旧目录；
+  - 删默认 `%APPDATA%\shizi` 和旧版 `%APPDATA%\bsub-desktop`；
+  - 读 `shizi-location.txt`（或旧版 `bsub-desktop-location.txt`）删自定义位置；
+  - 读 `shizi-cleanup.txt`（或旧版 `bsub-desktop-cleanup.txt`）删待清理旧目录；
   - 删更新缓存与 `%TEMP%\bsub-asr-*`；
-  - 删两个指向文件。
+  - 删新旧两套指向文件。
 - 静默卸载 `/S` 不会出现数据页，默认保留数据。
 
 ## 3. 字幕链路（最重要）
@@ -282,7 +286,7 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --win nsis --publish neve
 - `Var DeleteAppData` 必须放在 `customUnWelcomePage` 宏里；顶层 `Var` 会
   被安装器/卸载器都编译到，容易冲突。
 - 自定义数据目录是运行时才知道的，uninstaller 只能通过
-  `bsub-desktop-location.txt` / `bsub-desktop-cleanup.txt` 读取。
+  `shizi-location.txt` / `shizi-cleanup.txt`（兼容旧版 `bsub-desktop-*`）读取。
 
 ## 7. 扩展桥
 
@@ -328,9 +332,9 @@ node panel-test.js     # 至少跑这个
 | 字幕一直转圈 | 是否同一 URL 重取；`trackNonce`；重试上限 4 |
 | 封面空白 | 渲染页 Referer；`<meta name="referrer">` |
 | 安装目录不能输入新路径 | `.onVerifyInstDir` 是否生效；是否把 `allowToChangeInstallationDirectory` 改回 false |
-| 迁移后数据没变 | `%APPDATA%\bsub-desktop-location.txt` 是否存在；启动日志 `[m0] userData` |
-| 迁移后旧目录没删 | `%APPDATA%\bsub-desktop-cleanup.txt`；日志 `[data] old data dir cleanup failed` |
-| 卸载没删干净 | 是否勾选删除数据；自定义位置指向文件；`%LOCALAPPDATA%\bsub-desktop-updater` |
+| 迁移后数据没变 | `%APPDATA%\shizi-location.txt` 是否存在；启动日志 `[m0] userData` |
+| 迁移后旧目录没删 | `%APPDATA%\shizi-cleanup.txt`；日志 `[data] old data dir cleanup failed` |
+| 卸载没删干净 | 是否勾选删除数据；自定义位置指向文件；`%LOCALAPPDATA%\shizi-updater` |
 
 ## 10. 界面信息架构（0.31+）
 

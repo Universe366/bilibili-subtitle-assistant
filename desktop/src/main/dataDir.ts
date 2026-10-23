@@ -4,32 +4,49 @@ import path from 'node:path';
 import { checkpointLibrary, closeLibrary, initLibrary } from './library';
 import { loadSettings, saveSettings } from './settings';
 
-const POINTER_NAME = 'bsub-desktop-location.txt';
-const CLEANUP_NAME = 'bsub-desktop-cleanup.txt';
+const POINTER_NAME = 'shizi-location.txt';
+const LEGACY_POINTER_NAME = 'bsub-desktop-location.txt';
+const CLEANUP_NAME = 'shizi-cleanup.txt';
+const LEGACY_CLEANUP_NAME = 'bsub-desktop-cleanup.txt';
 
 function pointerFile(): string {
   return path.join(app.getPath('appData'), POINTER_NAME);
+}
+
+function legacyPointerFile(): string {
+  return path.join(app.getPath('appData'), LEGACY_POINTER_NAME);
 }
 
 function cleanupFile(): string {
   return path.join(app.getPath('appData'), CLEANUP_NAME);
 }
 
+function legacyCleanupFile(): string {
+  return path.join(app.getPath('appData'), LEGACY_CLEANUP_NAME);
+}
+
 function readCleanupPaths(): string[] {
-  try {
-    return fs
-      .readFileSync(cleanupFile(), 'utf8')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
+  const paths: string[] = [];
+  for (const file of [cleanupFile(), legacyCleanupFile()]) {
+    try {
+      paths.push(
+        ...fs
+          .readFileSync(file, 'utf8')
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+      );
+    } catch {
+      // 文件不存在时忽略
+    }
   }
+  return paths;
 }
 
 function writeCleanupPaths(paths: string[]): void {
   try {
     const unique = [...new Set(paths.filter(Boolean))];
+    fs.rmSync(legacyCleanupFile(), { force: true });
     if (!unique.length) {
       fs.rmSync(cleanupFile(), { force: true });
       return;
@@ -126,12 +143,21 @@ function copyDir(from: string, to: string): number {
 /** 启动时读取自定义数据目录；必须在任何 userData 读写之前调用。 */
 export function applyDataDirOverride(): string | null {
   try {
-    const file = pointerFile();
-    if (!fs.existsSync(file)) return null;
+    const current = pointerFile();
+    const legacy = legacyPointerFile();
+    const file = fs.existsSync(current) ? current : fs.existsSync(legacy) ? legacy : '';
+    if (!file) return null;
     const target = fs.readFileSync(file, 'utf8').trim();
     if (!target) return null;
     const resolved = path.resolve(target);
     if (!fs.existsSync(resolved)) return null;
+    if (file === legacy) {
+      try {
+        fs.copyFileSync(legacy, current);
+      } catch {
+        // 指针复制失败不影响本次启动
+      }
+    }
     app.setPath('userData', resolved);
     return resolved;
   } catch {

@@ -76,11 +76,18 @@ FunctionEnd
 !macro customUnInstall
   ${If} $DeleteAppData == "1"
     ; 设置、字幕库、总结、登录 Cookie、Electron 缓存、日志都在 userData 里。
+    RMDir /r "$APPDATA\shizi"
     RMDir /r "$APPDATA\bsub-desktop"
+    RMDir /r "$LOCALAPPDATA\shizi"
     RMDir /r "$LOCALAPPDATA\bsub-desktop"
     ; 用户可能在设置里把数据迁到了其它位置：读取指向文件一并删除。
+    IfFileExists "$APPDATA\shizi-location.txt" 0 bsubLegacyPointer
+      FileOpen $0 "$APPDATA\shizi-location.txt" r
+      Goto bsubReadPointer
+    bsubLegacyPointer:
     IfFileExists "$APPDATA\bsub-desktop-location.txt" 0 bsubNoCustomData
       FileOpen $0 "$APPDATA\bsub-desktop-location.txt" r
+    bsubReadPointer:
       FileRead $0 $1
       FileClose $0
       ${TrimNewLines} "$1" $1
@@ -89,10 +96,16 @@ FunctionEnd
         RMDir /r "$1"
       ${EndIf}
     bsubNoCustomData:
+    Delete "$APPDATA\shizi-location.txt"
     Delete "$APPDATA\bsub-desktop-location.txt"
     ; 迁移后尚未删除的旧目录列表。
+    IfFileExists "$APPDATA\shizi-cleanup.txt" 0 bsubLegacyCleanup
+      FileOpen $0 "$APPDATA\shizi-cleanup.txt" r
+      Goto bsubReadCleanup
+    bsubLegacyCleanup:
     IfFileExists "$APPDATA\bsub-desktop-cleanup.txt" 0 bsubNoCleanup
       FileOpen $0 "$APPDATA\bsub-desktop-cleanup.txt" r
+    bsubReadCleanup:
       bsubCleanupLoop:
         FileRead $0 $1
         StrCmp $1 "" bsubCleanupDone
@@ -104,9 +117,11 @@ FunctionEnd
         Goto bsubCleanupLoop
       bsubCleanupDone:
       FileClose $0
+      Delete "$APPDATA\shizi-cleanup.txt"
       Delete "$APPDATA\bsub-desktop-cleanup.txt"
     bsubNoCleanup:
     ; 自动更新下载的安装包缓存。
+    RMDir /r "$LOCALAPPDATA\shizi-updater"
     RMDir /r "$LOCALAPPDATA\bsub-desktop-updater"
 
     ; 转写过程中产生的 bsub-asr-* 临时目录（异常退出时可能残留）。
