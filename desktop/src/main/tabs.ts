@@ -25,6 +25,20 @@ interface TabRecord {
 
 let bridgeCache: string | null = null;
 
+function tabKey(value: string): string {
+  try {
+    const parsed = new URL(value);
+    if (!/^https?:$/.test(parsed.protocol)) return value;
+    parsed.hash = '';
+    // 时间戳参数只决定播放位置，同一视频仍算同一个标签。
+    parsed.searchParams.delete('t');
+    const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
+    return `${parsed.origin}${pathname}${parsed.search}`;
+  } catch {
+    return value;
+  }
+}
+
 function bridgeSource(): string {
   if (bridgeCache) return bridgeCache;
   const candidates = [
@@ -362,6 +376,26 @@ export class TabManager {
     // 已休眠的标签在切回时才重建，页面重新加载（后台状态本来也不该保留）。
     if (!record.view || record.suspended) await this.ensureView(record);
     this.setActive(id);
+  }
+
+  /**
+   * 从库/历史里打开视频：同一视频已经开着就切过去，不再堆重复标签。
+   * `?t=` 只影响播放位置，不参与匹配；`ready` 为 false 时页面还在加载，
+   * 调用方不要立刻 seek。
+   */
+  async openOrActivate(
+    input: string
+  ): Promise<{ id: string; reused: boolean; ready: boolean }> {
+    const url = normalizeUrl(input);
+    const key = tabKey(url);
+    for (const [id, record] of this.tabs) {
+      if (!record.url || tabKey(record.url) !== key) continue;
+      const ready = Boolean(record.view) && !record.suspended && !record.loading;
+      await this.activate(id);
+      return { id, reused: true, ready };
+    }
+    const id = await this.create(url);
+    return { id, reused: false, ready: true };
   }
 
   close(id: string): void {

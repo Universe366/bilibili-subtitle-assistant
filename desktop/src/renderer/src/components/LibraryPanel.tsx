@@ -1,6 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
-import type { LibraryList, LibrarySearchResult, LibraryVideo } from '../../../shared/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ExternalLink, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
+import type {
+  LibraryDetail,
+  LibraryList,
+  LibrarySearchResult,
+  LibrarySort,
+  LibraryVideo
+} from '../../../shared/types';
+import { ConfirmDialog } from './ConfirmDialog';
+import { ExportMenu } from './ExportMenu';
+import { Markdown } from './Markdown';
+
+const SORTS: Array<{ id: LibrarySort; label: string }> = [
+  { id: 'updated', label: '最近更新' },
+  { id: 'created', label: '最近入库' },
+  { id: 'title', label: '按标题' },
+  { id: 'duration', label: '按时长' }
+];
+
+const LINE_PAGE = 400;
 
 function fmtTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds || 0));
@@ -18,7 +36,7 @@ function fmtBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function fmtDate(ms: number): string {
+function fmtDate(ms: number | null | undefined): string {
   if (!ms) return '';
   try {
     return new Date(ms).toLocaleDateString('zh-CN');
@@ -31,13 +49,26 @@ export function LibraryPanel() {
   const [list, setList] = useState<LibraryList | null>(null);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<LibrarySearchResult | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchNonce, setSearchNonce] = useState(0);
+  const [sort, setSort] = useState<LibrarySort>('updated');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<LibraryDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailTab, setDetailTab] = useState<'subtitles' | 'summary'>('subtitles');
+  const [lineLimit, setLineLimit] = useState(LINE_PAGE);
+  const [pendingDelete, setPendingDelete] = useState<LibraryVideo | null>(null);
+
+  const searchSeq = useRef(0);
+  const detailSeq = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await window.bsub.listLibrary();
+      const response = await window.bsub.listLibrary(sort);
       if (response.ok) {
         setList(response.data);
         setError(null);
@@ -47,60 +78,254 @@ export function LibraryPanel() {
     } finally {
       setLoading(false);
     }
+  }, [sort]);
+
+  const fetchDetail = useCallback(async (id: number) => {
+    const seq = ++detailSeq.current;
+    setDetailLoading(true);
+    try {
+      const response = await window.bsub.getLibraryItem(id);
+      if (seq !== detailSeq.current) return;
+      if (response.ok) {
+        setDetail(response.data);
+      } else if (/视频不存在/.test(response.error)) {
+        // 删除后 library:changed 可能晚一步到达：安静退回列表。
+        setSelectedId(null);
+        setDetail(null);
+      } else {
+        setError(response.error);
+        setSelectedId(null);
+        setDetail(null);
+      }
+    } finally {
+      if (seq === detailSeq.current) setDetailLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
     return window.bsub.onLibraryChanged(() => {
       void load();
+      if (selectedId != null) void fetchDetail(selectedId);
+      setSearchNonce((value) => value + 1);
     });
-  }, [load]);
+  }, [load, selectedId, fetchDetail]);
 
   useEffect(() => {
     const text = query.trim();
     if (!text) {
+      // 让还在路上的请求作废，否则清空搜索框后旧结果会自己跳回来。
+      searchSeq.current += 1;
       setResult(null);
+      setSearching(false);
       return;
     }
-    let alive = true;
+    const seq = ++searchSeq.current;
+    setSearching(true);
     const timer = window.setTimeout(async () => {
       const response = await window.bsub.searchLibrary(text);
-      if (!alive) return;
-      if (response.ok) setResult(response.data);
-      else setError(response.error);
-    }, 280);
+      if (seq !== searchSeq.current) return;
+      setSearching(false);
+      if (response.ok) {
+        setResult(response.data);
+        setError(null);
+      } else {
+        setError(response.error);
+      }
+    }, 260);
 
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-  }, [query]);
+    return () => window.clearTimeout(timer);
+  }, [query, searchNonce]);
 
-  const open = (url: string, start?: number) => {
-    if (!url) return;
-    try {
-      const target = new URL(url);
-      if (typeof start === 'number' && start > 0) target.searchParams.set('t', String(Math.floor(start)));
-      void window.bsub.newTab(target.toString());
-    } catch {
-      void window.bsub.newTab(url);
-    }
+  const openDetail = (video: LibraryVideo) => {
+    setSelectedId(video.id);
+    setDetail(null);
+    setLineLimit(LINE_PAGE);
+    setDetailTab(video.summaryUpdatedAt ? 'summary' : 'subtitles');
+    void fetchDetail(video.id);
   };
 
-  const remove = async (video: LibraryVideo) => {
-    if (!window.confirm(`从库中删除「${video.title}」？`)) return;
+  const backToList = () => {
+    detailSeq.current += 1;
+    setSelectedId(null);
+    setDetail(null);
+    setDetailLoading(false);
+  };
+
+  const openInBrowser = (video: LibraryVideo, start?: number) => {
+    if (!video.url) return;
+    void window.bsub.openUrl(video.url, start);
+  };
+
+  const confirmDelete = async () => {
+    const video = pendingDelete;
+    setPendingDelete(null);
+    if (!video) return;
     const response = await window.bsub.removeLibrary(video.id);
-    if (response.ok) void load();
-    else setError(response.error);
+    if (response.ok) {
+      if (selectedId === video.id) backToList();
+      void load();
+    } else {
+      setError(response.error);
+    }
   };
 
   const stats = list?.stats;
+  const activeVideo = detail?.video ?? list?.videos.find((video) => video.id === selectedId) ?? null;
+
+  if (selectedId != null) {
+    return (
+      <div className="panel">
+        <div className="panel-toolbar">
+          <button className="icon-btn" title="返回库" onClick={backToList}>
+            <ChevronLeft size={15} />
+          </button>
+          <div className="panel-title lib-detail-title" title={activeVideo?.title || ''}>
+            {activeVideo?.title || '库条目'}
+          </div>
+          <div className="toolbar-actions">
+            {detail?.bundle && (
+              <ExportMenu
+                info={detail.bundle.info}
+                track={detail.bundle.track}
+                lines={detail.bundle.lines}
+                summary={detail.summary?.content}
+              />
+            )}
+            <button
+              className="icon-btn"
+              title="在网页打开"
+              disabled={!activeVideo?.url}
+              onClick={() => activeVideo && openInBrowser(activeVideo)}
+            >
+              <ExternalLink size={13} />
+            </button>
+            <button
+              className="icon-btn"
+              title="从库中删除"
+              onClick={() => activeVideo && setPendingDelete(activeVideo)}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
+
+        {activeVideo && (
+          <div className="lib-detail-meta">
+            {activeVideo.owner || '未知 UP'} · {fmtTime(activeVideo.duration)} ·{' '}
+            {activeVideo.lineCount.toLocaleString('zh-CN')} 行
+            {detail?.summary ? ` · 总结于 ${fmtDate(detail.summary.updatedAt)}` : ' · 未总结'}
+          </div>
+        )}
+
+        <div className="lib-tabs">
+          <button
+            className={`mini-btn${detailTab === 'subtitles' ? ' is-active' : ''}`}
+            onClick={() => setDetailTab('subtitles')}
+            disabled={!detail?.bundle}
+          >
+            字幕 {detail?.bundle ? detail.bundle.lines.length.toLocaleString('zh-CN') : ''}
+          </button>
+          <button
+            className={`mini-btn${detailTab === 'summary' ? ' is-active' : ''}`}
+            onClick={() => setDetailTab('summary')}
+          >
+            总结{detail?.summary ? '' : ' —'}
+          </button>
+        </div>
+
+        {error && <div className="status-line error">{error}</div>}
+
+        {detailLoading && !detail && (
+          <div className="status-line">
+            <Loader2 size={13} className="spin" />
+            读取中…
+          </div>
+        )}
+
+        {detailTab === 'subtitles' && detail?.bundle && (
+          <div className="lib-lines">
+            {detail.bundle.lines.slice(0, lineLimit).map((line, index) => (
+              <button
+                key={`${line.start}-${index}`}
+                className="lib-line"
+                title={`在网页跳到 ${fmtTime(line.start)}`}
+                onClick={() => openInBrowser(detail.video, line.start)}
+              >
+                <span className="lib-line-time">{fmtTime(line.start)}</span>
+                <span className="lib-line-text">{line.text}</span>
+              </button>
+            ))}
+            {detail.bundle.lines.length > lineLimit && (
+              <button
+                className="mini-btn lib-more"
+                onClick={() => setLineLimit((value) => value + LINE_PAGE)}
+              >
+                加载更多（还有{' '}
+                {(detail.bundle.lines.length - lineLimit).toLocaleString('zh-CN')} 行）
+              </button>
+            )}
+          </div>
+        )}
+
+        {detailTab === 'subtitles' && detail && !detail.bundle && (
+          <div className="panel-empty">
+            这条记录只有总结，没有入库字幕
+            <div className="panel-hint">打开视频后，在「字幕」面板点「入库」即可离线阅读。</div>
+          </div>
+        )}
+
+        {detailTab === 'summary' && detail?.summary && (
+          <div className="lib-summary">
+            <Markdown content={detail.summary.content} />
+          </div>
+        )}
+
+        {detailTab === 'summary' && detail && !detail.summary && (
+          <div className="panel-empty">
+            还没有总结
+            <div className="panel-hint">
+              打开视频后在「总结」面板生成，会自动保存到这里，之后可以离线查看。
+            </div>
+          </div>
+        )}
+
+        <ConfirmDialog
+          open={Boolean(pendingDelete)}
+          title="从库中删除？"
+          description={
+            pendingDelete
+              ? `「${pendingDelete.title}」的字幕、总结和搜索索引会一起删除，无法撤销。`
+              : undefined
+          }
+          confirmText="删除"
+          onConfirm={() => void confirmDelete()}
+          onCancel={() => setPendingDelete(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="panel">
       <div className="panel-toolbar">
         <div className="panel-title">库</div>
         <div className="toolbar-actions">
+          <select
+            className="mini-select"
+            title="排序"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as LibrarySort)}
+          >
+            {SORTS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <button className="icon-btn" title="刷新" onClick={() => void load()}>
             <RefreshCw size={13} className={loading ? 'spin' : ''} />
           </button>
@@ -112,7 +337,7 @@ export function LibraryPanel() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索字幕内容…"
+          placeholder="搜索标题、UP 或字幕…"
           spellCheck={false}
         />
       </div>
@@ -136,13 +361,64 @@ export function LibraryPanel() {
       {result && (
         <div className="lib-results">
           <div className="lib-result-head">
-            找到 {result.total} 条 · {result.mode === 'fts' ? '全文' : '模糊'}
+            字幕 {result.total} 条 · {result.mode === 'fts' ? '全文' : '模糊'}
+            {result.videos.length > 0 && ` · 视频 ${result.videos.length} 个`}
+            {searching && ' · 搜索中…'}
           </div>
+
+          {result.videos.length > 0 && (
+            <>
+              <div className="lib-group-head">相关视频</div>
+              {result.videos.map((video) => (
+                <div
+                  key={`v-${video.id}`}
+                  className="lib-video"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetail(video)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') openDetail(video);
+                  }}
+                >
+                  {video.cover ? (
+                    <img className="lib-cover" src={video.cover} alt="" />
+                  ) : (
+                    <div className="lib-cover lib-cover-fallback">
+                      {video.title.slice(0, 1) || 'B'}
+                    </div>
+                  )}
+                  <div className="lib-meta">
+                    <div className="lib-title-row">
+                      <span className="lib-title" title={video.title}>
+                        {video.title}
+                      </span>
+                      {video.summaryUpdatedAt != null && (
+                        <span className="lib-badge">已总结</span>
+                      )}
+                    </div>
+                    <div className="lib-sub">
+                      {video.owner || '未知 UP'} · {fmtTime(video.duration)} ·{' '}
+                      {video.lineCount.toLocaleString('zh-CN')} 行
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {result.matches.length > 0 && (
+            <div className="lib-group-head">字幕命中</div>
+          )}
           {result.matches.map((match, index) => (
             <button
               key={`${match.videoId}-${match.start}-${index}`}
               className="lib-result"
-              onClick={() => open(match.url, match.start)}
+              onClick={() => {
+                const url =
+                  match.url ||
+                  (match.bvid ? `https://www.bilibili.com/video/${match.bvid}` : '');
+                if (url) void window.bsub.openUrl(url, match.start);
+              }}
             >
               <span className="lib-result-time">{fmtTime(match.start)}</span>
               <span className="lib-result-body">
@@ -151,7 +427,13 @@ export function LibraryPanel() {
               </span>
             </button>
           ))}
-          {!result.matches.length && <div className="panel-empty">没有匹配的字幕</div>}
+
+          {!result.videos.length && !result.matches.length && (
+            <div className="panel-empty">
+              没有找到匹配的视频或字幕
+              <div className="panel-hint">标题、UP 名和字幕正文都会参与搜索。</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -163,45 +445,75 @@ export function LibraryPanel() {
               className="lib-video"
               role="button"
               tabIndex={0}
-              onClick={() => open(video.url)}
+              onClick={() => openDetail(video)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') open(video.url);
+                if (event.key === 'Enter') openDetail(video);
               }}
             >
               {video.cover ? (
                 <img className="lib-cover" src={video.cover} alt="" />
               ) : (
-                <div className="lib-cover lib-cover-fallback">{video.title.slice(0, 1) || 'B'}</div>
+                <div className="lib-cover lib-cover-fallback">
+                  {video.title.slice(0, 1) || 'B'}
+                </div>
               )}
               <div className="lib-meta">
-                <div className="lib-title" title={video.title}>
-                  {video.title}
+                <div className="lib-title-row">
+                  <span className="lib-title" title={video.title}>
+                    {video.title}
+                  </span>
+                  {video.summaryUpdatedAt != null && <span className="lib-badge">已总结</span>}
                 </div>
                 <div className="lib-sub">
-                  {video.owner} · {fmtTime(video.duration)} · {video.lineCount.toLocaleString('zh-CN')} 行
+                  {video.owner || '未知 UP'} · {fmtTime(video.duration)} ·{' '}
+                  {video.lineCount.toLocaleString('zh-CN')} 行
                 </div>
-                <div className="lib-sub faint">{fmtDate(video.updatedAt)}</div>
+                <div className="lib-sub faint">
+                  {video.summaryUpdatedAt != null
+                    ? `总结于 ${fmtDate(video.summaryUpdatedAt)}`
+                    : `入库于 ${fmtDate(video.createdAt)}`}
+                </div>
               </div>
               <button
                 className="lib-delete"
                 title="从库中删除"
                 onClick={(event) => {
                   event.stopPropagation();
-                  void remove(video);
+                  setPendingDelete(video);
                 }}
               >
                 <Trash2 size={13} />
               </button>
             </div>
           ))}
+
           {!list.videos.length && (
             <div className="panel-empty">
               还没有入库的视频
               <div className="panel-hint">打开视频后，在「字幕」面板点「入库」。</div>
             </div>
           )}
+
+          {list.total > list.videos.length && (
+            <div className="panel-hint">
+              仅显示最近 {list.videos.length} 条，共 {list.total} 条；搜索可以找到全部内容。
+            </div>
+          )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="从库中删除？"
+        description={
+          pendingDelete
+            ? `「${pendingDelete.title}」的字幕、总结和搜索索引会一起删除，无法撤销。`
+            : undefined
+        }
+        confirmText="删除"
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

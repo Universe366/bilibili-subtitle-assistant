@@ -4,7 +4,9 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
   LibraryBundle,
+  LibraryDetail,
   LibraryHistoryItem,
+  LibrarySort,
   LibraryTranscriptionItem,
   LibraryIngestPayload,
   LibraryIngestResult,
@@ -270,17 +272,48 @@ export function ingestVideo(payload: LibraryIngestPayload): LibraryIngestResult 
   }
 }
 
-export function listLibrary(): LibraryList {
+const VIDEO_COLUMNS = `
+  SELECT v.id, v.bvid, v.cid, v.title, v.owner, v.duration, v.cover, v.url,
+         v.created_at, v.updated_at,
+         (SELECT COUNT(*) FROM tracks t WHERE t.video_id = v.id) AS track_count,
+         (SELECT COALESCE(SUM(t.line_count), 0) FROM tracks t WHERE t.video_id = v.id) AS line_count,
+         (SELECT MAX(s.updated_at) FROM summaries s WHERE s.video_id = v.id) AS summary_at,
+         (SELECT s.model FROM summaries s WHERE s.video_id = v.id
+            ORDER BY s.updated_at DESC LIMIT 1) AS summary_model
+  FROM videos v`;
+
+function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
+  const summaryAt = row.summary_at == null ? null : toNumber(row.summary_at);
+  return {
+    id: toNumber(row.id),
+    bvid: row.bvid == null ? null : String(row.bvid),
+    cid: row.cid == null ? null : toNumber(row.cid),
+    title: String(row.title || ''),
+    owner: String(row.owner || ''),
+    duration: toNumber(row.duration),
+    cover: row.cover == null ? null : String(row.cover),
+    url: String(row.url || ''),
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+    summaryUpdatedAt: summaryAt && summaryAt > 0 ? summaryAt : null,
+    summaryModel: row.summary_model == null ? undefined : String(row.summary_model),
+    trackCount: toNumber(row.track_count),
+    lineCount: toNumber(row.line_count)
+  };
+}
+
+const LIBRARY_ORDER: Record<LibrarySort, string> = {
+  updated: 'v.updated_at DESC',
+  created: 'v.created_at DESC',
+  title: 'v.title COLLATE NOCASE ASC, v.updated_at DESC',
+  duration: 'v.duration DESC, v.updated_at DESC'
+};
+
+export function listLibrary(sort: LibrarySort = 'updated'): LibraryList {
   const database = requireDb();
+  const order = LIBRARY_ORDER[sort] || LIBRARY_ORDER.updated;
   const rows = database
-    .prepare(
-      `SELECT v.id, v.bvid, v.cid, v.title, v.owner, v.duration, v.cover, v.url, v.updated_at,
-              (SELECT COUNT(*) FROM tracks t WHERE t.video_id = v.id) AS track_count,
-              (SELECT COALESCE(SUM(t.line_count), 0) FROM tracks t WHERE t.video_id = v.id) AS line_count
-       FROM videos v
-       ORDER BY v.updated_at DESC
-       LIMIT 500`
-    )
+    .prepare(`${VIDEO_COLUMNS} ORDER BY ${order} LIMIT 500`)
     .all() as Array<Record<string, unknown>>;
 
   const statsRow = database
@@ -307,21 +340,7 @@ export function listLibrary(): LibraryList {
     bytes
   };
 
-  const videos: LibraryVideo[] = rows.map((row) => ({
-    id: toNumber(row.id),
-    bvid: row.bvid == null ? null : String(row.bvid),
-    cid: row.cid == null ? null : toNumber(row.cid),
-    title: String(row.title || ''),
-    owner: String(row.owner || ''),
-    duration: toNumber(row.duration),
-    cover: row.cover == null ? null : String(row.cover),
-    url: String(row.url || ''),
-    updatedAt: toNumber(row.updated_at),
-    trackCount: toNumber(row.track_count),
-    lineCount: toNumber(row.line_count)
-  }));
-
-  return { videos, stats };
+  return { videos: rows.map(mapVideoRow), stats, total: stats.videos };
 }
 
 function sanitizeQuery(input: string): string {
@@ -331,13 +350,44 @@ function sanitizeQuery(input: string): string {
     .slice(0, 100);
 }
 
+function searchTerms(input: string): string[] {
+  return sanitizeQuery(input)
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function ftsExpression(terms: string[]): string {
+  return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' AND ');
+}
+
+/** 标题 / UP 名命中：和字幕命中分开返回，避免用户搜标题时得到「没有匹配的字幕」。 */
+function searchVideoRows(database: DatabaseSync, terms: string[]): LibraryVideo[] {
+  if (!terms.length) return [];
+  const where = terms.map(() => '(v.title LIKE ? OR v.owner LIKE ?)').join(' AND ');
+  const params = terms.flatMap((term) => [`%${term}%`, `%${term}%`]);
+  const rows = database
+    .prepare(`${VIDEO_COLUMNS} WHERE ${where} ORDER BY v.updated_at DESC LIMIT 20`)
+    .all(...params) as Array<Record<string, unknown>>;
+  return rows.map(mapVideoRow);
+}
+
 export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
   const database = requireDb();
-  const query = sanitizeQuery(input);
-  if (!query) return { query: '', total: 0, matches: [], mode: 'like' };
+  const terms = searchTerms(input);
+  if (!terms.length) {
+    return { query: '', total: 0, matches: [], videos: [], mode: 'like' };
+  }
 
-  const useFts = ftsEnabled && query.length >= 3;
-  const parameter = useFts ? `"${query.replace(/"/g, '""')}"` : `%${query}%`;
+  const videos = searchVideoRows(database, terms);
+  // trigram 分词对 <3 字的词不生效；任何一个词过短就退回 LIKE。
+  const useFts = ftsEnabled && terms.every((term) => term.length >= 3);
+  const likeParams = terms.map((term) => `%${term}%`);
+  const where = useFts
+    ? 'segments_fts MATCH ?'
+    : terms.map(() => 's.text LIKE ?').join(' AND ');
+  const params = useFts ? [ftsExpression(terms)] : likeParams;
 
   const selectSql = useFts
     ? `SELECT s.start_ms, s.end_ms, s.text, v.id AS video_id, v.bvid, v.title, v.owner, v.cover, v.url, t.lan_doc
@@ -352,22 +402,28 @@ export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
        FROM segments s
        JOIN tracks t ON t.id = s.track_id
        JOIN videos v ON v.id = t.video_id
-       WHERE s.text LIKE ?
+       WHERE ${where}
        ORDER BY v.updated_at DESC, s.start_ms ASC
        LIMIT ?`;
 
   const countSql = useFts
     ? 'SELECT COUNT(*) AS total FROM segments_fts WHERE segments_fts MATCH ?'
-    : 'SELECT COUNT(*) AS total FROM segments WHERE text LIKE ?';
+    : `SELECT COUNT(*) AS total FROM segments s WHERE ${where}`;
 
   let rows: Array<Record<string, unknown>> = [];
   let total = 0;
   try {
-    rows = database.prepare(selectSql).all(parameter, limit) as Array<Record<string, unknown>>;
-    total = toNumber((database.prepare(countSql).get(parameter) as { total?: unknown })?.total);
+    rows = database.prepare(selectSql).all(...params, limit) as Array<Record<string, unknown>>;
+    total = toNumber((database.prepare(countSql).get(...params) as { total?: unknown })?.total);
   } catch (error) {
     console.warn('[library] 搜索失败:', (error as Error).message);
-    return { query, total: 0, matches: [], mode: useFts ? 'fts' : 'like' };
+    return {
+      query: sanitizeQuery(input),
+      total: 0,
+      matches: [],
+      videos,
+      mode: useFts ? 'fts' : 'like'
+    };
   }
 
   const matches: LibrarySearchMatch[] = rows.map((row) => ({
@@ -383,7 +439,13 @@ export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
     lanDoc: String(row.lan_doc || '')
   }));
 
-  return { query, total, matches, mode: useFts ? 'fts' : 'like' };
+  return {
+    query: sanitizeQuery(input),
+    total,
+    matches,
+    videos,
+    mode: useFts ? 'fts' : 'like'
+  };
 }
 
 export function removeVideo(id: number): boolean {
@@ -521,6 +583,43 @@ export function libraryVideoBundle(videoId: number): LibraryBundle {
       end: toNumber(row.end_ms) / 1000,
       text: String(row.text || '')
     }))
+  };
+}
+
+export function getLibraryDetail(videoId: number): LibraryDetail {
+  const database = requireDb();
+  const row = database
+    .prepare(`${VIDEO_COLUMNS} WHERE v.id = ?`)
+    .get(Number(videoId)) as Record<string, unknown> | undefined;
+  if (!row) throw new Error('视频不存在');
+
+  let bundle: LibraryBundle | null = null;
+  try {
+    bundle = libraryVideoBundle(Number(videoId));
+  } catch {
+    // 只存过总结、没有入库字幕的视频：详情页仍要能打开总结。
+    bundle = null;
+  }
+
+  const summaryRow = database
+    .prepare(
+      `SELECT content_md, model, updated_at FROM summaries
+       WHERE video_id = ? ORDER BY updated_at DESC LIMIT 1`
+    )
+    .get(Number(videoId)) as
+    | { content_md: string; model: string; updated_at: number }
+    | undefined;
+
+  return {
+    video: mapVideoRow(row),
+    bundle,
+    summary: summaryRow
+      ? {
+          content: String(summaryRow.content_md || ''),
+          model: String(summaryRow.model || ''),
+          updatedAt: toNumber(summaryRow.updated_at)
+        }
+      : null
   };
 }
 

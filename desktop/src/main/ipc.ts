@@ -57,13 +57,16 @@ import type {
   SkillItem,
   LibraryIngestResult,
   LibraryList,
-  LibrarySearchResult
+  LibrarySearchResult,
+  LibraryDetail,
+  LibrarySort
 } from '../shared/types';
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
 import {
   clearHistory,
   deleteHistoryItem,
+  getLibraryDetail,
   getSummaryFor,
   ingestVideo,
   listHistory,
@@ -109,6 +112,18 @@ function failure<T>(error: unknown): Result<T> {
   return { ok: false, error: (error as Error)?.message || String(error) };
 }
 
+function withStartParam(url: string, seconds: number): string {
+  if (!url || !(seconds > 0)) return url;
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) return url;
+    parsed.searchParams.set('t', String(Math.floor(seconds)));
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 const aiControllers = new Map<string, AbortController>();
 const chatControllers = new Map<string, AbortController>();
 const asrControllers = new Map<string, AbortController>();
@@ -124,6 +139,24 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   };
   ipcMain.handle('tabs:list', () => tabs.list());
   ipcMain.handle('tab:new', (_event, url?: string) => tabs.create(url));
+  ipcMain.handle('tab:open', async (_event, url: string, start?: number) => {
+    const time = Number(start);
+    const safeTime = Number.isFinite(time) && time > 0 ? Math.floor(time) : 0;
+    // 新标签靠 URL 的 t 参数落点；复用标签不会被重新导航，下面再补 seek。
+    const target = withStartParam(String(url || ''), safeTime);
+    const result = await tabs.openOrActivate(target);
+    if (result.reused && result.ready && safeTime > 0) {
+      const wc = tabs.webContentsOf(result.id);
+      if (wc) {
+        try {
+          await seek(wc, safeTime);
+        } catch (error) {
+          console.warn('[tab] seek 失败:', (error as Error).message);
+        }
+      }
+    }
+    return result;
+  });
   ipcMain.handle('tab:close', (_event, id: string) => {
     tabs.close(id);
   });
@@ -274,11 +307,19 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('library:list', async (): Promise<Result<LibraryList>> => {
+  ipcMain.handle('library:list', async (_event, sort?: string): Promise<Result<LibraryList>> => {
     try {
-      return { ok: true, data: listLibrary() };
+      return { ok: true, data: listLibrary(sort as LibrarySort) };
     } catch (error) {
       return failure<LibraryList>(error);
+    }
+  });
+
+  ipcMain.handle('library:get', async (_event, id: number): Promise<Result<LibraryDetail>> => {
+    try {
+      return { ok: true, data: getLibraryDetail(Number(id)) };
+    } catch (error) {
+      return failure<LibraryDetail>(error);
     }
   });
 

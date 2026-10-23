@@ -11,7 +11,7 @@ import {
   Settings,
   Sparkles
 } from 'lucide-react';
-import type { Section, TabInfo } from '../../../shared/types';
+import type { BridgeStatus, Section, TabInfo } from '../../../shared/types';
 import { SubtitlesPanel } from './SubtitlesPanel';
 import { ChatPanel } from './ChatPanel';
 import { BatchPanel } from './BatchPanel';
@@ -68,8 +68,33 @@ export function Sidebar({
   hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
+  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [visited, setVisited] = useState<Set<Section>>(() => new Set([section]));
   const dragActiveRef = useRef(false);
+
+  // 底部状态以前是写死的「插件未连接」；桥由设置控制，也可能中途重启，
+  // 所以按真实状态展示，并定期刷新。
+  useEffect(() => {
+    let alive = true;
+    const sync = () => {
+      void window.bsub.getBridgeStatus().then((response) => {
+        if (alive && response.ok) setBridge(response.data);
+      });
+    };
+    sync();
+    const timer = window.setInterval(sync, 20000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const bridgeLabel = (() => {
+    if (!bridge) return '桥状态未知';
+    if (!bridge.enabled) return '本地桥已关闭';
+    if (bridge.running) return `插件已连接 · ${bridge.port}`;
+    return bridge.error ? '插件桥未启动' : '插件未连接';
+  })();
 
   // 面板首次显示后保持挂载：切换导航只切显示，正在跑的任务/会话状态不会丢。
   useEffect(() => {
@@ -287,9 +312,10 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="side-footer">
-        <span className={`dot${tabCount > 0 ? ' is-on' : ''}`} />
-        <span>插件未连接</span>
+      <div className="side-footer" title={bridge?.error || bridgeLabel}>
+        <span className={`dot${bridge?.running ? ' is-on' : ''}`} />
+        <span>{bridgeLabel}</span>
+        {tabCount > 0 && <span>· {tabCount} 标签</span>}
         <span className="side-version">{version ? `v${version}` : ''}</span>
       </div>
     </aside>

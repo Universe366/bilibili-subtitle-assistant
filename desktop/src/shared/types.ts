@@ -136,7 +136,11 @@ export interface LibraryVideo {
   duration: number;
   cover: string | null;
   url: string;
+  createdAt: number;
   updatedAt: number;
+  /** 最后一次保存总结的时间；null 表示尚未总结 */
+  summaryUpdatedAt: number | null;
+  summaryModel?: string;
   trackCount: number;
   lineCount: number;
 }
@@ -171,7 +175,18 @@ export interface DiagnosticsInfo {
 export interface LibraryList {
   videos: LibraryVideo[];
   stats: LibraryStats;
+  /** 库内视频总数（videos 可能因分页上限被截断） */
+  total: number;
 }
+
+export interface LibraryDetail {
+  video: LibraryVideo;
+  /** 没有入库字幕时（只存过总结）为 null */
+  bundle: LibraryBundle | null;
+  summary: StoredSummary | null;
+}
+
+export type LibrarySort = 'updated' | 'created' | 'title' | 'duration';
 
 export interface LibraryHistoryItem {
   id: number;
@@ -297,8 +312,11 @@ export interface LibrarySearchMatch {
 
 export interface LibrarySearchResult {
   query: string;
+  /** 字幕正文命中的总条数 */
   total: number;
   matches: LibrarySearchMatch[];
+  /** 标题 / UP 名命中的视频（字幕正文之外的第二类结果） */
+  videos: LibraryVideo[];
   mode: 'fts' | 'like';
 }
 

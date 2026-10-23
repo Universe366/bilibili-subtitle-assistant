@@ -57,12 +57,16 @@ import type {
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
-  LibrarySearchResult
+  LibrarySearchResult,
+  LibraryDetail,
+  LibrarySort
 } from './types';
 
 export interface BsubApi {
   listTabs(): Promise<TabInfo[]>;
   newTab(url?: string): Promise<string>;
+  /** 打开链接：同一视频已打开时复用标签；start 为秒级播放位置。 */
+  openUrl(url: string, start?: number): Promise<{ id: string; reused: boolean; ready: boolean }>;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   navigate(url: string): Promise<void>;
@@ -81,7 +85,8 @@ export interface BsubApi {
   seek(time: number): Promise<void>;
 
   ingestLibrary(payload: LibraryIngestPayload): Promise<Result<LibraryIngestResult>>;
-  listLibrary(): Promise<Result<LibraryList>>;
+  listLibrary(sort?: LibrarySort): Promise<Result<LibraryList>>;
+  getLibraryItem(id: number): Promise<Result<LibraryDetail>>;
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
   removeLibrary(id: number): Promise<Result<{ removed: boolean }>>;
   onLibraryChanged(cb: () => void): () => void;

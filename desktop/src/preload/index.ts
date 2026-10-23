@@ -59,7 +59,9 @@ import type {
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
-  LibrarySearchResult
+  LibrarySearchResult,
+  LibraryDetail,
+  LibrarySort
 } from '../shared/types';
 
 const on = <T>(channel: string, cb: (payload: T) => void) => {
@@ -71,6 +73,12 @@ const on = <T>(channel: string, cb: (payload: T) => void) => {
 const api: BsubApi = {
   listTabs: () => ipcRenderer.invoke('tabs:list') as Promise<TabInfo[]>,
   newTab: (url?: string) => ipcRenderer.invoke('tab:new', url) as Promise<string>,
+  openUrl: (url: string, start?: number) =>
+    ipcRenderer.invoke('tab:open', url, start) as Promise<{
+      id: string;
+      reused: boolean;
+      ready: boolean;
+    }>,
   closeTab: (id: string) => ipcRenderer.invoke('tab:close', id) as Promise<void>,
   activateTab: (id: string) => ipcRenderer.invoke('tab:activate', id) as Promise<void>,
   navigate: (url: string) => ipcRenderer.invoke('tab:navigate', url) as Promise<void>,
@@ -100,7 +108,10 @@ const api: BsubApi = {
 
   ingestLibrary: (payload: LibraryIngestPayload) =>
     ipcRenderer.invoke('library:ingest', payload) as Promise<Result<LibraryIngestResult>>,
-  listLibrary: () => ipcRenderer.invoke('library:list') as Promise<Result<LibraryList>>,
+  listLibrary: (sort?: LibrarySort) =>
+    ipcRenderer.invoke('library:list', sort) as Promise<Result<LibraryList>>,
+  getLibraryItem: (id: number) =>
+    ipcRenderer.invoke('library:get', id) as Promise<Result<LibraryDetail>>,
   searchLibrary: (query: string) =>
     ipcRenderer.invoke('library:search', query) as Promise<Result<LibrarySearchResult>>,
   removeLibrary: (id: number) =>
