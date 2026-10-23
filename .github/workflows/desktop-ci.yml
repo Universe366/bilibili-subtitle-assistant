@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'desktop/**'
+      - 'shizi-extension/**'
       - '.github/workflows/desktop-ci.yml'
   push:
     branches:
-      - main
+      - master
     paths:
       - 'desktop/**'
+      - 'shizi-extension/**'
       - '.github/workflows/desktop-ci.yml'
 
 permissions:

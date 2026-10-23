@@ -59,6 +59,7 @@ shizi-extension/
 | 最近改了什么、怎么验收 | `desktop/docs/HARDENING.md` |
 | 插件和桌面怎么通信 | `desktop/docs/BRIDGE.md` |
 | 发布/更新/安装器 | `docs/MAINTAINERS.md` |
+| 代码质量与重构建议 | `docs/QUALITY.md` |
 | 品牌与路径迁移历史 | `desktop/docs/REBRAND.md` |
 | 0.30.x 旧验收/方案 | `desktop/docs/archive/`（历史，不代表现状） |
 | 逐轮缺陷复盘 | `shizi-extension/docs/history/DEVELOPMENT-LOG.md`（开发记录） |

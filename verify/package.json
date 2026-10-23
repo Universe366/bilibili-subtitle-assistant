@@ -1,8 +1,8 @@
 {
   "name": "shizi-extension-verify",
-  "version": "2.18.2",
+  "version": "2.18.6",
   "private": true,
-  "description": "B站字幕助手的自动化验证套件（不属于扩展运行时）",
+  "description": "拾字插件的自动化验证套件（不属于扩展运行时）",
   "type": "commonjs",
   "scripts": {
     "bundle": "node bundle.js",

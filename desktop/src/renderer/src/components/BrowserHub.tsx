@@ -14,22 +14,9 @@ import {
   X
 } from 'lucide-react';
 import type { Bookmark as BookmarkItem, DownloadRecord, HistoryEntry, TabInfo } from '../../../shared/types';
+import { formatDateTime } from '../lib/format';
 
 export type HubSection = 'history' | 'bookmarks' | 'downloads' | 'tabs';
-
-function fmtTime(ms: number): string {
-  if (!ms) return '';
-  try {
-    return new Date(ms).toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return '';
-  }
-}
 
 function fmtBytes(bytes: number): string {
   if (!bytes) return '0 B';
@@ -209,7 +196,7 @@ export function BrowserHub({
                   <span className="hub-title">{item.title || item.url}</span>
                   <span className="hub-sub">{item.url}</span>
                 </span>
-                <span className="hub-time">{fmtTime(item.visitedAt)}</span>
+                <span className="hub-time">{formatDateTime(item.visitedAt)}</span>
               </button>
             ))}
           {section === 'history' && !loading && !history.length && (
@@ -257,7 +244,7 @@ export function BrowserHub({
                           : item.state === 'cancelled'
                             ? '已取消'
                             : '已中断'}
-                      {item.finishedAt ? ` · ${fmtTime(item.finishedAt)}` : ''}
+                      {item.finishedAt ? ` · ${formatDateTime(item.finishedAt)}` : ''}
                     </span>
                     {item.state === 'progressing' && (
                       <span className="hub-progress">

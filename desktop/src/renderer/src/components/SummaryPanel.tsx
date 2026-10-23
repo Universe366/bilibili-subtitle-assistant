@@ -12,6 +12,7 @@ import { Markdown } from './Markdown';
 import { ExportMenu } from './ExportMenu';
 import { pickTrack, isVideoKey, videoKeyOf } from '../lib/video';
 import { getAsrResult } from '../lib/asrStore';
+import { formatDuration } from '../lib/format';
 
 function newRequestId(): string {
   try {
@@ -19,13 +20,6 @@ function newRequestId(): string {
   } catch {
     return `r_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   }
-}
-
-function fmtTime(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds || 0));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 export function SummaryPanel({
@@ -391,7 +385,7 @@ export function SummaryPanel({
             {info.title}
           </div>
           <div className="summary-video-meta">
-            {info.owner} · {fmtTime(info.duration)}
+            {info.owner} · {formatDuration(info.duration)}
           </div>
         </div>
       )}
@@ -415,7 +409,7 @@ export function SummaryPanel({
                 className="chapter-row"
                 onClick={() => void window.bsub.seek(chapter.start + 0.05)}
               >
-                <span className="chapter-time">{fmtTime(chapter.start)}</span>
+                <span className="chapter-time">{formatDuration(chapter.start)}</span>
                 <span className="chapter-title">{chapter.title}</span>
               </button>
             ))}

@@ -17,6 +17,7 @@ import type {
   SummaryVersionMeta,
   TrashItem
 } from '../../../shared/types';
+import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
@@ -48,50 +49,11 @@ function metaLine(video: LibraryVideo): string {
   return [
     kindLabel(video),
     video.owner || (video.kind === 'page' ? '网页' : '未知 UP'),
-    video.duration ? fmtTime(video.duration) : '',
+    video.duration ? formatDuration(video.duration) : '',
     video.lineCount ? `${video.lineCount.toLocaleString('zh-CN')} 行` : ''
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-function fmtTime(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds || 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function fmtBytes(bytes: number): string {
-  if (!bytes) return '0 MB';
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function fmtDate(ms: number | null | undefined): string {
-  if (!ms) return '';
-  try {
-    return new Date(ms).toLocaleDateString('zh-CN');
-  } catch {
-    return '';
-  }
-}
-
-function fmtDateTime(ms: number): string {
-  if (!ms) return '';
-  try {
-    return new Date(ms).toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return '';
-  }
 }
 
 function safeFilename(title: string): string {
@@ -601,7 +563,7 @@ export function LibraryPanel() {
     const content = [
       `# ${detail.video.title || '未命名视频'} · 笔记`,
       '',
-      `> ${detail.video.owner || '未知 UP'} · ${fmtDateTime(Date.now())}`,
+      `> ${detail.video.owner || '未知 UP'} · ${formatDateTime(Date.now())}`,
       '',
       noteDraft.trim(),
       ''
@@ -873,7 +835,7 @@ export function LibraryPanel() {
     const content = [
       `# 合集对比 · ${summaryCollection.name}`,
       '',
-      `> ${collectionSummary.itemCount} 个视频 · 模型 ${collectionSummary.model || 'AI'} · ${fmtDateTime(
+      `> ${collectionSummary.itemCount} 个视频 · 模型 ${collectionSummary.model || 'AI'} · ${formatDateTime(
         collectionSummary.updatedAt
       )}`,
       '',
@@ -1003,7 +965,7 @@ export function LibraryPanel() {
         {activeVideo && (
           <div className="lib-detail-meta">
             {metaLine(activeVideo)}
-            {detail?.summary ? ` · 总结于 ${fmtDate(detail.summary.updatedAt)}` : ' · 未总结'}
+            {detail?.summary ? ` · 总结于 ${formatDate(detail.summary.updatedAt)}` : ' · 未总结'}
           </div>
         )}
 
@@ -1117,10 +1079,10 @@ export function LibraryPanel() {
               <button
                 key={`${line.start}-${index}`}
                 className="lib-line"
-                title={`在网页跳到 ${fmtTime(line.start)}`}
+                title={`在网页跳到 ${formatDuration(line.start)}`}
                 onClick={() => openInBrowser(detail.video, line.start)}
               >
-                <span className="lib-line-time">{fmtTime(line.start)}</span>
+                <span className="lib-line-time">{formatDuration(line.start)}</span>
                 <span className="lib-line-text">{line.text}</span>
               </button>
             ))}
@@ -1149,8 +1111,8 @@ export function LibraryPanel() {
               <div className="version-banner">
                 <span>
                   {diff
-                    ? `对比：${fmtDateTime(preview.createdAt)} 版本 → 当前`
-                    : `预览版本 · ${fmtDateTime(preview.createdAt)} · ${preview.model || 'AI'}`}
+                    ? `对比：${formatDateTime(preview.createdAt)} 版本 → 当前`
+                    : `预览版本 · ${formatDateTime(preview.createdAt)} · ${preview.model || 'AI'}`}
                 </span>
                 <div className="version-banner-actions">
                   {diff ? (
@@ -1211,7 +1173,7 @@ export function LibraryPanel() {
                         key={version.id}
                         className={`version-row${preview?.id === version.id ? ' is-active' : ''}`}
                       >
-                        <span className="version-time">{fmtDateTime(version.createdAt)}</span>
+                        <span className="version-time">{formatDateTime(version.createdAt)}</span>
                         <span className="version-model">{version.model || 'AI'}</span>
                         <span className="version-chars">{version.chars} 字</span>
                         <button
@@ -1275,7 +1237,7 @@ export function LibraryPanel() {
                 {noteDirty
                   ? ' · 未保存'
                   : detail.note
-                    ? ` · 保存于 ${fmtDateTime(detail.note.updatedAt)}`
+                    ? ` · 保存于 ${formatDateTime(detail.note.updatedAt)}`
                     : ' · 空笔记不会保存'}
               </span>
               <div className="note-actions">
@@ -1315,7 +1277,7 @@ export function LibraryPanel() {
                   <div className="version-list">
                     {noteVersions.map((version) => (
                       <div key={version.id} className="version-row">
-                        <span className="version-time">{fmtDateTime(version.createdAt)}</span>
+                        <span className="version-time">{formatDateTime(version.createdAt)}</span>
                         <span className="version-chars">{version.chars} 字</span>
                         <button
                           className="mini-btn"
@@ -1562,7 +1524,7 @@ export function LibraryPanel() {
         <div className="library-stats">
           <span>{stats.videos} 个视频</span>
           <span>{stats.segments.toLocaleString('zh-CN')} 行</span>
-          <span>{fmtBytes(stats.bytes)}</span>
+          <span>{formatBytes(stats.bytes)}</span>
         </div>
       )}
 
@@ -1633,7 +1595,7 @@ export function LibraryPanel() {
                 if (url) void window.bsub.openUrl(url, match.start);
               }}
             >
-              <span className="lib-result-time">{fmtTime(match.start)}</span>
+              <span className="lib-result-time">{formatDuration(match.start)}</span>
               <span className="lib-result-body">
                 <span className="lib-result-text">{match.text}</span>
                 <span className="lib-result-meta">{match.title}</span>
@@ -1694,8 +1656,8 @@ export function LibraryPanel() {
                   {video.tags.length > 0
                     ? video.tags.slice(0, 3).join(' · ')
                     : video.summaryUpdatedAt != null
-                      ? `总结于 ${fmtDate(video.summaryUpdatedAt)}`
-                      : `入库于 ${fmtDate(video.createdAt)}`}
+                      ? `总结于 ${formatDate(video.summaryUpdatedAt)}`
+                      : `入库于 ${formatDate(video.createdAt)}`}
                 </div>
               </div>
               {!selectMode && (
@@ -2101,7 +2063,7 @@ export function LibraryPanel() {
               {collectionPreview && (
                 <div className="version-banner">
                   <span>
-                    预览版本 · {fmtDateTime(collectionPreview.createdAt)} ·{' '}
+                    预览版本 · {formatDateTime(collectionPreview.createdAt)} ·{' '}
                     {collectionPreview.model || 'AI'}
                   </span>
                   <div className="version-banner-actions">
@@ -2140,7 +2102,7 @@ export function LibraryPanel() {
                 <div className="panel-hint">
                   模型 {collectionSummary.model || 'AI'} · {collectionSummary.itemCount} 个视频 ·
                   {' '}
-                  {fmtDateTime(collectionSummary.updatedAt)}
+                  {formatDateTime(collectionSummary.updatedAt)}
                 </div>
               )}
 
@@ -2161,7 +2123,7 @@ export function LibraryPanel() {
                             collectionPreview?.id === version.id ? ' is-active' : ''
                           }`}
                         >
-                          <span className="version-time">{fmtDateTime(version.createdAt)}</span>
+                          <span className="version-time">{formatDateTime(version.createdAt)}</span>
                           <span className="version-model">{version.model || 'AI'}</span>
                           <span className="version-chars">{version.chars} 字</span>
                           <button
@@ -2285,7 +2247,7 @@ export function LibraryPanel() {
                       <div className="trash-meta">
                         {item.owner || '未知 UP'} · {item.lineCount.toLocaleString('zh-CN')} 行
                         {item.hasSummary ? ' · 含总结' : ''}
-                        {item.hasNote ? ' · 含笔记' : ''} · {fmtDateTime(item.deletedAt)} 删除
+                        {item.hasNote ? ' · 含笔记' : ''} · {formatDateTime(item.deletedAt)} 删除
                       </div>
                     </div>
                     <div className="trash-actions">

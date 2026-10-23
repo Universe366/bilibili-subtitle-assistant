@@ -171,6 +171,7 @@ npm run dist
 | 文件 | 内容 |
 |---|---|
 | [`docs/REPO-MAP.md`](docs/REPO-MAP.md) | **先看这个**：目录结构、文档选择、维护规则 |
+| [`docs/QUALITY.md`](docs/QUALITY.md) | 质量基线、技术债与重构顺序 |
 | [`shizi-extension/README.md`](shizi-extension/README.md) | 用户文档：安装、配置、功能、故障排查 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
 | [`desktop/README.md`](desktop/README.md) | 桌面端安装、开发、打包、数据与卸载 |

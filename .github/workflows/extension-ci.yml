@@ -1,0 +1,42 @@
+name: Extension checks
+
+on:
+  pull_request:
+    paths:
+      - 'shizi-extension/**'
+      - 'verify/**'
+      - '.github/workflows/extension-ci.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'shizi-extension/**'
+      - 'verify/**'
+      - '.github/workflows/extension-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: verify/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Bundle panel
+        run: node bundle.js
+
+      - name: Panel tests
+        run: node panel-test.js

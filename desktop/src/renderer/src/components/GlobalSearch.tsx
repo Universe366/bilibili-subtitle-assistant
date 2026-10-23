@@ -7,22 +7,13 @@ import type {
   LibraryVideo,
   SummarySearchHit
 } from '../../../shared/types';
+import { formatDuration } from '../lib/format';
 
 type Row =
   | { key: string; kind: 'item'; video: LibraryVideo }
   | { key: string; kind: 'line'; line: LibrarySearchMatch }
   | { key: string; kind: 'summary'; summary: SummarySearchHit }
   | { key: string; kind: 'collection'; collection: CollectionSearchHit };
-
-function fmtTime(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds || 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
-}
 
 export function GlobalSearch({
   open,
@@ -232,7 +223,7 @@ export function GlobalSearch({
                   }}
                 >
                   <Captions size={13} className="gs-icon" />
-                  <span className="gs-time">{fmtTime(line.start)}</span>
+                  <span className="gs-time">{formatDuration(line.start)}</span>
                   <span className="gs-main">
                     <span className="gs-title gs-line-text">{line.text}</span>
                     <span className="gs-meta">{line.title}</span>

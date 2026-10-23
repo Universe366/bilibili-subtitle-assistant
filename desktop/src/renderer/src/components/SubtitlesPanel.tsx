@@ -19,16 +19,7 @@ import {
   setTranslationResult
 } from '../lib/translationStore';
 import { ExportMenu } from './ExportMenu';
-
-function fmtTime(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds || 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
-}
+import { formatDuration } from '../lib/format';
 
 function fmtCount(value: number): string {
   if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
@@ -1523,7 +1514,7 @@ export function SubtitlesPanel({
             </div>
             <div className="video-sub">
               {info.owner || (info.kind === 'youtube' ? '未知频道' : '未知 UP')}
-              {info.duration ? ` · ${fmtTime(info.duration)}` : ''}
+              {info.duration ? ` · ${formatDuration(info.duration)}` : ''}
             </div>
             <div className="video-tags">
               {info.bvid && <span className="mini-tag">{info.bvid}</span>}
@@ -1737,7 +1728,7 @@ export function SubtitlesPanel({
               className={`sub-line${index === currentIndex ? ' is-active' : ''}`}
               onClick={() => jump(line)}
             >
-              <span className="sub-time">{fmtTime(line.start)}</span>
+              <span className="sub-time">{formatDuration(line.start)}</span>
               {editingIndex === index ? (
                 <input
                   className="sub-edit"
@@ -1759,7 +1750,7 @@ export function SubtitlesPanel({
               ) : (
                 <span
                   className="sub-text"
-                  title={`${fmtTime(line.start)} – ${fmtTime(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
+                  title={`${formatDuration(line.start)} – ${formatDuration(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
                     1,
                     Math.round(line.text.length / 4)
                   )} 秒${translated?.[index]?.text ? `\n译文：${translated[index].text}` : ''}`}
@@ -1814,7 +1805,7 @@ export function SubtitlesPanel({
         <div className="panel-foot">
           <span>
             {lines.length > 0
-              ? `${lines.length} 行 · ${stats.chars} 字 · 朗读约 ${fmtTime(stats.speech)} · 覆盖 ${Math.round(
+              ? `${lines.length} 行 · ${stats.chars} 字 · 朗读约 ${formatDuration(stats.speech)} · 覆盖 ${Math.round(
                   stats.coverage * 100
                 )}%`
               : ''}

@@ -7,6 +7,7 @@ import type {
   JobStatus,
   JobType
 } from '../../../shared/types';
+import { formatRelativeTime } from '../lib/format';
 
 export const JOB_TYPE_LABEL: Record<JobType, string> = {
   summary: '总结',
@@ -33,20 +34,6 @@ export const JOB_ITEM_LABEL: Record<JobItemStatus, string> = {
   failed: '失败',
   skipped: '跳过'
 };
-
-function fmtTime(value: number): string {
-  if (!value) return '';
-  try {
-    const date = new Date(value);
-    const now = Date.now();
-    const sameDay = new Date(now).toDateString() === date.toDateString();
-    return sameDay
-      ? date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-      : date.toLocaleDateString('zh-CN');
-  } catch {
-    return '';
-  }
-}
 
 export function TaskCenter({
   open,
@@ -209,7 +196,7 @@ export function TaskCenter({
               </div>
 
               <div className="task-meta">
-                {active ? `${Math.round(job.progress)}%` : fmtTime(job.updatedAt)}
+                {active ? `${Math.round(job.progress)}%` : formatRelativeTime(job.updatedAt)}
                 {job.message ? ` · ${job.message}` : ''}
                 {job.error ? ` · ${job.error}` : ''}
               </div>
@@ -294,7 +281,7 @@ export function TaskCenter({
                 </span>
               </div>
               <div className="task-meta">{item.path}</div>
-              <div className="task-meta">{fmtTime(item.createdAt)}</div>
+              <div className="task-meta">{formatRelativeTime(item.createdAt)}</div>
               <div className="task-actions">
                 <button className="mini-btn" onClick={() => void openExport(item)}>
                   打开

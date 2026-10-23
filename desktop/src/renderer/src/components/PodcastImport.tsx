@@ -1,26 +1,7 @@
 import { useState } from 'react';
 import { Loader2, Rss, X } from 'lucide-react';
 import type { PodcastFeed } from '../../../shared/types';
-
-function fmtDuration(seconds: number): string {
-  if (!seconds) return '';
-  const total = Math.round(seconds);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function fmtDate(ms: number | null): string {
-  if (!ms) return '';
-  try {
-    return new Date(ms).toLocaleDateString('zh-CN');
-  } catch {
-    return '';
-  }
-}
+import { formatDate, formatDuration } from '../lib/format';
 
 export function PodcastImport({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [url, setUrl] = useState('');
@@ -109,7 +90,7 @@ export function PodcastImport({ open, onClose }: { open: boolean; onClose: () =>
                   <span className="hub-main">
                     <span className="hub-title">{episode.title}</span>
                     <span className="hub-sub">
-                      {[fmtDate(episode.pubDate), fmtDuration(episode.duration)].filter(Boolean).join(' · ') ||
+                      {[formatDate(episode.pubDate), formatDuration(episode.duration)].filter(Boolean).join(' · ') ||
                         '音频单集'}
                     </span>
                   </span>
