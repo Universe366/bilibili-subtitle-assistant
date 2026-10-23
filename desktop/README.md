@@ -1,6 +1,6 @@
 # 拾字 · 桌面端
 
-Windows 桌面端，内置浏览器 + 本地字幕/总结库 + AI 工作台。对外显示名「拾字」；`appId` 为 `com.shizi.desktop`，userData 在 `%APPDATA%\shizi`（见 [`docs/REBRAND.md`](docs/REBRAND.md)）。当前 **0.37.0**。
+Windows 桌面端，内置浏览器 + 本地字幕/总结库 + AI 工作台。对外显示名「拾字」；`appId` 为 `com.shizi.desktop`，userData 在 `%APPDATA%\shizi`（见 [`docs/REBRAND.md`](docs/REBRAND.md)）。当前 **0.37.1**。
 
 开发中的浏览器/AI 能力：
 
@@ -103,8 +103,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/shizi-setup-0.37.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/shizi-0.37.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
+| `release/shizi-setup-0.37.1.exe` | NSIS 安装包，可选安装目录 |
+| `release/shizi-0.37.1-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/shizi-extension-v2.18.6.zip` | 浏览器插件（由 CI 打包） |
 
@@ -116,7 +116,7 @@ npm run dist
 这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
 
 1. 更新 `shizi-extension/CHANGELOG.md` 与 `manifest.json` 版本（2.18.2）。
-2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.37.0 --no-git-tag-version`）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.37.1 --no-git-tag-version`）。
 3. `npm run dist` 本地确认能构建。
 4. `npm run release:notes` 生成发布说明。
 5. 打 tag 并推送：
