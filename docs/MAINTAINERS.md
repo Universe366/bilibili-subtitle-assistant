@@ -35,7 +35,7 @@ shizi-extension/manifest.json                     2.18.6
 shizi-extension/src/shared/constants.js          VERSION
 shizi-extension/src/content/content.js            CONTENT_VERSION
 shizi-extension/src/content/page-bridge.js        bridge version
-desktop/package.json                                          0.37.1
+desktop/package.json                                          0.37.2
 desktop/package-lock.json                                     顶层与 packages[""].version
 desktop/README.md / CHANGELOG.md                              产物名与版本说明
 verify/package.json                                           测试包版本（按需同步）
@@ -115,7 +115,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - CI 是 `.github/workflows/desktop-release.yml`；构建必须带 `--publish never`，由 workflow 自己创建 Release，否则 electron-builder 会抢先自动发布。
 - 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `shizi-setup-${version}.exe`）。
 - 当前最新 Release 的桌面资产可能落后于源码；发布前先确认 `desktop/package.json` 版本高于 Release 资产，否则客户端会显示“已是最新”。
-- **以 0.37.1 / 插件 2.18.6 为例**：桌面端与插件版本号一起 bump，提交后打 tag 并 push：
+- **以 0.37.2 / 插件 2.18.6 为例**：桌面端与插件版本号一起 bump，提交后打 tag 并 push：
 
   ```bash
   git tag -a v0.37.2 -m "桌面端 0.37.2 + 插件 2.18.6"
@@ -126,7 +126,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
   并用 `desktop/scripts/release.mjs` 从两个 CHANGELOG 提取发布说明。本机不需要跑 `dist`
   （除非要提前验证 NSIS）。
 - 本地只验证发布说明：
-  `cd desktop && npm run release:notes`，必须能提取 `0.37.1` 与 `2.18.6` 两段。
+  `cd desktop && npm run release:notes`，必须能提取 `0.37.2` 与 `2.18.6` 两段。
 
 #### 自动更新
 

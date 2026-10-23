@@ -48,6 +48,13 @@
 - 提取 `renderer/lib/format.ts`，去掉 7 处重复格式化；
 - 修复对话 `sendOnEnter`/`expandReasoning`、总结 `search.verify` 未生效。
 
+### 0.37.2 之后的本机复验（2026-10-24，未发版）
+- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/88 warning、17 文件 67 用例、`SMOKE OK version=0.37.2`；
+- 插件 `npm test` 22 个套件全绿，`panel-test.js` 520 项 0 失败；
+- 修正过期版本号：`docs/REPO-MAP.md`、`docs/MAINTAINERS.md` 里的 0.37.1 → 0.37.2；
+- 修正 `desktop/scripts/release.mjs`：安装说明的数据目录 `bsub-desktop` → `shizi`（旧版自动迁移），发行 tag 从 `v${插件版本}` 改为 `v${桌面版本}`（否则脚本会提示 `v2.18.6`，与 semver Latest 规则冲突）；
+- 删除本机残留的 `desktop/spike/`（早已 gitignore，仓库内本就没有）。
+
 ### 0.37.0 / 0.37.1
 - 插件界面品牌统一为「拾字」；
 - 修复 0.36/0.37 安装包内置插件仍是 2.18.2 的问题。
@@ -162,9 +169,9 @@
 
 接手后请补：
 
-- [ ] 跑一遍 `npm run verify`
-- [ ] 确认 `node --version` 为 24.x
-- [ ] 确认 `ELECTRON_RUN_AS_NODE` 未设置
+- [x] 跑一遍 `npm run verify`（2026-10-24 实跑：全绿）
+- [x] 确认 `node --version` 为 24.x（本机 v24.16.0）
+- [x] 确认 `ELECTRON_RUN_AS_NODE` 未设置（注意：本机全局为 `1`，跑 Electron 前必须 `unset`）
 - [ ] 读 `docs/QUALITY.md` 再决定是否重构
 
 ---

@@ -11,7 +11,9 @@ const extManifest = JSON.parse(
 
 const desktopVersion = pkg.version;
 const extVersion = extManifest.version;
-const tag = `v${extVersion}`;
+// tag 必须跟桌面版本号走（v0.37.x）；用插件版本会让 GitHub 按 semver
+// 把旧插件版本当成 Latest，自动更新读错 feed。
+const tag = `v${desktopVersion}`;
 
 function section(markdown, version) {
   const lines = markdown.split(/\r?\n/);
@@ -53,7 +55,7 @@ fs.writeFileSync(
     '### 桌面端',
     `- 安装版：下载 \`shizi-setup-${desktopVersion}.exe\`，运行后可选安装目录。`,
     `- 绿色版：下载 \`shizi-${desktopVersion}-win-x64-green.zip\`，解压后双击 \`拾字.exe\`。`,
-    '- 数据默认在 `%APPDATA%\\bsub-desktop`；卸载页默认保留数据，勾选后才会删除。',
+    '- 数据默认在 `%APPDATA%\\shizi`（旧版 `bsub-desktop` 首次启动自动迁移）；卸载页默认保留数据，勾选后才会删除。',
     '- 未签名，首次运行可能被 SmartScreen 拦截，选择「更多信息 → 仍要运行」。',
     '- 自动更新只对安装版有效，并依赖本 Release 的 `latest.yml`；绿色版请手动替换。',
     '',
