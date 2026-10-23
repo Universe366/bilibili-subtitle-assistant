@@ -256,6 +256,16 @@ export default function App() {
             setSection('summary');
             window.setTimeout(() => window.dispatchEvent(new Event('bsub:chapters-request')), 250);
           }}
+          onOpenLibraryItem={(videoId) => {
+            setSection('library');
+            window.setTimeout(
+              () =>
+                window.dispatchEvent(
+                  new CustomEvent('bsub:library-item', { detail: videoId })
+                ),
+              200
+            );
+          }}
         />
         <BrowserStage
           hasTab={Boolean(active)}

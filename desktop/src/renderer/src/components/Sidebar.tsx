@@ -29,7 +29,7 @@ const items: Array<{ id: Section; label: string; icon: IconComponent; hint: stri
   { id: 'summary', label: '总结', icon: Sparkles, hint: 'AI 总结、章节与问答' },
   { id: 'library', label: '库', icon: Library, hint: '已入库的视频与笔记' },
   { id: 'batch', label: '批量', icon: ListChecks, hint: '勾选库内视频批量生成总结' },
-  { id: 'history', label: '历史', icon: HistoryIcon, hint: '查看、打开或删除总结历史' },
+  { id: 'history', label: '记录', icon: HistoryIcon, hint: '总结与任务记录' },
   { id: 'settings', label: '设置', icon: Settings, hint: '平台、Key、提示词' }
 ];
 
@@ -49,6 +49,7 @@ export function Sidebar({
   onDragSnapshot,
   onOpenSummary,
   onOpenChapters,
+  onOpenLibraryItem,
   hasUpdate = false
 }: {
   section: Section;
@@ -66,6 +67,7 @@ export function Sidebar({
   onDragSnapshot?: (snapshot: string | null) => void;
   onOpenSummary?: () => void;
   onOpenChapters?: () => void;
+  onOpenLibraryItem?: (videoId: number) => void;
   hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
@@ -323,7 +325,7 @@ export function Sidebar({
         </div>
 
         <div className={`side-panel${section === 'history' ? ' is-active' : ''}`}>
-          {visited.has('history') && <HistoryPanel />}
+          {visited.has('history') && <HistoryPanel onOpenLibraryItem={onOpenLibraryItem} />}
         </div>
 
         <div className={`side-panel${section === 'settings' ? ' is-active' : ''}`}>

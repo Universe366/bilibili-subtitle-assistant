@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { JobItemStatus, JobRecord, JobStatus, JobType } from '../../../shared/types';
 
-const TYPE_LABEL: Record<JobType, string> = {
+export const JOB_TYPE_LABEL: Record<JobType, string> = {
   summary: '总结',
   asr: '转录',
   translate: '翻译',
@@ -11,7 +11,7 @@ const TYPE_LABEL: Record<JobType, string> = {
   'url-batch': '链接批量'
 };
 
-const STATUS_LABEL: Record<JobStatus, string> = {
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   running: '进行中',
   paused: '已暂停',
   done: '完成',
@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   cancelled: '已取消'
 };
 
-const ITEM_LABEL: Record<JobItemStatus, string> = {
+export const JOB_ITEM_LABEL: Record<JobItemStatus, string> = {
   pending: '等待',
   running: '进行中',
   done: '完成',
@@ -143,11 +143,11 @@ export function TaskCenter({
           return (
             <div key={job.id} className="task-card">
               <div className="task-row">
-                <span className={`job-chip is-${job.status}`}>{STATUS_LABEL[job.status]}</span>
+                <span className={`job-chip is-${job.status}`}>{JOB_STATUS_LABEL[job.status]}</span>
                 <span className="task-title" title={job.title}>
                   {job.title || '未命名任务'}
                 </span>
-                <span className="task-type">{TYPE_LABEL[job.type] || job.type}</span>
+                <span className="task-type">{JOB_TYPE_LABEL[job.type] || job.type}</span>
               </div>
 
               <div className="task-meta">
@@ -173,7 +173,7 @@ export function TaskCenter({
                       <span className={`task-item-dot is-${item.status}`} />
                       <span className="task-item-title">{item.title || item.targetId}</span>
                       <span className={`task-item-status is-${item.status}`}>
-                        {ITEM_LABEL[item.status]}
+                        {JOB_ITEM_LABEL[item.status]}
                       </span>
                     </div>
                   ))}

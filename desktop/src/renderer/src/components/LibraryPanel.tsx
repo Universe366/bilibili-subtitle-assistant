@@ -114,6 +114,21 @@ export function LibraryPanel() {
     });
   }, [load, selectedId, fetchDetail]);
 
+  // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const id = Number((event as CustomEvent).detail);
+      if (!Number.isFinite(id) || id <= 0) return;
+      setSelectedId(id);
+      setDetail(null);
+      setLineLimit(LINE_PAGE);
+      setDetailTab('subtitles');
+      void fetchDetail(id);
+    };
+    window.addEventListener('bsub:library-item', handler as EventListener);
+    return () => window.removeEventListener('bsub:library-item', handler as EventListener);
+  }, [fetchDetail]);
+
   useEffect(() => {
     const text = query.trim();
     if (!text) {

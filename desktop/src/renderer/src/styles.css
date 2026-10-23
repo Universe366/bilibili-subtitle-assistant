@@ -3676,3 +3676,66 @@ button:disabled {
 .batch-retry {
   margin-top: 6px;
 }
+
+/* ---------- 记录 ---------- */
+.history-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-group-label {
+  padding: 4px 2px 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.record-task .history-head {
+  align-items: center;
+}
+
+.record-task .history-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-task-type {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+.record-task-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.record-task-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.record-task-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-task-more {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.record-task-actions {
+  display: flex;
+  justify-content: flex-end;
+}
