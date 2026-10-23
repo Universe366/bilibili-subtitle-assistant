@@ -1,4 +1,4 @@
-/* B站字幕助手 —— 页面主环境桥（MAIN world）
+/* 拾字 —— 页面主环境桥（MAIN world）
  *
  * 为什么必须存在：内容脚本运行在隔离环境，读不到页面的全局变量
  * （__INITIAL_STATE__ / player 实例）。所以由本脚本在主环境读取数据，
@@ -2305,7 +2305,7 @@
     reconnect,
     handleRequest,
     publish,
-    version: '2.18.5',
+    version: '2.18.6',
     // 自检用：当前桥支持哪些方法（用于判断页面里的注入脚本是不是旧版本。
     // 主环境脚本无法在扩展更新后热替换，旧页面只能靠刷新拿到新版本）
     supportedMethods() {

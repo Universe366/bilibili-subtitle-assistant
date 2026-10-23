@@ -1,12 +1,12 @@
 // 共享常量：版本、消息协议、默认提示词、默认平台。
 // 本文件被 service worker 与侧边栏同时以 ES module 方式引入。
 
-export const VERSION = '2.18.5';
+export const VERSION = '2.18.6';
 
 // 内容脚本声明的版本。扩展侧探测到版本不一致时重新注入（稳定性 #6）。
 export const CONTENT_VERSION = VERSION;
 
-export const APP_NAME = 'B站字幕助手';
+export const APP_NAME = '拾字';
 
 // ---------------------------------------------------------------------------
 // 消息协议

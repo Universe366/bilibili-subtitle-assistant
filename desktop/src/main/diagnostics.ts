@@ -100,7 +100,7 @@ export async function exportDiagnostics(): Promise<{ canceled: boolean; path?: s
   fs.writeFileSync(
     path.join(target, 'README.txt'),
     [
-      'B站字幕助手 诊断包',
+      '拾字 诊断包',
       '',
       '包含：运行环境、版本、数据规模、脱敏后的设置、站点权限、日志。',
       '不包含：字幕正文、总结正文、笔记、API Key。',

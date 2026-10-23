@@ -1,4 +1,4 @@
-# B站字幕助手（Chrome / Edge MV3 扩展）
+# 拾字（Chrome / Edge MV3 扩展）
 
 [![Release](https://img.shields.io/github/v/release/Universe366/shizi-extension?sort=semver&display_name=tag)](https://github.com/Universe366/shizi/releases)
 [![License](https://img.shields.io/github/license/Universe366/shizi-extension)](../LICENSE)
@@ -25,7 +25,7 @@
 
 > 扩展更新后，**已打开的 B 站页面必须刷新** 才会生效（内容脚本版本握手会提示）。
 >
-> **怎么确认自己真的跑在新版本上**：`chrome://extensions/` 看「B站字幕助手」卡片上的版本号；或打开侧边栏，最上方的**构建指纹**会显示 `版本 · 模块数 · 构建时间`。如果看到的是旧版本号，说明加载的还是旧目录，点该卡片上的**刷新图标**（⟳）重新加载。
+> **怎么确认自己真的跑在新版本上**：`chrome://extensions/` 看「拾字」卡片上的版本号；或打开侧边栏，最上方的**构建指纹**会显示 `版本 · 模块数 · 构建时间`。如果看到的是旧版本号，说明加载的还是旧目录，点该卡片上的**刷新图标**（⟳）重新加载。
 > 这一条很重要：错误提示里的文案会随版本变化，例如 1.3.0 会在 ASR 400 时多出一行「模型列表里没有 xxx」。
 
 ### 更新（不丢设置）

@@ -199,7 +199,7 @@ export function toJson(lines, video, cfg = {}) {
         url: video.url || ''
       },
       meta: {
-        generator: 'B站字幕助手',
+        generator: '拾字',
         exportedAt: new Date().toISOString(),
         format: 'json',
         template: cfg.template || 'timed',

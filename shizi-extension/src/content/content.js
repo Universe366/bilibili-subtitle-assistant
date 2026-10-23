@@ -1,4 +1,4 @@
-/* B站字幕助手 —— 内容脚本（隔离环境）
+/* 拾字 —— 内容脚本（隔离环境）
  *
  * 职责：
  *  1. 通过 DOM 通道向主环境桥索要页面数据（稳定性 #8）
@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const CONTENT_VERSION = '2.18.5';
+  const CONTENT_VERSION = '2.18.6';
   const PAGE_ID = '__bsub_page_channel__';
   const CONTENT_ID = '__bsub_content_channel__';
   const EVT = '__bsub_dom_event__';
@@ -548,7 +548,7 @@
     tab.type = 'button';
     tab.className = 'bsub-embed-tab';
     tab.textContent = '字幕';
-    tab.title = '打开 B站字幕助手';
+    tab.title = '打开 拾字';
     tab.addEventListener('click', () => {
       state.embedClosed = false;
       state.embedCollapsed = false;
@@ -620,7 +620,7 @@
     bar.className = 'bsub-embed-bar';
     const title = document.createElement('span');
     title.className = 'bsub-embed-title';
-    title.textContent = 'B站字幕助手';
+    title.textContent = '拾字';
     const pop = document.createElement('button');
     pop.type = 'button';
     pop.className = 'bsub-embed-btn bsub-embed-side';
@@ -652,7 +652,7 @@
 
     const frame = document.createElement('iframe');
     frame.className = 'bsub-embed-frame';
-    frame.title = 'B站字幕助手';
+    frame.title = '拾字';
     frame.setAttribute('allow', 'clipboard-read; clipboard-write');
     frame.src = `${chrome.runtime.getURL('src/sidepanel/panel.html')}?embed=1${tabId ? `&tabId=${tabId}` : ''}`;
     frame.addEventListener('error', () => showPanelHint('页面内嵌面板加载失败，请点工具栏图标用浏览器侧边栏。'));

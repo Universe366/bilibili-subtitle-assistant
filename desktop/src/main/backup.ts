@@ -89,7 +89,7 @@ export async function backupData(): Promise<{ canceled: boolean; path?: string }
   fs.writeFileSync(
     path.join(target, 'README.txt'),
     [
-      'B站字幕助手 数据备份',
+      '拾字 数据备份',
       '',
       '包含 settings.json（不含 API Key / 桥 Token）与 library.db（字幕、总结、笔记、历史）。',
       '恢复后需要在设置里重新填写 API Key；桥 Token 会自动重新生成。',
@@ -128,7 +128,7 @@ export async function restoreData(): Promise<{ canceled: boolean; restored?: boo
     source = result.filePaths[0];
   }
   const manifestFile = path.join(source, 'manifest.json');
-  if (!fs.existsSync(manifestFile)) throw new Error('所选目录不是 B站字幕助手 备份（缺少 manifest.json）');
+  if (!fs.existsSync(manifestFile)) throw new Error('所选目录不是拾字备份（缺少 manifest.json）');
   let data: BackupManifest | null = null;
   try {
     data = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as BackupManifest;

@@ -12,7 +12,7 @@ let step = 0;
 
 const STEPS = [
   {
-    title: '欢迎使用 B站字幕助手',
+    title: '欢迎使用 拾字',
     body: (box) => {
       box.appendChild(h('div', { text: '全部功能都在这个侧边栏里完成，不需要另开设置页。' }));
       box.appendChild(h('div', { class: 'note', text: '三步走：① 打开一个 B 站视频 → ② 获取字幕（没有就语音转录）→ ③ 生成总结 / 对话 / 导出。' }));
