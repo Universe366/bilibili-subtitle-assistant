@@ -9,10 +9,10 @@
 |---|---|
 | Git 跟踪文件 | 278 |
 | 当前树体积 | 约 36 MB（FFmpeg.wasm 占 31 MB） |
-| 桌面单测 | 17 个文件 / 67 个用例 |
+| 桌面单测 | 18 个文件 / 70 个用例 |
 | 插件测试 | 520 项 |
 | ESLint | 0 error / 88 warning（全部是 API JSON 的 `any`） |
-| 桌面冒烟 | `npm run smoke`（真实 Electron + CDP） |
+| 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，6 条 E2E） |
 | CI | 桌面（master/PR）+ 插件（master/PR）+ tag 发布 |
 
 本次已经做掉的：
@@ -24,7 +24,10 @@
 - 修复桌面 CI 监听错分支（`main` → `master`）；
 - 新增插件 CI；
 - 新增 `npm run pack`，保证打包前一定执行 `prebuild` 同步插件资源；
-- 本地工作区从 6.4GB 清到约 1.7GB，临时测试目录清零。
+- 本地工作区从 6.4GB 清到约 1.7GB，临时测试目录清零；
+- 桌面冒烟扩展为 6 条 E2E（设置读写、字幕入库/检索、笔记、回收站删除恢复）；
+- 新增 IPC channel 清单与漂移测试（`scripts/ipc-channels.json` + `src/main/ipcChannels.test.ts`）；
+- `ipc.ts` 的 library 域拆到 `src/main/ipc/library.ts`，`ipc.ts` 从 2.8k 降到 2.2k。
 
 ## 仍然值得做的（按优先级）
 
@@ -32,7 +35,7 @@
 
 | 文件 | 行数 | 建议 |
 |---|---:|---|
-| `src/main/ipc.ts` | ~2.7k | 按 library / browser / ai / media / settings 拆成 `ipc/*.ts`，只保留注册入口 |
+| `src/main/ipc.ts` | ~2.2k | 按 library / browser / ai / media / settings 拆成 `ipc/*.ts`，只保留注册入口（library 已拆） |
 | `src/main/library.ts` | ~2.6k | 拆 schema、videos、summaries、trash、search |
 | `src/renderer/.../SettingsPanel.tsx` | ~3.0k | 拆 AI / ASR / 检索 / 数据 / 插件桥 section |
 | `src/renderer/.../LibraryPanel.tsx` | ~2.3k | 拆列表、详情、标签/合集、批量操作 |

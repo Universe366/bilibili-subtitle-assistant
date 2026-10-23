@@ -20,8 +20,8 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | 0 error / 88 warning（上限 90） |
-| 桌面单测 | 17 个文件 / 67 个用例 |
-| 桌面冒烟 | `SMOKE OK title=拾字 version=0.37.2 tabs=1` |
+| 桌面单测 | 18 个文件 / 70 个用例（含 IPC channel 契约 3 条） |
+| 桌面冒烟 | `SMOKE OK ...` + `E2E OK 6/6` |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
 | 插件 CI | `master`/PR 通过 |
@@ -49,11 +49,17 @@
 - 修复对话 `sendOnEnter`/`expandReasoning`、总结 `search.verify` 未生效。
 
 ### 0.37.2 之后的本机复验（2026-10-24，未发版）
-- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/88 warning、17 文件 67 用例、`SMOKE OK version=0.37.2`；
+- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/88 warning、18 文件 70 用例、`SMOKE OK version=0.37.2`；
 - 插件 `npm test` 22 个套件全绿，`panel-test.js` 520 项 0 失败；
 - 修正过期版本号：`docs/REPO-MAP.md`、`docs/MAINTAINERS.md` 里的 0.37.1 → 0.37.2；
 - 修正 `desktop/scripts/release.mjs`：安装说明的数据目录 `bsub-desktop` → `shizi`（旧版自动迁移），发行 tag 从 `v${插件版本}` 改为 `v${桌面版本}`（否则脚本会提示 `v2.18.6`，与 semver Latest 规则冲突）；
 - 删除本机残留的 `desktop/spike/`（早已 gitignore，仓库内本就没有）。
+
+### Phase 0（2026-10-24，可维护性）
+- `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **6 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复；
+- 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（155 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
+- `ipc.ts` 的 **library 域**（库/笔记/标签/合集/回收站/摘要版本，约 500 行）拆到 `src/main/ipc/library.ts`，共享的 `failure`/`trackJob`/`IpcContext` 放到 `src/main/ipc/shared.ts`；`ipc.ts` 2.8k → 2.2k；
+- 拆分后 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、6 条 E2E 全部通过，channel 清单无变化。
 
 ### 0.37.0 / 0.37.1
 - 插件界面品牌统一为「拾字」；
@@ -69,8 +75,8 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 2.7k / `library.ts` 2.7k / `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
-| 无桌面 E2E | 只有启动冒烟，主流程没有自动化回归 |
+| 巨型文件 | `ipc.ts` 2.2k / `library.ts` 2.7k / `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
+| 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
 | `any` | 88 条 warning，集中在外部 API 边界 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
 | `PageInfo` B 站中心 | 新内容源仍要改多处 |
@@ -95,12 +101,14 @@
 
 ### 如果任务是“提升可维护性”
 
-按 `docs/QUALITY.md` 的顺序，**先做 Phase 0**：
+`docs/QUALITY.md` 的 **Phase 0 已完成**：6 条桌面 E2E、155 条 IPC channel 清单与漂移测试、`ipc.ts` 的 library 域拆分。
 
-1. 扩展 `desktop/scripts/smoke.mjs` 为 6 条 E2E；
-2. 固化 154 个 IPC channel 清单；
-3. 然后只拆 `ipc.ts` 的 library 域；
-4. 每一步跑 `npm run verify` + channel diff。
+下一步（一次只做一个域，每步跑 `npm run verify` + channel diff）：
+
+1. 继续拆 `ipc.ts`：browser/下载 → jobs/tabs → ai/媒体 → settings/system；
+2. 再拆 `library.ts`（schema / videos / summaries / trash / search 分文件）；
+3. 收敛 88 条 `any`（先 `JsonValue` / `JsonObject`，再逐文件收窄）；
+4. 最后才动 `SettingsPanel.tsx` / `LibraryPanel.tsx`。
 
 不要一次拆多个域，不要先动 `index.ts`，不要先拆 `SettingsPanel`。
 
