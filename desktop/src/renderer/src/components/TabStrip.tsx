@@ -1,7 +1,13 @@
-import { Globe, Loader2, Moon, Plus, X } from 'lucide-react';
+import { Globe, Loader2, Moon, Plus, Search, X } from 'lucide-react';
 import type { TabInfo } from '../../../shared/types';
 
-export function TabStrip({ tabs }: { tabs: TabInfo[] }) {
+export function TabStrip({
+  tabs,
+  onSearch
+}: {
+  tabs: TabInfo[];
+  onSearch?: () => void;
+}) {
   return (
     <div className="tab-strip">
       <div className="tab-strip-list">
@@ -35,6 +41,13 @@ export function TabStrip({ tabs }: { tabs: TabInfo[] }) {
           </div>
         ))}
       </div>
+      <button
+        className="tab-search"
+        title="全局搜索（Ctrl+K）"
+        onClick={() => onSearch?.()}
+      >
+        <Search size={14} />
+      </button>
       <button className="tab-new" title="新建标签页" onClick={() => void window.bsub.newTab()}>
         <Plus size={15} />
       </button>

@@ -62,7 +62,8 @@ import type {
   LibraryList,
   LibrarySearchResult,
   LibraryDetail,
-  LibrarySort
+  LibrarySort,
+  GlobalSearchResult
 } from '../shared/types';
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
@@ -77,6 +78,7 @@ import {
   getLibraryDetail,
   getSummaryFor,
   getSummaryVersion,
+  globalSearch,
   ingestVideo,
   listHistory,
   listJobs,
@@ -707,6 +709,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return failure<LibrarySearchResult>(error);
     }
   });
+
+  ipcMain.handle(
+    'search:global',
+    (_event, query: string): Result<GlobalSearchResult> => {
+      try {
+        return { ok: true, data: globalSearch(String(query || '')) };
+      } catch (error) {
+        return failure<GlobalSearchResult>(error);
+      }
+    }
+  );
 
   ipcMain.handle('library:remove', async (_event, id: number): Promise<Result<{ removed: boolean }>> => {
     try {

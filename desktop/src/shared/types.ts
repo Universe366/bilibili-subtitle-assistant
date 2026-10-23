@@ -361,6 +361,25 @@ export interface LibrarySearchResult {
   mode: 'fts' | 'like';
 }
 
+export interface SummarySearchHit {
+  videoId: number;
+  title: string;
+  owner: string;
+  url: string;
+  bvid: string | null;
+  cid: number | null;
+  updatedAt: number;
+  snippet: string;
+}
+
+export interface GlobalSearchResult {
+  query: string;
+  items: LibraryVideo[];
+  lines: LibrarySearchMatch[];
+  summaries: SummarySearchHit[];
+  total: number;
+}
+
 export interface AiPlatform {
   id: string;
   name: string;

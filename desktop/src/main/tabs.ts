@@ -231,6 +231,11 @@ export class TabManager {
         win?.setFullScreen(!win.isFullScreen());
         return;
       }
+      if (input.control && !input.alt && input.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        this.win.webContents.send('app:search');
+        return;
+      }
       if (input.control && input.shift && input.key.toLowerCase() === 'q') {
         event.preventDefault();
         app.quit();

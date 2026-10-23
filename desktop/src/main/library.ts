@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
+  GlobalSearchResult,
   JobItem,
   JobItemStatus,
   JobRecord,
@@ -23,6 +24,7 @@ import type {
   PageInfo,
   StoredSummary,
   SummaryRef,
+  SummarySearchHit,
   SummaryVersion,
   SummaryVersionMeta
 } from '../shared/types';
@@ -512,6 +514,60 @@ export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
     matches,
     videos,
     mode: useFts ? 'fts' : 'like'
+  };
+}
+
+function snippetAround(content: string, term: string, radius = 70): string {
+  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  const index = text.toLowerCase().indexOf(term.toLowerCase());
+  if (index < 0) return text.slice(0, radius * 2);
+  const start = Math.max(0, index - radius);
+  const end = Math.min(text.length, index + term.length + radius);
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
+}
+
+export function searchSummaries(input: string, limit = 12): SummarySearchHit[] {
+  const database = requireDb();
+  const terms = searchTerms(input);
+  if (!terms.length) return [];
+  const where = terms.map(() => 's.content_md LIKE ?').join(' AND ');
+  const params = terms.map((term) => `%${term}%`);
+  const rows = database
+    .prepare(
+      `SELECT s.video_id, s.content_md, s.updated_at,
+              v.title, v.owner, v.url, v.bvid, v.cid
+       FROM summaries s JOIN videos v ON v.id = s.video_id
+       WHERE ${where}
+       ORDER BY s.updated_at DESC
+       LIMIT ?`
+    )
+    .all(...params, Math.min(50, Math.max(1, Math.round(limit)))) as Array<
+    Record<string, unknown>
+  >;
+
+  return rows.map((row) => ({
+    videoId: toNumber(row.video_id),
+    title: String(row.title || ''),
+    owner: String(row.owner || ''),
+    url: String(row.url || ''),
+    bvid: row.bvid == null ? null : String(row.bvid),
+    cid: row.cid == null ? null : toNumber(row.cid),
+    updatedAt: toNumber(row.updated_at),
+    snippet: snippetAround(String(row.content_md || ''), terms[0])
+  }));
+}
+
+export function globalSearch(input: string): GlobalSearchResult {
+  const library = searchLibrary(input, 40);
+  const summaries = searchSummaries(input, 12);
+  const items = library.videos.slice(0, 8);
+  const lines = library.matches.slice(0, 30);
+  return {
+    query: library.query,
+    items,
+    lines,
+    summaries,
+    total: library.total + library.videos.length + summaries.length
   };
 }
 

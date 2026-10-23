@@ -143,12 +143,14 @@ export function LibraryPanel() {
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
   useEffect(() => {
     const handler = (event: Event) => {
-      const id = Number((event as CustomEvent).detail);
+      const detail = (event as CustomEvent).detail;
+      const id = Number(typeof detail === 'number' ? detail : detail?.videoId);
       if (!Number.isFinite(id) || id <= 0) return;
+      const tab = typeof detail === 'object' && detail?.tab === 'summary' ? 'summary' : 'subtitles';
       setSelectedId(id);
       setDetail(null);
       setLineLimit(LINE_PAGE);
-      setDetailTab('subtitles');
+      setDetailTab(tab);
       setPreview(null);
       setVersions([]);
       setVersionsOpen(false);

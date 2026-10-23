@@ -64,7 +64,8 @@ import type {
   LibrarySort,
   JobRecord,
   SummaryVersion,
-  SummaryVersionMeta
+  SummaryVersionMeta,
+  GlobalSearchResult
 } from '../shared/types';
 
 const on = <T>(channel: string, cb: (payload: T) => void) => {
@@ -117,6 +118,9 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:get', id) as Promise<Result<LibraryDetail>>,
   searchLibrary: (query: string) =>
     ipcRenderer.invoke('library:search', query) as Promise<Result<LibrarySearchResult>>,
+  globalSearch: (query: string) =>
+    ipcRenderer.invoke('search:global', query) as Promise<Result<GlobalSearchResult>>,
+  onSearchRequest: (cb: () => void) => on<null>('app:search', () => cb()),
   removeLibrary: (id: number) =>
     ipcRenderer.invoke('library:remove', id) as Promise<Result<{ removed: boolean }>>,
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),

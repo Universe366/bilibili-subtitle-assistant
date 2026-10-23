@@ -62,7 +62,8 @@ import type {
   LibrarySort,
   JobRecord,
   SummaryVersion,
-  SummaryVersionMeta
+  SummaryVersionMeta,
+  GlobalSearchResult
 } from './types';
 
 export interface BsubApi {
@@ -91,6 +92,8 @@ export interface BsubApi {
   listLibrary(sort?: LibrarySort): Promise<Result<LibraryList>>;
   getLibraryItem(id: number): Promise<Result<LibraryDetail>>;
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
+  globalSearch(query: string): Promise<Result<GlobalSearchResult>>;
+  onSearchRequest(cb: () => void): () => void;
   removeLibrary(id: number): Promise<Result<{ removed: boolean }>>;
   onLibraryChanged(cb: () => void): () => void;
 

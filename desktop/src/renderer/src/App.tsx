@@ -6,6 +6,7 @@ import { FindBar } from './components/FindBar';
 import { Sidebar } from './components/Sidebar';
 import { BrowserStage } from './components/BrowserStage';
 import { FirstRunWizard } from './components/FirstRunWizard';
+import { GlobalSearch } from './components/GlobalSearch';
 
 export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
@@ -32,13 +33,14 @@ export default function App() {
   const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // 内置浏览器是原生 WebContentsView，永远盖在 renderer 上面。
-  // 向导是 renderer 里的全屏遮罩，不隐藏页面就会出现「卡片被页面挡住、
-  // 只剩左侧点不了」的情况。
+  // 向导/全局搜索是 renderer 里的全屏遮罩，不隐藏页面就会出现
+  // 「卡片被页面挡住、只剩左侧点不了」的情况。
   useEffect(() => {
-    void window.bsub.setBrowserVisible(!wizard);
-  }, [wizard]);
+    void window.bsub.setBrowserVisible(!wizard && !searchOpen);
+  }, [wizard, searchOpen]);
 
   const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
@@ -94,6 +96,10 @@ export default function App() {
       off();
     };
   }, []);
+
+  // 焦点在网页（原生 WebContentsView）里时，renderer 收不到 Ctrl+K，
+  // 由主进程 before-input-event 转发过来。
+  useEffect(() => window.bsub.onSearchRequest(() => setSearchOpen(true)), []);
 
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
@@ -151,6 +157,11 @@ export default function App() {
       if (mod && key === 't') {
         event.preventDefault();
         void window.bsub.newTab();
+        return;
+      }
+      if (mod && key === 'k') {
+        event.preventDefault();
+        setSearchOpen(true);
         return;
       }
       if (mod && key === 'w') {
@@ -220,7 +231,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <TabStrip tabs={tabs} />
+      <TabStrip tabs={tabs} onSearch={() => setSearchOpen(true)} />
       <AddressBar tab={active} focusSignal={addressFocus} />
       {findOpen && (
         <FindBar
@@ -276,6 +287,25 @@ export default function App() {
         />
       </div>
       {wizard && <FirstRunWizard snapshot={wizard} onFinish={finishWizard} />}
+      <GlobalSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onOpenItem={(videoId, tab) => {
+          setSearchOpen(false);
+          setSection('library');
+          window.setTimeout(
+            () =>
+              window.dispatchEvent(
+                new CustomEvent('bsub:library-item', { detail: { videoId, tab } })
+              ),
+            220
+          );
+        }}
+        onOpenLine={(url, start) => {
+          setSearchOpen(false);
+          void window.bsub.openUrl(url, start);
+        }}
+      />
     </div>
   );
 }
