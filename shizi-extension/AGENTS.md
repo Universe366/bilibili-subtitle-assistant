@@ -165,7 +165,7 @@ img-src 'self' data: blob: https:; connect-src 'self' https: http:
 - 字幕行是**单行横向滚动**：长句不换行、不撑高行；行尾统计压缩为「N字」，操作按钮绝对定位悬浮。虚拟列表的 `estimate()` 必须与行高/内边距同步，否则滚动会跳。
 - 改这些 UI 后至少要跑 `npm run test:browser:smoke`。
 
-完整发布清单见 [`../../docs/MAINTAINERS.md`](../../docs/MAINTAINERS.md)。
+完整发布清单见 [`../docs/MAINTAINERS.md`](../docs/MAINTAINERS.md)。
 
 ---
 
@@ -268,6 +268,6 @@ docs: 拆分开发日志，补 AGENTS.md
 | `AGENTS.md`（本文件） | **AI / 贡献者** | 环境约束、已踩的坑、方法论 |
 | `docs/history/DEVELOPMENT-LOG.md` | **维护者** | 逐轮缺陷与修复（含「为什么当时想错了」） |
 | `../verify/README.md` | **维护者** | 测试套件说明与运行方式 |
-| `../../docs/MAINTAINERS.md` | **维护者** | 发布清单、版本同步、内嵌/字幕身份/缓存的硬约束 |
+| `../docs/MAINTAINERS.md` | **维护者** | 发布清单、版本同步、内嵌/字幕身份/缓存的硬约束 |
 
 新增功能时请同步更新对应文档；**变动用户可见行为 → 改 README**。

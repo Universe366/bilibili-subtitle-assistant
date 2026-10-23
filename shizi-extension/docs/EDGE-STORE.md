@@ -118,7 +118,7 @@ python verify/tools/fit-store-screenshot.py 你的截图.png --size 1280x800 --m
 
 `https://gist.github.com/Universe366/ec06f35cf9e74238d5085b3b1bfc6ad6`
 
-（已更新到 2.12.1，包含设置备份与 DNR 会话规则说明；仓库内 [`PRIVACY.md`](../PRIVACY.md) 是同一份内容。）
+（已更新到 2.12.1，包含设置备份与 DNR 会话规则说明；仓库内 [`PRIVACY.md`](../../PRIVACY.md) 是同一份内容。）
 
 ## 5. 权限理由（逐条复制到 Privacy → Permission justification）
 
