@@ -192,6 +192,14 @@ export interface CollectionSummaryVersion extends CollectionSummaryVersionMeta {
   content: string;
 }
 
+export interface ExportRecord {
+  id: number;
+  path: string;
+  kind: string;
+  title: string;
+  createdAt: number;
+}
+
 export interface LibraryStats {
   videos: number;
   tracks: number;

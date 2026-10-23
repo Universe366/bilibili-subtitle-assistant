@@ -7,6 +7,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  ExportRecord,
   GlobalSearchResult,
   JobItem,
   JobItemStatus,
@@ -166,6 +167,16 @@ CREATE TABLE IF NOT EXISTS collection_summary_versions (
 
 CREATE INDEX IF NOT EXISTS idx_collection_summary_versions
   ON collection_summary_versions(collection_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS exports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_exports_created ON exports(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
@@ -2008,4 +2019,46 @@ export function markStaleJobs(): number {
     )
     .run(now, now);
   return toNumber(result.changes);
+}
+
+export function addExportRecord(filePath: string, kind: string, title: string): void {
+  const database = requireDb();
+  database
+    .prepare('INSERT INTO exports (path, kind, title, created_at) VALUES (?, ?, ?, ?)')
+    .run(String(filePath || ''), String(kind || ''), String(title || ''), Date.now());
+  database
+    .prepare(
+      `DELETE FROM exports WHERE id NOT IN (
+         SELECT id FROM exports ORDER BY created_at DESC, id DESC LIMIT 100)`
+    )
+    .run();
+}
+
+export function listExports(limit = 50): ExportRecord[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT id, path, kind, title, created_at FROM exports
+       ORDER BY created_at DESC, id DESC LIMIT ?`
+    )
+    .all(Math.min(100, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    path: String(row.path || ''),
+    kind: String(row.kind || ''),
+    title: String(row.title || ''),
+    createdAt: toNumber(row.created_at)
+  }));
+}
+
+export function clearExports(): number {
+  const database = requireDb();
+  const result = database.prepare('DELETE FROM exports').run();
+  return toNumber(result.changes);
+}
+
+export function deleteExport(id: number): boolean {
+  const database = requireDb();
+  const result = database.prepare('DELETE FROM exports WHERE id = ?').run(Number(id));
+  return toNumber(result.changes) > 0;
 }

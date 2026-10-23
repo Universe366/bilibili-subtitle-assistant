@@ -70,6 +70,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  ExportRecord,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -247,6 +248,11 @@ export interface BsubApi {
   getTranscriptions(): Promise<Result<LibraryTranscriptionItem[]>>;
   deleteHistory(id: number): Promise<Result<{ removed: boolean }>>;
   clearHistory(): Promise<Result<{ removed: number }>>;
+  listExports(): Promise<Result<ExportRecord[]>>;
+  clearExports(): Promise<Result<{ removed: number }>>;
+  deleteExport(id: number): Promise<Result<{ removed: boolean }>>;
+  openExport(filePath: string): Promise<Result<boolean>>;
+  revealExport(filePath: string): Promise<Result<boolean>>;
 
   listJobs(): Promise<Result<JobRecord[]>>;
   getJob(id: string): Promise<Result<JobRecord | null>>;

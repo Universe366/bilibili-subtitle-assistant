@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Download,
   ExternalLink,
+  FolderOpen,
   History as HistoryIcon,
   Loader2,
   RotateCcw,
   Search,
   Trash2
 } from 'lucide-react';
-import type { JobRecord, LibraryHistoryItem } from '../../../shared/types';
+import type { ExportRecord, JobRecord, LibraryHistoryItem } from '../../../shared/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Markdown } from './Markdown';
 import { JOB_ITEM_LABEL, JOB_STATUS_LABEL, JOB_TYPE_LABEL } from './TaskCenter';
@@ -84,9 +85,11 @@ export function HistoryPanel({
 }: {
   onOpenLibraryItem?: (videoId: number) => void;
 }) {
-  const [tab, setTab] = useState<'summaries' | 'tasks'>('summaries');
+  const [tab, setTab] = useState<'summaries' | 'tasks' | 'exports'>('summaries');
   const [items, setItems] = useState<LibraryHistoryItem[]>([]);
   const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [exports, setExports] = useState<ExportRecord[]>([]);
+  const [exportClearOpen, setExportClearOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -117,6 +120,12 @@ export function HistoryPanel({
     });
   }, []);
 
+  const loadExports = useCallback(() => {
+    void window.bsub.listExports().then((response) => {
+      if (response.ok) setExports(response.data);
+    });
+  }, []);
+
   useEffect(() => {
     loadSummaries();
     return window.bsub.onLibraryChanged(loadSummaries);
@@ -126,6 +135,10 @@ export function HistoryPanel({
     loadJobs();
     return window.bsub.onJobsChanged(setJobs);
   }, [loadJobs]);
+
+  useEffect(() => {
+    if (tab === 'exports') loadExports();
+  }, [tab, loadExports]);
 
   const keyword = query.trim().toLowerCase();
   const filtered = useMemo(
@@ -196,6 +209,29 @@ export function HistoryPanel({
     if (!response.ok) setError(response.error);
   };
 
+  const openExportFile = async (item: ExportRecord) => {
+    const response = await window.bsub.openExport(item.path);
+    if (!response.ok) setError(response.error);
+  };
+
+  const revealExportFile = async (item: ExportRecord) => {
+    const response = await window.bsub.revealExport(item.path);
+    if (!response.ok) setError(response.error);
+  };
+
+  const removeExport = async (item: ExportRecord) => {
+    const response = await window.bsub.deleteExport(item.id);
+    if (!response.ok) setError(response.error);
+    loadExports();
+  };
+
+  const clearExportList = async () => {
+    setExportClearOpen(false);
+    const response = await window.bsub.clearExports();
+    if (!response.ok) setError(response.error);
+    loadExports();
+  };
+
   const flash = (text: string) => {
     setNotice(text);
     window.setTimeout(() => setNotice(''), 4000);
@@ -246,6 +282,12 @@ export function HistoryPanel({
           >
             任务 {jobs.length}
           </button>
+          <button
+            className={`mini-btn${tab === 'exports' ? ' is-active' : ''}`}
+            onClick={() => setTab('exports')}
+          >
+            导出 {exports.length}
+          </button>
           {tab === 'summaries' ? (
             <>
               <button
@@ -264,13 +306,21 @@ export function HistoryPanel({
                 <Trash2 size={12} /> 清空
               </button>
             </>
-          ) : (
+          ) : tab === 'tasks' ? (
             <button
               className="mini-btn"
               disabled={!finishedCount}
               onClick={() => void clearFinished()}
             >
               清除已结束
+            </button>
+          ) : (
+            <button
+              className="mini-btn"
+              disabled={!exports.length}
+              onClick={() => setExportClearOpen(true)}
+            >
+              <Trash2 size={12} /> 清空
             </button>
           )}
         </div>
@@ -463,6 +513,55 @@ export function HistoryPanel({
         </div>
       )}
 
+      {tab === 'exports' && (
+        <div className="history-list">
+          {exports.map((item) => (
+            <div key={item.id} className="history-card">
+              <div className="history-head">
+                <span className="job-chip">{item.kind || '文件'}</span>
+                <div className="history-title" title={item.title}>
+                  {item.title || item.path.split(/[\\/]/).pop() || '导出文件'}
+                </div>
+                <div className="history-actions">
+                  <button
+                    className="icon-btn"
+                    title="打开文件"
+                    onClick={() => void openExportFile(item)}
+                  >
+                    <ExternalLink size={13} />
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="在文件夹中显示"
+                    onClick={() => void revealExportFile(item)}
+                  >
+                    <FolderOpen size={13} />
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="从列表移除（不删除文件）"
+                    onClick={() => void removeExport(item)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+              <div className="history-meta">{item.path}</div>
+              <div className="history-meta">{fmtTime(item.createdAt)}</div>
+            </div>
+          ))}
+          {!exports.length && (
+            <div className="panel-empty">
+              <HistoryIcon size={18} />
+              <div>还没有导出记录</div>
+              <div className="panel-hint">
+                导出字幕、总结、笔记或合集对比后，会出现在这里。
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <ConfirmDialog
         open={Boolean(pending)}
         title={pending?.kind === 'all' ? '清空全部总结？' : '删除这条总结？'}
@@ -476,6 +575,15 @@ export function HistoryPanel({
         confirmText="删除"
         onConfirm={() => void confirmPending()}
         onCancel={() => setPending(null)}
+      />
+
+      <ConfirmDialog
+        open={exportClearOpen}
+        title="清空导出记录？"
+        description="只清除列表记录，磁盘上的导出文件不会被删除。"
+        confirmText="清空"
+        onConfirm={() => void clearExportList()}
+        onCancel={() => setExportClearOpen(false)}
       />
     </div>
   );

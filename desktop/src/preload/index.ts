@@ -72,6 +72,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  ExportRecord,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -397,6 +398,15 @@ const api: BsubApi = {
     ipcRenderer.invoke('history:delete', id) as Promise<Result<{ removed: boolean }>>,
   clearHistory: () =>
     ipcRenderer.invoke('history:clear') as Promise<Result<{ removed: number }>>,
+  listExports: () => ipcRenderer.invoke('exports:list') as Promise<Result<ExportRecord[]>>,
+  clearExports: () =>
+    ipcRenderer.invoke('exports:clear') as Promise<Result<{ removed: number }>>,
+  deleteExport: (id: number) =>
+    ipcRenderer.invoke('exports:delete', id) as Promise<Result<{ removed: boolean }>>,
+  openExport: (filePath: string) =>
+    ipcRenderer.invoke('exports:open', filePath) as Promise<Result<boolean>>,
+  revealExport: (filePath: string) =>
+    ipcRenderer.invoke('exports:reveal', filePath) as Promise<Result<boolean>>,
 
   listJobs: () => ipcRenderer.invoke('jobs:list') as Promise<Result<JobRecord[]>>,
   getJob: (id: string) => ipcRenderer.invoke('jobs:get', id) as Promise<Result<JobRecord | null>>,

@@ -71,6 +71,7 @@ import type {
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
+  ExportRecord,
   JobRecord,
   GlobalSearchResult
 } from '../shared/types';
@@ -78,13 +79,16 @@ import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
 import {
   addCollectionToVideos,
+  addExportRecord,
   addTagToVideos,
   addVideoToCollection,
+  clearExports,
   clearFinishedJobs,
   clearHistory,
   createJob,
   createJobItem,
   deleteCollection,
+  deleteExport,
   deleteHistoryItem,
   deleteTag,
   finishJob,
@@ -100,6 +104,7 @@ import {
   ingestVideo,
   listCollections,
   listCollectionSummaryVersions,
+  listExports,
   listHistory,
   listJobs,
   listNoteVersions,
@@ -1865,6 +1870,48 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('exports:list', (): Result<ExportRecord[]> => {
+    try {
+      return { ok: true, data: listExports() };
+    } catch (error) {
+      return failure<ExportRecord[]>(error);
+    }
+  });
+
+  ipcMain.handle('exports:clear', (): Result<{ removed: number }> => {
+    try {
+      return { ok: true, data: { removed: clearExports() } };
+    } catch (error) {
+      return failure<{ removed: number }>(error);
+    }
+  });
+
+  ipcMain.handle('exports:delete', (_event, id: number): Result<{ removed: boolean }> => {
+    try {
+      return { ok: true, data: { removed: deleteExport(Number(id)) } };
+    } catch (error) {
+      return failure<{ removed: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle('exports:open', async (_event, filePath: string) => {
+    try {
+      const message = await shell.openPath(String(filePath || ''));
+      return message ? { ok: false as const, error: message } : { ok: true as const, data: true };
+    } catch (error) {
+      return failure<boolean>(error);
+    }
+  });
+
+  ipcMain.handle('exports:reveal', (_event, filePath: string): Result<boolean> => {
+    try {
+      shell.showItemInFolder(String(filePath || ''));
+      return { ok: true, data: true };
+    } catch (error) {
+      return failure<boolean>(error);
+    }
+  });
+
 
   ipcMain.handle('mcp:test', async (_event, server: McpServer): Promise<Result<McpTool[]>> => {
     try {
@@ -2035,6 +2082,11 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         }
 
         fs.writeFileSync(target, built.content, 'utf8');
+        addExportRecord(
+          target,
+          '字幕',
+          `${payload.info?.title || '未命名视频'} · ${payload.format}`
+        );
         console.log('[m4] exported', payload.format, target, `chars=${built.content.length}`);
         return { ok: true, data: { path: target } };
       } catch (error) {
@@ -2074,6 +2126,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         }
         fs.mkdirSync(path.dirname(target), { recursive: true });
         fs.writeFileSync(target, content, 'utf8');
+        addExportRecord(target, '文本', String(payload?.filename || path.basename(target)));
         console.log('[export] text saved', target, `chars=${content.length}`);
         return { ok: true, data: { path: target } };
       } catch (error) {
