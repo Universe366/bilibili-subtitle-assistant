@@ -60,7 +60,9 @@ import type {
   LibrarySearchResult,
   LibraryDetail,
   LibrarySort,
-  JobRecord
+  JobRecord,
+  SummaryVersion,
+  SummaryVersionMeta
 } from './types';
 
 export interface BsubApi {
@@ -144,6 +146,9 @@ export interface BsubApi {
   summarize(payload: SummarizeRequest): Promise<Result<{ requestId: string }>>;
   cancelSummary(requestId: string): Promise<void>;
   getSummary(ref: SummaryRef): Promise<Result<StoredSummary | null>>;
+  getSummaryVersions(videoId: number): Promise<Result<SummaryVersionMeta[]>>;
+  getSummaryVersion(id: number): Promise<Result<SummaryVersion | null>>;
+  restoreSummaryVersion(id: number): Promise<Result<StoredSummary>>;
   onAiDelta(cb: (event: AiDeltaEvent) => void): () => void;
   onAiDone(cb: (event: AiDoneEvent) => void): () => void;
   onAiError(cb: (event: AiErrorEvent) => void): () => void;

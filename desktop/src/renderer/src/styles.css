@@ -3739,3 +3739,71 @@ button:disabled {
   display: flex;
   justify-content: flex-end;
 }
+
+/* ---------- 总结版本 ---------- */
+.version-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 10.5px;
+}
+
+.version-banner-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.version-block {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.version-toggle {
+  font-size: 10.5px;
+  color: var(--accent);
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.version-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 3px 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.version-row.is-active {
+  color: var(--accent);
+}
+
+.version-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.version-model {
+  flex: 1 1 60px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+}
+
+.version-chars {
+  color: var(--faint);
+}

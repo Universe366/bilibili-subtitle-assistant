@@ -5,7 +5,9 @@ import type {
   LibraryList,
   LibrarySearchResult,
   LibrarySort,
-  LibraryVideo
+  LibraryVideo,
+  SummaryVersion,
+  SummaryVersionMeta
 } from '../../../shared/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ExportMenu } from './ExportMenu';
@@ -45,6 +47,20 @@ function fmtDate(ms: number | null | undefined): string {
   }
 }
 
+function fmtDateTime(ms: number): string {
+  if (!ms) return '';
+  try {
+    return new Date(ms).toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return '';
+  }
+}
+
 export function LibraryPanel() {
   const [list, setList] = useState<LibraryList | null>(null);
   const [query, setQuery] = useState('');
@@ -61,6 +77,10 @@ export function LibraryPanel() {
   const [detailTab, setDetailTab] = useState<'subtitles' | 'summary'>('subtitles');
   const [lineLimit, setLineLimit] = useState(LINE_PAGE);
   const [pendingDelete, setPendingDelete] = useState<LibraryVideo | null>(null);
+  const [versions, setVersions] = useState<SummaryVersionMeta[]>([]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [preview, setPreview] = useState<SummaryVersion | null>(null);
+  const [busyVersion, setBusyVersion] = useState(0);
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -80,6 +100,11 @@ export function LibraryPanel() {
     }
   }, [sort]);
 
+  const loadVersions = useCallback(async (videoId: number) => {
+    const response = await window.bsub.getSummaryVersions(videoId);
+    if (response.ok) setVersions(response.data);
+  }, []);
+
   const fetchDetail = useCallback(async (id: number) => {
     const seq = ++detailSeq.current;
     setDetailLoading(true);
@@ -88,6 +113,7 @@ export function LibraryPanel() {
       if (seq !== detailSeq.current) return;
       if (response.ok) {
         setDetail(response.data);
+        void loadVersions(id);
       } else if (/视频不存在/.test(response.error)) {
         // 删除后 library:changed 可能晚一步到达：安静退回列表。
         setSelectedId(null);
@@ -100,7 +126,7 @@ export function LibraryPanel() {
     } finally {
       if (seq === detailSeq.current) setDetailLoading(false);
     }
-  }, []);
+  }, [loadVersions]);
 
   useEffect(() => {
     void load();
@@ -123,6 +149,9 @@ export function LibraryPanel() {
       setDetail(null);
       setLineLimit(LINE_PAGE);
       setDetailTab('subtitles');
+      setPreview(null);
+      setVersions([]);
+      setVersionsOpen(false);
       void fetchDetail(id);
     };
     window.addEventListener('bsub:library-item', handler as EventListener);
@@ -160,6 +189,9 @@ export function LibraryPanel() {
     setDetail(null);
     setLineLimit(LINE_PAGE);
     setDetailTab(video.summaryUpdatedAt ? 'summary' : 'subtitles');
+    setPreview(null);
+    setVersions([]);
+    setVersionsOpen(false);
     void fetchDetail(video.id);
   };
 
@@ -168,11 +200,39 @@ export function LibraryPanel() {
     setSelectedId(null);
     setDetail(null);
     setDetailLoading(false);
+    setPreview(null);
+    setVersions([]);
+    setVersionsOpen(false);
   };
 
   const openInBrowser = (video: LibraryVideo, start?: number) => {
     if (!video.url) return;
     void window.bsub.openUrl(video.url, start);
+  };
+
+  const previewVersion = async (version: SummaryVersionMeta) => {
+    const response = await window.bsub.getSummaryVersion(version.id);
+    if (response.ok && response.data) {
+      setPreview(response.data);
+      setDetailTab('summary');
+    } else if (!response.ok) {
+      setError(response.error);
+    }
+  };
+
+  const restoreVersion = async (versionId: number) => {
+    setBusyVersion(versionId);
+    try {
+      const response = await window.bsub.restoreSummaryVersion(versionId);
+      if (response.ok) {
+        setPreview(null);
+        if (selectedId != null) await fetchDetail(selectedId);
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setBusyVersion(0);
+    }
   };
 
   const confirmDelete = async () => {
@@ -295,7 +355,64 @@ export function LibraryPanel() {
 
         {detailTab === 'summary' && detail?.summary && (
           <div className="lib-summary">
-            <Markdown content={detail.summary.content} />
+            {preview && (
+              <div className="version-banner">
+                <span>
+                  预览版本 · {fmtDateTime(preview.createdAt)} · {preview.model || 'AI'}
+                </span>
+                <div className="version-banner-actions">
+                  <button
+                    className="mini-btn"
+                    disabled={busyVersion === preview.id}
+                    onClick={() => void restoreVersion(preview.id)}
+                  >
+                    恢复此版本
+                  </button>
+                  <button className="mini-btn" onClick={() => setPreview(null)}>
+                    退出预览
+                  </button>
+                </div>
+              </div>
+            )}
+            <Markdown content={preview ? preview.content : detail.summary.content} />
+
+            {versions.length > 0 && (
+              <div className="version-block">
+                <button
+                  className="version-toggle"
+                  onClick={() => setVersionsOpen((value) => !value)}
+                >
+                  历史版本 {versions.length} · {versionsOpen ? '收起' : '展开'}
+                </button>
+                {versionsOpen && (
+                  <div className="version-list">
+                    {versions.map((version) => (
+                      <div
+                        key={version.id}
+                        className={`version-row${preview?.id === version.id ? ' is-active' : ''}`}
+                      >
+                        <span className="version-time">{fmtDateTime(version.createdAt)}</span>
+                        <span className="version-model">{version.model || 'AI'}</span>
+                        <span className="version-chars">{version.chars} 字</span>
+                        <button
+                          className="mini-btn"
+                          onClick={() => void previewVersion(version)}
+                        >
+                          预览
+                        </button>
+                        <button
+                          className="mini-btn"
+                          disabled={busyVersion === version.id}
+                          onClick={() => void restoreVersion(version.id)}
+                        >
+                          恢复
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -817,4 +817,16 @@ export interface StoredSummary {
   updatedAt: number;
 }
 
+export interface SummaryVersionMeta {
+  id: number;
+  model: string;
+  createdAt: number;
+  chars: number;
+}
+
+export interface SummaryVersion extends SummaryVersionMeta {
+  videoId: number;
+  content: string;
+}
+
 

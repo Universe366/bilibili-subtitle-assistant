@@ -62,7 +62,9 @@ import type {
   LibrarySearchResult,
   LibraryDetail,
   LibrarySort,
-  JobRecord
+  JobRecord,
+  SummaryVersion,
+  SummaryVersionMeta
 } from '../shared/types';
 
 const on = <T>(channel: string, cb: (payload: T) => void) => {
@@ -214,6 +216,14 @@ const api: BsubApi = {
     ipcRenderer.invoke('ai:cancel', requestId) as Promise<void>,
   getSummary: (ref: SummaryRef) =>
     ipcRenderer.invoke('library:get-summary', ref) as Promise<Result<StoredSummary | null>>,
+  getSummaryVersions: (videoId: number) =>
+    ipcRenderer.invoke('library:summary-versions', videoId) as Promise<
+      Result<SummaryVersionMeta[]>
+    >,
+  getSummaryVersion: (id: number) =>
+    ipcRenderer.invoke('library:summary-version', id) as Promise<Result<SummaryVersion | null>>,
+  restoreSummaryVersion: (id: number) =>
+    ipcRenderer.invoke('library:restore-version', id) as Promise<Result<StoredSummary>>,
   onAiDelta: (cb: (event: AiDeltaEvent) => void) => on<AiDeltaEvent>('ai:delta', cb),
   onAiDone: (cb: (event: AiDoneEvent) => void) => on<AiDoneEvent>('ai:done', cb),
   onAiError: (cb: (event: AiErrorEvent) => void) => on<AiErrorEvent>('ai:error', cb),

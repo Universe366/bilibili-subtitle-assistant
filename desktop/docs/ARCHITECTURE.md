@@ -154,6 +154,8 @@ SPA 切页瞬间拿到上一个视频的预取轨。
 ## 4. 总结与联网核对
 
 - `ai.ts`：`DIRECT_SUMMARY_CHARS=40000`，超过后分块 map-reduce；
+- 总结每保存一次就追加一条 `summary_versions`（每个视频保留最近 20 条）；老库启动时
+  会把现有总结补成一条版本记录。恢复版本只更新 `summaries`，不会伪造新版本；
 - 总结 system prompt 追加插件同款格式规则（`SUMMARY_FORMAT_RULES`），不要注入
   Skills，否则格式会跑偏；
 - `verify.ts`：从字幕抽具体项 → 生成检索词 → 搜索 → 语义判定；

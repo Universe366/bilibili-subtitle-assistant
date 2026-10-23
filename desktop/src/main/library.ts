@@ -22,7 +22,9 @@ import type {
   LibraryVideo,
   PageInfo,
   StoredSummary,
-  SummaryRef
+  SummaryRef,
+  SummaryVersion,
+  SummaryVersionMeta
 } from '../shared/types';
 
 const SCHEMA = `
@@ -77,6 +79,18 @@ CREATE TABLE IF NOT EXISTS summaries (
 
 CREATE INDEX IF NOT EXISTS idx_summaries_video ON summaries(video_id);
 
+CREATE TABLE IF NOT EXISTS summary_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  uid TEXT NOT NULL,
+  content_md TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_summary_versions_video
+  ON summary_versions(video_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -125,6 +139,18 @@ export function initLibrary(): void {
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+
+  // 老库只有最新一份总结：升级时补一条版本记录，之后每次生成都会追加。
+  try {
+    db.exec(
+      `INSERT INTO summary_versions (video_id, uid, content_md, model, created_at)
+       SELECT s.video_id, s.uid, s.content_md, s.model, s.updated_at
+       FROM summaries s
+       WHERE NOT EXISTS (SELECT 1 FROM summary_versions v WHERE v.uid = s.uid)`
+    );
+  } catch (error) {
+    console.warn('[library] 总结版本迁移失败:', (error as Error).message);
+  }
 
   try {
     db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(text, tokenize='trigram');");
@@ -529,6 +555,22 @@ export function saveSummary(
            updated_at = excluded.updated_at`
       )
       .run(uid, videoId, content, model, now, now);
+
+    database
+      .prepare(
+        `INSERT INTO summary_versions (video_id, uid, content_md, model, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(videoId, uid, content, model, now);
+    // 每个视频只保留最近 20 个版本，避免批量重跑把库撑大。
+    database
+      .prepare(
+        `DELETE FROM summary_versions WHERE video_id = ? AND id NOT IN (
+           SELECT id FROM summary_versions WHERE video_id = ?
+           ORDER BY created_at DESC, id DESC LIMIT 20)`
+      )
+      .run(videoId, videoId);
+
     database.exec('COMMIT');
     const row = database.prepare('SELECT id FROM summaries WHERE uid = ?').get(uid) as { id: number };
     return { id: Number(row.id), updated: Boolean(existing) };
@@ -574,6 +616,78 @@ export function getSummaryFor(ref: SummaryRef): StoredSummary | null {
   };
 }
 
+export function listSummaryVersions(videoId: number, limit = 20): SummaryVersionMeta[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT id, model, created_at, length(content_md) AS chars
+       FROM summary_versions WHERE video_id = ?
+       ORDER BY created_at DESC, id DESC LIMIT ?`
+    )
+    .all(Number(videoId), Math.min(50, Math.max(1, Math.round(limit)))) as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    model: String(row.model || ''),
+    createdAt: toNumber(row.created_at),
+    chars: toNumber(row.chars)
+  }));
+}
+
+export function getSummaryVersion(id: number): SummaryVersion | null {
+  const database = requireDb();
+  const row = database
+    .prepare(
+      `SELECT id, video_id, content_md, model, created_at FROM summary_versions WHERE id = ?`
+    )
+    .get(Number(id)) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: toNumber(row.id),
+    videoId: toNumber(row.video_id),
+    content: String(row.content_md || ''),
+    model: String(row.model || ''),
+    createdAt: toNumber(row.created_at),
+    chars: String(row.content_md || '').length
+  };
+}
+
+export function restoreSummaryVersion(id: number): StoredSummary {
+  const database = requireDb();
+  const row = database
+    .prepare('SELECT uid, video_id, content_md, model FROM summary_versions WHERE id = ?')
+    .get(Number(id)) as
+    | { uid: string; video_id: number; content_md: string; model: string }
+    | undefined;
+  if (!row) throw new Error('总结版本不存在');
+
+  const now = Date.now();
+  database
+    .prepare(
+      `INSERT INTO summaries (uid, video_id, content_md, model, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(uid) DO UPDATE SET
+         video_id = excluded.video_id,
+         content_md = excluded.content_md,
+         model = excluded.model,
+         updated_at = excluded.updated_at`
+    )
+    .run(
+      String(row.uid),
+      toNumber(row.video_id),
+      String(row.content_md || ''),
+      String(row.model || ''),
+      now,
+      now
+    );
+
+  return {
+    content: String(row.content_md || ''),
+    model: String(row.model || ''),
+    updatedAt: now
+  };
+}
 
 export function libraryVideoBundle(videoId: number): LibraryBundle {
   const database = requireDb();
@@ -690,12 +804,22 @@ export function listHistory(limit = 100): LibraryHistoryItem[] {
 
 export function deleteHistoryItem(id: number): boolean {
   const database = requireDb();
+  const row = database.prepare('SELECT video_id FROM summaries WHERE id = ?').get(Number(id)) as
+    | { video_id: number }
+    | undefined;
+  if (row) {
+    // 删除总结时把版本一起清掉，否则「历史版本」还能把已删内容恢复回来。
+    database
+      .prepare('DELETE FROM summary_versions WHERE video_id = ?')
+      .run(Number(row.video_id));
+  }
   const result = database.prepare('DELETE FROM summaries WHERE id = ?').run(Number(id));
   return Number(result.changes) > 0;
 }
 
 export function clearHistory(): number {
   const database = requireDb();
+  database.prepare('DELETE FROM summary_versions').run();
   const result = database.prepare('DELETE FROM summaries').run();
   return Number(result.changes) || 0;
 }

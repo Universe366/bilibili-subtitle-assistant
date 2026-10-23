@@ -35,6 +35,8 @@ import type {
   PageInfo,
   Result,
   StoredSummary,
+  SummaryVersion,
+  SummaryVersionMeta,
   SubtitleBundle,
   SubtitleLine,
   SummarizeRequest,
@@ -74,12 +76,15 @@ import {
   getJob,
   getLibraryDetail,
   getSummaryFor,
+  getSummaryVersion,
   ingestVideo,
   listHistory,
   listJobs,
+  listSummaryVersions,
   listTranscriptions,
   listLibrary,
   removeVideo,
+  restoreSummaryVersion,
   saveSummary,
   searchLibrary,
   setJobsListener,
@@ -718,6 +723,38 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return { ok: true, data: getSummaryFor(ref) };
     } catch (error) {
       return failure<StoredSummary | null>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'library:summary-versions',
+    (_event, videoId: number): Result<SummaryVersionMeta[]> => {
+      try {
+        return { ok: true, data: listSummaryVersions(Number(videoId)) };
+      } catch (error) {
+        return failure<SummaryVersionMeta[]>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:summary-version',
+    (_event, id: number): Result<SummaryVersion | null> => {
+      try {
+        return { ok: true, data: getSummaryVersion(Number(id)) };
+      } catch (error) {
+        return failure<SummaryVersion | null>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('library:restore-version', (_event, id: number): Result<StoredSummary> => {
+    try {
+      const summary = restoreSummaryVersion(Number(id));
+      send('library:changed', null);
+      return { ok: true, data: summary };
+    } catch (error) {
+      return failure<StoredSummary>(error);
     }
   });
 
