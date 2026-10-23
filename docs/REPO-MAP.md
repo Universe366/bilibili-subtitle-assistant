@@ -54,6 +54,7 @@ shizi-extension/
 
 | 想知道 | 读 |
 |---|---|
+| 刚接手 / AI 操作 | `AGENTS.md`、`HANDOFF.md` |
 | 怎么安装/使用 | 根 `README.md`、`shizi-extension/README.md` |
 | 桌面端怎么分层、有哪些坑 | `desktop/docs/ARCHITECTURE.md` |
 | 最近改了什么、怎么验收 | `desktop/docs/HARDENING.md` |

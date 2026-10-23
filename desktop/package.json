@@ -18,6 +18,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" package.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "verify": "npm run check && npm run smoke",
     "smoke": "node scripts/smoke.mjs",
     "dist": "npm run build && electron-builder --win",
     "dist:dir": "npm run build && electron-builder --win --dir",

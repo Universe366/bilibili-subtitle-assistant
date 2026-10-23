@@ -170,6 +170,8 @@ npm run dist
 
 | 文件 | 内容 |
 |---|---|
+| [`AGENTS.md`](AGENTS.md) | 给下一个 AI/维护者：边界、命令、禁止事项 |
+| [`HANDOFF.md`](HANDOFF.md) | 当前状态、已知风险、接手任务菜单 |
 | [`docs/REPO-MAP.md`](docs/REPO-MAP.md) | **先看这个**：目录结构、文档选择、维护规则 |
 | [`docs/QUALITY.md`](docs/QUALITY.md) | 质量基线、技术债与重构顺序 |
 | [`shizi-extension/README.md`](shizi-extension/README.md) | 用户文档：安装、配置、功能、故障排查 |
