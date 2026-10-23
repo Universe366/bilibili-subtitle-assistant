@@ -1,5 +1,15 @@
 # 更新记录（桌面端）
 
+## 0.37.2（2026-10-24）
+
+### 清理与修复
+- 移除仓库内 31 个历史发布 zip（约 320MB）和逐版本 release-notes；发布产物只留在 GitHub Releases。
+- 删除一次性 `desktop/spike/` 探针，保留的 mock 服务移到 `desktop/scripts/mocks/`。
+- 历史验收/方案移到 `desktop/docs/archive/`，新增 `docs/REPO-MAP.md` 与 `desktop/docs/README.md`。
+- 移除未使用的导入与废弃的 `authoritativeSubtitlePaths` 字幕接口代码。
+- 修复对话面板未读取 `sendOnEnter` / `expandReasoning` 设置、总结核对开关未读取 `search.verify` 的问题。
+- `npm run lint` 增加 `--max-warnings 90`，防止 warning 继续增长。
+
 ## 0.37.1（2026-10-24）
 
 ### 修复

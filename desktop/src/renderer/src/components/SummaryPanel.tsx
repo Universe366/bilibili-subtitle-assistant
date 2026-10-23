@@ -183,10 +183,14 @@ export function SummaryPanel({
 
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
-      if (response.ok) setPreProofread(response.data.settings.ai.preProofread === true);
+      if (response.ok) {
+        setPreProofread(response.data.settings.ai.preProofread === true);
+        setVerifyEnabled(response.data.settings.search.verify !== false);
+      }
     });
     return window.bsub.onSettingsChanged((snapshot) => {
       setPreProofread(snapshot.settings.ai.preProofread === true);
+      setVerifyEnabled(snapshot.settings.search.verify !== false);
     });
   }, []);
 

@@ -31,11 +31,11 @@
 一次版本 bump 至少检查这些位置：
 
 ```text
-shizi-extension/manifest.json                     2.18.2
+shizi-extension/manifest.json                     2.18.6
 shizi-extension/src/shared/constants.js          VERSION
 shizi-extension/src/content/content.js            CONTENT_VERSION
 shizi-extension/src/content/page-bridge.js        bridge version
-desktop/package.json                                          0.31.0
+desktop/package.json                                          0.37.1
 desktop/package-lock.json                                     顶层与 packages[""].version
 desktop/README.md / CHANGELOG.md                              产物名与版本说明
 verify/package.json                                           测试包版本（按需同步）
@@ -112,20 +112,20 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - 桌面版本在 `desktop/package.json`，同步更新 `desktop/CHANGELOG.md`、`desktop/README.md` 的产物名和版本说明。
 - 发布仍用**合并 Release**：一个 `v*` tag 同时带插件 zip 与桌面 setup/green/latest.yml。
 - CI 是 `.github/workflows/desktop-release.yml`；构建必须带 `--publish never`，由 workflow 自己创建 Release，否则 electron-builder 会抢先自动发布。
-- 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `bsub-desktop-setup-${version}.exe`）。
+- 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `shizi-setup-${version}.exe`）。
 - 当前最新 Release 的桌面资产可能落后于源码；发布前先确认 `desktop/package.json` 版本高于 Release 资产，否则客户端会显示“已是最新”。
-- **0.31.0 / 插件 2.18.2 的发布方式**：桌面端与插件版本号一起 bump，提交后打 tag 并 push：
+- **以 0.37.1 / 插件 2.18.6 为例**：桌面端与插件版本号一起 bump，提交后打 tag 并 push：
 
   ```bash
-  git tag -a v2.18.2 -m "桌面端 0.31.0 + 插件 2.18.2"
-  git push origin master v2.18.2
+  git tag -a v2.18.6 -m "桌面端 0.37.1 + 插件 2.18.6"
+  git push origin master v2.18.6
   ```
 
   push tag 后 `.github/workflows/desktop-release.yml` 会自动构建安装包/绿色包/插件 zip，
   并用 `desktop/scripts/release.mjs` 从两个 CHANGELOG 提取发布说明。本机不需要跑 `dist`
   （除非要提前验证 NSIS）。
 - 本地只验证发布说明：
-  `cd desktop && npm run release:notes`，必须能提取 `0.31.0` 与 `2.18.2` 两段。
+  `cd desktop && npm run release:notes`，必须能提取 `0.37.1` 与 `2.18.6` 两段。
 
 #### 自动更新
 
@@ -136,16 +136,16 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 
 #### 数据目录、迁移与卸载
 
-- 默认数据在 `%APPDATA%\bsub-desktop`；设置 → 数据与备份 → 更改位置可迁移。
-- 自定义位置写在 `%APPDATA%\bsub-desktop-location.txt`（纯文本路径）；启动时
+- 默认数据在 `%APPDATA%\shizi`；设置 → 数据与备份 → 更改位置可迁移。
+- 自定义位置写在 `%APPDATA%\shizi-location.txt`（纯文本路径）；启动时
   `applyDataDirOverride()` 必须早于任何 `userData` 读写。
 - 迁移只复制、不立即删旧目录；新进程启动后 `scheduleOldDataCleanup()` 删除旧目录，
-  失败路径写入 `%APPDATA%\bsub-desktop-cleanup.txt`，下次启动重试。
+  失败路径写入 `%APPDATA%\shizi-cleanup.txt`，下次启动重试。
 - 复制前 `checkpointLibrary()` + `closeLibrary()`；核心文件未复制成功不写指向、不删旧数据；
   失败会 `initLibrary()` 重开原库。
 - 安装包 `nsis.include=build/installer.nsh`，`deleteAppDataOnUninstall=false`。
 - 自定义卸载页默认只删程序；勾选后删除默认数据目录、自定义位置（读指向文件）、
-  待清理旧目录、`%LOCALAPPDATA%\bsub-desktop-updater` 和 `%TEMP%\bsub-asr-*`。
+  待清理旧目录、`%LOCALAPPDATA%\shizi-updater` 和 `%TEMP%\bsub-asr-*`。
 - 静默卸载 `/S` 不会弹数据页，默认保留数据。
 - NSIS 开了 `-WX`（警告即错误）：`Var` 不能声明在安装器也会编译到的顶层；当前把
   `Var DeleteAppData` 放在 `customUnWelcomePage` 宏里。
@@ -303,7 +303,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 | 架构 / 环境坑 | `AGENTS.md`、本文件、`desktop/docs/ARCHITECTURE.md` |
 | 桌面端功能 / 平台 / 验收 | `desktop/README.md`、`desktop/docs/PARITY.md`、`desktop/docs/PLATFORMS.md` |
 | 桌面端信息架构 / 库数据 / 合集导入 | `desktop/docs/ARCHITECTURE.md`、`desktop/README.md`、本文件 2.5 |
-| 桌面端真实回归 | `desktop/docs/REAL-REGRESSION.md` |
+| 桌面端真实回归 | `desktop/docs/archive/REAL-REGRESSION.md` |
 
 ## 6. Issue 排查顺序
 

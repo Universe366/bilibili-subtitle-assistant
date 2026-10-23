@@ -262,7 +262,7 @@ async function judgeEvidence(
   info: PageInfo,
   items: VerifyItem[],
   signal: AbortSignal | undefined,
-  onProgress: Progress
+  _onProgress: Progress
 ): Promise<{ items: VerifyItem[]; supplements: string[]; dropped: number } | null> {
   const platform = activePlatform(settings);
   if (!platform || !platform.baseUrl.trim() || (needsApiKey(platform) && !platform.apiKey.trim()) || !platform.model.trim()) {

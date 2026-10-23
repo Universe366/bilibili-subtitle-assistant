@@ -1,6 +1,6 @@
 {
   "name": "shizi",
-  "version": "0.37.1",
+  "version": "0.37.2",
   "private": true,
   "description": "B站字幕助手桌面端",
   "author": "bsub",
@@ -14,7 +14,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 90",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" package.json",
     "test": "vitest run",
     "test:watch": "vitest",

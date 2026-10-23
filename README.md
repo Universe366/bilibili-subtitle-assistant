@@ -90,7 +90,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 - 数据位置迁移：复制到新目录并自动重启，成功后删除旧目录
 - 侧栏可拖拽调宽、折叠成图标栏、左右换边；安装时可输入新父目录，卸载时可选择是否删除本地数据（含自定义位置）
 
-源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.37.1**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
+源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.37.2**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
 
 安装版直接运行 `shizi-setup-*.exe`，绿色版解压后双击 `拾字.exe`。数据默认在 `%APPDATA%\shizi`（设置、字幕库、登录态、缓存、日志；旧版 `bsub-desktop` 首次启动自动迁移）；可在设置里迁移到其他目录，迁移成功后旧目录会自动删除。卸载页默认保留数据，勾选后才会删除（包括自定义位置）。
 
@@ -170,13 +170,18 @@ npm run dist
 
 | 文件 | 内容 |
 |---|---|
+| [`docs/REPO-MAP.md`](docs/REPO-MAP.md) | **先看这个**：目录结构、文档选择、维护规则 |
 | [`shizi-extension/README.md`](shizi-extension/README.md) | 用户文档：安装、配置、功能、故障排查 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
 | [`desktop/README.md`](desktop/README.md) | 桌面端安装、开发、打包、数据与卸载 |
+| [`desktop/docs/README.md`](desktop/docs/README.md) | 桌面端文档索引（当前 / 历史） |
 | [`desktop/docs/ARCHITECTURE.md`](desktop/docs/ARCHITECTURE.md) | 桌面端模块、数据流、字幕/数据目录/安装器维护笔记 |
+| [`desktop/docs/HARDENING.md`](desktop/docs/HARDENING.md) | 0.34–0.37 加固、迁移与冒烟验收 |
+| [`desktop/docs/BRIDGE.md`](desktop/docs/BRIDGE.md) | 插件 ↔ 桌面本地桥协议 |
+| [`desktop/docs/REBRAND.md`](desktop/docs/REBRAND.md) | bsub-desktop → shizi 品牌/路径迁移记录 |
 | [`desktop/docs/PARITY.md`](desktop/docs/PARITY.md) | 桌面端 vs 插件功能矩阵与验收 |
 | [`desktop/docs/PLATFORMS.md`](desktop/docs/PLATFORMS.md) | 桌面端 AI / 检索 / ASR 平台目录 |
-| [`desktop/docs/REAL-REGRESSION.md`](desktop/docs/REAL-REGRESSION.md) | 真实平台回归前置条件与清单 |
+| [`desktop/docs/archive/REAL-REGRESSION.md`](desktop/docs/archive/REAL-REGRESSION.md) | 0.30.x 真实平台回归（历史） |
 | [`docs/MAINTAINERS.md`](docs/MAINTAINERS.md) | 发布清单、桌面端构建/更新/卸载、易踩坑与商店提交注意事项 |
 | [`SECURITY.md`](SECURITY.md) | 安全问题与密钥泄露的处理方式 |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | Windows 代码签名、CI Secrets 与验证 |

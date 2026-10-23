@@ -1,5 +1,5 @@
 // 模拟「浏览器插件 → 桌面端」的推送，验证桥协议。
-// 用法：node spike/bridge-test.mjs
+// 用法：node scripts/mocks/bridge-test.mjs
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';

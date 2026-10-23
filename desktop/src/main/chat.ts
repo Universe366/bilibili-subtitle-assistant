@@ -27,14 +27,6 @@ export interface ChatOptions {
   onReasoning?: (delta: string) => void;
 }
 
-function errorForStatus(status: number, body: string): string {
-  if (status === 401 || status === 403) return 'API Key 无效或没有权限（401/403）';
-  if (status === 404) return '地址或模型不存在（404）';
-  if (status === 429) return '请求过于频繁或额度不足（429）';
-  if (status >= 500) return `服务端错误（${status}）`;
-  return `请求失败（HTTP ${status}）：${body.slice(0, 200)}`;
-}
-
 export async function chat(
   options: ChatOptions
 ): Promise<{ text: string; model: string; reasoning: string }> {

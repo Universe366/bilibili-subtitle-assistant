@@ -12,7 +12,6 @@ import type {
   LibrarySort,
   LibraryTag,
   LibraryVideo,
-  NoteVersion,
   NoteVersionMeta,
   SummaryVersion,
   SummaryVersionMeta,

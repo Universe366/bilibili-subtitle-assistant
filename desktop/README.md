@@ -1,6 +1,6 @@
 # 拾字 · 桌面端
 
-Windows 桌面端，内置浏览器 + 本地字幕/总结库 + AI 工作台。对外显示名「拾字」；`appId` 为 `com.shizi.desktop`，userData 在 `%APPDATA%\shizi`（见 [`docs/REBRAND.md`](docs/REBRAND.md)）。当前 **0.37.1**。
+Windows 桌面端，内置浏览器 + 本地字幕/总结库 + AI 工作台。对外显示名「拾字」；`appId` 为 `com.shizi.desktop`，userData 在 `%APPDATA%\shizi`（见 [`docs/REBRAND.md`](docs/REBRAND.md)）。当前 **0.37.2**。
 
 开发中的浏览器/AI 能力：
 
@@ -46,7 +46,6 @@ src/
   renderer/    React 界面（标签栏 / 地址栏 / 侧栏 / 浏览器区域）
   shared/      主进程与渲染进程共用的类型
 scripts/       同步桥、窗口截图
-spike/         技术验证脚本（不属于产品）
 docs/          V1 方案
 ```
 
@@ -103,8 +102,8 @@ npm run dist
 
 | 文件 | 说明 |
 |---|---|
-| `release/shizi-setup-0.37.1.exe` | NSIS 安装包，可选安装目录 |
-| `release/shizi-0.37.1-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
+| `release/shizi-setup-0.37.2.exe` | NSIS 安装包，可选安装目录 |
+| `release/shizi-0.37.2-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/shizi-extension-v2.18.6.zip` | 浏览器插件（由 CI 打包） |
 
@@ -116,7 +115,7 @@ npm run dist
 这样插件更新检查（读 `/releases/latest`）和桌面自动更新（读最新 Release 里的 `latest.yml`）都正常。
 
 1. 更新 `shizi-extension/CHANGELOG.md` 与 `manifest.json` 版本（2.18.2）。
-2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.37.1 --no-git-tag-version`）。
+2. 更新桌面端 `CHANGELOG.md` 与版本号（`npm version 0.37.2 --no-git-tag-version`）。
 3. `npm run dist` 本地确认能构建。
 4. `npm run release:notes` 生成发布说明。
 5. 打 tag 并推送：
@@ -154,7 +153,7 @@ GitHub Actions（`.github/workflows/desktop-release.yml`）会在 Windows runner
 
 ```bash
 # 本地 mock OpenAI 服务（流式），用于验证总结链路
-node spike/mock-ai.mjs
+node scripts/mocks/mock-ai.mjs
 
 # 自动跑：抓字幕 → 总结 → 存库 → 导出
 BSUB_M4_TEST=1 npm run dev
@@ -171,7 +170,7 @@ BSUB_M4_TEST=1 npm run dev
 
 ```bash
 # 模拟插件推送（需要桌面端已启动）
-node spike/bridge-test.mjs
+node scripts/mocks/bridge-test.mjs
 ```
 
 协议详见 [`docs/BRIDGE.md`](docs/BRIDGE.md)。浏览器插件侧已接入：
@@ -181,7 +180,7 @@ node spike/bridge-test.mjs
 
 - B 站单页应用切 query 时可能重复请求一次视频信息（结果正确，后续合并去重）
 - 多字幕轨时默认选择是启发式（优先带当前 cid 的轨），极端情况仍需手动切换
-- API Key 与桥 Token 以明文保存在本机 `settings.json`，后续接系统钥匙串
+- API Key 用 DPAPI 加密保存在本机；桥 Token 仍为明文，仅监听 127.0.0.1
 - 总结字幕上下文上限约 20 万字符，极端超长视频仍会头尾保留、中间省略
 - 未签名，SmartScreen 会提示
 - 桌面端 0.37.0 已随本版合并发布；安装版自动更新要求 Release 带 `latest.yml` 和 setup exe，绿色版手动替换

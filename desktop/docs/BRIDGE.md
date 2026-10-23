@@ -28,7 +28,7 @@ Origin: chrome-extension://<扩展 ID>
   "ok": true,
   "app": "shizi",
   "name": "拾字",
-  "version": "0.35.0",
+  "version": "0.37.1",
   "port": 47821,
   "token": "…"
 }
@@ -162,7 +162,7 @@ if (!result.ok) throw new Error(result.error || '推送失败');
 ## 本机测试
 
 ```bash
-node spike/bridge-test.mjs
+node scripts/mocks/bridge-test.mjs
 ```
 
 脚本会读取 `%APPDATA%\Electron\settings.json`（或 `BSUB_BRIDGE_SETTINGS` 指定的路径），

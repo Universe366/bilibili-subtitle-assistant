@@ -24,7 +24,6 @@ import type {
   TranslateProgressEvent,
   TranslateDoneEvent,
   TranslateErrorEvent,
-  OptimizeSuggestion,
   OptimizeProgressEvent,
   OptimizeDoneEvent,
   OptimizeErrorEvent,

@@ -1,5 +1,5 @@
 // Anthropic 原生协议 mock：用于验证桌面端 aiClient 的 /v1/messages 分支。
-// 用法：node spike/mock-anthropic.mjs  然后 BSUB_ANTHROPIC_TEST=1 npm run dev
+// 用法：node scripts/mocks/mock-anthropic.mjs  然后 BSUB_ANTHROPIC_TEST=1 npm run dev
 import http from 'node:http';
 
 const PORT = Number(process.env.BSUB_MOCK_ANTHROPIC_PORT || 8891);

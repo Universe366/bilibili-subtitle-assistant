@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertTriangle, Copy, Eye, Loader2, Pencil, RefreshCw, Search, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, Copy, Eye, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
   OptimizeSuggestion,
   PageInfo,
@@ -254,7 +254,7 @@ export function SubtitlesPanel({
   const [subtitleQuery, setSubtitleQuery] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
   const [customTarget, setCustomTarget] = useState('');
-  const autoOptimizeAfterRef = useRef(false);
+
   const autoApplyAfterRef = useRef(false);
   const autoOptimizePendingRef = useRef(false);
   const infoRef = useRef<PageInfo | null>(null);

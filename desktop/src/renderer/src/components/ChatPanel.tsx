@@ -84,7 +84,6 @@ export function ChatPanel({
   const [skillId, setSkillId] = useState('');
   const [sendOnEnter, setSendOnEnter] = useState(true);
   const [expandReasoning, setExpandReasoning] = useState(false);
-  const [streamReasoning, setStreamReasoning] = useState('');
   const [pageContext, setPageContext] = useState<PageContextSummary | null>(null);
   const [includePage, setIncludePage] = useState(true);
   const [savedNotice, setSavedNotice] = useState('');
@@ -106,6 +105,8 @@ export function ChatPanel({
       );
       setSkills(items);
       setSkillId((current) => (items.some((item) => item.id === current) ? current : ''));
+      setSendOnEnter(response.data.settings.ai.sendOnEnter !== false);
+      setExpandReasoning(response.data.settings.ai.expandReasoning === true);
     })();
   }, []);
 
@@ -154,7 +155,6 @@ export function ChatPanel({
     const offDelta = window.bsub.onChatDelta((event) => {
       if (event.requestId === requestRef.current) {
         if (event.delta) setStreamText((previous) => previous + event.delta);
-        if (event.reasoning) setStreamReasoning((previous) => previous + event.reasoning);
       }
     });
     const offDone = window.bsub.onChatDone((event) => {
@@ -165,7 +165,6 @@ export function ChatPanel({
       ]);
       setStreaming(false);
       setStreamText('');
-      setStreamReasoning('');
       setStatus('');
       requestRef.current = '';
 

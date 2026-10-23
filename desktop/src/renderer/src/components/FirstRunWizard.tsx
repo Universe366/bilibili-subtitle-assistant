@@ -71,7 +71,6 @@ export function FirstRunWizard({
   ];
 
   const current = steps[step];
-  const last = step === steps.length - 1;
 
   return (
     <div className="wizard-overlay" role="dialog" aria-modal="true">

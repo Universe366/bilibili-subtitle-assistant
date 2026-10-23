@@ -364,7 +364,7 @@ node panel-test.js     # 至少跑这个
 ## 11. 发布与版本
 
 - 一次合并发布包含桌面端与插件两个版本号：
-  - 桌面端 `desktop/package.json`（例如 0.32.0）；
+  - 桌面端 `desktop/package.json`（例如 0.37.1）；
   - 插件 `shizi-extension/manifest.json` 及 constants/content/page-bridge（例如 2.18.2）；
   - tag 用插件版本 `v2.18.2`，CI 会同时打包桌面安装包、绿色包、插件 zip 和 `latest.yml`；
 - 发布前：`npm run typecheck`、`npm run build`、`npm run release:notes` 检查发布说明能提取；

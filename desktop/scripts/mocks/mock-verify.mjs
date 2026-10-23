@@ -1,5 +1,5 @@
 // 总结核对链路 mock：一个 OpenAI 兼容端点（生成检索词 / 证据判定）+ 一个自定义检索端点。
-// 用法：node spike/mock-verify.mjs
+// 用法：node scripts/mocks/mock-verify.mjs
 // 然后：BSUB_VERIFY_TEST=1 npm run dev
 import http from 'node:http';
 
