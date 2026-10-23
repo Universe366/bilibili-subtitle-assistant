@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ExternalLink, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
   CollectionSummary,
+  CollectionSummaryVersion,
+  CollectionSummaryVersionMeta,
   LibraryCollection,
   LibraryDetail,
   LibraryList,
@@ -9,6 +11,8 @@ import type {
   LibrarySort,
   LibraryTag,
   LibraryVideo,
+  NoteVersion,
+  NoteVersionMeta,
   SummaryVersion,
   SummaryVersionMeta
 } from '../../../shared/types';
@@ -94,6 +98,9 @@ export function LibraryPanel() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteNotice, setNoteNotice] = useState('');
   const [notePreview, setNotePreview] = useState(false);
+  const [noteVersions, setNoteVersions] = useState<NoteVersionMeta[]>([]);
+  const [noteVersionsOpen, setNoteVersionsOpen] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [lineLimit, setLineLimit] = useState(LINE_PAGE);
   const [pendingDelete, setPendingDelete] = useState<LibraryVideo | null>(null);
   const [versions, setVersions] = useState<SummaryVersionMeta[]>([]);
@@ -125,9 +132,16 @@ export function LibraryPanel() {
   const [collectionSummary, setCollectionSummary] = useState<CollectionSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
+  const [collectionVersions, setCollectionVersions] = useState<
+    CollectionSummaryVersionMeta[]
+  >([]);
+  const [collectionVersionsOpen, setCollectionVersionsOpen] = useState(false);
+  const [collectionPreview, setCollectionPreview] =
+    useState<CollectionSummaryVersion | null>(null);
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
+  const noteDraftRef = useRef('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +173,16 @@ export function LibraryPanel() {
     if (response.ok) setVersions(response.data);
   }, []);
 
+  const loadNoteVersions = useCallback(async (videoId: number) => {
+    const response = await window.bsub.getNoteVersions(videoId);
+    if (response.ok) setNoteVersions(response.data);
+  }, []);
+
+  const loadCollectionVersions = useCallback(async (collectionId: number) => {
+    const response = await window.bsub.getCollectionSummaryVersions(collectionId);
+    if (response.ok) setCollectionVersions(response.data);
+  }, []);
+
   const fetchDetail = useCallback(async (id: number) => {
     const seq = ++detailSeq.current;
     setDetailLoading(true);
@@ -168,6 +192,7 @@ export function LibraryPanel() {
       if (response.ok) {
         setDetail(response.data);
         void loadVersions(id);
+        void loadNoteVersions(id);
       } else if (/视频不存在/.test(response.error)) {
         // 删除后 library:changed 可能晚一步到达：安静退回列表。
         setSelectedId(null);
@@ -180,7 +205,7 @@ export function LibraryPanel() {
     } finally {
       if (seq === detailSeq.current) setDetailLoading(false);
     }
-  }, [loadVersions]);
+  }, [loadVersions, loadNoteVersions]);
 
   useEffect(() => {
     void load();
@@ -214,7 +239,25 @@ export function LibraryPanel() {
     setNoteDirty(false);
     setNoteNotice('');
     setNotePreview(false);
+    setNoteVersions([]);
+    setNoteVersionsOpen(false);
+    setAutoSaving(false);
   }, [detail?.video.id]);
+
+  useEffect(() => {
+    noteDraftRef.current = noteDraft;
+  }, [noteDraft]);
+
+  // 停止输入 1.2 秒后自动保存非空笔记；清空仍需手动保存以免误删。
+  useEffect(() => {
+    if (!detail || !noteDirty) return;
+    const text = noteDraft;
+    if (!text.trim()) return;
+    const timer = window.setTimeout(() => {
+      void autoSaveNote(text);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [noteDraft, noteDirty, detail?.video.id]);
 
   useEffect(() => {
     const collectionId = summaryCollection?.id;
@@ -223,6 +266,8 @@ export function LibraryPanel() {
       if (event.collectionId !== collectionId) return;
       setCollectionSummary(event.summary);
       setSummaryLoading(false);
+      setCollectionPreview(null);
+      void loadCollectionVersions(collectionId);
     });
     const offError = window.bsub.onCollectionSummaryError((event) => {
       if (event.collectionId !== collectionId) return;
@@ -233,7 +278,7 @@ export function LibraryPanel() {
       offDone();
       offError();
     };
-  }, [summaryCollection?.id]);
+  }, [summaryCollection?.id, loadCollectionVersions]);
 
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
   useEffect(() => {
@@ -403,6 +448,7 @@ export function LibraryPanel() {
       if (response.ok) {
         setDetail((previous) => (previous ? { ...previous, note: response.data } : previous));
         setNoteDirty(false);
+        void loadNoteVersions(detail.video.id);
         const text = response.data ? '笔记已保存' : '空笔记已清除';
         setNoteNotice(text);
         window.setTimeout(() => setNoteNotice(''), 3000);
@@ -411,6 +457,34 @@ export function LibraryPanel() {
       }
     } finally {
       setNoteSaving(false);
+    }
+  };
+
+  const autoSaveNote = async (text: string) => {
+    if (!detail) return;
+    setAutoSaving(true);
+    try {
+      const response = await window.bsub.saveNote(detail.video.id, text);
+      if (response.ok) {
+        setDetail((previous) => (previous ? { ...previous, note: response.data } : previous));
+        if (noteDraftRef.current === text) setNoteDirty(false);
+        void loadNoteVersions(detail.video.id);
+      }
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  const loadNoteVersion = async (version: NoteVersionMeta) => {
+    const response = await window.bsub.getNoteVersion(version.id);
+    if (response.ok && response.data) {
+      setNoteDraft(response.data.content);
+      setNoteDirty(true);
+      setNotePreview(false);
+      setNoteNotice('已载入历史版本，保存后生效');
+      window.setTimeout(() => setNoteNotice(''), 3000);
+    } else if (!response.ok) {
+      setError(response.error);
     }
   };
 
@@ -558,9 +632,13 @@ export function LibraryPanel() {
     setSummaryError('');
     setSummaryLoading(false);
     setCollectionSummary(null);
+    setCollectionVersions([]);
+    setCollectionVersionsOpen(false);
+    setCollectionPreview(null);
     const response = await window.bsub.getCollectionSummary(collection.id);
     if (response.ok) setCollectionSummary(response.data);
     else setSummaryError(response.error);
+    void loadCollectionVersions(collection.id);
   };
 
   const generateCollectionSummary = async () => {
@@ -593,6 +671,23 @@ export function LibraryPanel() {
     if (!response.ok) setSummaryError(response.error);
     else if ('path' in response.data) {
       flash(`已导出 ${response.data.path.split(/[\\/]/).pop()}`);
+    }
+  };
+
+  const previewCollectionVersion = async (version: CollectionSummaryVersionMeta) => {
+    const response = await window.bsub.getCollectionSummaryVersion(version.id);
+    if (response.ok && response.data) setCollectionPreview(response.data);
+    else if (!response.ok) setSummaryError(response.error);
+  };
+
+  const restoreCollectionVersion = async (versionId: number) => {
+    const response = await window.bsub.restoreCollectionSummaryVersion(versionId);
+    if (response.ok) {
+      setCollectionSummary(response.data);
+      setCollectionPreview(null);
+      if (summaryCollection) void loadCollectionVersions(summaryCollection.id);
+    } else {
+      setSummaryError(response.error);
     }
   };
 
@@ -983,6 +1078,36 @@ export function LibraryPanel() {
               </div>
             </div>
             {noteNotice && <div className="status-line">{noteNotice}</div>}
+            {(autoSaving || noteDirty) && (
+              <div className="panel-hint">{autoSaving ? '正在自动保存…' : '停止输入后会自动保存'}</div>
+            )}
+
+            {noteVersions.length > 0 && (
+              <div className="version-block">
+                <button
+                  className="version-toggle"
+                  onClick={() => setNoteVersionsOpen((value) => !value)}
+                >
+                  历史版本 {noteVersions.length} · {noteVersionsOpen ? '收起' : '展开'}
+                </button>
+                {noteVersionsOpen && (
+                  <div className="version-list">
+                    {noteVersions.map((version) => (
+                      <div key={version.id} className="version-row">
+                        <span className="version-time">{fmtDateTime(version.createdAt)}</span>
+                        <span className="version-chars">{version.chars} 字</span>
+                        <button
+                          className="mini-btn"
+                          onClick={() => void loadNoteVersion(version)}
+                        >
+                          载入
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1470,14 +1595,37 @@ export function LibraryPanel() {
           >
             <div className="confirm-title">合集对比 · {summaryCollection.name}</div>
             <div className="collection-summary-body">
+              {collectionPreview && (
+                <div className="version-banner">
+                  <span>
+                    预览版本 · {fmtDateTime(collectionPreview.createdAt)} ·{' '}
+                    {collectionPreview.model || 'AI'}
+                  </span>
+                  <div className="version-banner-actions">
+                    <button
+                      className="mini-btn"
+                      onClick={() => void restoreCollectionVersion(collectionPreview.id)}
+                    >
+                      恢复此版本
+                    </button>
+                    <button className="mini-btn" onClick={() => setCollectionPreview(null)}>
+                      退出预览
+                    </button>
+                  </div>
+                </div>
+              )}
               {summaryLoading && !collectionSummary && (
                 <div className="status-line">
                   <Loader2 size={13} className="spin" />
                   正在生成对比总结…
                 </div>
               )}
-              {collectionSummary ? (
-                <Markdown content={collectionSummary.content} />
+              {(collectionPreview || collectionSummary) ? (
+                <Markdown
+                  content={
+                    collectionPreview ? collectionPreview.content : collectionSummary?.content || ''
+                  }
+                />
               ) : (
                 !summaryLoading && <div className="panel-empty">还没有对比总结</div>
               )}
@@ -1490,6 +1638,45 @@ export function LibraryPanel() {
                   模型 {collectionSummary.model || 'AI'} · {collectionSummary.itemCount} 个视频 ·
                   {' '}
                   {fmtDateTime(collectionSummary.updatedAt)}
+                </div>
+              )}
+
+              {collectionVersions.length > 0 && (
+                <div className="version-block">
+                  <button
+                    className="version-toggle"
+                    onClick={() => setCollectionVersionsOpen((value) => !value)}
+                  >
+                    历史版本 {collectionVersions.length} · {collectionVersionsOpen ? '收起' : '展开'}
+                  </button>
+                  {collectionVersionsOpen && (
+                    <div className="version-list">
+                      {collectionVersions.map((version) => (
+                        <div
+                          key={version.id}
+                          className={`version-row${
+                            collectionPreview?.id === version.id ? ' is-active' : ''
+                          }`}
+                        >
+                          <span className="version-time">{fmtDateTime(version.createdAt)}</span>
+                          <span className="version-model">{version.model || 'AI'}</span>
+                          <span className="version-chars">{version.chars} 字</span>
+                          <button
+                            className="mini-btn"
+                            onClick={() => void previewCollectionVersion(version)}
+                          >
+                            预览
+                          </button>
+                          <button
+                            className="mini-btn"
+                            onClick={() => void restoreCollectionVersion(version.id)}
+                          >
+                            恢复
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

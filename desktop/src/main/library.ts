@@ -5,6 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import type {
   CollectionSearchHit,
   CollectionSummary,
+  CollectionSummaryVersion,
+  CollectionSummaryVersionMeta,
   GlobalSearchResult,
   JobItem,
   JobItemStatus,
@@ -22,6 +24,8 @@ import type {
   LibraryIngestResult,
   LibraryList,
   LibraryNote,
+  NoteVersion,
+  NoteVersionMeta,
   LibrarySearchMatch,
   LibrarySearchResult,
   LibraryStats,
@@ -93,6 +97,16 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS note_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  content_md TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_note_versions_video
+  ON note_versions(video_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS summary_versions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
@@ -140,6 +154,18 @@ CREATE TABLE IF NOT EXISTS collection_summaries (
   item_count INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS collection_summary_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  content_md TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  item_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_summary_versions
+  ON collection_summary_versions(collection_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
@@ -200,6 +226,20 @@ export function initLibrary(): void {
     );
   } catch (error) {
     console.warn('[library] 总结版本迁移失败:', (error as Error).message);
+  }
+
+  // 老库的合集对比也只有最新一份，同样补一条版本记录。
+  try {
+    db.exec(
+      `INSERT INTO collection_summary_versions
+         (collection_id, content_md, model, item_count, created_at)
+       SELECT cs.collection_id, cs.content_md, cs.model, cs.item_count, cs.updated_at
+       FROM collection_summaries cs
+       WHERE NOT EXISTS (
+         SELECT 1 FROM collection_summary_versions v WHERE v.collection_id = cs.collection_id)`
+    );
+  } catch (error) {
+    console.warn('[library] 合集对比版本迁移失败:', (error as Error).message);
   }
 
   try {
@@ -923,6 +963,30 @@ export function saveCollectionSummary(
          updated_at = excluded.updated_at`
     )
     .run(id, text, String(model || ''), Number(itemCount) || 0, now);
+
+  const latest = database
+    .prepare(
+      `SELECT content_md FROM collection_summary_versions
+       WHERE collection_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`
+    )
+    .get(id) as { content_md: string } | undefined;
+  if (!latest || latest.content_md !== text) {
+    database
+      .prepare(
+        `INSERT INTO collection_summary_versions
+           (collection_id, content_md, model, item_count, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(id, text, String(model || ''), Number(itemCount) || 0, now);
+    database
+      .prepare(
+        `DELETE FROM collection_summary_versions WHERE collection_id = ? AND id NOT IN (
+           SELECT id FROM collection_summary_versions WHERE collection_id = ?
+           ORDER BY created_at DESC, id DESC LIMIT 20)`
+      )
+      .run(id, id);
+  }
+
   return {
     collectionId: id,
     content: text,
@@ -930,6 +994,68 @@ export function saveCollectionSummary(
     itemCount: Number(itemCount) || 0,
     updatedAt: now
   };
+}
+
+export function listCollectionSummaryVersions(
+  collectionId: number,
+  limit = 20
+): CollectionSummaryVersionMeta[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT id, model, item_count, created_at, length(content_md) AS chars
+       FROM collection_summary_versions WHERE collection_id = ?
+       ORDER BY created_at DESC, id DESC LIMIT ?`
+    )
+    .all(Number(collectionId), Math.min(50, Math.max(1, Math.round(limit)))) as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    model: String(row.model || ''),
+    itemCount: toNumber(row.item_count),
+    createdAt: toNumber(row.created_at),
+    chars: toNumber(row.chars)
+  }));
+}
+
+export function getCollectionSummaryVersion(id: number): CollectionSummaryVersion | null {
+  const database = requireDb();
+  const row = database
+    .prepare(
+      `SELECT id, collection_id, content_md, model, item_count, created_at
+       FROM collection_summary_versions WHERE id = ?`
+    )
+    .get(Number(id)) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: toNumber(row.id),
+    collectionId: toNumber(row.collection_id),
+    content: String(row.content_md || ''),
+    model: String(row.model || ''),
+    itemCount: toNumber(row.item_count),
+    createdAt: toNumber(row.created_at),
+    chars: String(row.content_md || '').length
+  };
+}
+
+export function restoreCollectionSummaryVersion(id: number): CollectionSummary {
+  const database = requireDb();
+  const row = database
+    .prepare(
+      `SELECT collection_id, content_md, model, item_count
+       FROM collection_summary_versions WHERE id = ?`
+    )
+    .get(Number(id)) as
+    | { collection_id: number; content_md: string; model: string; item_count: number }
+    | undefined;
+  if (!row) throw new Error('对比版本不存在');
+  return saveCollectionSummary(
+    Number(row.collection_id),
+    String(row.content_md || ''),
+    String(row.model || ''),
+    Number(row.item_count) || 0
+  );
 }
 
 function sanitizeQuery(input: string): string {
@@ -1429,6 +1555,7 @@ export function saveNote(videoId: number, content: string): LibraryNote | null {
   const text = String(content || '');
   if (!text.trim()) {
     database.prepare('DELETE FROM notes WHERE video_id = ?').run(id);
+    database.prepare('DELETE FROM note_versions WHERE video_id = ?').run(id);
     return null;
   }
   const now = Date.now();
@@ -1441,7 +1568,58 @@ export function saveNote(videoId: number, content: string): LibraryNote | null {
          updated_at = excluded.updated_at`
     )
     .run(id, text, now, now);
+
+  const latest = database
+    .prepare(
+      'SELECT content_md FROM note_versions WHERE video_id = ? ORDER BY created_at DESC, id DESC LIMIT 1'
+    )
+    .get(id) as { content_md: string } | undefined;
+  if (!latest || latest.content_md !== text) {
+    database
+      .prepare('INSERT INTO note_versions (video_id, content_md, created_at) VALUES (?, ?, ?)')
+      .run(id, text, now);
+    database
+      .prepare(
+        `DELETE FROM note_versions WHERE video_id = ? AND id NOT IN (
+           SELECT id FROM note_versions WHERE video_id = ?
+           ORDER BY created_at DESC, id DESC LIMIT 20)`
+      )
+      .run(id, id);
+  }
   return { videoId: id, content: text, updatedAt: now };
+}
+
+export function listNoteVersions(videoId: number, limit = 20): NoteVersionMeta[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT id, created_at, length(content_md) AS chars
+       FROM note_versions WHERE video_id = ?
+       ORDER BY created_at DESC, id DESC LIMIT ?`
+    )
+    .all(Number(videoId), Math.min(50, Math.max(1, Math.round(limit)))) as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    createdAt: toNumber(row.created_at),
+    chars: toNumber(row.chars)
+  }));
+}
+
+export function getNoteVersion(id: number): NoteVersion | null {
+  const database = requireDb();
+  const row = database
+    .prepare('SELECT id, video_id, content_md, created_at FROM note_versions WHERE id = ?')
+    .get(Number(id)) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: toNumber(row.id),
+    videoId: toNumber(row.video_id),
+    content: String(row.content_md || ''),
+    createdAt: toNumber(row.created_at),
+    chars: String(row.content_md || '').length
+  };
 }
 
 export function listHistory(limit = 100): LibraryHistoryItem[] {

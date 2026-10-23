@@ -65,7 +65,11 @@ import type {
   LibraryTag,
   LibraryCollection,
   LibraryNote,
+  NoteVersion,
+  NoteVersionMeta,
   CollectionSummary,
+  CollectionSummaryVersion,
+  CollectionSummaryVersionMeta,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -99,6 +103,8 @@ export interface BsubApi {
   getLibraryItem(id: number): Promise<Result<LibraryDetail>>;
   getNote(videoId: number): Promise<Result<LibraryNote | null>>;
   saveNote(videoId: number, content: string): Promise<Result<LibraryNote | null>>;
+  getNoteVersions(videoId: number): Promise<Result<NoteVersionMeta[]>>;
+  getNoteVersion(id: number): Promise<Result<NoteVersion | null>>;
   listTags(): Promise<Result<LibraryTag[]>>;
   setLibraryTags(videoId: number, tags: string[]): Promise<Result<{ tags: string[] }>>;
   renameTag(name: string, newName: string): Promise<Result<{ renamed: boolean }>>;
@@ -115,6 +121,11 @@ export interface BsubApi {
   renameCollection(id: number, name: string): Promise<Result<{ renamed: boolean }>>;
   deleteCollection(id: number): Promise<Result<{ removed: boolean }>>;
   getCollectionSummary(collectionId: number): Promise<Result<CollectionSummary | null>>;
+  getCollectionSummaryVersions(
+    collectionId: number
+  ): Promise<Result<CollectionSummaryVersionMeta[]>>;
+  getCollectionSummaryVersion(id: number): Promise<Result<CollectionSummaryVersion | null>>;
+  restoreCollectionSummaryVersion(id: number): Promise<Result<CollectionSummary>>;
   summarizeCollection(collectionId: number): Promise<Result<{ requestId: string }>>;
   onCollectionSummaryDone(
     cb: (event: { collectionId: number; summary: CollectionSummary }) => void

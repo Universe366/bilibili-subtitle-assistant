@@ -66,7 +66,11 @@ import type {
   LibraryTag,
   LibraryCollection,
   LibraryNote,
+  NoteVersion,
+  NoteVersionMeta,
   CollectionSummary,
+  CollectionSummaryVersion,
+  CollectionSummaryVersionMeta,
   JobRecord,
   GlobalSearchResult
 } from '../shared/types';
@@ -85,16 +89,20 @@ import {
   deleteTag,
   finishJob,
   getCollectionSummary,
+  getCollectionSummaryVersion,
   getJob,
   getLibraryDetail,
   getNote,
+  getNoteVersion,
   getSummaryFor,
   getSummaryVersion,
   globalSearch,
   ingestVideo,
   listCollections,
+  listCollectionSummaryVersions,
   listHistory,
   listJobs,
+  listNoteVersions,
   listSummaryVersions,
   listTags,
   listTranscriptions,
@@ -104,6 +112,7 @@ import {
   removeVideoFromCollection,
   renameCollection,
   renameTag,
+  restoreCollectionSummaryVersion,
   restoreSummaryVersion,
   saveNote,
   saveSummary,
@@ -806,6 +815,25 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
+  ipcMain.handle(
+    'library:note-versions',
+    (_event, videoId: number): Result<NoteVersionMeta[]> => {
+      try {
+        return { ok: true, data: listNoteVersions(Number(videoId)) };
+      } catch (error) {
+        return failure<NoteVersionMeta[]>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('library:note-version', (_event, id: number): Result<NoteVersion | null> => {
+    try {
+      return { ok: true, data: getNoteVersion(Number(id)) };
+    } catch (error) {
+      return failure<NoteVersion | null>(error);
+    }
+  });
+
   ipcMain.handle('library:search', async (_event, query: string): Promise<Result<LibrarySearchResult>> => {
     try {
       return { ok: true, data: searchLibrary(query) };
@@ -1059,6 +1087,39 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: { requestId } };
       } catch (error) {
         return failure<{ requestId: string }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'collection:summary-versions',
+    (_event, collectionId: number): Result<CollectionSummaryVersionMeta[]> => {
+      try {
+        return { ok: true, data: listCollectionSummaryVersions(Number(collectionId)) };
+      } catch (error) {
+        return failure<CollectionSummaryVersionMeta[]>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'collection:summary-version',
+    (_event, id: number): Result<CollectionSummaryVersion | null> => {
+      try {
+        return { ok: true, data: getCollectionSummaryVersion(Number(id)) };
+      } catch (error) {
+        return failure<CollectionSummaryVersion | null>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'collection:summary-restore',
+    (_event, id: number): Result<CollectionSummary> => {
+      try {
+        return { ok: true, data: restoreCollectionSummaryVersion(Number(id)) };
+      } catch (error) {
+        return failure<CollectionSummary>(error);
       }
     }
   );

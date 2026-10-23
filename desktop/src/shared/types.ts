@@ -168,6 +168,30 @@ export interface CollectionSummary {
   updatedAt: number;
 }
 
+export interface NoteVersionMeta {
+  id: number;
+  createdAt: number;
+  chars: number;
+}
+
+export interface NoteVersion extends NoteVersionMeta {
+  videoId: number;
+  content: string;
+}
+
+export interface CollectionSummaryVersionMeta {
+  id: number;
+  model: string;
+  itemCount: number;
+  createdAt: number;
+  chars: number;
+}
+
+export interface CollectionSummaryVersion extends CollectionSummaryVersionMeta {
+  collectionId: number;
+  content: string;
+}
+
 export interface LibraryStats {
   videos: number;
   tracks: number;

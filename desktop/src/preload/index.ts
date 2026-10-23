@@ -67,7 +67,11 @@ import type {
   LibraryTag,
   LibraryCollection,
   LibraryNote,
+  NoteVersion,
+  NoteVersionMeta,
   CollectionSummary,
+  CollectionSummaryVersion,
+  CollectionSummaryVersionMeta,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -128,6 +132,10 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:note-save', { videoId, content }) as Promise<
       Result<LibraryNote | null>
     >,
+  getNoteVersions: (videoId: number) =>
+    ipcRenderer.invoke('library:note-versions', videoId) as Promise<Result<NoteVersionMeta[]>>,
+  getNoteVersion: (id: number) =>
+    ipcRenderer.invoke('library:note-version', id) as Promise<Result<NoteVersion | null>>,
   listTags: () => ipcRenderer.invoke('library:tags') as Promise<Result<LibraryTag[]>>,
   setLibraryTags: (videoId: number, tags: string[]) =>
     ipcRenderer.invoke('library:set-tags', { videoId, tags }) as Promise<
@@ -172,6 +180,18 @@ const api: BsubApi = {
   getCollectionSummary: (collectionId: number) =>
     ipcRenderer.invoke('collection:summary', collectionId) as Promise<
       Result<CollectionSummary | null>
+    >,
+  getCollectionSummaryVersions: (collectionId: number) =>
+    ipcRenderer.invoke('collection:summary-versions', collectionId) as Promise<
+      Result<CollectionSummaryVersionMeta[]>
+    >,
+  getCollectionSummaryVersion: (id: number) =>
+    ipcRenderer.invoke('collection:summary-version', id) as Promise<
+      Result<CollectionSummaryVersion | null>
+    >,
+  restoreCollectionSummaryVersion: (id: number) =>
+    ipcRenderer.invoke('collection:summary-restore', id) as Promise<
+      Result<CollectionSummary>
     >,
   summarizeCollection: (collectionId: number) =>
     ipcRenderer.invoke('collection:summarize', collectionId) as Promise<
