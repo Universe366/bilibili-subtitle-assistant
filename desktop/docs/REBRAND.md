@@ -12,7 +12,8 @@ export const APP_NAME_EN = 'Shizi';
 export const APP_TAGLINE = '视频与网页的 AI 笔记工作台';
 ```
 
-窗口标题、托盘 tooltip、首用向导、渲染页 `<title>` 已改用这个常量。
+窗口标题、托盘 tooltip、首用向导、渲染页 `<title>` 已改用这个常量；
+安装包 `productName` / 快捷方式 / 可执行文件名也已改为「拾字」。
 
 ## 为什么没有改技术标识
 
@@ -20,7 +21,7 @@ export const APP_TAGLINE = '视频与网页的 AI 笔记工作台';
 
 - `appId`: `com.bsub.desktop`
 - `userData`: `%APPDATA%\bsub-desktop`
-- electron-builder `productName`: `B站字幕助手`（安装包 / exe / latest.yml 的资产名）
+- electron-builder `productName`: 已改为「拾字」；资产名仍由 `artifactName` 固定为 `bsub-desktop-*`
 - GitHub Release tag / 仓库名
 - 扩展桥的 `name` 字段
 
@@ -30,5 +31,5 @@ export const APP_TAGLINE = '视频与网页的 AI 笔记工作台';
 2. 改 `package.json` 的 `build.productName` 与 `description`，同步 `desktop/README.md`、安装器文案；
 3. 如需改 `appId`，先做旧版本自动更新过渡（旧包继续更新到最后一版，提示用户手动装新包）；
 4. 数据目录迁移：新目录为空时自动复制旧 `%APPDATA%\bsub-desktop`，保留回退；
-5. 同步 Release 资产名、`latest.yml`、`docs/SIGNING.md`、商店材料；
+5. 同步 Release 资产名、`latest.yml`、`docs/SIGNING.md`、商店材料（当前资产名已保持 `bsub-desktop-*`，无需变动）；
 6. 改 `brand.ts` 一处即可让 UI 全量切换。

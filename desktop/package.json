@@ -50,7 +50,7 @@
   },
   "build": {
     "appId": "com.bsub.desktop",
-    "productName": "B站字幕助手",
+    "productName": "拾字",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -82,7 +82,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "artifactName": "bsub-desktop-setup-${version}.${ext}",
-      "shortcutName": "B站字幕助手",
+      "shortcutName": "拾字",
       "include": "build/installer.nsh",
       "deleteAppDataOnUninstall": false,
       "installerLanguages": [

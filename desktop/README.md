@@ -104,7 +104,7 @@ npm run dist
 | 文件 | 说明 |
 |---|---|
 | `release/bsub-desktop-setup-0.32.0.exe` | NSIS 安装包，可选安装目录 |
-| `release/bsub-desktop-0.32.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `B站字幕助手.exe` |
+| `release/bsub-desktop-0.32.0-win-x64-green.zip` | 绿色版，解压后进入目录双击 `拾字.exe` |
 | `release/latest.yml` | 自动更新元数据 |
 | `release/bilibili-subtitle-assistant-v2.18.2.zip` | 浏览器插件（由 CI 打包） |
 
@@ -203,7 +203,7 @@ node spike/bridge-test.mjs
 
 ## 卸载
 
-- 安装版：Windows「设置 → 应用 → 已安装的应用」卸载「B站字幕助手」，或运行安装目录下的 `Uninstall B站字幕助手.exe`。
+- 安装版：Windows「设置 → 应用 → 已安装的应用」卸载「拾字」，或运行安装目录下的 `Uninstall 拾字.exe`。
 - 卸载页可选择是否同时删除本地数据：
   - 默认只删除程序、快捷方式和卸载项；
   - 勾选后额外删除 `%APPDATA%\bsub-desktop`（设置、字幕库、登录状态、缓存、日志）和更新缓存。

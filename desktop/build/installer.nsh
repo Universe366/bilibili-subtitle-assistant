@@ -5,7 +5,7 @@
 !include "TextFunc.nsh"
 
 ; 安装目录：浏览/输入一个已存在的父目录后，立刻把输入框补成
-; 「父目录\B站字幕助手」，不用等到安装阶段。
+; 「父目录\拾字」，不用等到安装阶段。
 ; 目录页默认是「输入变化时校验」，所以 .onVerifyInstDir 能拿到刚选中的目录。
 ; 输入 $R0，输出 $R0：去掉末尾反斜杠，并补上程序文件夹（如果还没有）。
 Function bsubNormalizeDir
@@ -49,7 +49,7 @@ FunctionEnd
 !macro customUnWelcomePage
   Var DeleteAppData
   Function un.bsubDeleteDataPageShow
-    !insertmacro MUI_HEADER_TEXT "卸载 B站字幕助手" "选择是否保留本地数据"
+    !insertmacro MUI_HEADER_TEXT "卸载 拾字" "选择是否保留本地数据"
     nsDialogs::Create 1018
     Pop $0
     ${If} $0 == error

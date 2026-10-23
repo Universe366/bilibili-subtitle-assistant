@@ -61,9 +61,9 @@
 
 | 产物 | 结果 |
 |---|---|
-| `release/win-unpacked/` | 已重建，可启动；窗口标题「拾字」，CSP 下 UI 正常 |
+| `release/win-unpacked/` | 已重建，可启动；`拾字.exe`、窗口标题「拾字」，CSP 下 UI 正常 |
 | `release/bsub-desktop-setup-0.32.0.exe` | 已生成（NSIS，未签名） |
-| `release/bsub-desktop-0.32.0-win-x64-green.zip` | 已生成，含 README.txt |
+| `release/bsub-desktop-0.32.0-win-x64-green.zip` | 已生成，含 `拾字.exe` 与 README.txt |
 | `release/latest.yml` | version 0.32.0，指向 setup 0.32.0 |
 
 ## 4. 已知取舍
