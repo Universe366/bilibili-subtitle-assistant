@@ -58,8 +58,9 @@
 ### Phase 0（2026-10-24，可维护性）
 - `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **6 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复；
 - 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（155 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
-- `ipc.ts` 的 **library 域**（库/笔记/标签/合集/回收站/摘要版本，约 500 行）拆到 `src/main/ipc/library.ts`，共享的 `failure`/`trackJob`/`IpcContext` 放到 `src/main/ipc/shared.ts`；`ipc.ts` 2.8k → 2.2k；
-- 拆分后 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、6 条 E2E 全部通过，channel 清单无变化。
+- `ipc.ts` 按域拆分：**library / browser / page / settings / tools / records** 六个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam` 在 `shared.ts`；`ipc.ts` 2.8k → **1.1k（-60%）**；
+- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、6 条 E2E，channel 清单始终 155 条；
+- `ipc.ts` 现在只剩 AI / chat / ASR / 翻译 / 优化 / 批量 / 任务通知 / 播客导入 / 幕校勘 这些强耦合域。
 
 ### 0.37.0 / 0.37.1
 - 插件界面品牌统一为「拾字」；
@@ -75,7 +76,7 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 2.2k / `library.ts` 2.7k / `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
+| 巨型文件 | `ipc.ts` 1.1k / `library.ts` 2.7k / `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
 | 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
 | `any` | 88 条 warning，集中在外部 API 边界 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
@@ -105,7 +106,7 @@
 
 下一步（一次只做一个域，每步跑 `npm run verify` + channel diff）：
 
-1. 继续拆 `ipc.ts`：browser/下载 → jobs/tabs → ai/媒体 → settings/system；
+1. 继续拆 `ipc.ts`：jobs/批量（先补 AI 相关 E2E）→ ai/chat → asr/translate/optimize → 播客/本地导入；
 2. 再拆 `library.ts`（schema / videos / summaries / trash / search 分文件）；
 3. 收敛 88 条 `any`（先 `JsonValue` / `JsonObject`，再逐文件收窄）；
 4. 最后才动 `SettingsPanel.tsx` / `LibraryPanel.tsx`。

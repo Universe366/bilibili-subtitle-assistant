@@ -27,7 +27,7 @@
 - 本地工作区从 6.4GB 清到约 1.7GB，临时测试目录清零；
 - 桌面冒烟扩展为 6 条 E2E（设置读写、字幕入库/检索、笔记、回收站删除恢复）；
 - 新增 IPC channel 清单与漂移测试（`scripts/ipc-channels.json` + `src/main/ipcChannels.test.ts`）；
-- `ipc.ts` 的 library 域拆到 `src/main/ipc/library.ts`，`ipc.ts` 从 2.8k 降到 2.2k。
+- `ipc.ts` 按域拆到 `src/main/ipc/`：library / browser / page / settings / tools / records，`ipc.ts` 从 2.8k 降到 1.1k（-60%）。
 
 ## 仍然值得做的（按优先级）
 
@@ -35,7 +35,7 @@
 
 | 文件 | 行数 | 建议 |
 |---|---:|---|
-| `src/main/ipc.ts` | ~2.2k | 按 library / browser / ai / media / settings 拆成 `ipc/*.ts`，只保留注册入口（library 已拆） |
+| `src/main/ipc.ts` | ~1.1k | 剩余 AI / 媒体 / 批量 / 任务域；library/browser/page/settings/tools/records 已拆到 `ipc/*.ts` |
 | `src/main/library.ts` | ~2.6k | 拆 schema、videos、summaries、trash、search |
 | `src/renderer/.../SettingsPanel.tsx` | ~3.0k | 拆 AI / ASR / 检索 / 数据 / 插件桥 section |
 | `src/renderer/.../LibraryPanel.tsx` | ~2.3k | 拆列表、详情、标签/合集、批量操作 |
