@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Download,
   ExternalLink,
   History as HistoryIcon,
   Loader2,
@@ -18,6 +19,50 @@ function fmtTime(value: number): string {
 
 function videoUrl(url: string, bvid: string | null): string {
   return url || (bvid ? `https://www.bilibili.com/video/${bvid}` : '');
+}
+
+function safeFilename(title: string): string {
+  return String(title || '总结')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60) || '总结';
+}
+
+function buildAllMarkdown(items: LibraryHistoryItem[], keyword: string): string {
+  const stamp = new Date().toLocaleString('zh-CN');
+  const lines = [
+    '# B站字幕助手 · 总结导出',
+    '',
+    `> 导出时间：${stamp} · 共 ${items.length} 条${keyword ? ` · 筛选：${keyword}` : ''}`,
+    ''
+  ];
+  for (const item of items) {
+    lines.push(
+      '---',
+      '',
+      `## ${item.title || '未命名视频'}`,
+      '',
+      `- UP：${item.owner || '未知'}`,
+      `- 模型：${item.model || 'AI'}`,
+      `- 更新时间：${fmtTime(item.updatedAt)}`,
+      '',
+      item.content.trim(),
+      ''
+    );
+  }
+  return lines.join('\n');
+}
+
+function buildOneMarkdown(item: LibraryHistoryItem): string {
+  return [
+    `# ${item.title || '未命名视频'}`,
+    '',
+    `> UP：${item.owner || '未知'} · 模型：${item.model || 'AI'} · ${fmtTime(item.updatedAt)}`,
+    '',
+    item.content.trim(),
+    ''
+  ].join('\n');
 }
 
 function dayGroup(value: number): string {
@@ -46,6 +91,7 @@ export function HistoryPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [busyJob, setBusyJob] = useState('');
+  const [notice, setNotice] = useState('');
   const [pending, setPending] = useState<
     { kind: 'one'; item: LibraryHistoryItem } | { kind: 'all' } | null
   >(null);
@@ -150,6 +196,35 @@ export function HistoryPanel({
     if (!response.ok) setError(response.error);
   };
 
+  const flash = (text: string) => {
+    setNotice(text);
+    window.setTimeout(() => setNotice(''), 4000);
+  };
+
+  const saveMarkdown = async (content: string, filename: string) => {
+    const response = await window.bsub.saveTextFile({ content, filename });
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    if ('canceled' in response.data) {
+      flash('已取消导出');
+      return;
+    }
+    const target = response.data.path;
+    flash(`已导出 ${target.split(/[\\/]/).pop()}`);
+  };
+
+  const exportAll = () => {
+    if (!filtered.length) return;
+    const date = new Date().toISOString().slice(0, 10);
+    void saveMarkdown(buildAllMarkdown(filtered, query.trim()), `B站总结-${date}.md`);
+  };
+
+  const exportOne = (item: LibraryHistoryItem) => {
+    void saveMarkdown(buildOneMarkdown(item), `总结-${safeFilename(item.title)}.md`);
+  };
+
   const finishedCount = jobs.filter(
     (job) => job.status === 'done' || job.status === 'failed' || job.status === 'cancelled'
   ).length;
@@ -172,13 +247,23 @@ export function HistoryPanel({
             任务 {jobs.length}
           </button>
           {tab === 'summaries' ? (
-            <button
-              className="mini-btn"
-              disabled={!items.length}
-              onClick={() => setPending({ kind: 'all' })}
-            >
-              <Trash2 size={12} /> 清空
-            </button>
+            <>
+              <button
+                className="mini-btn"
+                disabled={!filtered.length}
+                title={keyword ? `导出当前筛选的 ${filtered.length} 条总结` : '导出全部总结'}
+                onClick={exportAll}
+              >
+                <Download size={12} /> 导出
+              </button>
+              <button
+                className="mini-btn"
+                disabled={!items.length}
+                onClick={() => setPending({ kind: 'all' })}
+              >
+                <Trash2 size={12} /> 清空
+              </button>
+            </>
           ) : (
             <button
               className="mini-btn"
@@ -196,6 +281,8 @@ export function HistoryPanel({
           <div className="warn-desc">{error}</div>
         </div>
       )}
+
+      {notice && <div className="status-line">{notice}</div>}
 
       {tab === 'summaries' && (
         <div className="library-search">
@@ -253,6 +340,13 @@ export function HistoryPanel({
                             库
                           </button>
                         )}
+                        <button
+                          className="icon-btn"
+                          title="导出这条总结"
+                          onClick={() => exportOne(item)}
+                        >
+                          <Download size={13} />
+                        </button>
                         <button
                           className="icon-btn"
                           title="打开视频"

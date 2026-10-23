@@ -54,6 +54,8 @@ import type {
   WebReference,
   UpdateStatus,
   ExportPayload,
+  SaveTextPayload,
+  SaveTextResult,
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
@@ -233,6 +235,7 @@ export interface BsubApi {
   importSkill(): Promise<Result<SkillItem | null>>;
 
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
+  saveTextFile(payload: SaveTextPayload): Promise<Result<SaveTextResult>>;
 
   zoomIn(): Promise<void>;
   zoomOut(): Promise<void>;

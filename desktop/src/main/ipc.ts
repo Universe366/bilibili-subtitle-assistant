@@ -1814,6 +1814,45 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
+  ipcMain.handle(
+    'file:save-text',
+    async (
+      _event,
+      payload: { content: string; filename?: string; savePath?: string }
+    ): Promise<Result<{ path: string } | { canceled: true }>> => {
+      try {
+        const content = String(payload?.content || '');
+        if (!content.trim()) throw new Error('导出内容为空');
+        if (content.length > 50 * 1024 * 1024) throw new Error('导出内容过大');
+        let target = String(payload?.savePath || '');
+        if (!target) {
+          const picked = await dialog.showSaveDialog(win, {
+            title: '导出',
+            defaultPath: path.join(
+              app.getPath('documents'),
+              String(payload?.filename || 'export.md')
+            ),
+            filters: [
+              { name: 'Markdown', extensions: ['md'] },
+              { name: '文本', extensions: ['txt'] },
+              { name: '所有文件', extensions: ['*'] }
+            ]
+          });
+          if (picked.canceled || !picked.filePath) {
+            return { ok: true, data: { canceled: true } };
+          }
+          target = picked.filePath;
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, content, 'utf8');
+        console.log('[export] text saved', target, `chars=${content.length}`);
+        return { ok: true, data: { path: target } };
+      } catch (error) {
+        return failure<{ path: string } | { canceled: true }>(error);
+      }
+    }
+  );
+
   // 渲染进程加载完成后补发一次当前标签状态
   win.webContents.once('did-finish-load', () => {
     if (!win.isDestroyed()) win.webContents.send('tabs:changed', tabs.list());

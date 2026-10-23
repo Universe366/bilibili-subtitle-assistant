@@ -699,6 +699,15 @@ export interface ExportPayload {
   estimateTimestamps?: boolean;
 }
 
+export interface SaveTextPayload {
+  content: string;
+  filename?: string;
+  /** 指定路径时跳过保存对话框（测试/自动化用） */
+  savePath?: string;
+}
+
+export type SaveTextResult = { path: string } | { canceled: true };
+
 export interface AiDeltaEvent {
   requestId: string;
   delta: string;

@@ -43,6 +43,8 @@ import type {
   LibraryTranscriptionItem,
   FindResult,
   ExportPayload,
+  SaveTextPayload,
+  SaveTextResult,
   LayoutRect,
   PageInfo,
   Result,
@@ -361,7 +363,9 @@ const api: BsubApi = {
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<
       Result<{ path: string } | { canceled: true }>
-    >
+    >,
+  saveTextFile: (payload: SaveTextPayload) =>
+    ipcRenderer.invoke('file:save-text', payload) as Promise<Result<SaveTextResult>>
 };
 
 contextBridge.exposeInMainWorld('bsub', api);
