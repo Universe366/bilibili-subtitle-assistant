@@ -403,11 +403,19 @@ export interface SummarySearchHit {
   snippet: string;
 }
 
+export interface CollectionSearchHit {
+  collectionId: number;
+  name: string;
+  snippet: string;
+  updatedAt: number;
+}
+
 export interface GlobalSearchResult {
   query: string;
   items: LibraryVideo[];
   lines: LibrarySearchMatch[];
   summaries: SummarySearchHit[];
+  collections: CollectionSearchHit[];
   total: number;
 }
 

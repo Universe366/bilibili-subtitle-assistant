@@ -256,6 +256,29 @@ export function LibraryPanel() {
     return () => window.removeEventListener('bsub:library-item', handler as EventListener);
   }, [fetchDetail]);
 
+  // 全局搜索命中合集对比时，切到库之后打开对应合集的结果弹窗。
+  useEffect(() => {
+    const handler = async (event: Event) => {
+      const id = Number((event as CustomEvent).detail);
+      if (!Number.isFinite(id) || id <= 0) return;
+      const response = await window.bsub.listCollections();
+      if (!response.ok) return;
+      setAllCollections(response.data);
+      const collection = response.data.find((item) => item.id === id);
+      if (!collection) return;
+      setSummaryCollection(collection);
+      setSummaryError('');
+      setSummaryLoading(false);
+      setCollectionSummary(null);
+      const summary = await window.bsub.getCollectionSummary(id);
+      if (summary.ok) setCollectionSummary(summary.data);
+      else setSummaryError(summary.error);
+    };
+    window.addEventListener('bsub:collection-summary', handler as EventListener);
+    return () =>
+      window.removeEventListener('bsub:collection-summary', handler as EventListener);
+  }, []);
+
   useEffect(() => {
     const text = query.trim();
     if (!text) {
@@ -548,6 +571,28 @@ export function LibraryPanel() {
     if (!response.ok) {
       setSummaryError(response.error);
       setSummaryLoading(false);
+    }
+  };
+
+  const exportCollectionSummary = async () => {
+    if (!summaryCollection || !collectionSummary) return;
+    const content = [
+      `# 合集对比 · ${summaryCollection.name}`,
+      '',
+      `> ${collectionSummary.itemCount} 个视频 · 模型 ${collectionSummary.model || 'AI'} · ${fmtDateTime(
+        collectionSummary.updatedAt
+      )}`,
+      '',
+      collectionSummary.content.trim(),
+      ''
+    ].join('\n');
+    const response = await window.bsub.saveTextFile({
+      content,
+      filename: `合集对比-${safeFilename(summaryCollection.name)}.md`
+    });
+    if (!response.ok) setSummaryError(response.error);
+    else if ('path' in response.data) {
+      flash(`已导出 ${response.data.path.split(/[\\/]/).pop()}`);
     }
   };
 
@@ -1451,6 +1496,13 @@ export function LibraryPanel() {
             <div className="confirm-actions">
               <button className="mini-btn" onClick={() => setSummaryCollection(null)}>
                 关闭
+              </button>
+              <button
+                className="mini-btn"
+                disabled={!collectionSummary}
+                onClick={() => void exportCollectionSummary()}
+              >
+                导出
               </button>
               <button
                 className="mini-btn primary"

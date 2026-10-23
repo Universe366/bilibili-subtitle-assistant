@@ -305,6 +305,17 @@ export default function App() {
           setSearchOpen(false);
           void window.bsub.openUrl(url, start);
         }}
+        onOpenCollection={(collectionId) => {
+          setSearchOpen(false);
+          setSection('library');
+          window.setTimeout(
+            () =>
+              window.dispatchEvent(
+                new CustomEvent('bsub:collection-summary', { detail: collectionId })
+              ),
+            220
+          );
+        }}
       />
     </div>
   );

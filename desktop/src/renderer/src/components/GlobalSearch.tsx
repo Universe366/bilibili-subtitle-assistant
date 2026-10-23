@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Captions, FileText, Loader2, Search, Video } from 'lucide-react';
+import { Captions, FileText, Layers, Loader2, Search, Video } from 'lucide-react';
 import type {
+  CollectionSearchHit,
   GlobalSearchResult,
   LibrarySearchMatch,
   LibraryVideo,
@@ -10,7 +11,8 @@ import type {
 type Row =
   | { key: string; kind: 'item'; video: LibraryVideo }
   | { key: string; kind: 'line'; line: LibrarySearchMatch }
-  | { key: string; kind: 'summary'; summary: SummarySearchHit };
+  | { key: string; kind: 'summary'; summary: SummarySearchHit }
+  | { key: string; kind: 'collection'; collection: CollectionSearchHit };
 
 function fmtTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds || 0));
@@ -26,12 +28,14 @@ export function GlobalSearch({
   open,
   onClose,
   onOpenItem,
-  onOpenLine
+  onOpenLine,
+  onOpenCollection
 }: {
   open: boolean;
   onClose: () => void;
   onOpenItem: (videoId: number, tab: 'subtitles' | 'summary') => void;
   onOpenLine: (url: string, start: number) => void;
+  onOpenCollection: (collectionId: number) => void;
 }) {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<GlobalSearchResult | null>(null);
@@ -94,6 +98,11 @@ export function GlobalSearch({
         key: `s-${summary.videoId}`,
         kind: 'summary' as const,
         summary
+      })),
+      ...result.collections.map((collection) => ({
+        key: `c-${collection.collectionId}`,
+        kind: 'collection' as const,
+        collection
       }))
     ];
   }, [result]);
@@ -103,6 +112,8 @@ export function GlobalSearch({
       onOpenItem(row.video.id, 'subtitles');
     } else if (row.kind === 'summary') {
       onOpenItem(row.summary.videoId, 'summary');
+    } else if (row.kind === 'collection') {
+      onOpenCollection(row.collection.collectionId);
     } else {
       const url =
         row.line.url ||
@@ -161,7 +172,7 @@ export function GlobalSearch({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索库、字幕、总结、标签、合集、笔记…"
+            placeholder="搜索库、字幕、总结、笔记、合集对比…"
             spellCheck={false}
           />
           {loading && <Loader2 size={14} className="spin" />}
@@ -172,7 +183,7 @@ export function GlobalSearch({
 
         {!query.trim() && (
           <div className="gs-empty">
-            输入关键词，同时搜索库内视频（含标签/合集/笔记）、字幕正文和已保存的总结
+            输入关键词，同时搜索库内视频（含标签/合集/笔记）、字幕正文、已保存总结与合集对比
             <div className="gs-hint">↑ ↓ 选择 · Enter 打开</div>
           </div>
         )}
@@ -244,6 +255,24 @@ export function GlobalSearch({
                   <span className="gs-main">
                     <span className="gs-title">{summary.title || '未命名视频'}</span>
                     <span className="gs-meta gs-snippet">{summary.snippet}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {groupLabel('合集对比', result?.collections.length || 0)}
+            {result?.collections.map((collection) => {
+              const current = index++;
+              return (
+                <button
+                  key={`c-${collection.collectionId}`}
+                  className={`gs-row${active === current ? ' is-active' : ''}`}
+                  onMouseEnter={() => setActive(current)}
+                  onClick={() => onOpenCollection(collection.collectionId)}
+                >
+                  <Layers size={13} className="gs-icon" />
+                  <span className="gs-main">
+                    <span className="gs-title">{collection.name || '未命名合集'}</span>
+                    <span className="gs-meta gs-snippet">{collection.snippet}</span>
                   </span>
                 </button>
               );

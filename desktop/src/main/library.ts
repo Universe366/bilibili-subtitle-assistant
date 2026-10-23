@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
+  CollectionSearchHit,
   CollectionSummary,
   GlobalSearchResult,
   JobItem,
@@ -1092,6 +1093,7 @@ export function searchSummaries(input: string, limit = 12): SummarySearchHit[] {
 export function globalSearch(input: string): GlobalSearchResult {
   const library = searchLibrary(input, 40);
   const summaries = searchSummaries(input, 12);
+  const collections = searchCollectionSummaries(input, 8);
   const items = library.videos.slice(0, 8);
   const lines = library.matches.slice(0, 30);
   return {
@@ -1099,8 +1101,34 @@ export function globalSearch(input: string): GlobalSearchResult {
     items,
     lines,
     summaries,
-    total: library.total + library.videos.length + summaries.length
+    collections,
+    total: library.total + library.videos.length + summaries.length + collections.length
   };
+}
+
+export function searchCollectionSummaries(input: string, limit = 8): CollectionSearchHit[] {
+  const database = requireDb();
+  const terms = searchTerms(input);
+  if (!terms.length) return [];
+  const where = terms.map(() => 'cs.content_md LIKE ?').join(' AND ');
+  const params = terms.map((term) => `%${term}%`);
+  const rows = database
+    .prepare(
+      `SELECT cs.collection_id, cs.content_md, cs.updated_at, cl.name
+       FROM collection_summaries cs JOIN collections cl ON cl.id = cs.collection_id
+       WHERE ${where}
+       ORDER BY cs.updated_at DESC
+       LIMIT ?`
+    )
+    .all(...params, Math.min(30, Math.max(1, Math.round(limit)))) as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((row) => ({
+    collectionId: toNumber(row.collection_id),
+    name: String(row.name || ''),
+    snippet: snippetAround(String(row.content_md || ''), terms[0]),
+    updatedAt: toNumber(row.updated_at)
+  }));
 }
 
 function pruneOrphans(database: DatabaseSync): void {
