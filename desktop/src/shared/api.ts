@@ -81,7 +81,8 @@ import type {
   Bookmark,
   DownloadRecord,
   PageContextSummary,
-  PodcastFeed
+  PodcastFeed,
+  PageDocument
 } from './types';
 
 export interface BsubApi {
@@ -119,6 +120,7 @@ export interface BsubApi {
 
   getPageInfo(): Promise<Result<PageInfo>>;
   getPageContext(): Promise<Result<PageContextSummary>>;
+  getPageDocument(): Promise<Result<PageDocument>>;
   resolveCollection(input: string): Promise<Result<CollectionResolveResult>>;
   getSubtitles(expectSignature?: string): Promise<Result<SubtitleBundle>>;
   triggerSubtitleMenu(): Promise<Result<boolean>>;
@@ -184,6 +186,7 @@ export interface BsubApi {
   onSelectionAction(cb: (payload: { action: string; text: string }) => void): () => void;
   onTabSearchRequest(cb: () => void): () => void;
   onBookmarkRequest(cb: () => void): () => void;
+  onReaderRequest(cb: () => void): () => void;
   onTasksRequest(cb: () => void): () => void;
   removeLibrary(id: number): Promise<Result<{ removed: boolean }>>;
   savePageSummary(payload: {

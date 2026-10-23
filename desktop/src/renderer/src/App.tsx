@@ -8,6 +8,7 @@ import { BrowserStage } from './components/BrowserStage';
 import { FirstRunWizard } from './components/FirstRunWizard';
 import { GlobalSearch } from './components/GlobalSearch';
 import { BrowserHub, type HubSection } from './components/BrowserHub';
+import { ReaderMode } from './components/ReaderMode';
 
 export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
@@ -34,14 +35,15 @@ export default function App() {
   const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [hub, setHub] = useState<HubSection | null>(null);
+  const [readerOpen, setReaderOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
 
   // 内置浏览器是原生 WebContentsView，永远盖在 renderer 上面。
   // 向导/全局搜索是 renderer 里的全屏遮罩，不隐藏页面就会出现
   // 「卡片被页面挡住、只剩左侧点不了」的情况。
   useEffect(() => {
-    void window.bsub.setBrowserVisible(!wizard && !searchOpen && !hub);
-  }, [wizard, searchOpen, hub]);
+    void window.bsub.setBrowserVisible(!wizard && !searchOpen && !hub && !readerOpen);
+  }, [wizard, searchOpen, hub, readerOpen]);
 
   const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
@@ -136,6 +138,7 @@ export default function App() {
   );
 
   useEffect(() => window.bsub.onTabSearchRequest(() => setHub('tabs')), []);
+  useEffect(() => window.bsub.onReaderRequest(() => setReaderOpen(true)), []);
 
   useEffect(
     () =>
@@ -212,6 +215,16 @@ export default function App() {
     const onKey = (event: KeyboardEvent) => {
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
+
+      if (event.altKey && !mod && key === 'r') {
+        event.preventDefault();
+        setReaderOpen(true);
+        return;
+      }
+      if (event.key === 'Escape' && readerOpen) {
+        setReaderOpen(false);
+        return;
+      }
 
       if (mod && event.shiftKey && key === 't') {
         event.preventDefault();
@@ -298,7 +311,7 @@ export default function App() {
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, findOpen, findQuery, hub]);
+  }, [active, findOpen, findQuery, hub, readerOpen]);
 
   const finishWizard = (openSettings: boolean) => {
     setWizard(null);
@@ -315,6 +328,7 @@ export default function App() {
         bookmarked={bookmarked}
         onToggleBookmark={() => void toggleBookmark()}
         onOpenHub={(section) => setHub(section)}
+        onOpenReader={() => setReaderOpen(true)}
       />
       {findOpen && (
         <FindBar
@@ -366,6 +380,17 @@ export default function App() {
         onClose={() => setHub(null)}
         onOpenUrl={(url) => void window.bsub.openUrl(url)}
         onSelectTab={(id) => void window.bsub.activateTab(id)}
+      />
+      <ReaderMode
+        open={readerOpen}
+        onClose={() => setReaderOpen(false)}
+        onAskAi={(text) => {
+          setSection('chat');
+          window.setTimeout(
+            () => window.dispatchEvent(new CustomEvent('bsub:reader-summary', { detail: { text } })),
+            180
+          );
+        }}
       />
       {wizard && <FirstRunWizard snapshot={wizard} onFinish={finishWizard} />}
       <GlobalSearch

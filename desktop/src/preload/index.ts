@@ -83,7 +83,8 @@ import type {
   Bookmark,
   DownloadRecord,
   PageContextSummary,
-  PodcastFeed
+  PodcastFeed,
+  PageDocument
 } from '../shared/types';
 
 const on = <T>(channel: string, cb: (payload: T) => void) => {
@@ -146,6 +147,8 @@ const api: BsubApi = {
   getPageInfo: () => ipcRenderer.invoke('page:info') as Promise<Result<PageInfo>>,
   getPageContext: () =>
     ipcRenderer.invoke('page:context') as Promise<Result<PageContextSummary>>,
+  getPageDocument: () =>
+    ipcRenderer.invoke('page:document') as Promise<Result<PageDocument>>,
   resolveCollection: (input: string) =>
     ipcRenderer.invoke('source:resolve-collection', input) as Promise<
       Result<CollectionResolveResult>
@@ -275,6 +278,7 @@ const api: BsubApi = {
     on<{ action: string; text: string }>('app:selection-action', cb),
   onTabSearchRequest: (cb: () => void) => on<null>('app:tab-search', () => cb()),
   onBookmarkRequest: (cb: () => void) => on<null>('app:bookmark', () => cb()),
+  onReaderRequest: (cb: () => void) => on<null>('app:reader', () => cb()),
   onTasksRequest: (cb: () => void) => on<null>('app:tasks', () => cb()),
   removeLibrary: (id: number) =>
     ipcRenderer.invoke('library:remove', id) as Promise<Result<{ removed: boolean }>>,

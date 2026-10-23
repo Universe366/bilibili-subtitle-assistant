@@ -9,7 +9,7 @@
 |---|---|
 | `npm run typecheck` | 通过（0 error） |
 | `npm run lint` | 通过（0 error；存量 `any`/未使用变量为 warning） |
-| `npm test` | 通过：13 个测试文件 / 56 个用例 |
+| `npm test` | 通过：14 个测试文件 / 59 个用例 |
 | `npm run build` | 通过：main / preload / renderer 均产出 |
 | `npm ci --dry-run` | 通过（lockfile 与 package.json 一致） |
 | GitHub Actions `desktop-ci.yml` | PR / push main 跑 typecheck + lint + test + build |
@@ -43,6 +43,7 @@
 | 下载落盘 | 本地 HTTP 返回 attachment，`BSUB_DOWNLOAD_DIR` 自动保存 | 记录 `completed` 5/5 字节，文件存在 |
 | 本地音频导入 | 2 秒 wav + mock ASR + `BSUB_LOCAL_MEDIA` | 任务 done「已入库 1 行字幕」，库中出现 `file://` 条目 |
 | 划词工具条 | example.com 选中段落后点「解释」 | 工具条显示 3 个按钮，对话自动发送选中文本并返回 mock 回答 |
+| 阅读模式 | example.com 点地址栏书本图标 | 标题/站点/字数正确，正文 905 字，可关闭 |
 | 播客导入 | 本地 RSS + wav + mock ASR | 预览 1 集，导入任务 done「已入库 1 行字幕」，库条目链接指向单集页 |
 | YouTube 解析 | json3 / timedtext XML 固定样本 | 53 个用例通过；本机网络无法访问 YouTube，未做真实页面联调 |
 

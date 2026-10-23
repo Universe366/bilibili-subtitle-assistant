@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Globe, Home, MoreHorizontal, RotateCw, Star, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Globe, Home, MoreHorizontal, RotateCw, Star, X } from 'lucide-react';
 import type { TabInfo } from '../../../shared/types';
 import type { HubSection } from './BrowserHub';
 
@@ -8,13 +8,15 @@ export function AddressBar({
   focusSignal = 0,
   bookmarked,
   onToggleBookmark,
-  onOpenHub
+  onOpenHub,
+  onOpenReader
 }: {
   tab: TabInfo | null;
   focusSignal?: number;
   bookmarked: boolean;
   onToggleBookmark: () => void;
   onOpenHub: (section: HubSection) => void;
+  onOpenReader: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
@@ -95,6 +97,15 @@ export function AddressBar({
           }}
         />
       </div>
+
+      <button
+        className="nav-btn"
+        title="阅读模式（Alt+R）"
+        disabled={!tab}
+        onClick={onOpenReader}
+      >
+        <BookOpen size={15} />
+      </button>
 
       <button
         className={`nav-btn${bookmarked ? ' is-active' : ''}`}

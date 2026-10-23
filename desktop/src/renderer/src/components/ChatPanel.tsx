@@ -348,6 +348,16 @@ export function ChatPanel({
     return () => window.removeEventListener('bsub:selection-action', handler);
   }, [send]);
 
+  // 阅读模式的「AI 总结」。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail || {};
+      void send(detail.text || '用 5 条要点总结这个页面，先给结论，再列依据。', true);
+    };
+    window.addEventListener('bsub:reader-summary', handler);
+    return () => window.removeEventListener('bsub:reader-summary', handler);
+  }, [send]);
+
   const clear = () => {
     if (requestRef.current) void window.bsub.cancelChat(requestRef.current);
     requestRef.current = '';

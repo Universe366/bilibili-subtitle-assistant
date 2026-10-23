@@ -6,6 +6,7 @@
 - 新增历史记录（可搜索、可清空）、书签（地址栏星标 / `Ctrl+D`）、下载记录（进度、打开、定位、移除）。
 - 新增「历史 / 书签 / 下载 / 标签」面板；`Ctrl+Shift+A` 标签搜索。
 - 启动时恢复上次标签页（可在设置里关闭）；`Ctrl+Shift+T` 重开最近关闭的标签。
+- 新增阅读模式（`Alt+R` / 地址栏书本图标）：提取正文、调字号、复制/保存 Markdown、一键 AI 总结。
 
 ### AI
 - 对话不再限制 B 站视频页：任意网页可读取正文与选中内容提问，页面内容按不可信资料处理。
@@ -40,7 +41,7 @@
 ### 可观测性与工程
 - 新增统一日志：`logs/main-YYYY-MM-DD.log`，保留 7 天，落盘前脱敏。
 - 新增「导出诊断包」：版本、数据规模、脱敏设置、站点权限、日志。
-- 新增 ESLint / Prettier、Vitest（56 个用例）与 PR CI（typecheck / lint / test / build）。
+- 新增 ESLint / Prettier、Vitest（59 个用例）与 PR CI（typecheck / lint / test / build）。
 
 ## 0.31.0（2026-10-23）
 

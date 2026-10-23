@@ -825,6 +825,21 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     tabs.setLayout(rect);
   });
 
+  ipcMain.handle('page:document', async () => {
+    try {
+      const context = await readPageContext(tabs.activeWebContents(), 200000);
+      if (!context || !context.text.trim()) {
+        return { ok: false as const, error: '当前页面没有可提取的正文' };
+      }
+      return {
+        ok: true as const,
+        data: { title: context.title, url: context.url, text: context.text }
+      };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
   ipcMain.handle('page:context', async () => {
     try {
       const context = await readPageContext(tabs.activeWebContents());

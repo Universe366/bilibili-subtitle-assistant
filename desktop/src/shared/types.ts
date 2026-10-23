@@ -880,6 +880,12 @@ export interface PageContextSummary {
   selectionChars: number;
 }
 
+export interface PageDocument {
+  title: string;
+  url: string;
+  text: string;
+}
+
 export interface ChatDeltaEvent {
   requestId: string;
   delta: string;

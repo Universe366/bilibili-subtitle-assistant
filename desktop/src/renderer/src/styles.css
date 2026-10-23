@@ -4670,3 +4670,107 @@ button:disabled {
 .podcast-episodes {
   max-height: 45vh;
 }
+
+/* 阅读模式 */
+.reader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding: 22px;
+  background: rgba(18, 18, 20, 0.42);
+}
+
+.reader-sheet {
+  width: min(880px, 96vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-brand {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reader-tools {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reader-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 34px 40px;
+}
+
+.reader-article {
+  max-width: 720px;
+  margin: 0 auto;
+  color: var(--text);
+  line-height: 1.85;
+}
+
+.reader-article h1 {
+  margin: 0 0 10px;
+  font-size: 1.7em;
+  line-height: 1.35;
+}
+
+.reader-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+  color: var(--muted);
+  font-size: 0.72em;
+}
+
+.reader-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.reader-article p {
+  margin: 0 0 1em;
+  white-space: pre-wrap;
+}
+
+.reader-loading,
+.reader-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 30px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reader-error {
+  color: var(--warn);
+}
+
+.reader-notice {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--ok);
+  font-size: 12px;
+}

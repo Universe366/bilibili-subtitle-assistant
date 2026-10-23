@@ -554,3 +554,11 @@ node panel-test.js     # 至少跑这个
 - 入库 `PageInfo {kind:'podcast', url:单集页面或音频地址}`、字幕轨 `source='podcast'`；
 - 任务记在 `jobs`（type=asr），取消走 `asrControllers`；结束后删除临时音频；
 - 只支持 RSS 2.0 的 `<item>`，Atom 仅做格式识别，不承诺完整解析。
+
+### 13.12 阅读模式
+
+- 地址栏书本按钮或 `Alt+R`（网页内由 TabManager 转发 `app:reader`）打开 `ReaderMode`；
+- 主进程 `page:document` 复用 `readPageContext()`，把上限放宽到 20 万字，只返回标题/URL/纯文本；
+- 渲染层用 `reader.ts` 拆段并生成 Markdown：复制、保存 `.md`、跳转原网页、调字号；
+- 「AI 总结」关闭阅读层、切到「对话」并派发 `bsub:reader-summary`，由 ChatPanel 自动发送总结提示词；
+- 页面没有正文时显示明确错误，不会打开空白阅读层。
