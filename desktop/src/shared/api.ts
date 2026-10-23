@@ -116,6 +116,8 @@ export interface BsubApi {
   clearDownloads(): Promise<Result<{ removed: number }>>;
   openDownload(id: number): Promise<Result<boolean>>;
   revealDownload(id: number): Promise<Result<boolean>>;
+  controlDownload(id: number, action: 'pause' | 'resume' | 'cancel'): Promise<Result<{ state: string }>>;
+  clearBrowsingData(): Promise<Result<{ cleared: boolean }>>;
   onDownloadsChanged(cb: () => void): () => void;
 
   getPageInfo(): Promise<Result<PageInfo>>;

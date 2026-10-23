@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { app, clipboard, dialog, ipcMain, nativeTheme, Notification, shell } from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeTheme, Notification, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -151,6 +151,7 @@ import {
   setVideoTags,
   updateJob,
   updateJobItem,
+  updateDownload,
   vacuumLibrary
 } from './library';
 import { summarizeCollection } from './collectionSummary';
@@ -168,6 +169,7 @@ import {
 } from './settings';
 import { exportDiagnostics } from './diagnostics';
 import { clearSitePermissions } from './permissions';
+import { controlDownload } from './downloads';
 import { pageContextSummary, readPageContext } from './pageContext';
 import { bridgeStatus, restartBridge } from './bridge';
 import { installBrowserExtension } from './extension-install';
@@ -797,6 +799,49 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return { ok: true, data: { removed: clearDownloads() } };
     } catch (error) {
       return failure<{ removed: number }>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'downloads:control',
+    (
+      _event,
+      payload: { id: number; action: 'pause' | 'resume' | 'cancel' }
+    ): Result<{ state: string }> => {
+      try {
+        const result = controlDownload(Number(payload?.id), payload?.action);
+        if (!result.ok) return { ok: false, error: result.error || '下载已结束' };
+        updateDownload(Number(payload.id), {
+          state: result.state,
+          finished: result.state === 'cancelled'
+        });
+        send('downloads:changed', null);
+        return { ok: true, data: { state: result.state } };
+      } catch (error) {
+        return failure<{ state: string }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('browser:clear-data', async (): Promise<Result<{ cleared: boolean }>> => {
+    try {
+      const ses = session.defaultSession;
+      await ses.clearStorageData({
+        storages: [
+          'cookies',
+          'filesystem',
+          'indexdb',
+          'localstorage',
+          'shadercache',
+          'serviceworkers',
+          'cachestorage'
+        ]
+      });
+      await ses.clearCache();
+      await ses.clearAuthCache();
+      return { ok: true, data: { cleared: true } };
+    } catch (error) {
+      return failure<{ cleared: boolean }>(error);
     }
   });
 

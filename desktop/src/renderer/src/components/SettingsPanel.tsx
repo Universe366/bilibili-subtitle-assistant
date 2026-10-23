@@ -980,6 +980,22 @@ export function SettingsPanel() {
     setMessage(`已清除 ${response.data.removed} 条站点权限记录`);
   };
 
+  const clearBrowsingData = async () => {
+    if (
+      !window.confirm(
+        '将清除所有网站的 Cookie、缓存、站点数据和登录状态，所有网站都需要重新登录。确认继续？'
+      )
+    ) {
+      return;
+    }
+    const response = await window.bsub.clearBrowsingData();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setMessage('浏览数据已清除，建议刷新已打开的页面');
+  };
+
   const importSettings = async () => {
     if (!window.confirm('导入会覆盖当前设置（含 API Key 和插件桥 Token），继续？')) return;
     setMessage('');
@@ -2981,6 +2997,9 @@ export function SettingsPanel() {
           </button>
           <button className="mini-btn" onClick={() => void clearPermissions()}>
             清除站点权限
+          </button>
+          <button className="mini-btn danger" onClick={() => void clearBrowsingData()}>
+            清除浏览数据
           </button>
         </div>
         <div className="settings-hint">

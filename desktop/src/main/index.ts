@@ -44,6 +44,7 @@ import { disposeUpdater, initUpdater } from './updater';
 import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
 import { loadSession, saveSession } from './session';
 import { APP_NAME } from '../shared/brand';
+import { registerDownloadItem, unregisterDownloadItem } from './downloads';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -2300,6 +2301,7 @@ app.whenReady().then(() => {
         filename: item.getFilename(),
         total: item.getTotalBytes()
       });
+      if (downloadId) registerDownloadItem(downloadId, item);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('downloads:changed');
       }
@@ -2336,6 +2338,7 @@ app.whenReady().then(() => {
       if (state === 'completed') sync('completed', true);
       else if (state === 'cancelled') sync('cancelled', true);
       else sync('interrupted', true);
+      unregisterDownloadItem(downloadId);
     });
   });
   initLibrary();

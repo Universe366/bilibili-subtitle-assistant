@@ -142,6 +142,10 @@ const api: BsubApi = {
     ipcRenderer.invoke('downloads:open', id) as Promise<Result<boolean>>,
   revealDownload: (id: number) =>
     ipcRenderer.invoke('downloads:reveal', id) as Promise<Result<boolean>>,
+  controlDownload: (id: number, action: 'pause' | 'resume' | 'cancel') =>
+    ipcRenderer.invoke('downloads:control', { id, action }) as Promise<Result<{ state: string }>>,
+  clearBrowsingData: () =>
+    ipcRenderer.invoke('browser:clear-data') as Promise<Result<{ cleared: boolean }>>,
   onDownloadsChanged: (cb: () => void) => on<null>('downloads:changed', () => cb()),
 
   getPageInfo: () => ipcRenderer.invoke('page:info') as Promise<Result<PageInfo>>,

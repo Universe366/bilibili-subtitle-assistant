@@ -562,3 +562,12 @@ node panel-test.js     # 至少跑这个
 - 渲染层用 `reader.ts` 拆段并生成 Markdown：复制、保存 `.md`、跳转原网页、调字号；
 - 「AI 总结」关闭阅读层、切到「对话」并派发 `bsub:reader-summary`，由 ChatPanel 自动发送总结提示词；
 - 页面没有正文时显示明确错误，不会打开空白阅读层。
+
+### 13.13 下载控制与清除浏览数据
+
+- `downloads.ts` 保存活跃的 Electron `DownloadItem`（按 `downloads.id`），`done` 后移除；
+- `downloads:control` 支持 pause / resume / cancel，并把状态写回 `downloads.state`；
+- 下载面板对进行中的任务显示暂停/继续/取消，完成的任务才显示打开/定位；
+- `browser:clear-data` 调用 `session.clearStorageData`（cookies / localstorage / indexdb /
+  serviceworkers / cachestorage 等）、`clearCache()`、`clearAuthCache()`；
+- 清除会登出所有站点，UI 必须二次确认；不会删除本地字幕库和设置。

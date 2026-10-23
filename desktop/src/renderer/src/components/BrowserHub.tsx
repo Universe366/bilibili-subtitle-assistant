@@ -7,6 +7,8 @@ import {
   FolderOpen,
   Layers,
   Loader2,
+  Pause,
+  Play,
   Search,
   Trash2,
   X
@@ -264,6 +266,42 @@ export function BrowserHub({
                     )}
                   </span>
                   <span className="hub-actions">
+                    {(item.state === 'progressing' || item.state === 'paused') && (
+                      <>
+                        <button
+                          className="icon-btn"
+                          title={item.state === 'paused' ? '继续下载' : '暂停下载'}
+                          onClick={() =>
+                            void window.bsub
+                              .controlDownload(item.id, item.state === 'paused' ? 'resume' : 'pause')
+                              .then((response) => {
+                                if (response.ok) {
+                                  void window.bsub.listDownloads().then((list) => {
+                                    if (list.ok) setDownloads(list.data);
+                                  });
+                                }
+                              })
+                          }
+                        >
+                          {item.state === 'paused' ? <Play size={13} /> : <Pause size={13} />}
+                        </button>
+                        <button
+                          className="icon-btn"
+                          title="取消下载"
+                          onClick={() =>
+                            void window.bsub.controlDownload(item.id, 'cancel').then((response) => {
+                              if (response.ok) {
+                                void window.bsub.listDownloads().then((list) => {
+                                  if (list.ok) setDownloads(list.data);
+                                });
+                              }
+                            })
+                          }
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    )}
                     {item.state === 'completed' && item.path && (
                       <>
                         <button
