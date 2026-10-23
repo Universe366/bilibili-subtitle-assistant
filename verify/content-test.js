@@ -503,10 +503,13 @@ async function main() {
     check('有 freshSniffed 只取当前视频的嗅探结果', /function freshSniffed\(\)/.test(bridgeSrc), '');
     check('freshSniffed 按签名过滤', /\.filter\(\(s\) => s && s\.sig && s\.sig === curSig\)/.test(bridgeSrc), '');
     check('等待新字幕用 freshSniffed（不会被旧残留误判）', /if \(freshSniffed\(\)\.length\) break;/.test(bridgeSrc), '');
-    // 关键：候选取的是过滤后的结果，而不是整个 Map
+    // 关键：候选取的是过滤后的结果，而不是整个 Map。
+    // 0.31 起在 freshSniff 与最终 sniffed 之间多了 knownPaths 过滤，允许更长间隔。
     check(
       '候选取过滤后的 sniffed',
-      /const sniffedAll = Array\.from\(subtitleSniff\.items\.values\(\)\);[\s\S]{0,600}const sniffed = freshSniff\.filter/.test(bridgeSrc),
+      /const sniffedAll = Array\.from\(subtitleSniff\.items\.values\(\)\);[\s\S]{0,1800}const sniffed = wbiOk\s*\?\s*\[\]\s*:\s*freshSniff\.filter/.test(
+        bridgeSrc
+      ),
       ''
     );
     check('对外报告残留条数以便诊断', /staleSniffCount/.test(bridgeSrc), '');

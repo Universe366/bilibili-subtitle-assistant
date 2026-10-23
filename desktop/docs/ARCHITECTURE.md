@@ -181,6 +181,58 @@ SPA 切页瞬间拿到上一个视频的预取轨。
 - 新增长任务时：创建 job → 进度写 `updateJob` → 结束必须 `finishJob`，
   否则任务会一直停在“进行中”。
 
+### 4.2 库数据模型（`library.ts`）
+
+所有表都在 `library.db`，`SCHEMA` 使用 `CREATE TABLE IF NOT EXISTS`，升级只能做加法：
+
+| 表 | 作用 |
+|---|---|
+| `videos` / `tracks` / `segments` / `segments_fts` | 视频、字幕轨、行、FTS5 trigram 索引 |
+| `summaries` / `summary_versions` | 当前总结 + 最近 20 个版本 |
+| `notes` / `note_versions` | 当前笔记 + 最近 20 个版本（清空笔记会一并清空版本） |
+| `tags` / `video_tags` | 标签与多对多关联 |
+| `collections` / `collection_items` | 合集与多对多关联 |
+| `collection_summaries` / `collection_summary_versions` | 合集对比 + 最近 20 个版本 |
+| `jobs` / `job_items` | 任务与逐项状态 |
+| `exports` | 导出登记（最近 100 条，只记路径不存文件） |
+
+约束：
+
+- 删除视频/合集会级联删除版本、关联、索引；`removeVideo(s)` 之后调用 `pruneOrphans()`
+  清理空标签/空合集；
+- 版本写入前先查最新内容，相同就不写，避免自动保存把 20 条配额刷满；
+- 老库迁移：启动时把现有总结、合集对比补成一条版本；`note_versions` 从空开始；
+- `collection_summaries` 与 `collection_summary_versions` 的 `item_count/model` 只做展示，
+  不参与生成逻辑。
+
+### 4.3 搜索
+
+- `searchLibrary`：标题/UP/标签/合集/笔记 → 视频行；字幕走 FTS5 trigram，短词退化为 LIKE；
+- `searchSummaries`：总结正文，返回视频维度的片段；
+- `searchCollectionSummaries`：合集对比正文，返回合集维度的片段；
+- `globalSearch` 合并三组，`Ctrl+K` 面板按“视频 / 字幕 / 总结 / 合集对比”分组；
+- 搜索词按空格拆分 AND；`snippetAround` 只做展示，不要把命中片段写回库。
+
+### 4.4 合集对比与 B 站合集导入
+
+- `collectionSummary.ts`：优先取合集内各视频已保存总结，缺失时回退到字数最多的字幕轨；
+  每视频截断 1.2 万字、总量 9 万字，prompt 固定输出速览表/共识/分歧/观看顺序；
+  结果写入 `collection_summaries` 并追加版本；
+- `biliCollection.ts`：调用 `api.bilibili.com/x/web-interface/view?bvid=`，
+  优先 `ugc_season.sections[].episodes[]`（UP 合集），否则 `pages[]`（多 P），
+  生成带 `?p=N` 的链接；单集返回 `kind='single'`；
+- 导入统一走 `batchUrls`：主进程开后台标签逐个抓字幕，任务中心记录逐项状态；
+  “识别合集”只负责展开链接，不直接写库；
+- 若 B 站接口风控/需要登录，解析会返回可读错误；不要在前端重试风暴。
+
+### 4.5 导出记录
+
+- `export:save`（字幕）和 `file:save-text`（笔记/总结/合集对比）写文件成功后调用
+  `addExportRecord`；
+- 只登记路径，不复制文件；`exports:open` / `exports:reveal` 调系统默认程序；
+- 清空只删记录，不删磁盘文件；
+- 导出失败不要登记，避免列表里出现坏路径。
+
 ## 5. 封面与图片
 
 B 站图片 CDN 按 Referer 防盗链：`localhost` / `file://` 会 403。
@@ -275,3 +327,39 @@ node panel-test.js     # 至少跑这个
 | 迁移后数据没变 | `%APPDATA%\bsub-desktop-location.txt` 是否存在；启动日志 `[m0] userData` |
 | 迁移后旧目录没删 | `%APPDATA%\bsub-desktop-cleanup.txt`；日志 `[data] old data dir cleanup failed` |
 | 卸载没删干净 | 是否勾选删除数据；自定义位置指向文件；`%LOCALAPPDATA%\bsub-desktop-updater` |
+
+## 10. 界面信息架构（0.31+）
+
+侧栏只保留五个入口，**不要再随意加一级入口**：
+
+| 入口 | 职责 |
+|---|---|
+| 字幕 | 当前视频的信息、字幕轨、转写/翻译/校对/入库/合集导入 |
+| 总结 | 当前字幕的总结、章节、问答；版本与 diff |
+| 对话 | 基于字幕/总结的问答与工具调用 |
+| 库 | 所有已入库内容：搜索、筛选、详情、标签/合集、批量、笔记、合集对比、导入链接 |
+| 设置 | AI、字幕、搜索、插件桥、数据与备份 |
+
+库顶部的四个动作是固定主线：
+
+- **＋合集**：新建空合集，之后在「选择」模式里加视频；
+- **导入链接**：单条/多条链接；可先「识别合集 / 多 P」再整包导入；
+- **筛选**：排序、标签、合集、管理标签/合集都收在这里；
+- **选择**：进入多选后底部才出现批量总结、加标签、加合集、删除。
+
+任务与导出统一在侧栏底部「任务」抽屉：`任务` 页签看进度/暂停/取消/重试，
+`导出` 页签看历史导出。不要再为“记录/批量”新增侧栏项，也不要恢复已删除的
+`BatchPanel` / `HistoryPanel`（历史见 git）。
+
+空状态必须给下一步：空库 →「打开 B 站 / 导入链接」；空合集 →「选择视频加入」。
+
+## 11. 发布与版本
+
+- 一次合并发布包含桌面端与插件两个版本号：
+  - 桌面端 `desktop/package.json`（例如 0.31.0）；
+  - 插件 `bilibili-subtitle-assistant/manifest.json` 及 constants/content/page-bridge（例如 2.18.2）；
+  - tag 用插件版本 `v2.18.2`，CI 会同时打包桌面安装包、绿色包、插件 zip 和 `latest.yml`；
+- 发布前：`npm run typecheck`、`npm run build`、`npm run release:notes` 检查发布说明能提取；
+- 本机 `release/` 不入库；CI 用 `desktop-release.yml`，push tag 即触发；
+- 桌面端自动更新只对安装版生效，依赖 Release 里的 `latest.yml` 与 setup exe；
+- 版本号、CHANGELOG、README 产物名必须同步，详细清单见 `docs/MAINTAINERS.md`。

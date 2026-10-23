@@ -31,11 +31,11 @@
 一次版本 bump 至少检查这些位置：
 
 ```text
-bilibili-subtitle-assistant/manifest.json                     2.18.1
+bilibili-subtitle-assistant/manifest.json                     2.18.2
 bilibili-subtitle-assistant/src/shared/constants.js          VERSION
 bilibili-subtitle-assistant/src/content/content.js            CONTENT_VERSION
 bilibili-subtitle-assistant/src/content/page-bridge.js        bridge version
-desktop/package.json                                          0.30.12
+desktop/package.json                                          0.31.0
 desktop/package-lock.json                                     顶层与 packages[""].version
 desktop/README.md / CHANGELOG.md                              产物名与版本说明
 verify/package.json                                           测试包版本（按需同步）
@@ -114,6 +114,18 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - CI 是 `.github/workflows/desktop-release.yml`；构建必须带 `--publish never`，由 workflow 自己创建 Release，否则 electron-builder 会抢先自动发布。
 - 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `bsub-desktop-setup-${version}.exe`）。
 - 当前最新 Release 的桌面资产可能落后于源码；发布前先确认 `desktop/package.json` 版本高于 Release 资产，否则客户端会显示“已是最新”。
+- **0.31.0 / 插件 2.18.2 的发布方式**：桌面端与插件版本号一起 bump，提交后打 tag 并 push：
+
+  ```bash
+  git tag -a v2.18.2 -m "桌面端 0.31.0 + 插件 2.18.2"
+  git push origin master v2.18.2
+  ```
+
+  push tag 后 `.github/workflows/desktop-release.yml` 会自动构建安装包/绿色包/插件 zip，
+  并用 `desktop/scripts/release.mjs` 从两个 CHANGELOG 提取发布说明。本机不需要跑 `dist`
+  （除非要提前验证 NSIS）。
+- 本地只验证发布说明：
+  `cd desktop && npm run release:notes`，必须能提取 `0.31.0` 与 `2.18.2` 两段。
 
 #### 自动更新
 
@@ -140,6 +152,22 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 - 安装目录页用 `.onVerifyInstDir` 立即补全 `父目录\B站字幕助手`；
   不要用全局 `MUI_PAGE_CUSTOMFUNCTION_LEAVE`（会接管安装模式页并让卸载器构建失败）。
 - 改 `installer.nsh` 后必须真的打一次包验证 NSIS 编译。
+
+#### 库、合集与导入（0.31+）
+
+- 一级入口固定为 **字幕 / 总结 / 对话 / 库 / 设置**。不要再加“批量”“记录”一级入口：
+  批量在库的「选择」模式里，任务与导出在侧栏底部「任务」抽屉。
+- 库顶部固定四件事：`＋合集`、`导入链接`、`筛选`、`选择`；标签/合集/排序都在「筛选」里。
+- 数据表与版本策略见 `desktop/docs/ARCHITECTURE.md` 的 4.2–4.5；新增表只能做
+  `CREATE TABLE IF NOT EXISTS` + 启动迁移，不能改旧列语义。
+- 版本表都保留最近 20 条并**按内容去重**；自动保存/重新生成不能刷爆配额。
+- B 站合集解析在 `desktop/src/main/biliCollection.ts`：
+  - 只调公开 `view` 接口；优先 `ugc_season`，其次多 P `pages`；
+  - 解析失败必须返回可读错误，不要在渲染层循环重试；
+  - 整包导入复用 `batchUrls` 和任务中心，不要在主进程里串行抓取。
+- 导出登记在 `exports` 表，只存路径；清空/移除不删磁盘文件。
+- 老库升级后第一次启动会补 `collection_summary_versions`；若用户反馈“对比没有历史”，
+  先确认迁移是否执行（日志 `[library] 合集对比版本迁移失败`）。
 
 ### 2.6 代码签名
 
@@ -274,6 +302,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 | 测试命令 / 新增套件 | `verify/README.md`、根 README |
 | 架构 / 环境坑 | `AGENTS.md`、本文件、`desktop/docs/ARCHITECTURE.md` |
 | 桌面端功能 / 平台 / 验收 | `desktop/README.md`、`desktop/docs/PARITY.md`、`desktop/docs/PLATFORMS.md` |
+| 桌面端信息架构 / 库数据 / 合集导入 | `desktop/docs/ARCHITECTURE.md`、`desktop/README.md`、本文件 2.5 |
 | 桌面端真实回归 | `desktop/docs/REAL-REGRESSION.md` |
 
 ## 6. Issue 排查顺序
