@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { app, dialog, ipcMain, Notification, shell } from 'electron';
+import { app, dialog, ipcMain, Notification } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,6 @@ import type {
   AiStatusEvent,
   AiReasoningEvent,
   AppSettings,
-  CorrectionRuleGroup,
   ChatDeltaEvent,
   ChatDoneEvent,
   ChatErrorEvent,
@@ -25,46 +24,28 @@ import type {
   OptimizeProgressEvent,
   OptimizeDoneEvent,
   OptimizeErrorEvent,
-  ExportPayload,
   PageInfo,
   Result,
   SubtitleLine,
   SummarizeRequest,
-  WebReference,
-  LibraryHistoryItem,
-  LibraryTranscriptionItem,
   BatchProgressEvent,
   BatchDoneEvent,
   BatchErrorEvent,
   UrlBatchProgressEvent,
   UrlBatchDoneEvent,
   UrlBatchErrorEvent,
-  Chapter,
-  QualityReport,
-  McpServer,
-  McpTool,
-  SkillItem,
-  ExportRecord,
   JobRecord
 } from '../shared/types';
 import type { TabManager } from './tabs';
 import { getPageInfo } from './page';
 import {
-  addExportRecord,
-  clearExports,
   clearFinishedJobs,
-  clearHistory,
   createJob,
   createJobItem,
-  deleteExport,
-  deleteHistoryItem,
   finishJob,
   getJob,
   ingestVideo,
-  listExports,
-  listHistory,
   listJobs,
-  listTranscriptions,
   listLibrary,
   saveSummary,
   setJobsListener,
@@ -87,16 +68,13 @@ import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
 import type { BatchControl } from './batch';
 import { batchUrls, parseVideoUrls } from './urlbatch';
-import { checkSubtitles } from './quality';
-import { generateChapters } from './chapters';
-import { callMcpTool, listMcpTools } from './mcp';
-import { readSkillFile } from './skills';
-import { testSearch } from './search';
 
 import { applyCorrectionToText } from './correction';
-import { buildExport, exportFilters } from './exporters';
+
 import { registerBrowserIpc } from './ipc/browser';
+import { registerRecordsIpc } from './ipc/records';
 import { registerSettingsIpc } from './ipc/settings';
+import { registerToolsIpc } from './ipc/tools';
 import { registerPageIpc } from './ipc/page';
 import { registerLibraryIpc } from './ipc/library';
 import { failure, trackJob } from './ipc/shared';
@@ -1120,214 +1098,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     urlBatchControllers.get(requestId)?.abort();
   });
 
-  ipcMain.handle('history:list', (): Result<LibraryHistoryItem[]> => {
-    try {
-      return { ok: true, data: listHistory() };
-    } catch (error) {
-      return failure<LibraryHistoryItem[]>(error);
-    }
-  });
-
-  ipcMain.handle('history:delete', (_event, id: number): Result<{ removed: boolean }> => {
-    try {
-      return { ok: true, data: { removed: deleteHistoryItem(id) } };
-    } catch (error) {
-      return failure<{ removed: boolean }>(error);
-    }
-  });
-
-  ipcMain.handle('history:transcriptions', (): Result<LibraryTranscriptionItem[]> => {
-    try {
-      return { ok: true, data: listTranscriptions() };
-    } catch (error) {
-      return failure<LibraryTranscriptionItem[]>(error);
-    }
-  });
-
-  ipcMain.handle('history:clear', (): Result<{ removed: number }> => {
-    try {
-      return { ok: true, data: { removed: clearHistory() } };
-    } catch (error) {
-      return failure<{ removed: number }>(error);
-    }
-  });
-
-  ipcMain.handle('exports:list', (): Result<ExportRecord[]> => {
-    try {
-      return { ok: true, data: listExports() };
-    } catch (error) {
-      return failure<ExportRecord[]>(error);
-    }
-  });
-
-  ipcMain.handle('exports:clear', (): Result<{ removed: number }> => {
-    try {
-      return { ok: true, data: { removed: clearExports() } };
-    } catch (error) {
-      return failure<{ removed: number }>(error);
-    }
-  });
-
-  ipcMain.handle('exports:delete', (_event, id: number): Result<{ removed: boolean }> => {
-    try {
-      return { ok: true, data: { removed: deleteExport(Number(id)) } };
-    } catch (error) {
-      return failure<{ removed: boolean }>(error);
-    }
-  });
-
-  ipcMain.handle('exports:open', async (_event, filePath: string) => {
-    try {
-      const message = await shell.openPath(String(filePath || ''));
-      return message ? { ok: false as const, error: message } : { ok: true as const, data: true };
-    } catch (error) {
-      return failure<boolean>(error);
-    }
-  });
-
-  ipcMain.handle('exports:reveal', (_event, filePath: string): Result<boolean> => {
-    try {
-      shell.showItemInFolder(String(filePath || ''));
-      return { ok: true, data: true };
-    } catch (error) {
-      return failure<boolean>(error);
-    }
-  });
-
-  ipcMain.handle('mcp:test', async (_event, server: McpServer): Promise<Result<McpTool[]>> => {
-    try {
-      return { ok: true, data: await listMcpTools(server) };
-    } catch (error) {
-      return failure<McpTool[]>(error);
-    }
-  });
-
-  ipcMain.handle(
-    'mcp:call',
-    async (
-      _event,
-      payload: { server: McpServer; name: string; args: Record<string, unknown> }
-    ): Promise<Result<string>> => {
-      try {
-        return {
-          ok: true,
-          data: await callMcpTool(payload.server, payload.name, payload.args || {})
-        };
-      } catch (error) {
-        return failure<string>(error);
-      }
-    }
-  );
-
-  ipcMain.handle('skills:import', async (): Promise<Result<SkillItem | null>> => {
-    try {
-      const picked = await dialog.showOpenDialog(win, {
-        title: '导入 SKILL.md',
-        properties: ['openFile'],
-        filters: [{ name: 'Skill', extensions: ['md'] }]
-      });
-      const file = picked.filePaths[0];
-      if (picked.canceled || !file) return { ok: true, data: null };
-      return { ok: true, data: readSkillFile(file) };
-    } catch (error) {
-      return failure<SkillItem | null>(error);
-    }
-  });
-
-  ipcMain.handle(
-    'quality:check',
-    (_event, payload: { info: PageInfo; lines: SubtitleLine[] }): Result<QualityReport> => {
-      try {
-        if (!payload || !payload.info || !Array.isArray(payload.lines)) {
-          throw new Error('缺少字幕数据');
-        }
-        return { ok: true, data: checkSubtitles(payload.info, payload.lines) };
-      } catch (error) {
-        return failure<QualityReport>(error);
-      }
-    }
-  );
-
-  ipcMain.handle(
-    'chapters:generate',
-    async (
-      _event,
-      payload: { info: PageInfo; lines: SubtitleLine[] }
-    ): Promise<Result<Chapter[]>> => {
-      try {
-        if (!payload || !payload.info || !Array.isArray(payload.lines) || !payload.lines.length) {
-          throw new Error('缺少字幕数据');
-        }
-        return { ok: true, data: await generateChapters(payload.info, payload.lines) };
-      } catch (error) {
-        return failure<Chapter[]>(error);
-      }
-    }
-  );
-
-  ipcMain.handle('search:test', async (_event, query: string): Promise<Result<WebReference[]>> => {
-    try {
-      const q = String(query || '').trim() || 'B站 视频 总结';
-      return { ok: true, data: await testSearch(loadSettings(), q) };
-    } catch (error) {
-      return failure<WebReference[]>(error);
-    }
-  });
-
-  ipcMain.handle('rules:export', async (_event, group: CorrectionRuleGroup) => {
-    try {
-      const result = await dialog.showSaveDialog({
-        defaultPath: `${String(group?.name || '字幕规则组').replace(/[\\/:*?"<>|]/g, '_')}.json`,
-        filters: [{ name: 'JSON', extensions: ['json'] }]
-      });
-      if (result.canceled || !result.filePath) return { ok: true, data: { canceled: true } };
-      fs.writeFileSync(
-        result.filePath,
-        JSON.stringify({ version: 1, groups: [group] }, null, 2),
-        'utf8'
-      );
-      return { ok: true, data: { canceled: false, path: result.filePath } };
-    } catch (error) {
-      return failure(error);
-    }
-  });
-
-  ipcMain.handle('rules:import', async () => {
-    try {
-      const result = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: [{ name: 'JSON', extensions: ['json'] }]
-      });
-      if (result.canceled || !result.filePaths.length) {
-        return { ok: true, data: [] as CorrectionRuleGroup[] };
-      }
-      const parsed = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'));
-      const rows = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.groups)
-          ? parsed.groups
-          : [];
-      const groups: CorrectionRuleGroup[] = rows
-        .filter((row: any) => row && typeof row === 'object')
-        .map((row: any, index: number) => ({
-          id: `group_${Date.now().toString(36)}_${index}`,
-          name: String(row.name || `导入规则组 ${index + 1}`).slice(0, 80),
-          enabled: row.enabled !== false,
-          rules: (Array.isArray(row.rules) ? row.rules : [])
-            .filter((rule: any) => rule && typeof rule === 'object')
-            .map((rule: any, ruleIndex: number) => ({
-              id: `rule_${Date.now().toString(36)}_${ruleIndex}`,
-              pattern: String(rule.pattern ?? rule.from ?? ''),
-              replacement: String(rule.replacement ?? rule.to ?? ''),
-              regex: rule.regex === true,
-              caseSensitive: rule.caseSensitive === true
-            }))
-        }));
-      return { ok: true, data: groups };
-    } catch (error) {
-      return failure(error);
-    }
-  });
+  registerToolsIpc({ win, send, tabs, aiControllers });
 
   ipcMain.handle(
     'correction:preview',
@@ -1343,90 +1114,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
-  ipcMain.handle(
-    'export:save',
-    async (
-      _event,
-      payload: ExportPayload
-    ): Promise<Result<{ path: string } | { canceled: true }>> => {
-      try {
-        if (!payload || !payload.info) throw new Error('缺少视频信息');
-        const settings = loadSettings();
-        const built = buildExport({
-          ...payload,
-          includeTimestamps: payload.includeTimestamps ?? settings.export.includeTimestamps,
-          filenamePattern: payload.filenamePattern || settings.export.filenamePattern,
-          template: payload.template || settings.export.template,
-          assFontSize: payload.assFontSize || settings.export.assFontSize,
-          estimateTimestamps: payload.estimateTimestamps ?? settings.export.estimateTimestamps
-        });
-        let target = payload.savePath;
-
-        if (!target) {
-          const picked = await dialog.showSaveDialog(win, {
-            title: '导出',
-            defaultPath: path.join(app.getPath('documents'), `${built.filename}.${built.ext}`),
-            filters: exportFilters(payload.format)
-          });
-          if (picked.canceled || !picked.filePath) {
-            return { ok: true, data: { canceled: true } };
-          }
-          target = picked.filePath;
-        }
-
-        fs.writeFileSync(target, built.content, 'utf8');
-        addExportRecord(
-          target,
-          '字幕',
-          `${payload.info?.title || '未命名视频'} · ${payload.format}`
-        );
-        console.log('[m4] exported', payload.format, target, `chars=${built.content.length}`);
-        return { ok: true, data: { path: target } };
-      } catch (error) {
-        return failure<{ path: string } | { canceled: true }>(error);
-      }
-    }
-  );
-
-  ipcMain.handle(
-    'file:save-text',
-    async (
-      _event,
-      payload: { content: string; filename?: string; savePath?: string }
-    ): Promise<Result<{ path: string } | { canceled: true }>> => {
-      try {
-        const content = String(payload?.content || '');
-        if (!content.trim()) throw new Error('导出内容为空');
-        if (content.length > 50 * 1024 * 1024) throw new Error('导出内容过大');
-        let target = String(payload?.savePath || '');
-        if (!target) {
-          const picked = await dialog.showSaveDialog(win, {
-            title: '导出',
-            defaultPath: path.join(
-              app.getPath('documents'),
-              String(payload?.filename || 'export.md')
-            ),
-            filters: [
-              { name: 'Markdown', extensions: ['md'] },
-              { name: '文本', extensions: ['txt'] },
-              { name: '所有文件', extensions: ['*'] }
-            ]
-          });
-          if (picked.canceled || !picked.filePath) {
-            return { ok: true, data: { canceled: true } };
-          }
-          target = picked.filePath;
-        }
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.writeFileSync(target, content, 'utf8');
-        addExportRecord(target, '文本', String(payload?.filename || path.basename(target)));
-        console.log('[export] text saved', target, `chars=${content.length}`);
-        return { ok: true, data: { path: target } };
-      } catch (error) {
-        return failure<{ path: string } | { canceled: true }>(error);
-      }
-    }
-  );
+  registerRecordsIpc({ win, send, tabs, aiControllers });
 
   // 渲染进程加载完成后补发一次当前标签状态
   win.webContents.once('did-finish-load', () => {
