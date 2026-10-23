@@ -246,6 +246,7 @@ async function fetchWithTimeout(
   init: RequestInit,
   options: AiChatOptions
 ): Promise<Response> {
+  if (options.signal?.aborted) throw new Error('已终止');
   const controller = new AbortController();
   const timeoutMs = Math.max(5000, options.timeoutMs || DEFAULT_AI_TIMEOUT_MS);
   const timer = setTimeout(
@@ -254,6 +255,8 @@ async function fetchWithTimeout(
   );
   const forward = () => controller.abort();
   options.signal?.addEventListener('abort', forward, { once: true });
+  // 监听器注册前可能已经被取消；addEventListener 不会补发 abort 事件。
+  if (options.signal?.aborted) forward();
   try {
     return await session.defaultSession.fetch(url, { ...init, signal: controller.signal });
   } finally {

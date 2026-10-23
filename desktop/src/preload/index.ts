@@ -61,7 +61,8 @@ import type {
   LibraryList,
   LibrarySearchResult,
   LibraryDetail,
-  LibrarySort
+  LibrarySort,
+  JobRecord
 } from '../shared/types';
 
 const on = <T>(channel: string, cb: (payload: T) => void) => {
@@ -295,6 +296,15 @@ const api: BsubApi = {
     ipcRenderer.invoke('history:delete', id) as Promise<Result<{ removed: boolean }>>,
   clearHistory: () =>
     ipcRenderer.invoke('history:clear') as Promise<Result<{ removed: number }>>,
+
+  listJobs: () => ipcRenderer.invoke('jobs:list') as Promise<Result<JobRecord[]>>,
+  getJob: (id: string) => ipcRenderer.invoke('jobs:get', id) as Promise<Result<JobRecord | null>>,
+  cancelJob: (id: string) => ipcRenderer.invoke('jobs:cancel', id) as Promise<void>,
+  retryJob: (id: string) =>
+    ipcRenderer.invoke('jobs:retry', id) as Promise<Result<{ requestId: string }>>,
+  clearFinishedJobs: () =>
+    ipcRenderer.invoke('jobs:clear-finished') as Promise<Result<{ removed: number }>>,
+  onJobsChanged: (cb: (jobs: JobRecord[]) => void) => on<JobRecord[]>('jobs:changed', cb),
 
   checkQuality: (info: PageInfo, lines: SubtitleLine[]) =>
     ipcRenderer.invoke('quality:check', { info, lines }) as Promise<Result<QualityReport>>,

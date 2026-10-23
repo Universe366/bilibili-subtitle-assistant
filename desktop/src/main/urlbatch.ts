@@ -9,6 +9,14 @@ import { loadSettings } from './settings';
 export interface UrlBatchResult {
   succeeded: number;
   failed: Array<{ url: string; title?: string; error: string }>;
+  /** 用户主动停止：已入库的条目仍然有效 */
+  cancelled: boolean;
+}
+
+export interface UrlBatchHooks {
+  onItemStart?: (url: string, title: string) => void;
+  onItemDone?: (url: string, title: string) => void;
+  onItemFail?: (url: string, title: string, error: string) => void;
 }
 
 type Progress = (
@@ -68,11 +76,13 @@ export async function batchUrls(
   urls: string[],
   withSummary: boolean,
   onProgress: Progress,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  hooks?: UrlBatchHooks
 ): Promise<UrlBatchResult> {
   if (!urls.length) throw new Error('没有解析到 B 站视频链接');
   const settings = loadSettings();
   let succeeded = 0;
+  let cancelled = false;
   const failed: UrlBatchResult['failed'] = [];
   const targets: string[] = [];
 
@@ -96,11 +106,16 @@ export async function batchUrls(
   }
 
   for (let index = 0; index < targets.length; index += 1) {
-    if (signal?.aborted) throw new Error('已终止');
+    if (signal?.aborted) {
+      cancelled = true;
+      break;
+    }
     const url = targets[index];
     let tabId = '';
     let title = '';
+    let itemError: string | null = null;
     try {
+      hooks?.onItemStart?.(url, '');
       onProgress(index, targets.length, url, '', '打开页面', 0);
       tabId = await tabs.create(url, { activate: false, wait: true });
       const wc = tabs.webContentsOf(tabId);
@@ -119,6 +134,7 @@ export async function batchUrls(
             }
             info = current;
             title = current.title;
+            hooks?.onItemStart?.(url, title);
           }
           bundle = await getSubtitles(wc);
           if (bundle.tracks.length || bundle.needLogin) break;
@@ -157,21 +173,28 @@ export async function batchUrls(
           const result = await summarize({ info, lines, signal });
           saveSummary(info, result.text, result.model);
         } catch (error) {
-          failed.push({
-            url,
-            title,
-            error: `已入库，总结失败：${(error as Error).message}`
-          });
+          const message = `已入库，总结失败：${(error as Error).message}`;
+          failed.push({ url, title, error: message });
+          itemError = message;
         }
       }
       onProgress(index, targets.length, url, title, '完成', 100);
     } catch (error) {
-      if (signal?.aborted) throw new Error('已终止');
-      failed.push({ url, title, error: (error as Error)?.message || String(error) });
+      if (signal?.aborted) {
+        cancelled = true;
+        hooks?.onItemFail?.(url, title, '已取消');
+        break;
+      }
+      const message = (error as Error)?.message || String(error);
+      failed.push({ url, title, error: message });
+      itemError = message;
     } finally {
       if (tabId) tabs.close(tabId);
     }
+
+    if (itemError) hooks?.onItemFail?.(url, title, itemError);
+    else hooks?.onItemDone?.(url, title);
   }
 
-  return { succeeded, failed };
+  return { succeeded, failed, cancelled };
 }

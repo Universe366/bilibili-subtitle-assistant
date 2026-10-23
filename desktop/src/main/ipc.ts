@@ -47,6 +47,7 @@ import type {
   LibraryTranscriptionItem,
   BatchProgressEvent,
   BatchDoneEvent,
+  BatchErrorEvent,
   UrlBatchProgressEvent,
   UrlBatchDoneEvent,
   UrlBatchErrorEvent,
@@ -64,17 +65,26 @@ import type {
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
 import {
+  clearFinishedJobs,
   clearHistory,
+  createJob,
+  createJobItem,
   deleteHistoryItem,
+  finishJob,
+  getJob,
   getLibraryDetail,
   getSummaryFor,
   ingestVideo,
   listHistory,
+  listJobs,
   listTranscriptions,
   listLibrary,
   removeVideo,
   saveSummary,
-  searchLibrary
+  searchLibrary,
+  setJobsListener,
+  updateJob,
+  updateJobItem
 } from './library';
 import {
   activePlatform,
@@ -112,6 +122,15 @@ function failure<T>(error: unknown): Result<T> {
   return { ok: false, error: (error as Error)?.message || String(error) };
 }
 
+// 任务记录是旁路能力：写库失败不能把总结/转录本身带崩。
+function trackJob(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    console.warn('[jobs] 记录失败:', (error as Error).message);
+  }
+}
+
 function withStartParam(url: string, seconds: number): string {
   if (!url || !(seconds > 0)) return url;
   try {
@@ -137,6 +156,359 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   const send = (channel: string, payload: unknown) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
   };
+  setJobsListener(() => send('jobs:changed', listJobs()));
+
+  const markJobUnfinished = (
+    jobId: string,
+    status: 'skipped' | 'failed',
+    message: string,
+    error?: string
+  ) => {
+    const job = getJob(jobId);
+    if (!job) return;
+    for (const item of job.items) {
+      if (item.status === 'pending' || item.status === 'running') {
+        trackJob(() =>
+          updateJobItem(jobId, item.targetId, {
+            status,
+            message,
+            error: error == null ? undefined : error
+          })
+        );
+      }
+    }
+  };
+
+  const markJobCancelled = (jobId: string) => {
+    markJobUnfinished(jobId, 'skipped', '已取消');
+  };
+
+  const startBatchSummary = (
+    inputIds: number[],
+    requestIdInput?: string
+  ): Result<{ requestId: string }> => {
+    const ids = [
+      ...new Set((Array.isArray(inputIds) ? inputIds : []).filter((id) => Number.isFinite(id) && id > 0))
+    ];
+    if (!ids.length) return { ok: false, error: '没有选择视频' };
+
+    const requestId = requestIdInput || randomUUID();
+    const controller = new AbortController();
+    batchControllers.set(requestId, controller);
+    const control: BatchControl = { paused: false, removed: new Set() };
+    batchControls.set(requestId, control);
+
+    const titles = new Map(listLibrary().videos.map((video) => [video.id, video.title]));
+    trackJob(() =>
+      createJob({
+        id: requestId,
+        type: 'batch-summary',
+        title: `批量总结 · ${ids.length} 个视频`
+      })
+    );
+    for (const id of ids) {
+      trackJob(() => createJobItem(requestId, String(id), titles.get(id) || `#${id}`));
+    }
+
+    void (async () => {
+      try {
+        const result = await batchSummarize(
+          ids,
+          (percent, message) => {
+            trackJob(() => updateJob(requestId, { progress: percent, message }));
+            send('batch:progress', {
+              requestId,
+              percent,
+              message
+            } satisfies BatchProgressEvent);
+          },
+          controller.signal,
+          control,
+          {
+            onItemStart: (videoId, title) =>
+              trackJob(() =>
+                updateJobItem(requestId, String(videoId), {
+                  title,
+                  status: 'running',
+                  message: '总结中…'
+                })
+              ),
+            onItemDone: (videoId) =>
+              trackJob(() =>
+                updateJobItem(requestId, String(videoId), {
+                  status: 'done',
+                  progress: 100,
+                  message: '完成',
+                  error: null
+                })
+              ),
+            onItemFail: (videoId, _title, error) =>
+              trackJob(() =>
+                updateJobItem(requestId, String(videoId), {
+                  status: 'failed',
+                  progress: 100,
+                  message: '失败',
+                  error
+                })
+              ),
+            onItemSkip: (videoId) =>
+              trackJob(() =>
+                updateJobItem(requestId, String(videoId), {
+                  status: 'skipped',
+                  message: '已移除'
+                })
+              )
+          }
+        );
+
+        if (result.cancelled) {
+          markJobCancelled(requestId);
+          trackJob(() =>
+            finishJob(
+              requestId,
+              'cancelled',
+              null,
+              `已停止：成功 ${result.succeeded}，失败 ${result.failed.length}`
+            )
+          );
+        } else if (!result.succeeded && result.failed.length) {
+          trackJob(() =>
+            finishJob(
+              requestId,
+              'failed',
+              result.failed[0]?.error || null,
+              `全部失败（${result.failed.length} 项）`
+            )
+          );
+        } else {
+          trackJob(() =>
+            finishJob(
+              requestId,
+              'done',
+              null,
+              `成功 ${result.succeeded}，失败 ${result.failed.length}`
+            )
+          );
+        }
+        send('batch:done', { requestId, ...result } satisfies BatchDoneEvent);
+        send('library:changed', null);
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? '已终止'
+          : (error as Error)?.message || String(error);
+        console.warn('[batch] failed:', message);
+        markJobUnfinished(
+          requestId,
+          controller.signal.aborted ? 'skipped' : 'failed',
+          controller.signal.aborted ? '已取消' : '任务中断',
+          controller.signal.aborted ? undefined : message
+        );
+        trackJob(() =>
+          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+        );
+        send('batch:error', { requestId, error: message } satisfies BatchErrorEvent);
+      } finally {
+        batchControllers.delete(requestId);
+        batchControls.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  };
+
+  const startUrlBatch = (
+    rawUrls: string[],
+    withSummary: boolean,
+    requestIdInput?: string
+  ): Result<{ requestId: string }> => {
+    const urls = parseVideoUrls((Array.isArray(rawUrls) ? rawUrls : []).join('\n'));
+    if (!urls.length) return { ok: false, error: '没有解析到 B 站视频链接' };
+
+    const requestId = requestIdInput || randomUUID();
+    const controller = new AbortController();
+    urlBatchControllers.set(requestId, controller);
+    trackJob(() =>
+      createJob({
+        id: requestId,
+        type: 'url-batch',
+        title: `链接批量 · ${urls.length} 个`,
+        meta: { summarize: withSummary }
+      })
+    );
+    for (const url of urls) {
+      trackJob(() => createJobItem(requestId, url, url));
+    }
+
+    void (async () => {
+      try {
+        const result = await batchUrls(
+          tabs,
+          urls,
+          withSummary,
+          (index, total, url, title, stage, percent) => {
+            const overall = total > 0 ? ((index + percent / 100) / total) * 100 : 0;
+            trackJob(() =>
+              updateJob(requestId, {
+                progress: overall,
+                message: `${stage}${title ? ` · ${title}` : ''}`
+              })
+            );
+            if (title) {
+              trackJob(() =>
+                updateJobItem(requestId, url, { title, status: 'running', message: stage })
+              );
+            }
+            send('urlbatch:progress', {
+              requestId,
+              index,
+              total,
+              url,
+              title,
+              stage,
+              percent
+            } satisfies UrlBatchProgressEvent);
+          },
+          controller.signal,
+          {
+            onItemStart: (url, title) =>
+              trackJob(() =>
+                updateJobItem(requestId, url, {
+                  status: 'running',
+                  message: '开始',
+                  ...(title ? { title } : {})
+                })
+              ),
+            onItemDone: (url, title) =>
+              trackJob(() =>
+                updateJobItem(requestId, url, {
+                  title: title || undefined,
+                  status: 'done',
+                  progress: 100,
+                  message: '完成',
+                  error: null
+                })
+              ),
+            onItemFail: (url, title, error) =>
+              trackJob(() =>
+                updateJobItem(requestId, url, {
+                  title: title || undefined,
+                  status: 'failed',
+                  progress: 100,
+                  message: '失败',
+                  error
+                })
+              )
+          }
+        );
+
+        if (result.cancelled) {
+          markJobCancelled(requestId);
+          trackJob(() =>
+            finishJob(
+              requestId,
+              'cancelled',
+              null,
+              `已停止：成功 ${result.succeeded}，失败 ${result.failed.length}`
+            )
+          );
+        } else if (!result.succeeded && result.failed.length) {
+          trackJob(() =>
+            finishJob(
+              requestId,
+              'failed',
+              result.failed[0]?.error || null,
+              `全部失败（${result.failed.length} 项）`
+            )
+          );
+        } else {
+          trackJob(() =>
+            finishJob(
+              requestId,
+              'done',
+              null,
+              `成功 ${result.succeeded}，失败 ${result.failed.length}`
+            )
+          );
+        }
+        send('urlbatch:done', { requestId, ...result } satisfies UrlBatchDoneEvent);
+        send('library:changed', null);
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? '已终止'
+          : (error as Error)?.message || String(error);
+        console.warn('[urlbatch] failed:', message);
+        markJobUnfinished(
+          requestId,
+          controller.signal.aborted ? 'skipped' : 'failed',
+          controller.signal.aborted ? '已取消' : '任务中断',
+          controller.signal.aborted ? undefined : message
+        );
+        trackJob(() =>
+          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+        );
+        send('urlbatch:error', { requestId, error: message } satisfies UrlBatchErrorEvent);
+      } finally {
+        urlBatchControllers.delete(requestId);
+      }
+    })();
+
+    return { ok: true, data: { requestId } };
+  };
+
+  ipcMain.handle('jobs:list', (): Result<ReturnType<typeof listJobs>> => {
+    try {
+      return { ok: true, data: listJobs() };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+  ipcMain.handle('jobs:get', (_event, id: string) => {
+    try {
+      return { ok: true, data: getJob(String(id)) };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+  ipcMain.handle('jobs:cancel', (_event, id: string) => {
+    const key = String(id || '');
+    const controller =
+      aiControllers.get(key) ||
+      asrControllers.get(key) ||
+      translateControllers.get(key) ||
+      optimizeControllers.get(key) ||
+      batchControllers.get(key) ||
+      urlBatchControllers.get(key);
+    controller?.abort();
+    const job = getJob(key);
+    if (job && (job.status === 'running' || job.status === 'paused')) {
+      trackJob(() => updateJob(key, { status: 'cancelled', message: '正在停止…' }));
+    }
+  });
+  ipcMain.handle('jobs:retry', (_event, id: string): Result<{ requestId: string }> => {
+    const job = getJob(String(id));
+    if (!job) return { ok: false, error: '任务不存在' };
+    const failed = job.items.filter((item) => item.status === 'failed').map((item) => item.targetId);
+    if (!failed.length) return { ok: false, error: '没有失败项' };
+    if (job.type === 'batch-summary') return startBatchSummary(failed.map(Number));
+    if (job.type === 'url-batch') {
+      let summarize = true;
+      try {
+        summarize = JSON.parse(job.metaJson || '{}').summarize !== false;
+      } catch {
+        // 旧任务没有 meta，按默认处理
+      }
+      return startUrlBatch(failed, summarize);
+    }
+    return { ok: false, error: '这类任务暂不支持重试' };
+  });
+  ipcMain.handle('jobs:clear-finished', () => {
+    try {
+      return { ok: true, data: { removed: clearFinishedJobs() } };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
   ipcMain.handle('tabs:list', () => tabs.list());
   ipcMain.handle('tab:new', (_event, url?: string) => tabs.create(url));
   ipcMain.handle('tab:open', async (_event, url: string, start?: number) => {
@@ -689,6 +1061,13 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       const requestId = payload.requestId || randomUUID();
       const controller = new AbortController();
       aiControllers.set(requestId, controller);
+      trackJob(() =>
+        createJob({
+          id: requestId,
+          type: 'summary',
+          title: `总结 · ${payload.info.title || '当前视频'}`
+        })
+      );
 
       void (async () => {
         try {
@@ -698,7 +1077,10 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
             skipProofread: payload.skipProofread === true,
             signal: controller.signal,
             onDelta: (delta) => send('ai:delta', { requestId, delta } satisfies AiDeltaEvent),
-            onStatus: (status) => send('ai:status', { requestId, status } satisfies AiStatusEvent),
+            onStatus: (status) => {
+              trackJob(() => updateJob(requestId, { message: status }));
+              send('ai:status', { requestId, status } satisfies AiStatusEvent);
+            },
             onReasoning: (delta) =>
               send('ai:reasoning', { requestId, delta } satisfies AiReasoningEvent)
           });
@@ -721,6 +1103,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
               verification: result.verification
             } satisfies AiDoneEvent
           );
+          trackJob(() =>
+            finishJob(requestId, 'done', null, `完成 · ${result.text.length.toLocaleString('zh-CN')} 字`)
+          );
           send('library:changed', null);
           console.log('[m4] summary saved', saved.id, `chars=${result.text.length}`);
         } catch (error) {
@@ -728,6 +1113,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
             ? '已取消'
             : (error as Error)?.message || String(error);
           console.warn('[m4] summary failed:', message);
+          trackJob(() =>
+            finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+          );
           send('ai:error', { requestId, error: message } satisfies AiErrorEvent);
         } finally {
           aiControllers.delete(requestId);
@@ -797,15 +1185,26 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     const requestId = payload?.requestId || randomUUID();
     const controller = new AbortController();
     asrControllers.set(requestId, controller);
+    trackJob(() => createJob({ id: requestId, type: 'asr', title: '语音转录' }));
 
     void (async () => {
       try {
         const info = await getPageInfo(wc);
+        trackJob(() =>
+          updateJob(requestId, { title: `语音转录 · ${info.title || '当前视频'}` })
+        );
         const result = await transcribe(
           wc,
           info,
-          (stage, percent, message) =>
-            send('asr:progress', { requestId, stage, percent, message } satisfies AsrProgressEvent),
+          (stage, percent, message) => {
+            trackJob(() => updateJob(requestId, { progress: percent, message }));
+            send('asr:progress', {
+              requestId,
+              stage,
+              percent,
+              message
+            } satisfies AsrProgressEvent);
+          },
           controller.signal
         );
         send('asr:done', {
@@ -814,11 +1213,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           model: result.model,
           duration: result.duration
         } satisfies AsrDoneEvent);
+        trackJob(() =>
+          finishJob(requestId, 'done', null, `完成 · ${result.lines.length} 行`)
+        );
       } catch (error) {
         const message = controller.signal.aborted
           ? '已终止'
           : (error as Error)?.message || String(error);
         console.warn('[asr] failed:', message);
+        trackJob(() =>
+          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+        );
         send('asr:error', { requestId, error: message } satisfies AsrErrorEvent);
       } finally {
         asrControllers.delete(requestId);
@@ -839,18 +1244,27 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     const requestId = payload.requestId || randomUUID();
     const controller = new AbortController();
     translateControllers.set(requestId, controller);
+    trackJob(() =>
+      createJob({
+        id: requestId,
+        type: 'translate',
+        title: `翻译 · ${String(payload.target || '中文')}`
+      })
+    );
 
     void (async () => {
       try {
         const result = await translateLines(
           payload.lines,
           String(payload.target || '中文'),
-          (percent, message) =>
+          (percent, message) => {
+            trackJob(() => updateJob(requestId, { progress: percent, message }));
             send('translate:progress', {
               requestId,
               percent,
               message
-            } satisfies TranslateProgressEvent),
+            } satisfies TranslateProgressEvent);
+          },
           controller.signal
         );
         send('translate:done', {
@@ -858,11 +1272,17 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           lines: result.lines,
           language: result.language
         } satisfies TranslateDoneEvent);
+        trackJob(() =>
+          finishJob(requestId, 'done', null, `完成 · ${result.lines.length} 行`)
+        );
       } catch (error) {
         const message = controller.signal.aborted
           ? '已终止'
           : (error as Error)?.message || String(error);
         console.warn('[translate] failed:', message);
+        trackJob(() =>
+          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+        );
         send('translate:error', { requestId, error: message } satisfies TranslateErrorEvent);
       } finally {
         translateControllers.delete(requestId);
@@ -883,28 +1303,37 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     const requestId = payload.requestId || randomUUID();
     const controller = new AbortController();
     optimizeControllers.set(requestId, controller);
+    trackJob(() => createJob({ id: requestId, type: 'optimize', title: 'AI 校对' }));
 
     void (async () => {
       try {
         const suggestions = await optimizeLines(
           payload.lines,
-          (percent, message) =>
+          (percent, message) => {
+            trackJob(() => updateJob(requestId, { progress: percent, message }));
             send('optimize:progress', {
               requestId,
               percent,
               message
-            } satisfies OptimizeProgressEvent),
+            } satisfies OptimizeProgressEvent);
+          },
           controller.signal
         );
         send('optimize:done', {
           requestId,
           suggestions
         } satisfies OptimizeDoneEvent);
+        trackJob(() =>
+          finishJob(requestId, 'done', null, `完成 · ${suggestions.length} 条建议`)
+        );
       } catch (error) {
         const message = controller.signal.aborted
           ? '已终止'
           : (error as Error)?.message || String(error);
         console.warn('[optimize] failed:', message);
+        trackJob(() =>
+          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+        );
         send('optimize:error', { requestId, error: message } satisfies OptimizeErrorEvent);
       } finally {
         optimizeControllers.delete(requestId);
@@ -918,59 +1347,33 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     optimizeControllers.get(requestId)?.abort();
   });
 
-  ipcMain.handle('batch:summarize', async (_event, payload: { requestId: string; videoIds: number[] }): Promise<Result<{ requestId: string }>> => {
-    if (!payload || !Array.isArray(payload.videoIds) || !payload.videoIds.length) {
-      return { ok: false, error: '没有选择视频' };
-    }
-    const requestId = payload.requestId || randomUUID();
-    const controller = new AbortController();
-    batchControllers.set(requestId, controller);
-    const control: BatchControl = { paused: false, removed: new Set() };
-    batchControls.set(requestId, control);
-
-    void (async () => {
-      try {
-        const result = await batchSummarize(
-          payload.videoIds,
-          (percent, message) =>
-            send('batch:progress', {
-              requestId,
-              percent,
-              message
-            } satisfies BatchProgressEvent),
-          controller.signal,
-          control
-        );
-        send('batch:done', { requestId, ...result } satisfies BatchDoneEvent);
-        send('library:changed', null);
-      } catch (error) {
-        const message = controller.signal.aborted
-          ? '已终止'
-          : (error as Error)?.message || String(error);
-        console.warn('[batch] failed:', message);
-        send('batch:error', { requestId, error: message });
-      } finally {
-        batchControllers.delete(requestId);
-        batchControls.delete(requestId);
-      }
-    })();
-
-    return { ok: true, data: { requestId } };
-  });
+  ipcMain.handle(
+    'batch:summarize',
+    async (_event, payload: { requestId: string; videoIds: number[] }) =>
+      startBatchSummary(payload?.videoIds || [], payload?.requestId)
+  );
 
   ipcMain.handle('batch:pause', (_event, requestId: string) => {
     const control = batchControls.get(requestId);
     if (control) control.paused = true;
+    trackJob(() => updateJob(requestId, { status: 'paused', message: '已暂停' }));
   });
 
   ipcMain.handle('batch:resume', (_event, requestId: string) => {
     const control = batchControls.get(requestId);
     if (control) control.paused = false;
+    trackJob(() => updateJob(requestId, { status: 'running', message: '继续' }));
   });
 
   ipcMain.handle('batch:remove', (_event, payload: { requestId: string; videoId: number }) => {
     const control = batchControls.get(payload.requestId);
     if (control) control.removed.add(Number(payload.videoId));
+    trackJob(() =>
+      updateJobItem(payload.requestId, String(payload.videoId), {
+        status: 'skipped',
+        message: '已移除'
+      })
+    );
   });
 
   ipcMain.handle('batch:cancel', (_event, requestId: string) => {
@@ -979,51 +1382,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle(
     'urlbatch:start',
-    async (
-      _event,
-      payload: { requestId: string; urls: string[]; summarize: boolean }
-    ): Promise<Result<{ requestId: string }>> => {
-      const urls = (Array.isArray(payload?.urls) ? payload.urls : [])
-        .flatMap((item) => parseVideoUrls(item))
-        .filter((item, index, all) => all.indexOf(item) === index);
-      if (!urls.length) return { ok: false, error: '没有解析到 B 站视频链接' };
-      const requestId = payload.requestId || randomUUID();
-      const controller = new AbortController();
-      urlBatchControllers.set(requestId, controller);
-
-      void (async () => {
-        try {
-          const result = await batchUrls(
-            tabs,
-            urls,
-            payload.summarize !== false,
-            (index, total, url, title, stage, percent) =>
-              send('urlbatch:progress', {
-                requestId,
-                index,
-                total,
-                url,
-                title,
-                stage,
-                percent
-              } satisfies UrlBatchProgressEvent),
-            controller.signal
-          );
-          send('urlbatch:done', { requestId, ...result } satisfies UrlBatchDoneEvent);
-          send('library:changed', null);
-        } catch (error) {
-          const message = controller.signal.aborted
-            ? '已终止'
-            : (error as Error)?.message || String(error);
-          console.warn('[urlbatch] failed:', message);
-          send('urlbatch:error', { requestId, error: message } satisfies UrlBatchErrorEvent);
-        } finally {
-          urlBatchControllers.delete(requestId);
-        }
-      })();
-
-      return { ok: true, data: { requestId } };
-    }
+    async (_event, payload: { requestId: string; urls: string[]; summarize: boolean }) =>
+      startUrlBatch(payload?.urls || [], payload?.summarize !== false, payload?.requestId)
   );
 
   ipcMain.handle('urlbatch:cancel', (_event, requestId: string) => {

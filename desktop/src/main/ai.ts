@@ -363,6 +363,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
     options.onStatus?.('正在获取热门评论…');
     try {
       const comments = await fetchHotComments(info, 12);
+      if (options.signal?.aborted) throw new Error('已终止');
       if (comments.length) {
         commentsBlock = [
           '',
@@ -424,6 +425,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
           options.onStatus?.('没有取得可用证据，仅根据字幕总结');
         }
       } catch (error) {
+        if (options.signal?.aborted) throw error;
         const message = (error as Error)?.message || String(error);
         verification = {
           items: [],
@@ -461,6 +463,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
           options.onStatus?.('没有检索到参考资料，仅根据字幕总结');
         }
       } catch (error) {
+        if (options.signal?.aborted) throw error;
         options.onStatus?.(`检索失败：${(error as Error).message}（继续总结）`);
       }
     }

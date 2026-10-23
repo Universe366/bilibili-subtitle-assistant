@@ -159,7 +159,23 @@ SPA 切页瞬间拿到上一个视频的预取轨。
 - `verify.ts`：从字幕抽具体项 → 生成检索词 → 搜索 → 语义判定；
 - 判定失败时只整理 0~3 条外部补充，不把未判定网页列表塞进总结；
 - 核对卡片默认折叠；
-- 流式/非流式返回都必须带 `verification`。
+- 流式/非流式返回都必须带 `verification`；
+- **取消要能穿透**：`verifySummary` / 检索失败的分支必须检查 `signal.aborted` 再决定是否
+  “继续总结”，否则取消后还会发起下一次请求；`fetchWithTimeout` 在注册监听前若已取消，
+  要主动 abort（`addEventListener` 不会补发已发生的事件）。
+
+### 4.1 任务中心（jobs）
+
+- `library.db` 的 `jobs` / `job_items` 是所有长任务的事实来源：总结、转录、翻译、校对、
+  批量总结、链接批量都以请求 id 为主键写入；
+- 写入函数在 `library.ts`（`createJob` / `updateJob` / `updateJobItem` / `finishJob`），
+  `setJobsListener` 以 150ms 节流把最新列表推给渲染层，刷新时不用逐个 IPC 拉；
+- 任务记录是**旁路**：写库失败只打印日志，不能让总结/转录本身失败；
+- 启动时 `markStaleJobs()` 把上次遗留的 running/paused 标成失败，避免任务中心永远转圈；
+- 批量停止走 `AbortSignal`：`batchSummarize` / `batchUrls` 返回 `cancelled` 而不是抛错，
+  已完成条目保留，未开始项由调用方标记为 skipped；
+- 新增长任务时：创建 job → 进度写 `updateJob` → 结束必须 `finishJob`，
+  否则任务会一直停在“进行中”。
 
 ## 5. 封面与图片
 

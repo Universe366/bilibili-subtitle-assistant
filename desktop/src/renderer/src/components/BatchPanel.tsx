@@ -1,15 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ListChecks, Loader2, Square } from 'lucide-react';
+import { AlertTriangle, ListChecks, Loader2, RotateCcw, Search, Square } from 'lucide-react';
 import type {
   BatchDoneEvent,
+  JobItem,
+  JobRecord,
   LibraryVideo,
   UrlBatchDoneEvent,
   UrlBatchProgressEvent
 } from '../../../shared/types';
 
+const ITEM_LABEL: Record<JobItem['status'], string> = {
+  pending: '等待',
+  running: '进行中',
+  done: '完成',
+  failed: '失败',
+  skipped: '跳过'
+};
+
 export function BatchPanel() {
   const [videos, setVideos] = useState<LibraryVideo[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [filter, setFilter] = useState('');
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
@@ -17,6 +28,8 @@ export function BatchPanel() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<BatchDoneEvent | null>(null);
+  const [jobId, setJobId] = useState('');
+  const [itemStates, setItemStates] = useState<Record<string, JobItem>>({});
   const requestRef = useRef('');
   const [mode, setMode] = useState<'library' | 'url'>('library');
   const [urlText, setUrlText] = useState('');
@@ -28,6 +41,16 @@ export function BatchPanel() {
   const load = () => {
     void window.bsub.listLibrary().then((response) => {
       if (response.ok) setVideos(response.data.videos);
+    });
+  };
+
+  const refreshJobStates = (id: string) => {
+    if (!id) return;
+    void window.bsub.getJob(id).then((response) => {
+      if (!response.ok || !response.data) return;
+      const map: Record<string, JobItem> = {};
+      for (const item of response.data.items) map[item.targetId] = item;
+      setItemStates(map);
     });
   };
 
@@ -47,9 +70,14 @@ export function BatchPanel() {
       requestRef.current = '';
       setRunning(false);
       setPaused(false);
-      setProgress(100);
+      if (!event.cancelled) setProgress(100);
       setResult(event);
-      setMessage(`完成：成功 ${event.succeeded}，失败 ${event.failed.length}`);
+      setMessage(
+        event.cancelled
+          ? `已停止：成功 ${event.succeeded}，失败 ${event.failed.length}`
+          : `完成：成功 ${event.succeeded}，失败 ${event.failed.length}`
+      );
+      refreshJobStates(event.requestId);
     });
     const offError = window.bsub.onBatchError((event) => {
       if (event.requestId !== requestRef.current) return;
@@ -88,8 +116,24 @@ export function BatchPanel() {
     };
   }, []);
 
-  const start = async () => {
-    if (running || !selected.size) return;
+  // 任务中心里的逐项状态就是批量面板的逐项状态，不再只靠一条总进度。
+  useEffect(() => {
+    if (!jobId) return;
+    const apply = (jobs: JobRecord[]) => {
+      const job = jobs.find((item) => item.id === jobId);
+      if (!job) return;
+      const map: Record<string, JobItem> = {};
+      for (const item of job.items) map[item.targetId] = item;
+      setItemStates(map);
+    };
+    void window.bsub.getJob(jobId).then((response) => {
+      if (response.ok && response.data) apply([response.data]);
+    });
+    return window.bsub.onJobsChanged(apply);
+  }, [jobId]);
+
+  const startIds = async (ids: number[]) => {
+    if (running || !ids.length) return;
     setRunning(true);
     setPaused(false);
     setRemovedIds(new Set());
@@ -97,13 +141,22 @@ export function BatchPanel() {
     setMessage('准备批量总结…');
     setError('');
     setResult(null);
-    const response = await window.bsub.batchSummarize([...selected]);
+    setItemStates({});
+    const response = await window.bsub.batchSummarize(ids);
     if (response.ok) {
       requestRef.current = response.data.requestId;
+      setJobId(response.data.requestId);
     } else {
       setRunning(false);
       setError(response.error);
     }
+  };
+
+  const start = () => void startIds([...selected]);
+
+  const retryFailed = () => {
+    if (!result?.failed.length) return;
+    void startIds(result.failed.map((item) => item.videoId));
   };
 
   const removeItem = (id: number) => {
@@ -152,6 +205,13 @@ export function BatchPanel() {
     setSelected(next);
   };
 
+  const keyword = filter.trim().toLowerCase();
+  const visibleVideos = keyword
+    ? videos.filter((video) =>
+        `${video.title} ${video.owner}`.toLowerCase().includes(keyword)
+      )
+    : videos;
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -175,10 +235,16 @@ export function BatchPanel() {
             <>
               <button
                 className="mini-btn"
-                disabled={running || !videos.length}
-                onClick={() => setSelected(new Set(videos.map((video) => video.id)))}
+                disabled={running || !visibleVideos.length}
+                onClick={() =>
+                  setSelected((previous) => {
+                    const next = new Set(previous);
+                    visibleVideos.forEach((video) => next.add(video.id));
+                    return next;
+                  })
+                }
               >
-                全选
+                全选{keyword ? '筛选结果' : ''}
               </button>
               <button
                 className="mini-btn"
@@ -285,7 +351,8 @@ export function BatchPanel() {
 
       {mode === 'url' && !running && urlResult && (
         <div className="settings-hint">
-          成功 {urlResult.succeeded} 个，失败 {urlResult.failed.length} 个
+          {urlResult.cancelled ? '已停止' : '完成'}：成功 {urlResult.succeeded} 个，失败{' '}
+          {urlResult.failed.length} 个
           {urlResult.failed.length > 0 && (
             <div>失败原因：{urlResult.failed.map((item) => item.error).join('；')}</div>
           )}
@@ -294,9 +361,15 @@ export function BatchPanel() {
 
       {mode === 'library' && !running && result && (
         <div className="settings-hint">
-          成功 {result.succeeded} 个，失败 {result.failed.length} 个
+          {result.cancelled ? '已停止' : '完成'}：成功 {result.succeeded} 个，失败{' '}
+          {result.failed.length} 个
           {result.failed.length > 0 && (
             <div>失败原因：{result.failed.map((item) => item.error).join('；')}</div>
+          )}
+          {result.failed.length > 0 && (
+            <button className="mini-btn batch-retry" onClick={retryFailed}>
+              <RotateCcw size={11} /> 重试失败项（{result.failed.length}）
+            </button>
           )}
         </div>
       )}
@@ -306,8 +379,22 @@ export function BatchPanel() {
       )}
 
       {mode === 'library' && (
+        <div className="library-search batch-filter">
+          <Search size={13} />
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="筛选标题或 UP…"
+            spellCheck={false}
+          />
+        </div>
+      )}
+
+      {mode === 'library' && (
       <div className="batch-list">
-        {videos.map((video) => (
+        {visibleVideos.map((video) => {
+          const state = itemStates[String(video.id)];
+          return (
           <label
             key={video.id}
             className={`batch-row${selected.has(video.id) ? ' is-selected' : ''}${
@@ -329,6 +416,14 @@ export function BatchPanel() {
                 {video.duration ? ` · ${Math.round(video.duration / 60)} 分钟` : ''}
               </div>
             </div>
+            {state && (
+              <span
+                className={`batch-state is-${state.status}`}
+                title={state.error || state.message || ''}
+              >
+                {ITEM_LABEL[state.status]}
+              </span>
+            )}
             {running && !removedIds.has(video.id) && (
               <button
                 className="mini-btn"
@@ -342,7 +437,8 @@ export function BatchPanel() {
               </button>
             )}
           </label>
-        ))}
+          );
+        })}
       </div>
       )}
     </div>

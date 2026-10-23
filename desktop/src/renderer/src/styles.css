@@ -3409,3 +3409,270 @@ button:disabled {
 .mini-btn.danger:hover {
   background: #9c4434;
 }
+
+/* ---------- 任务中心 ---------- */
+.task-toggle {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.task-toggle:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.task-toggle.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.task-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 9px;
+  line-height: 13px;
+}
+
+.task-drawer {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 56px;
+  z-index: 70;
+  max-height: min(70%, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.task-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-head-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.task-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.task-type {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+.job-chip {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.7;
+}
+
+.job-chip.is-running {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.job-chip.is-done {
+  background: rgba(79, 127, 104, 0.14);
+  color: var(--ok);
+}
+
+.job-chip.is-failed {
+  background: rgba(180, 81, 63, 0.14);
+  color: #b4513f;
+}
+
+.job-chip.is-cancelled {
+  background: var(--surface-3);
+  color: var(--faint);
+}
+
+.job-chip.is-paused {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.task-meta {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.task-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.task-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.task-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.task-item-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.task-item-dot.is-running {
+  background: var(--accent);
+}
+
+.task-item-dot.is-done {
+  background: var(--ok);
+}
+
+.task-item-dot.is-failed {
+  background: #b4513f;
+}
+
+.task-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-item-status {
+  flex: 0 0 auto;
+  font-size: 9.5px;
+  color: var(--faint);
+}
+
+.task-item-status.is-failed {
+  color: #b4513f;
+}
+
+.task-item-error {
+  font-size: 10px;
+  line-height: 1.4;
+  color: #b4513f;
+}
+
+.task-more {
+  align-self: flex-start;
+  padding: 2px 0;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.task-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.batch-filter {
+  margin-top: 2px;
+}
+
+.batch-state {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--faint);
+  font-size: 9.5px;
+  line-height: 1.7;
+}
+
+.batch-state.is-running {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.batch-state.is-done {
+  background: rgba(79, 127, 104, 0.14);
+  color: var(--ok);
+}
+
+.batch-state.is-failed {
+  background: rgba(180, 81, 63, 0.14);
+  color: #b4513f;
+}
+
+.batch-retry {
+  margin-top: 6px;
+}

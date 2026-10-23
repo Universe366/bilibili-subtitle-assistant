@@ -11,7 +11,7 @@ import {
   Settings,
   Sparkles
 } from 'lucide-react';
-import type { BridgeStatus, Section, TabInfo } from '../../../shared/types';
+import type { BridgeStatus, JobRecord, Section, TabInfo } from '../../../shared/types';
 import { SubtitlesPanel } from './SubtitlesPanel';
 import { ChatPanel } from './ChatPanel';
 import { BatchPanel } from './BatchPanel';
@@ -19,6 +19,7 @@ import { HistoryPanel } from './HistoryPanel';
 import { LibraryPanel } from './LibraryPanel';
 import { SummaryPanel } from './SummaryPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { TaskCenter } from './TaskCenter';
 
 type IconComponent = ComponentType<{ size?: number | string; className?: string }>;
 
@@ -69,6 +70,8 @@ export function Sidebar({
 }) {
   const [version, setVersion] = useState('');
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
+  const [jobs, setJobs] = useState<JobRecord[]>([]);
+  const [taskOpen, setTaskOpen] = useState(false);
   const [visited, setVisited] = useState<Set<Section>>(() => new Set([section]));
   const dragActiveRef = useRef(false);
 
@@ -88,6 +91,22 @@ export function Sidebar({
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void window.bsub.listJobs().then((response) => {
+      if (alive && response.ok) setJobs(response.data);
+    });
+    const off = window.bsub.onJobsChanged((next) => setJobs(next));
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+
+  const activeJobCount = jobs.filter(
+    (job) => job.status === 'running' || job.status === 'paused'
+  ).length;
 
   const bridgeLabel = (() => {
     if (!bridge) return '桥状态未知';
@@ -316,8 +335,20 @@ export function Sidebar({
         <span className={`dot${bridge?.running ? ' is-on' : ''}`} />
         <span>{bridgeLabel}</span>
         {tabCount > 0 && <span>· {tabCount} 标签</span>}
+        <button
+          className={`task-toggle${activeJobCount ? ' is-active' : ''}`}
+          title={activeJobCount ? `${activeJobCount} 个任务进行中` : '任务中心'}
+          onClick={() => setTaskOpen((value) => !value)}
+        >
+          <ListChecks size={12} />
+          {activeJobCount > 0 && <span className="task-count">{activeJobCount}</span>}
+        </button>
         <span className="side-version">{version ? `v${version}` : ''}</span>
       </div>
+
+      {!collapsed && (
+        <TaskCenter open={taskOpen} jobs={jobs} onClose={() => setTaskOpen(false)} />
+      )}
     </aside>
   );
 }

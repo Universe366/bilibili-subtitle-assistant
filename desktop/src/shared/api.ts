@@ -59,7 +59,8 @@ import type {
   LibraryList,
   LibrarySearchResult,
   LibraryDetail,
-  LibrarySort
+  LibrarySort,
+  JobRecord
 } from './types';
 
 export interface BsubApi {
@@ -192,6 +193,13 @@ export interface BsubApi {
   getTranscriptions(): Promise<Result<LibraryTranscriptionItem[]>>;
   deleteHistory(id: number): Promise<Result<{ removed: boolean }>>;
   clearHistory(): Promise<Result<{ removed: number }>>;
+
+  listJobs(): Promise<Result<JobRecord[]>>;
+  getJob(id: string): Promise<Result<JobRecord | null>>;
+  cancelJob(id: string): Promise<void>;
+  retryJob(id: string): Promise<Result<{ requestId: string }>>;
+  clearFinishedJobs(): Promise<Result<{ removed: number }>>;
+  onJobsChanged(cb: (jobs: JobRecord[]) => void): () => void;
 
   checkQuality(info: PageInfo, lines: SubtitleLine[]): Promise<Result<QualityReport>>;
   generateChapters(info: PageInfo, lines: SubtitleLine[]): Promise<Result<Chapter[]>>;

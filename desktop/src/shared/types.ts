@@ -188,6 +188,44 @@ export interface LibraryDetail {
 
 export type LibrarySort = 'updated' | 'created' | 'title' | 'duration';
 
+export type JobType =
+  | 'summary'
+  | 'asr'
+  | 'translate'
+  | 'optimize'
+  | 'batch-summary'
+  | 'url-batch';
+
+export type JobStatus = 'running' | 'paused' | 'done' | 'failed' | 'cancelled';
+
+export type JobItemStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+export interface JobItem {
+  targetId: string;
+  title: string;
+  status: JobItemStatus;
+  progress: number;
+  message: string;
+  error: string | null;
+  updatedAt: number;
+}
+
+export interface JobRecord {
+  id: string;
+  type: JobType;
+  title: string;
+  status: JobStatus;
+  progress: number;
+  message: string;
+  error: string | null;
+  /** 任务参数（例如链接批量是否顺带总结），供“重试失败项”使用 */
+  metaJson: string | null;
+  createdAt: number;
+  updatedAt: number;
+  finishedAt: number | null;
+  items: JobItem[];
+}
+
 export interface LibraryHistoryItem {
   id: number;
   videoId: number;
@@ -256,6 +294,8 @@ export interface BatchDoneEvent {
   requestId: string;
   succeeded: number;
   failed: Array<{ videoId: number; title: string; error: string }>;
+  /** 用户主动停止：已完成的条目仍然有效 */
+  cancelled?: boolean;
 }
 
 export interface BatchErrorEvent {
@@ -277,6 +317,7 @@ export interface UrlBatchDoneEvent {
   requestId: string;
   succeeded: number;
   failed: Array<{ url: string; title?: string; error: string }>;
+  cancelled?: boolean;
 }
 
 export interface UrlBatchErrorEvent {
