@@ -161,7 +161,7 @@ export function GlobalSearch({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索库、字幕、总结、标签、合集…"
+            placeholder="搜索库、字幕、总结、标签、合集、笔记…"
             spellCheck={false}
           />
           {loading && <Loader2 size={14} className="spin" />}
@@ -172,7 +172,7 @@ export function GlobalSearch({
 
         {!query.trim() && (
           <div className="gs-empty">
-            输入关键词，同时搜索库内视频（含标签/合集）、字幕正文和已保存的总结
+            输入关键词，同时搜索库内视频（含标签/合集/笔记）、字幕正文和已保存的总结
             <div className="gs-hint">↑ ↓ 选择 · Enter 打开</div>
           </div>
         )}

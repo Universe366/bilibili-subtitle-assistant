@@ -64,6 +64,16 @@ function fmtDateTime(ms: number): string {
   }
 }
 
+function safeFilename(title: string): string {
+  return (
+    String(title || '笔记')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 60) || '笔记'
+  );
+}
+
 export function LibraryPanel() {
   const [list, setList] = useState<LibraryList | null>(null);
   const [query, setQuery] = useState('');
@@ -82,6 +92,7 @@ export function LibraryPanel() {
   const [noteDirty, setNoteDirty] = useState(false);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteNotice, setNoteNotice] = useState('');
+  const [notePreview, setNotePreview] = useState(false);
   const [lineLimit, setLineLimit] = useState(LINE_PAGE);
   const [pendingDelete, setPendingDelete] = useState<LibraryVideo | null>(null);
   const [versions, setVersions] = useState<SummaryVersionMeta[]>([]);
@@ -197,6 +208,7 @@ export function LibraryPanel() {
     setNoteDraft(detail?.note?.content ?? '');
     setNoteDirty(false);
     setNoteNotice('');
+    setNotePreview(false);
   }, [detail?.video.id]);
 
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
@@ -358,6 +370,27 @@ export function LibraryPanel() {
   const flash = (text: string) => {
     setNotice(text);
     window.setTimeout(() => setNotice(''), 3500);
+  };
+
+  const exportNote = async () => {
+    if (!detail || !noteDraft.trim()) return;
+    const content = [
+      `# ${detail.video.title || '未命名视频'} · 笔记`,
+      '',
+      `> ${detail.video.owner || '未知 UP'} · ${fmtDateTime(Date.now())}`,
+      '',
+      noteDraft.trim(),
+      ''
+    ].join('\n');
+    const response = await window.bsub.saveTextFile({
+      content,
+      filename: `笔记-${safeFilename(detail.video.title)}.md`
+    });
+    if (!response.ok) {
+      setError(response.error);
+    } else if ('path' in response.data) {
+      flash(`已导出 ${response.data.path.split(/[\\/]/).pop()}`);
+    }
   };
 
   const exitSelect = () => {
@@ -808,22 +841,28 @@ export function LibraryPanel() {
 
         {detailTab === 'note' && detail && (
           <div className="note-panel">
-            <textarea
-              className="note-textarea"
-              value={noteDraft}
-              placeholder="写点笔记…（Ctrl+S 保存）"
-              spellCheck={false}
-              onChange={(event) => {
-                setNoteDraft(event.target.value);
-                setNoteDirty(true);
-              }}
-              onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-                  event.preventDefault();
-                  void saveNoteDraft();
-                }
-              }}
-            />
+            {notePreview ? (
+              <div className="note-preview">
+                <Markdown content={noteDraft.trim() || '*还没有内容*'} />
+              </div>
+            ) : (
+              <textarea
+                className="note-textarea"
+                value={noteDraft}
+                placeholder="写点笔记…（Ctrl+S 保存）"
+                spellCheck={false}
+                onChange={(event) => {
+                  setNoteDraft(event.target.value);
+                  setNoteDirty(true);
+                }}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                    event.preventDefault();
+                    void saveNoteDraft();
+                  }
+                }}
+              />
+            )}
             <div className="note-foot">
               <span>
                 {noteDraft.length} 字
@@ -833,13 +872,25 @@ export function LibraryPanel() {
                     ? ` · 保存于 ${fmtDateTime(detail.note.updatedAt)}`
                     : ' · 空笔记不会保存'}
               </span>
-              <button
-                className="mini-btn primary"
-                disabled={!noteDirty || noteSaving}
-                onClick={() => void saveNoteDraft()}
-              >
-                {noteSaving ? '保存中…' : '保存'}
-              </button>
+              <div className="note-actions">
+                <button className="mini-btn" onClick={() => setNotePreview((value) => !value)}>
+                  {notePreview ? '编辑' : '预览'}
+                </button>
+                <button
+                  className="mini-btn"
+                  disabled={!noteDraft.trim()}
+                  onClick={() => void exportNote()}
+                >
+                  导出
+                </button>
+                <button
+                  className="mini-btn primary"
+                  disabled={!noteDirty || noteSaving}
+                  onClick={() => void saveNoteDraft()}
+                >
+                  {noteSaving ? '保存中…' : '保存'}
+                </button>
+              </div>
             </div>
             {noteNotice && <div className="status-line">{noteNotice}</div>}
           </div>
@@ -903,7 +954,7 @@ export function LibraryPanel() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索标题、UP、标签、合集或字幕…"
+          placeholder="搜索标题、UP、标签、合集、笔记或字幕…"
           spellCheck={false}
         />
       </div>
