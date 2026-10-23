@@ -66,6 +66,7 @@ import type {
   LibrarySort,
   LibraryTag,
   LibraryCollection,
+  LibraryNote,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -120,6 +121,12 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:list', sort) as Promise<Result<LibraryList>>,
   getLibraryItem: (id: number) =>
     ipcRenderer.invoke('library:get', id) as Promise<Result<LibraryDetail>>,
+  getNote: (videoId: number) =>
+    ipcRenderer.invoke('library:note', videoId) as Promise<Result<LibraryNote | null>>,
+  saveNote: (videoId: number, content: string) =>
+    ipcRenderer.invoke('library:note-save', { videoId, content }) as Promise<
+      Result<LibraryNote | null>
+    >,
   listTags: () => ipcRenderer.invoke('library:tags') as Promise<Result<LibraryTag[]>>,
   setLibraryTags: (videoId: number, tags: string[]) =>
     ipcRenderer.invoke('library:set-tags', { videoId, tags }) as Promise<

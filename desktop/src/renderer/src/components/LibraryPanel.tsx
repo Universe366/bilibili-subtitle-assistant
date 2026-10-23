@@ -77,7 +77,11 @@ export function LibraryPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<LibraryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailTab, setDetailTab] = useState<'subtitles' | 'summary'>('subtitles');
+  const [detailTab, setDetailTab] = useState<'subtitles' | 'summary' | 'note'>('subtitles');
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteDirty, setNoteDirty] = useState(false);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteNotice, setNoteNotice] = useState('');
   const [lineLimit, setLineLimit] = useState(LINE_PAGE);
   const [pendingDelete, setPendingDelete] = useState<LibraryVideo | null>(null);
   const [versions, setVersions] = useState<SummaryVersionMeta[]>([]);
@@ -187,6 +191,13 @@ export function LibraryPanel() {
       setSearchNonce((value) => value + 1);
     });
   }, [load, loadTags, loadCollections, selectedId, fetchDetail]);
+
+  // 切换条目时重置笔记草稿；同一条目内保存/刷新不覆盖未保存内容。
+  useEffect(() => {
+    setNoteDraft(detail?.note?.content ?? '');
+    setNoteDirty(false);
+    setNoteNotice('');
+  }, [detail?.video.id]);
 
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
   useEffect(() => {
@@ -323,6 +334,25 @@ export function LibraryPanel() {
   const removeTag = (name: string) => {
     if (!detail) return;
     void saveTags(detail.video.tags.filter((tag) => tag !== name));
+  };
+
+  const saveNoteDraft = async () => {
+    if (!detail) return;
+    setNoteSaving(true);
+    try {
+      const response = await window.bsub.saveNote(detail.video.id, noteDraft);
+      if (response.ok) {
+        setDetail((previous) => (previous ? { ...previous, note: response.data } : previous));
+        setNoteDirty(false);
+        const text = response.data ? '笔记已保存' : '空笔记已清除';
+        setNoteNotice(text);
+        window.setTimeout(() => setNoteNotice(''), 3000);
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setNoteSaving(false);
+    }
   };
 
   const flash = (text: string) => {
@@ -625,6 +655,12 @@ export function LibraryPanel() {
           >
             总结{detail?.summary ? '' : ' —'}
           </button>
+          <button
+            className={`mini-btn${detailTab === 'note' ? ' is-active' : ''}`}
+            onClick={() => setDetailTab('note')}
+          >
+            笔记{detail?.note ? ' •' : ''}
+          </button>
         </div>
 
         {error && <div className="status-line error">{error}</div>}
@@ -767,6 +803,45 @@ export function LibraryPanel() {
             <div className="panel-hint">
               打开视频后在「总结」面板生成，会自动保存到这里，之后可以离线查看。
             </div>
+          </div>
+        )}
+
+        {detailTab === 'note' && detail && (
+          <div className="note-panel">
+            <textarea
+              className="note-textarea"
+              value={noteDraft}
+              placeholder="写点笔记…（Ctrl+S 保存）"
+              spellCheck={false}
+              onChange={(event) => {
+                setNoteDraft(event.target.value);
+                setNoteDirty(true);
+              }}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                  event.preventDefault();
+                  void saveNoteDraft();
+                }
+              }}
+            />
+            <div className="note-foot">
+              <span>
+                {noteDraft.length} 字
+                {noteDirty
+                  ? ' · 未保存'
+                  : detail.note
+                    ? ` · 保存于 ${fmtDateTime(detail.note.updatedAt)}`
+                    : ' · 空笔记不会保存'}
+              </span>
+              <button
+                className="mini-btn primary"
+                disabled={!noteDirty || noteSaving}
+                onClick={() => void saveNoteDraft()}
+              >
+                {noteSaving ? '保存中…' : '保存'}
+              </button>
+            </div>
+            {noteNotice && <div className="status-line">{noteNotice}</div>}
           </div>
         )}
 

@@ -19,6 +19,7 @@ import type {
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
+  LibraryNote,
   LibrarySearchMatch,
   LibrarySearchResult,
   LibraryStats,
@@ -82,6 +83,13 @@ CREATE TABLE IF NOT EXISTS summaries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_summaries_video ON summaries(video_id);
+
+CREATE TABLE IF NOT EXISTS notes (
+  video_id INTEGER PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+  content_md TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS summary_versions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1219,8 +1227,46 @@ export function getLibraryDetail(videoId: number): LibraryDetail {
           model: String(summaryRow.model || ''),
           updatedAt: toNumber(summaryRow.updated_at)
         }
-      : null
+      : null,
+    note: getNote(Number(videoId))
   };
+}
+
+export function getNote(videoId: number): LibraryNote | null {
+  const database = requireDb();
+  const row = database
+    .prepare('SELECT content_md, updated_at FROM notes WHERE video_id = ?')
+    .get(Number(videoId)) as { content_md: string; updated_at: number } | undefined;
+  if (!row) return null;
+  return {
+    videoId: Number(videoId),
+    content: String(row.content_md || ''),
+    updatedAt: toNumber(row.updated_at)
+  };
+}
+
+export function saveNote(videoId: number, content: string): LibraryNote | null {
+  const database = requireDb();
+  const id = Number(videoId);
+  if (!database.prepare('SELECT id FROM videos WHERE id = ?').get(id)) {
+    throw new Error('视频不存在');
+  }
+  const text = String(content || '');
+  if (!text.trim()) {
+    database.prepare('DELETE FROM notes WHERE video_id = ?').run(id);
+    return null;
+  }
+  const now = Date.now();
+  database
+    .prepare(
+      `INSERT INTO notes (video_id, content_md, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(video_id) DO UPDATE SET
+         content_md = excluded.content_md,
+         updated_at = excluded.updated_at`
+    )
+    .run(id, text, now, now);
+  return { videoId: id, content: text, updatedAt: now };
 }
 
 export function listHistory(limit = 100): LibraryHistoryItem[] {

@@ -194,11 +194,18 @@ export interface LibraryList {
   total: number;
 }
 
+export interface LibraryNote {
+  videoId: number;
+  content: string;
+  updatedAt: number;
+}
+
 export interface LibraryDetail {
   video: LibraryVideo;
   /** 没有入库字幕时（只存过总结）为 null */
   bundle: LibraryBundle | null;
   summary: StoredSummary | null;
+  note: LibraryNote | null;
 }
 
 export type LibrarySort = 'updated' | 'created' | 'title' | 'duration';

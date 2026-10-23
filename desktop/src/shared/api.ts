@@ -64,6 +64,7 @@ import type {
   LibrarySort,
   LibraryTag,
   LibraryCollection,
+  LibraryNote,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -95,6 +96,8 @@ export interface BsubApi {
   ingestLibrary(payload: LibraryIngestPayload): Promise<Result<LibraryIngestResult>>;
   listLibrary(sort?: LibrarySort): Promise<Result<LibraryList>>;
   getLibraryItem(id: number): Promise<Result<LibraryDetail>>;
+  getNote(videoId: number): Promise<Result<LibraryNote | null>>;
+  saveNote(videoId: number, content: string): Promise<Result<LibraryNote | null>>;
   listTags(): Promise<Result<LibraryTag[]>>;
   setLibraryTags(videoId: number, tags: string[]): Promise<Result<{ tags: string[] }>>;
   renameTag(name: string, newName: string): Promise<Result<{ renamed: boolean }>>;

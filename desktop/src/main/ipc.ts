@@ -65,6 +65,7 @@ import type {
   LibrarySort,
   LibraryTag,
   LibraryCollection,
+  LibraryNote,
   JobRecord,
   GlobalSearchResult
 } from '../shared/types';
@@ -84,6 +85,7 @@ import {
   finishJob,
   getJob,
   getLibraryDetail,
+  getNote,
   getSummaryFor,
   getSummaryVersion,
   globalSearch,
@@ -101,6 +103,7 @@ import {
   renameCollection,
   renameTag,
   restoreSummaryVersion,
+  saveNote,
   saveSummary,
   searchLibrary,
   setJobsListener,
@@ -777,6 +780,28 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return failure<LibraryDetail>(error);
     }
   });
+
+  ipcMain.handle('library:note', (_event, videoId: number): Result<LibraryNote | null> => {
+    try {
+      return { ok: true, data: getNote(Number(videoId)) };
+    } catch (error) {
+      return failure<LibraryNote | null>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'library:note-save',
+    (_event, payload: { videoId: number; content: string }): Result<LibraryNote | null> => {
+      try {
+        return {
+          ok: true,
+          data: saveNote(Number(payload?.videoId), String(payload?.content || ''))
+        };
+      } catch (error) {
+        return failure<LibraryNote | null>(error);
+      }
+    }
+  );
 
   ipcMain.handle('library:search', async (_event, query: string): Promise<Result<LibrarySearchResult>> => {
     try {
