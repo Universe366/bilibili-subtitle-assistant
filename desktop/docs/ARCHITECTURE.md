@@ -176,6 +176,8 @@ SPA 切页瞬间拿到上一个视频的预取轨。
 - 启动时 `markStaleJobs()` 把上次遗留的 running/paused 标成失败，避免任务中心永远转圈；
 - 批量停止走 `AbortSignal`：`batchSummarize` / `batchUrls` 返回 `cancelled` 而不是抛错，
   已完成条目保留，未开始项由调用方标记为 skipped；
+- 批量总结用 worker 池支持 1–4 并发；`paused` 只停止取新任务，已经发出的请求会跑完，
+  `removed` 只对尚未开始的条目生效。并发数写进 job 的 `meta_json`，重试失败项时沿用；
 - 新增长任务时：创建 job → 进度写 `updateJob` → 结束必须 `finishJob`，
   否则任务会一直停在“进行中”。
 

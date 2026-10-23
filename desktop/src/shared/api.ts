@@ -185,7 +185,10 @@ export interface BsubApi {
   onOptimizeDone(cb: (event: OptimizeDoneEvent) => void): () => void;
   onOptimizeError(cb: (event: OptimizeErrorEvent) => void): () => void;
 
-  batchSummarize(videoIds: number[]): Promise<Result<{ requestId: string }>>;
+  batchSummarize(
+    videoIds: number[],
+    concurrency?: number
+  ): Promise<Result<{ requestId: string }>>;
   cancelBatch(requestId: string): Promise<void>;
   pauseBatch(requestId: string): Promise<void>;
   resumeBatch(requestId: string): Promise<void>;

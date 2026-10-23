@@ -144,6 +144,8 @@ export interface LibraryVideo {
   tags: string[];
   trackCount: number;
   lineCount: number;
+  /** 当前条目全部字幕轨的字符数（用于批量成本预估） */
+  chars: number;
 }
 
 export interface LibraryTag {

@@ -364,7 +364,9 @@ const VIDEO_COLUMNS = `
          (SELECT s.model FROM summaries s WHERE s.video_id = v.id
             ORDER BY s.updated_at DESC LIMIT 1) AS summary_model,
          (SELECT group_concat(tg.name, char(31)) FROM video_tags vt
-            JOIN tags tg ON tg.id = vt.tag_id WHERE vt.video_id = v.id) AS tags
+            JOIN tags tg ON tg.id = vt.tag_id WHERE vt.video_id = v.id) AS tags,
+         (SELECT COALESCE(SUM(length(sg.text)), 0) FROM segments sg
+            JOIN tracks t2 ON t2.id = sg.track_id WHERE t2.video_id = v.id) AS char_count
   FROM videos v`;
 
 function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
@@ -384,7 +386,8 @@ function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
     summaryModel: row.summary_model == null ? undefined : String(row.summary_model),
     tags: row.tags == null ? [] : String(row.tags).split('\u001f').filter(Boolean),
     trackCount: toNumber(row.track_count),
-    lineCount: toNumber(row.line_count)
+    lineCount: toNumber(row.line_count),
+    chars: toNumber(row.char_count)
   };
 }
 

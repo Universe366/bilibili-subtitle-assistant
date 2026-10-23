@@ -279,8 +279,8 @@ const api: BsubApi = {
   onOptimizeError: (cb: (event: OptimizeErrorEvent) => void) =>
     on<OptimizeErrorEvent>('optimize:error', cb),
 
-  batchSummarize: (videoIds: number[]) =>
-    ipcRenderer.invoke('batch:summarize', { videoIds }) as Promise<
+  batchSummarize: (videoIds: number[], concurrency?: number) =>
+    ipcRenderer.invoke('batch:summarize', { videoIds, concurrency }) as Promise<
       Result<{ requestId: string }>
     >,
   cancelBatch: (requestId: string) =>

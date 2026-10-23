@@ -4031,3 +4031,26 @@ button:disabled {
 .tag-filter {
   max-width: 96px;
 }
+
+/* ---------- 批量并发 / 预估 ---------- */
+.batch-plan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.batch-concurrency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.batch-estimate {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}

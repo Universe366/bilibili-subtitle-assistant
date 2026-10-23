@@ -195,12 +195,14 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   const startBatchSummary = (
     inputIds: number[],
-    requestIdInput?: string
+    requestIdInput?: string,
+    concurrencyInput?: number
   ): Result<{ requestId: string }> => {
     const ids = [
       ...new Set((Array.isArray(inputIds) ? inputIds : []).filter((id) => Number.isFinite(id) && id > 0))
     ];
     if (!ids.length) return { ok: false, error: '没有选择视频' };
+    const concurrency = Math.min(4, Math.max(1, Math.round(Number(concurrencyInput) || 1)));
 
     const requestId = requestIdInput || randomUUID();
     const controller = new AbortController();
@@ -213,7 +215,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       createJob({
         id: requestId,
         type: 'batch-summary',
-        title: `批量总结 · ${ids.length} 个视频`
+        title: `批量总结 · ${ids.length} 个视频`,
+        meta: { concurrency }
       })
     );
     for (const id of ids) {
@@ -268,7 +271,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
                   message: '已移除'
                 })
               )
-          }
+          },
+          { concurrency }
         );
 
         if (result.cancelled) {
@@ -499,7 +503,15 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     if (!job) return { ok: false, error: '任务不存在' };
     const failed = job.items.filter((item) => item.status === 'failed').map((item) => item.targetId);
     if (!failed.length) return { ok: false, error: '没有失败项' };
-    if (job.type === 'batch-summary') return startBatchSummary(failed.map(Number));
+    if (job.type === 'batch-summary') {
+      let concurrency = 1;
+      try {
+        concurrency = Number(JSON.parse(job.metaJson || '{}').concurrency) || 1;
+      } catch {
+        // 旧任务没有 meta，按串行重试
+      }
+      return startBatchSummary(failed.map(Number), undefined, concurrency);
+    }
     if (job.type === 'url-batch') {
       let summarize = true;
       try {
@@ -1423,8 +1435,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle(
     'batch:summarize',
-    async (_event, payload: { requestId: string; videoIds: number[] }) =>
-      startBatchSummary(payload?.videoIds || [], payload?.requestId)
+    async (_event, payload: { requestId: string; videoIds: number[]; concurrency?: number }) =>
+      startBatchSummary(payload?.videoIds || [], payload?.requestId, payload?.concurrency)
   );
 
   ipcMain.handle('batch:pause', (_event, requestId: string) => {

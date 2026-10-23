@@ -17,10 +17,16 @@ const ITEM_LABEL: Record<JobItem['status'], string> = {
   skipped: '跳过'
 };
 
+function fmtChars(chars: number): string {
+  if (chars >= 10000) return `${(chars / 10000).toFixed(1)} 万字`;
+  return `${Math.max(0, Math.round(chars)).toLocaleString('zh-CN')} 字`;
+}
+
 export function BatchPanel() {
   const [videos, setVideos] = useState<LibraryVideo[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState('');
+  const [concurrency, setConcurrency] = useState(2);
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
@@ -142,7 +148,7 @@ export function BatchPanel() {
     setError('');
     setResult(null);
     setItemStates({});
-    const response = await window.bsub.batchSummarize(ids);
+    const response = await window.bsub.batchSummarize(ids, concurrency);
     if (response.ok) {
       requestRef.current = response.data.requestId;
       setJobId(response.data.requestId);
@@ -211,6 +217,15 @@ export function BatchPanel() {
         `${video.title} ${video.owner}`.toLowerCase().includes(keyword)
       )
     : videos;
+
+  const selectedVideos = videos.filter((video) => selected.has(video.id));
+  const selectedChars = selectedVideos.reduce((sum, video) => sum + (video.chars || 0), 0);
+  // 与 summarize 的分段阈值保持一致：4 万字以内 1 次，超过后每 4 万字 +1 次合并。
+  const estimatedCalls = selectedVideos.reduce((sum, video) => {
+    const chars = Math.max(0, video.chars || 0);
+    const chunks = Math.max(1, Math.ceil(chars / 40000));
+    return sum + chunks + (chunks > 1 ? 1 : 0);
+  }, 0);
 
   return (
     <div className="panel">
@@ -387,6 +402,31 @@ export function BatchPanel() {
             placeholder="筛选标题或 UP…"
             spellCheck={false}
           />
+        </div>
+      )}
+
+      {mode === 'library' && videos.length > 0 && (
+        <div className="batch-plan">
+          <label className="batch-concurrency">
+            并发
+            <select
+              className="mini-select"
+              value={concurrency}
+              disabled={running}
+              onChange={(event) => setConcurrency(Number(event.target.value))}
+            >
+              {[1, 2, 3, 4].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="batch-estimate">
+            {selected.size
+              ? `已选 ${selected.size} 个 · ${fmtChars(selectedChars)} · 预计 ≥${estimatedCalls} 次请求`
+              : '勾选视频后可看到字符量与请求预估'}
+          </span>
         </div>
       )}
 
