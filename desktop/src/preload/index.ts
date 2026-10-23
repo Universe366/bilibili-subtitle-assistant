@@ -131,6 +131,18 @@ const api: BsubApi = {
     >,
   deleteTag: (name: string) =>
     ipcRenderer.invoke('library:tag-delete', name) as Promise<Result<{ removed: boolean }>>,
+  bulkTag: (videoIds: number[], name: string) =>
+    ipcRenderer.invoke('library:bulk-tag', { videoIds, name }) as Promise<
+      Result<{ linked: number }>
+    >,
+  bulkCollection: (videoIds: number[], name: string) =>
+    ipcRenderer.invoke('library:bulk-collection', { videoIds, name }) as Promise<
+      Result<{ linked: number }>
+    >,
+  bulkRemove: (videoIds: number[]) =>
+    ipcRenderer.invoke('library:bulk-remove', { videoIds }) as Promise<
+      Result<{ removed: number }>
+    >,
   listCollections: () =>
     ipcRenderer.invoke('library:collections') as Promise<Result<LibraryCollection[]>>,
   addToCollection: (videoId: number, name: string) =>

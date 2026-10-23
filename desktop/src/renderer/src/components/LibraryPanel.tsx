@@ -99,6 +99,12 @@ export function LibraryPanel() {
   const [tagRenameName, setTagRenameName] = useState('');
   const [tagRenameDraft, setTagRenameDraft] = useState('');
   const [pendingTagDelete, setPendingTagDelete] = useState<LibraryTag | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkKind, setBulkKind] = useState<'tag' | 'collection'>('tag');
+  const [bulkName, setBulkName] = useState('');
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -317,6 +323,59 @@ export function LibraryPanel() {
   const removeTag = (name: string) => {
     if (!detail) return;
     void saveTags(detail.video.tags.filter((tag) => tag !== name));
+  };
+
+  const flash = (text: string) => {
+    setNotice(text);
+    window.setTimeout(() => setNotice(''), 3500);
+  };
+
+  const exitSelect = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkName('');
+    setBulkDeleteOpen(false);
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const applyBulk = async () => {
+    const name = bulkName.trim();
+    if (!name || !selectedIds.size) return;
+    const ids = [...selectedIds];
+    const response =
+      bulkKind === 'tag'
+        ? await window.bsub.bulkTag(ids, name)
+        : await window.bsub.bulkCollection(ids, name);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    const label = bulkKind === 'tag' ? '标签' : '合集';
+    flash(`已为 ${response.data.linked} 个条目添加${label}「${name}」`);
+    setBulkName('');
+    await loadTags();
+    await loadCollections();
+  };
+
+  const confirmBulkDelete = async () => {
+    setBulkDeleteOpen(false);
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const response = await window.bsub.bulkRemove(ids);
+    if (response.ok) {
+      flash(`已删除 ${response.data.removed} 个条目`);
+      exitSelect();
+    } else {
+      setError(response.error);
+    }
   };
 
   const addToCollection = async (name: string) => {
@@ -744,6 +803,20 @@ export function LibraryPanel() {
               </option>
             ))}
           </select>
+          <button
+            className={`mini-btn${selectMode ? ' is-active' : ''}`}
+            title="多选：批量加标签/合集或删除"
+            disabled={!list?.videos.length}
+            onClick={() => {
+              if (selectMode) exitSelect();
+              else {
+                setSelectMode(true);
+                setSelectedIds(new Set());
+              }
+            }}
+          >
+            多选
+          </button>
           <button className="icon-btn" title="刷新" onClick={() => void load()}>
             <RefreshCw size={13} className={loading ? 'spin' : ''} />
           </button>
@@ -799,6 +872,58 @@ export function LibraryPanel() {
           )}
         </div>
       )}
+
+      {selectMode && (
+        <div className="bulk-bar">
+          <span className="bulk-count">已选 {selectedIds.size}</span>
+          <button
+            className="mini-btn"
+            disabled={!visibleVideos.length}
+            onClick={() => setSelectedIds(new Set(visibleVideos.map((video) => video.id)))}
+          >
+            全选
+          </button>
+          <select
+            className="mini-select"
+            value={bulkKind}
+            onChange={(event) => setBulkKind(event.target.value as 'tag' | 'collection')}
+          >
+            <option value="tag">标签</option>
+            <option value="collection">合集</option>
+          </select>
+          <input
+            className="tag-input bulk-name"
+            value={bulkName}
+            placeholder="名称，回车应用"
+            onChange={(event) => setBulkName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void applyBulk();
+              }
+            }}
+          />
+          <button
+            className="mini-btn"
+            disabled={!selectedIds.size || !bulkName.trim()}
+            onClick={() => void applyBulk()}
+          >
+            应用
+          </button>
+          <button
+            className="mini-btn danger"
+            disabled={!selectedIds.size}
+            onClick={() => setBulkDeleteOpen(true)}
+          >
+            删除
+          </button>
+          <button className="mini-btn" onClick={exitSelect}>
+            取消
+          </button>
+        </div>
+      )}
+
+      {notice && <div className="status-line">{notice}</div>}
 
       {stats && (
         <div className="library-stats">
@@ -900,14 +1025,26 @@ export function LibraryPanel() {
           {visibleVideos.map((video) => (
             <div
               key={video.id}
-              className="lib-video"
+              className={`lib-video${selectMode && selectedIds.has(video.id) ? ' is-selected' : ''}`}
               role="button"
               tabIndex={0}
-              onClick={() => openDetail(video)}
+              onClick={() => (selectMode ? toggleSelect(video.id) : openDetail(video))}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') openDetail(video);
+                if (event.key === 'Enter') {
+                  if (selectMode) toggleSelect(video.id);
+                  else openDetail(video);
+                }
               }}
             >
+              {selectMode && (
+                <input
+                  type="checkbox"
+                  className="bulk-check"
+                  checked={selectedIds.has(video.id)}
+                  onChange={() => toggleSelect(video.id)}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              )}
               {video.cover ? (
                 <img className="lib-cover" src={video.cover} alt="" />
               ) : (
@@ -934,16 +1071,18 @@ export function LibraryPanel() {
                       : `入库于 ${fmtDate(video.createdAt)}`}
                 </div>
               </div>
-              <button
-                className="lib-delete"
-                title="从库中删除"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setPendingDelete(video);
-                }}
-              >
-                <Trash2 size={13} />
-              </button>
+              {!selectMode && (
+                <button
+                  className="lib-delete"
+                  title="从库中删除"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPendingDelete(video);
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
           ))}
 
@@ -1131,6 +1270,15 @@ export function LibraryPanel() {
         confirmText="删除"
         onConfirm={() => void confirmTagDelete()}
         onCancel={() => setPendingTagDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title={`删除选中的 ${selectedIds.size} 个条目？`}
+        description="这些条目的字幕、总结、标签/合集关联和搜索索引会一起删除，无法撤销。"
+        confirmText="删除"
+        onConfirm={() => void confirmBulkDelete()}
+        onCancel={() => setBulkDeleteOpen(false)}
       />
     </div>
   );

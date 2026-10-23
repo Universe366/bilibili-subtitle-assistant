@@ -4165,3 +4165,34 @@ button:disabled {
   font-weight: 600;
   letter-spacing: 0.04em;
 }
+
+/* ---------- 库多选 ---------- */
+.lib-video.is-selected {
+  background: var(--accent-soft);
+}
+
+.bulk-check {
+  flex: 0 0 auto;
+  margin: 0 2px 0 0;
+}
+
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.bulk-count {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.bulk-name {
+  flex: 1 1 100px;
+  min-width: 80px;
+}

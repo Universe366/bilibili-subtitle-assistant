@@ -99,6 +99,9 @@ export interface BsubApi {
   setLibraryTags(videoId: number, tags: string[]): Promise<Result<{ tags: string[] }>>;
   renameTag(name: string, newName: string): Promise<Result<{ renamed: boolean }>>;
   deleteTag(name: string): Promise<Result<{ removed: boolean }>>;
+  bulkTag(videoIds: number[], name: string): Promise<Result<{ linked: number }>>;
+  bulkCollection(videoIds: number[], name: string): Promise<Result<{ linked: number }>>;
+  bulkRemove(videoIds: number[]): Promise<Result<{ removed: number }>>;
   listCollections(): Promise<Result<LibraryCollection[]>>;
   addToCollection(videoId: number, name: string): Promise<Result<{ collections: string[] }>>;
   removeFromCollection(

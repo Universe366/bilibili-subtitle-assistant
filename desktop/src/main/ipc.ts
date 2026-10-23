@@ -71,6 +71,8 @@ import type {
 import type { TabManager } from './tabs';
 import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
 import {
+  addCollectionToVideos,
+  addTagToVideos,
   addVideoToCollection,
   clearFinishedJobs,
   clearHistory,
@@ -94,6 +96,7 @@ import {
   listTranscriptions,
   listLibrary,
   removeVideo,
+  removeVideos,
   removeVideoFromCollection,
   renameCollection,
   renameTag,
@@ -847,6 +850,48 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: { removed } };
       } catch (error) {
         return failure<{ removed: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:bulk-tag',
+    (_event, payload: { videoIds: number[]; name: string }): Result<{ linked: number }> => {
+      try {
+        const linked = addTagToVideos(payload?.videoIds || [], String(payload?.name || ''));
+        send('library:changed', null);
+        return { ok: true, data: { linked } };
+      } catch (error) {
+        return failure<{ linked: number }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:bulk-collection',
+    (_event, payload: { videoIds: number[]; name: string }): Result<{ linked: number }> => {
+      try {
+        const linked = addCollectionToVideos(
+          payload?.videoIds || [],
+          String(payload?.name || '')
+        );
+        send('library:changed', null);
+        return { ok: true, data: { linked } };
+      } catch (error) {
+        return failure<{ linked: number }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:bulk-remove',
+    (_event, payload: { videoIds: number[] }): Result<{ removed: number }> => {
+      try {
+        const removed = removeVideos(payload?.videoIds || []);
+        if (removed) send('library:changed', null);
+        return { ok: true, data: { removed } };
+      } catch (error) {
+        return failure<{ removed: number }>(error);
       }
     }
   );

@@ -567,6 +567,109 @@ export function deleteTag(name: string): boolean {
   return toNumber(result.changes) > 0;
 }
 
+export function addTagToVideos(videoIds: number[], name: string): number {
+  const database = requireDb();
+  const clean = String(name || '').trim().slice(0, 24);
+  if (!clean) throw new Error('标签名称不能为空');
+  const ids = [...new Set(videoIds.filter((id) => Number.isFinite(id) && id > 0))];
+  if (!ids.length) return 0;
+
+  database.exec('BEGIN');
+  try {
+    database.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(clean);
+    const tag = database.prepare('SELECT id FROM tags WHERE name = ?').get(clean) as
+      | { id: number }
+      | undefined;
+    if (!tag) throw new Error('标签创建失败');
+    const link = database.prepare(
+      'INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)'
+    );
+    let linked = 0;
+    for (const id of ids) {
+      const exists = database.prepare('SELECT id FROM videos WHERE id = ?').get(id);
+      if (!exists) continue;
+      linked += toNumber(link.run(id, Number(tag.id)).changes);
+    }
+    database.exec('COMMIT');
+    return linked;
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+}
+
+export function addCollectionToVideos(videoIds: number[], name: string): number {
+  const database = requireDb();
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) throw new Error('合集名称不能为空');
+  const ids = [...new Set(videoIds.filter((id) => Number.isFinite(id) && id > 0))];
+  if (!ids.length) return 0;
+
+  const now = Date.now();
+  database.exec('BEGIN');
+  try {
+    database
+      .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
+      .run(clean, now);
+    const collection = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
+      | { id: number }
+      | undefined;
+    if (!collection) throw new Error('合集创建失败');
+    const link = database.prepare(
+      'INSERT OR IGNORE INTO collection_items (collection_id, video_id, added_at) VALUES (?, ?, ?)'
+    );
+    let linked = 0;
+    for (const id of ids) {
+      const exists = database.prepare('SELECT id FROM videos WHERE id = ?').get(id);
+      if (!exists) continue;
+      linked += toNumber(link.run(Number(collection.id), id, now).changes);
+    }
+    database.exec('COMMIT');
+    return linked;
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+}
+
+export function removeVideos(ids: number[]): number {
+  const database = requireDb();
+  const clean = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  if (!clean.length) return 0;
+  database.exec('BEGIN');
+  try {
+    let removed = 0;
+    for (const id of clean) {
+      if (ftsEnabled) {
+        database
+          .prepare(
+            'DELETE FROM segments_fts WHERE rowid IN (SELECT s.id FROM segments s JOIN tracks t ON t.id = s.track_id WHERE t.video_id = ?)'
+          )
+          .run(id);
+      }
+      removed += toNumber(database.prepare('DELETE FROM videos WHERE id = ?').run(id).changes);
+    }
+    if (removed) pruneOrphans(database);
+    database.exec('COMMIT');
+    return removed;
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+}
+
 export function listCollections(): LibraryCollection[] {
   const database = requireDb();
   const rows = database
@@ -845,6 +948,17 @@ export function globalSearch(input: string): GlobalSearchResult {
   };
 }
 
+function pruneOrphans(database: DatabaseSync): void {
+  database
+    .prepare('DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM video_tags)')
+    .run();
+  database
+    .prepare(
+      'DELETE FROM collections WHERE id NOT IN (SELECT DISTINCT collection_id FROM collection_items)'
+    )
+    .run();
+}
+
 export function removeVideo(id: number): boolean {
   const database = requireDb();
   if (ftsEnabled) {
@@ -855,6 +969,7 @@ export function removeVideo(id: number): boolean {
       .run(id);
   }
   const result = database.prepare('DELETE FROM videos WHERE id = ?').run(id);
+  if (toNumber(result.changes) > 0) pruneOrphans(database);
   return toNumber(result.changes) > 0;
 }
 
