@@ -14,6 +14,7 @@ import type {
 import { ConfirmDialog } from './ConfirmDialog';
 import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
+import { diffLines, type DiffOp } from '../lib/diff';
 
 const SORTS: Array<{ id: LibrarySort; label: string }> = [
   { id: 'updated', label: '最近更新' },
@@ -82,6 +83,7 @@ export function LibraryPanel() {
   const [versions, setVersions] = useState<SummaryVersionMeta[]>([]);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [preview, setPreview] = useState<SummaryVersion | null>(null);
+  const [diff, setDiff] = useState<DiffOp[] | null>(null);
   const [busyVersion, setBusyVersion] = useState(0);
   const [allTags, setAllTags] = useState<LibraryTag[]>([]);
   const [tagFilter, setTagFilter] = useState('');
@@ -189,6 +191,7 @@ export function LibraryPanel() {
       setLineLimit(LINE_PAGE);
       setDetailTab(tab);
       setPreview(null);
+      setDiff(null);
       setVersions([]);
       setVersionsOpen(false);
       void fetchDetail(id);
@@ -229,6 +232,7 @@ export function LibraryPanel() {
     setLineLimit(LINE_PAGE);
     setDetailTab(video.summaryUpdatedAt ? 'summary' : 'subtitles');
     setPreview(null);
+    setDiff(null);
     setVersions([]);
     setVersionsOpen(false);
     void fetchDetail(video.id);
@@ -240,6 +244,7 @@ export function LibraryPanel() {
     setDetail(null);
     setDetailLoading(false);
     setPreview(null);
+    setDiff(null);
     setVersions([]);
     setVersionsOpen(false);
   };
@@ -253,10 +258,16 @@ export function LibraryPanel() {
     const response = await window.bsub.getSummaryVersion(version.id);
     if (response.ok && response.data) {
       setPreview(response.data);
+      setDiff(null);
       setDetailTab('summary');
     } else if (!response.ok) {
       setError(response.error);
     }
+  };
+
+  const compareVersion = () => {
+    if (!preview || !detail?.summary) return;
+    setDiff(diffLines(preview.content, detail.summary.content));
   };
 
   const restoreVersion = async (versionId: number) => {
@@ -265,6 +276,7 @@ export function LibraryPanel() {
       const response = await window.bsub.restoreSummaryVersion(versionId);
       if (response.ok) {
         setPreview(null);
+        setDiff(null);
         if (selectedId != null) await fetchDetail(selectedId);
       } else {
         setError(response.error);
@@ -572,9 +584,20 @@ export function LibraryPanel() {
             {preview && (
               <div className="version-banner">
                 <span>
-                  预览版本 · {fmtDateTime(preview.createdAt)} · {preview.model || 'AI'}
+                  {diff
+                    ? `对比：${fmtDateTime(preview.createdAt)} 版本 → 当前`
+                    : `预览版本 · ${fmtDateTime(preview.createdAt)} · ${preview.model || 'AI'}`}
                 </span>
                 <div className="version-banner-actions">
+                  {diff ? (
+                    <button className="mini-btn" onClick={() => setDiff(null)}>
+                      退出对比
+                    </button>
+                  ) : (
+                    <button className="mini-btn" onClick={compareVersion}>
+                      与当前对比
+                    </button>
+                  )}
                   <button
                     className="mini-btn"
                     disabled={busyVersion === preview.id}
@@ -582,13 +605,32 @@ export function LibraryPanel() {
                   >
                     恢复此版本
                   </button>
-                  <button className="mini-btn" onClick={() => setPreview(null)}>
+                  <button
+                    className="mini-btn"
+                    onClick={() => {
+                      setPreview(null);
+                      setDiff(null);
+                    }}
+                  >
                     退出预览
                   </button>
                 </div>
               </div>
             )}
-            <Markdown content={preview ? preview.content : detail.summary.content} />
+            {diff ? (
+              <div className="version-diff">
+                {diff.map((op, index) => (
+                  <div key={index} className={`diff-line is-${op.type}`}>
+                    <span className="diff-sign">
+                      {op.type === 'add' ? '+' : op.type === 'del' ? '-' : ' '}
+                    </span>
+                    <span className="diff-text">{op.text || ' '}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Markdown content={preview ? preview.content : detail.summary.content} />
+            )}
 
             {versions.length > 0 && (
               <div className="version-block">

@@ -4102,3 +4102,58 @@ button:disabled {
   color: var(--faint);
   font-size: 10px;
 }
+
+/* ---------- 版本对比 ---------- */
+.version-diff {
+  display: flex;
+  flex-direction: column;
+  font-family: "Cascadia Mono", "Consolas", "Microsoft YaHei UI", monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.diff-line {
+  display: flex;
+  gap: 6px;
+  padding: 1px 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-sign {
+  flex: 0 0 auto;
+  width: 10px;
+  text-align: center;
+  color: var(--faint);
+}
+
+.diff-text {
+  min-width: 0;
+  user-select: text;
+}
+
+.diff-line.is-add {
+  background: rgba(79, 127, 104, 0.12);
+}
+
+.diff-line.is-add .diff-sign {
+  color: var(--ok);
+}
+
+.diff-line.is-del {
+  background: rgba(180, 81, 63, 0.1);
+}
+
+.diff-line.is-del .diff-sign {
+  color: #b4513f;
+}
+
+.diff-line.is-del .diff-text {
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+.diff-line.is-same .diff-text {
+  color: var(--muted);
+}
