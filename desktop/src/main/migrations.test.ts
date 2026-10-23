@@ -4,7 +4,9 @@ import { LATEST_SCHEMA_VERSION, migrateSchema, schemaVersion } from './migration
 
 function open(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
-  db.exec('CREATE TABLE IF NOT EXISTS videos (id INTEGER PRIMARY KEY, title TEXT);');
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS videos (id INTEGER PRIMARY KEY, title TEXT, url TEXT NOT NULL DEFAULT '');"
+  );
   return db;
 }
 

@@ -134,6 +134,10 @@ export interface LibraryVideo {
   duration: number;
   cover: string | null;
   url: string;
+  /** video / youtube / page / podcast / local */
+  kind: string;
+  /** bilibili / youtube / web / podcast / local */
+  source: string;
   createdAt: number;
   updatedAt: number;
   /** 最后一次保存总结的时间；null 表示尚未总结 */

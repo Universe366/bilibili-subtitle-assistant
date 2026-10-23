@@ -1,7 +1,7 @@
-# 加固与扩展验收记录（0.33.0）
+# 加固与扩展验收记录（0.34.0）
 
 > 范围：单实例、密钥加密、站点权限、CSP、日志/诊断、schema 迁移、回收站、备份校验、库压缩、浏览器与 AI 扩展。
-> 版本 0.33.0，已本地打包（setup + 绿色 zip），**未发布**。
+> 版本 0.34.0，已本地打包（setup + 绿色 zip），**未发布**。
 
 ## 1. 自动化检查
 
@@ -9,7 +9,7 @@
 |---|---|
 | `npm run typecheck` | 通过（0 error） |
 | `npm run lint` | 通过（0 error；存量 `any`/未使用变量为 warning） |
-| `npm test` | 通过：15 个测试文件 / 62 个用例 |
+| `npm test` | 通过：16 个测试文件 / 65 个用例 |
 | `npm run build` | 通过：main / preload / renderer 均产出 |
 | `npm ci --dry-run` | 通过（lockfile 与 package.json 一致） |
 | GitHub Actions `desktop-ci.yml` | PR / push main 跑 typecheck + lint + test + build |
@@ -46,6 +46,9 @@
 | 阅读模式 | example.com 点地址栏书本图标 | 标题/站点/字数正确，正文 905 字，可关闭 |
 | 下载控制 | 4MB 慢速下载 → 暂停/继续/取消 | 状态依次 `paused` / `progressing` / `cancelled` |
 | userData 迁移 | 旧 `bsub-desktop` 放入 settings/library/Network 后启动 | 复制到 `shizi`，旧目录保留；空旧目录返回 failed |
+| items 类型 | 入库后读详情 | B 站 `kind=video/source=bilibili`，网页 `kind=page/source=example.com` |
+| 长文筛选 | 30 段无关内容 + 末段关键词 | 选中末段并保留开头，长度不超预算 |
+| 桌面冒烟 | `npm run smoke` | `SMOKE OK title=拾字 version=0.34.0 tabs=1` |
 | 清除浏览数据 | 设置里执行 | 返回 `cleared:true`，Cookie/缓存被清空 |
 | 播客导入 | 本地 RSS + wav + mock ASR | 预览 1 集，导入任务 done「已入库 1 行字幕」，库条目链接指向单集页 |
 | YouTube 解析 | json3 / timedtext XML 固定样本 | 53 个用例通过；本机网络无法访问 YouTube，未做真实页面联调 |
@@ -66,9 +69,9 @@
 | 产物 | 结果 |
 |---|---|
 | `release/win-unpacked/` | 已重建，可启动；`拾字.exe`、窗口标题「拾字」，CSP 下 UI 正常 |
-| `release/bsub-desktop-setup-0.33.0.exe` | 已生成（NSIS，未签名） |
-| `release/bsub-desktop-0.33.0-win-x64-green.zip` | 已生成，含 `拾字.exe` 与 README.txt |
-| `release/latest.yml` | version 0.33.0，指向 setup 0.33.0 |
+| `release/bsub-desktop-setup-0.34.0.exe` | 已生成（NSIS，未签名） |
+| `release/bsub-desktop-0.34.0-win-x64-green.zip` | 已生成，含 `拾字.exe` 与 README.txt |
+| `release/latest.yml` | version 0.34.0，指向 setup 0.34.0 |
 
 ## 4. 已知取舍
 

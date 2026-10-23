@@ -161,6 +161,8 @@ describe('浏览器数据（历史 / 书签 / 下载）', () => {
     const detail = getLibraryDetail(saved.videoId);
     expect(detail.video.title).toBe('某篇网页文章');
     expect(detail.video.url).toBe('https://example.com/article');
+    expect(detail.video.kind).toBe('page');
+    expect(detail.video.source).toBe('example.com');
     expect(detail.summary?.content).toBe('网页总结正文');
     expect(detail.bundle).toBeNull();
   });

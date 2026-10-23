@@ -33,6 +33,29 @@ const SORTS: Array<{ id: LibrarySort; label: string }> = [
 
 const LINE_PAGE = 400;
 
+const KIND_LABELS: Record<string, string> = {
+  video: '视频',
+  youtube: 'YouTube',
+  page: '网页',
+  podcast: '播客',
+  local: '本地'
+};
+
+function kindLabel(video: LibraryVideo): string {
+  return KIND_LABELS[String(video.kind || '')] || '';
+}
+
+function metaLine(video: LibraryVideo): string {
+  return [
+    kindLabel(video),
+    video.owner || (video.kind === 'page' ? '网页' : '未知 UP'),
+    video.duration ? fmtTime(video.duration) : '',
+    video.lineCount ? `${video.lineCount.toLocaleString('zh-CN')} 行` : ''
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function fmtTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds || 0));
   const h = Math.floor(total / 3600);
@@ -956,7 +979,13 @@ export function LibraryPanel() {
             )}
             <button
               className="icon-btn"
-              title="在网页打开"
+              title={
+                activeVideo && /^file:\/\//i.test(activeVideo.url)
+                  ? '用默认播放器打开'
+                  : activeVideo?.kind === 'page'
+                    ? '打开原网页'
+                    : '在网页打开'
+              }
               disabled={!activeVideo?.url}
               onClick={() => activeVideo && openInBrowser(activeVideo)}
             >
@@ -974,8 +1003,7 @@ export function LibraryPanel() {
 
         {activeVideo && (
           <div className="lib-detail-meta">
-            {activeVideo.owner || '未知 UP'} · {fmtTime(activeVideo.duration)} ·{' '}
-            {activeVideo.lineCount.toLocaleString('zh-CN')} 行
+            {metaLine(activeVideo)}
             {detail?.summary ? ` · 总结于 ${fmtDate(detail.summary.updatedAt)}` : ' · 未总结'}
           </div>
         )}
@@ -1585,10 +1613,7 @@ export function LibraryPanel() {
                         <span className="lib-badge">已总结</span>
                       )}
                     </div>
-                    <div className="lib-sub">
-                      {video.owner || '未知 UP'} · {fmtTime(video.duration)} ·{' '}
-                      {video.lineCount.toLocaleString('zh-CN')} 行
-                    </div>
+                    <div className="lib-sub">{metaLine(video)}</div>
                   </div>
                 </div>
               ))}
@@ -1665,10 +1690,7 @@ export function LibraryPanel() {
                   </span>
                   {video.summaryUpdatedAt != null && <span className="lib-badge">已总结</span>}
                 </div>
-                <div className="lib-sub">
-                  {video.owner || '未知 UP'} · {fmtTime(video.duration)} ·{' '}
-                  {video.lineCount.toLocaleString('zh-CN')} 行
-                </div>
+                <div className="lib-sub">{metaLine(video)}</div>
                 <div className="lib-sub faint">
                   {video.tags.length > 0
                     ? video.tags.slice(0, 3).join(' · ')

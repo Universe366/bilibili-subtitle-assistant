@@ -302,6 +302,14 @@ const api: BsubApi = {
     >,
   clearSitePermissions: () =>
     ipcRenderer.invoke('permissions:clear') as Promise<Result<{ removed: number }>>,
+  listSitePermissions: () =>
+    ipcRenderer.invoke('permissions:list') as Promise<
+      Result<Array<{ origin: string; permission: string; decision: 'allow' | 'deny' }>>
+    >,
+  revokeSitePermission: (origin: string, permission: string) =>
+    ipcRenderer.invoke('permissions:revoke', { origin, permission }) as Promise<
+      Result<{ removed: boolean }>
+    >,
   beginSidebarDrag: () =>
     ipcRenderer.invoke('browser:begin-drag') as Promise<Result<string | null>>,
   endSidebarDrag: () => ipcRenderer.invoke('browser:end-drag') as Promise<void>,

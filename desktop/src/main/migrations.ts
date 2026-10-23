@@ -7,7 +7,7 @@ import type { DatabaseSync } from 'node:sqlite';
  * 现在用 `PRAGMA user_version` 记录版本，迁移只能顺序向前，每一步都必须幂等，
  * 这样「给 videos 加 kind/source」这类改动才有地方落。
  */
-export const LATEST_SCHEMA_VERSION = 3;
+export const LATEST_SCHEMA_VERSION = 4;
 
 interface Migration {
   version: number;
@@ -89,6 +89,34 @@ const MIGRATIONS: Migration[] = [
           finished_at INTEGER
         );
         CREATE INDEX IF NOT EXISTS idx_downloads_started ON downloads(started_at DESC);
+      `);
+    }
+  },
+  {
+    version: 4,
+    name: 'item-kind',
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE videos ADD COLUMN kind TEXT NOT NULL DEFAULT '';
+        ALTER TABLE videos ADD COLUMN source TEXT NOT NULL DEFAULT '';
+      `);
+      db.exec(`
+        UPDATE videos SET kind = CASE
+          WHEN url LIKE '%bilibili.com%' OR url LIKE '%b23.tv%' THEN 'video'
+          WHEN url LIKE '%youtube.com%' OR url LIKE '%youtu.be%' THEN 'youtube'
+          WHEN url LIKE 'file://%' THEN 'local'
+          ELSE 'page'
+        END
+        WHERE kind = '';
+      `);
+      db.exec(`
+        UPDATE videos SET source = CASE
+          WHEN url LIKE '%bilibili.com%' OR url LIKE '%b23.tv%' THEN 'bilibili'
+          WHEN url LIKE '%youtube.com%' OR url LIKE '%youtu.be%' THEN 'youtube'
+          WHEN url LIKE 'file://%' THEN 'local'
+          ELSE 'web'
+        END
+        WHERE source = '';
       `);
     }
   }

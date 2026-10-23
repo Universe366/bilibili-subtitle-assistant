@@ -106,6 +106,16 @@ export function clearSitePermissions(): number {
   return count;
 }
 
+export function revokeSitePermission(origin: string, permission: string): boolean {
+  const store = readStore();
+  const site = store.sites[String(origin || '')];
+  if (!site || !(permission in site)) return false;
+  delete site[permission];
+  if (!Object.keys(site).length) delete store.sites[String(origin || '')];
+  writeStore(store);
+  return true;
+}
+
 export function installPermissionGate(appRendererId: () => number | null): void {
   const ses = session.defaultSession;
 

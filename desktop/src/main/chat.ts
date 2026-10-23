@@ -10,6 +10,7 @@ import { listMcpTools, callMcpTool } from './mcp';
 import type { McpServer, McpTool } from '../shared/types';
 import { skillPrompt } from './skills';
 import type { PageContext } from './pageContext';
+import { selectRelevantChunks } from './pageContext';
 import { APP_TOOL_DEFS, APP_TOOL_PREFIX, callAppTool } from './appTools';
 
 const MAX_HISTORY = 16;
@@ -92,7 +93,9 @@ export async function chat(
       pageParts.push(`用户选中的内容（优先据此回答）：\n${page.selection.trim()}`);
     }
     if (!hasTranscript && page.text.trim()) {
-      pageParts.push(`网页正文（已截断）：\n${page.text.trim()}`);
+      pageParts.push(
+        `网页正文（已按问题筛选，原文顺序）：\n${selectRelevantChunks(page.text, question, 18000)}`
+      );
     }
   }
   const pageBlock = pageParts.join('\n\n');

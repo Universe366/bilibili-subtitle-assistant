@@ -168,7 +168,7 @@ import {
   testPlatform
 } from './settings';
 import { exportDiagnostics } from './diagnostics';
-import { clearSitePermissions } from './permissions';
+import { clearSitePermissions, permissionSummary, revokeSitePermission } from './permissions';
 import { controlDownload } from './downloads';
 import { pageContextSummary, readPageContext } from './pageContext';
 import { bridgeStatus, restartBridge } from './bridge';
@@ -1842,6 +1842,33 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return failure<{ removed: number }>(error);
     }
   });
+
+  ipcMain.handle('permissions:list', () => {
+    try {
+      return { ok: true as const, data: permissionSummary() };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  ipcMain.handle(
+    'permissions:revoke',
+    (_event, payload: { origin: string; permission: string }): Result<{ removed: boolean }> => {
+      try {
+        return {
+          ok: true,
+          data: {
+            removed: revokeSitePermission(
+              String(payload?.origin || ''),
+              String(payload?.permission || '')
+            )
+          }
+        };
+      } catch (error) {
+        return failure<{ removed: boolean }>(error);
+      }
+    }
+  );
 
   ipcMain.handle(
     'diagnostics:export',

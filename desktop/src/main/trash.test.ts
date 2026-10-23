@@ -84,7 +84,7 @@ describe('回收站与 schema 迁移', () => {
     setVideoTags(ingested.videoId, ['测试标签']);
     addVideoToCollection(ingested.videoId, '测试合集');
 
-    expect(librarySchemaVersion()).toBe(3);
+    expect(librarySchemaVersion()).toBe(4);
 
     expect(removeVideos([ingested.videoId])).toBe(1);
     expect(() => getLibraryDetail(ingested.videoId)).toThrow();
@@ -98,6 +98,8 @@ describe('回收站与 schema 迁移', () => {
 
     const restored = restoreTrash(trash[0].id);
     const detail = getLibraryDetail(restored.videoId);
+    expect(detail.video.kind).toBe('video');
+    expect(detail.video.source).toBe('bilibili');
     expect(detail.bundle?.lines.map((line) => line.text)).toEqual(['第一句字幕', '第二句字幕']);
     expect(detail.summary?.content).toContain('这是总结正文');
     expect(detail.note?.content).toBe('这是笔记');

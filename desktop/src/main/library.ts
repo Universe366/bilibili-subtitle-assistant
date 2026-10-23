@@ -346,7 +346,53 @@ function requireDb(): DatabaseSync {
 function uidOf(info: PageInfo): string {
   if (info.bvid) return `v:${info.bvid}:${info.cid ?? 0}`;
   if (info.epId) return `e:${info.epId}:${info.cid ?? 0}`;
-  return `u:${info.url || info.title || Date.now()}`;
+  return `u:${canonicalUrl(info.url) || info.title || Date.now()}`;
+}
+
+function canonicalUrl(input: string): string {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    if (!/^https?:$/.test(url.protocol)) return raw;
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    if (host === 'youtu.be' || host === 'youtube.com' || host === 'm.youtube.com') {
+      const id =
+        host === 'youtu.be'
+          ? url.pathname.split('/').filter(Boolean)[0]
+          : url.searchParams.get('v') || url.pathname.split('/').filter(Boolean).pop();
+      if (id) return `https://www.youtube.com/watch?v=${id}`;
+    }
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_|spm_id_from|vd_source|share_source|share_medium|from_source)/i.test(key)) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function kindOf(info: PageInfo): string {
+  if (info.kind === 'youtube' || info.bvid || info.epId) return info.kind === 'youtube' ? 'youtube' : 'video';
+  if (info.kind === 'local' || /^file:\/\//i.test(info.url || '')) return 'local';
+  if (info.kind === 'podcast') return 'podcast';
+  if (info.kind === 'page') return 'page';
+  return info.kind || 'page';
+}
+
+function sourceOf(info: PageInfo): string {
+  if (info.bvid || info.epId) return 'bilibili';
+  if (info.kind === 'youtube') return 'youtube';
+  if (info.kind === 'local' || /^file:\/\//i.test(info.url || '')) return 'local';
+  if (info.kind === 'podcast') return 'podcast';
+  try {
+    return new URL(info.url).hostname.replace(/^www\./, '') || 'web';
+  } catch {
+    return 'web';
+  }
 }
 
 function toNumber(value: unknown): number {
@@ -366,8 +412,8 @@ function ensureVideo(
 
   database
     .prepare(
-      `INSERT INTO videos (uid, bvid, cid, ep_id, title, owner, duration, cover, pubdate, url, signature, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO videos (uid, bvid, cid, ep_id, title, owner, duration, cover, pubdate, url, signature, kind, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(uid) DO UPDATE SET
          bvid = excluded.bvid,
          cid = excluded.cid,
@@ -379,6 +425,8 @@ function ensureVideo(
          pubdate = excluded.pubdate,
          url = excluded.url,
          signature = excluded.signature,
+         kind = excluded.kind,
+         source = excluded.source,
          updated_at = excluded.updated_at`
     )
     .run(
@@ -393,6 +441,8 @@ function ensureVideo(
       info.pubdate ?? null,
       info.url || '',
       info.signature || '',
+      kindOf(info),
+      sourceOf(info),
       now,
       now
     );
@@ -490,7 +540,7 @@ export function ingestVideo(payload: LibraryIngestPayload): LibraryIngestResult 
 
 const VIDEO_COLUMNS = `
   SELECT v.id, v.bvid, v.cid, v.title, v.owner, v.duration, v.cover, v.url,
-         v.created_at, v.updated_at,
+         v.kind, v.source, v.created_at, v.updated_at,
          (SELECT COUNT(*) FROM tracks t WHERE t.video_id = v.id) AS track_count,
          (SELECT COALESCE(SUM(t.line_count), 0) FROM tracks t WHERE t.video_id = v.id) AS line_count,
          (SELECT MAX(s.updated_at) FROM summaries s WHERE s.video_id = v.id) AS summary_at,
@@ -516,6 +566,8 @@ function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
     duration: toNumber(row.duration),
     cover: row.cover == null ? null : String(row.cover),
     url: String(row.url || ''),
+    kind: String(row.kind || ''),
+    source: String(row.source || ''),
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
     summaryUpdatedAt: summaryAt && summaryAt > 0 ? summaryAt : null,
@@ -954,8 +1006,8 @@ export function restoreTrash(id: number): { videoId: number } {
     const videoResult = database
       .prepare(
         `INSERT INTO videos
-           (uid, bvid, cid, ep_id, title, owner, duration, cover, pubdate, url, signature, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (uid, bvid, cid, ep_id, title, owner, duration, cover, pubdate, url, signature, kind, source, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         uid,
@@ -969,6 +1021,8 @@ export function restoreTrash(id: number): { videoId: number } {
         video.pubdate == null ? null : toNumber(video.pubdate),
         String(video.url || ''),
         String(video.signature || ''),
+        String(video.kind || ''),
+        String(video.source || ''),
         toNumber(video.created_at) || now,
         now
       );
@@ -1833,7 +1887,7 @@ export function libraryVideoBundle(videoId: number): LibraryBundle {
     .all(Number(trackRow.id)) as Array<Record<string, unknown>>;
 
   const info: PageInfo = {
-    kind: 'video',
+    kind: String(video.kind || 'video'),
     bvid: video.bvid ? String(video.bvid) : null,
     aid: null,
     cid: video.cid == null ? null : Number(video.cid),

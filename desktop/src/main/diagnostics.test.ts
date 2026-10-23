@@ -82,7 +82,7 @@ describe('exportDiagnostics', () => {
 
     const summary = JSON.parse(fs.readFileSync(summaryFile, 'utf8'));
     expect(summary.app.version).toBe('0.0.0-test');
-    expect(summary.data.schemaVersion).toBe(3);
+    expect(summary.data.schemaVersion).toBe(4);
     expect(summary.data.stats.videos).toBe(1);
     expect(summary.settings.ai.platforms.length).toBeGreaterThan(0);
     expect(JSON.stringify(summary)).not.toContain('sk-');

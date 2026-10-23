@@ -26,6 +26,24 @@ const PAGE_SUGGESTIONS = [
   '这个页面有哪些值得质疑的地方？'
 ];
 
+function chatStorageKey(videoKey: string): string {
+  return videoKey ? `bsub-chat:${videoKey}` : '';
+}
+
+function loadChat(videoKey: string): ChatMessage[] {
+  const key = chatStorageKey(videoKey);
+  if (!key) return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item) => item && (item.role === 'user' || item.role === 'assistant'))
+      .slice(-60);
+  } catch {
+    return [];
+  }
+}
+
 function newRequestId(): string {
   try {
     return crypto.randomUUID();
@@ -97,14 +115,26 @@ export function ChatPanel({
       requestRef.current = '';
     }
     contextRef.current = null;
-    setMessages([]);
+    setMessages(loadChat(videoKey));
     setInput('');
     setStreamText('');
     setStatus('');
     setError(null);
     setStreaming(false);
     setImages([]);
+    setSavedNotice('');
   }, [activeTab?.id, videoKey]);
+
+  useEffect(() => {
+    const key = chatStorageKey(videoKey);
+    if (!key) return;
+    try {
+      if (messages.length) localStorage.setItem(key, JSON.stringify(messages.slice(-60)));
+      else localStorage.removeItem(key);
+    } catch {
+      // 存储满了也不影响对话
+    }
+  }, [messages, videoKey]);
 
   useEffect(() => {
     let alive = true;
@@ -361,6 +391,14 @@ export function ChatPanel({
   const clear = () => {
     if (requestRef.current) void window.bsub.cancelChat(requestRef.current);
     requestRef.current = '';
+    const key = chatStorageKey(videoKey);
+    if (key) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // ignore
+      }
+    }
     setMessages([]);
     setImages([]);
     setStreamText('');
@@ -532,7 +570,9 @@ export function ChatPanel({
             />
             当前页面
             {pageContext && pageContext.chars > 0
-              ? ` · ${pageContext.chars.toLocaleString('zh-CN')} 字`
+              ? ` · ${pageContext.chars.toLocaleString('zh-CN')} 字 · 约 ${Math.ceil(
+                  pageContext.chars / 1.6
+                ).toLocaleString('zh-CN')} tokens`
               : ''}
           </label>
           {pageContext && pageContext.selectionChars > 0 && (

@@ -418,7 +418,7 @@ node panel-test.js     # 至少跑这个
 
 ### 12.6 schema 迁移与回收站
 
-- `migrations.ts`：`PRAGMA user_version` + 顺序迁移，`LATEST_SCHEMA_VERSION = 2`；
+- `migrations.ts`：`PRAGMA user_version` + 顺序迁移，`LATEST_SCHEMA_VERSION = 4`；
   新加列/表必须新增一个迁移版本，不能改老迁移；
 - `trash` 保存删除前的完整快照（视频、所有字幕轨、总结与版本、笔记与版本、标签、合集），
   恢复时重新插入并重建 FTS 索引；
@@ -575,3 +575,31 @@ node panel-test.js     # 至少跑这个
 - `browser:clear-data` 调用 `session.clearStorageData`（cookies / localstorage / indexdb /
   serviceworkers / cachestorage 等）、`clearCache()`、`clearAuthCache()`；
 - 清除会登出所有站点，UI 必须二次确认；不会删除本地字幕库和设置。
+
+### 13.14 items 类型（schema v4）
+
+- `videos` 新增 `kind` / `source`：`video`、`youtube`、`page`、`podcast`、`local`；
+- 迁移 v4 按 URL 回填老数据；`ensureVideo()` 在入库时写入，`restoreTrash` 一并恢复；
+- `LibraryVideo` 带出类型，库列表/详情按类型展示，不再把网页当成 0 秒视频；
+- 网页总结 uid 用 `canonicalUrl()` 去掉 `utm_*`、`spm_id_from`、`vd_source` 和锚点。
+
+### 13.15 AI 上下文与对话持久化
+
+- `pageContext.ts` 的注入脚本遍历 DOM，输出 Markdown 风格文本：
+  标题保留 `#` 层级，列表 `-`、表格 `|`、代码块 ```；
+- `selectRelevantChunks()` 把长文切成约 2.2k 的块，按问题关键词粗排，
+  始终保留开头，再按原文顺序拼到 1.8 万字预算；
+- 对话消息按 `videoKey` 存 `localStorage`（最多 60 条），切标签/重启后恢复；
+- 对话面板显示正文的粗略 token 估算，便于判断请求成本。
+
+### 13.16 站点权限管理
+
+- 权限闸门的选择写入 `permissions.json`；
+- 设置 → 站点权限通过 `permissions:list` / `permissions:revoke` 查看和撤销；
+- `permissions:clear` 仍保留为一次性清空。
+
+### 13.17 桌面冒烟
+
+- `npm run smoke` 启动真实 Electron（临时 userData + CDP），验证窗口标题、
+  preload API、版本号和标签页；
+- 脚本提交在 `scripts/smoke.mjs`；Linux CI 需要 xvfb，目前只在本地/Windows 跑。

@@ -204,6 +204,10 @@ export interface BsubApi {
   getDiagnostics(): Promise<Result<DiagnosticsInfo>>;
   exportDiagnostics(): Promise<Result<{ canceled: boolean; path?: string }>>;
   clearSitePermissions(): Promise<Result<{ removed: number }>>;
+  listSitePermissions(): Promise<
+    Result<Array<{ origin: string; permission: string; decision: 'allow' | 'deny' }>>
+  >;
+  revokeSitePermission(origin: string, permission: string): Promise<Result<{ removed: boolean }>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
   finishWizard(): Promise<Result<SettingsSnapshot>>;
   setWizardVisible(visible: boolean): Promise<Result<SettingsSnapshot>>;

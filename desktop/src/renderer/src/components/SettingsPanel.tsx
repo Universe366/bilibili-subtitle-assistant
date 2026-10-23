@@ -151,6 +151,19 @@ const EXPORT_LABELS: Record<ExportFormat, string> = {
   json: 'JSON'
 };
 
+const PERMISSION_LABELS: Record<string, string> = {
+  media: '摄像头 / 麦克风',
+  notifications: '系统通知',
+  'clipboard-read': '读取剪贴板',
+  geolocation: '位置',
+  'display-capture': '屏幕共享',
+  midi: 'MIDI',
+  midiSysex: 'MIDI',
+  openExternal: '打开外部应用',
+  'speaker-selection': '扬声器',
+  'window-management': '窗口管理'
+};
+
 export function SettingsPanel() {
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [dataDir, setDataDir] = useState('');
@@ -180,6 +193,15 @@ export function SettingsPanel() {
   const [modelCache, setModelCache] = useState<Record<string, string[]>>({});
   const [platformBusy, setPlatformBusy] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [sitePermissions, setSitePermissions] = useState<
+    Array<{ origin: string; permission: string; decision: 'allow' | 'deny' }>
+  >([]);
+
+  useEffect(() => {
+    void window.bsub.listSitePermissions().then((response) => {
+      if (response.ok) setSitePermissions(response.data);
+    });
+  }, []);
   const savedJsonRef = useRef('');
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [platformStatus, setPlatformStatus] = useState<{
@@ -977,7 +999,22 @@ export function SettingsPanel() {
       setError(response.error);
       return;
     }
+    setSitePermissions([]);
     setMessage(`已清除 ${response.data.removed} 条站点权限记录`);
+  };
+
+  const refreshSitePermissions = async () => {
+    const response = await window.bsub.listSitePermissions();
+    if (response.ok) setSitePermissions(response.data);
+  };
+
+  const revokePermission = async (origin: string, permission: string) => {
+    const response = await window.bsub.revokeSitePermission(origin, permission);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    await refreshSitePermissions();
   };
 
   const clearBrowsingData = async () => {
@@ -2956,6 +2993,39 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="站点权限" defaultOpen={false}>
+        <div className="settings-hint">
+          网站首次申请摄像头、麦克风、通知等权限时会弹窗；这里可以查看并撤销已记住的选择。
+        </div>
+        {sitePermissions.length === 0 && <div className="settings-hint">还没有记住任何站点权限。</div>}
+        {sitePermissions.map((item) => (
+          <div className="settings-row" key={`${item.origin}:${item.permission}`}>
+            <span>
+              {item.origin} · {PERMISSION_LABELS[item.permission] || item.permission}
+            </span>
+            <span className="settings-hint">{item.decision === 'allow' ? '允许' : '拒绝'}</span>
+            <button
+              className="mini-btn"
+              onClick={() => void revokePermission(item.origin, item.permission)}
+            >
+              撤销
+            </button>
+          </div>
+        ))}
+        <div className="settings-inline">
+          <button className="mini-btn" onClick={() => void refreshSitePermissions()}>
+            刷新
+          </button>
+          <button
+            className="mini-btn danger"
+            disabled={!sitePermissions.length}
+            onClick={() => void clearPermissions()}
+          >
+            清除全部
+          </button>
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="数据与备份" defaultOpen={false}>
         <div className="settings-row">
           <span>数据目录</span>
@@ -2994,9 +3064,6 @@ export function SettingsPanel() {
           </button>
           <button className="mini-btn" onClick={() => void compactDatabase()}>
             <RefreshCw size={12} /> 压缩数据库
-          </button>
-          <button className="mini-btn" onClick={() => void clearPermissions()}>
-            清除站点权限
           </button>
           <button className="mini-btn danger" onClick={() => void clearBrowsingData()}>
             清除浏览数据
