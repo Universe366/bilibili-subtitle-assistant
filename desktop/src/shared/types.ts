@@ -264,6 +264,63 @@ export interface LibraryDetail {
 
 export type LibrarySort = 'updated' | 'created' | 'title' | 'duration';
 
+export interface TrashItem {
+  id: number;
+  videoId: number;
+  title: string;
+  owner: string;
+  trackCount: number;
+  lineCount: number;
+  hasSummary: boolean;
+  hasNote: boolean;
+  deletedAt: number;
+}
+
+export interface HistoryEntry {
+  id: number;
+  url: string;
+  title: string;
+  favicon: string | null;
+  visitedAt: number;
+}
+
+export interface Bookmark {
+  id: number;
+  url: string;
+  title: string;
+  favicon: string | null;
+  createdAt: number;
+}
+
+export type DownloadState = 'progressing' | 'completed' | 'cancelled' | 'interrupted' | 'paused';
+
+export interface DownloadRecord {
+  id: number;
+  url: string;
+  filename: string;
+  path: string;
+  state: DownloadState;
+  total: number;
+  received: number;
+  startedAt: number;
+  finishedAt: number | null;
+}
+
+export interface PodcastEpisode {
+  id: string;
+  title: string;
+  audioUrl: string;
+  pageUrl: string;
+  duration: number;
+  pubDate: number | null;
+}
+
+export interface PodcastFeed {
+  title: string;
+  description: string;
+  episodes: PodcastEpisode[];
+}
+
 export type JobType =
   | 'summary'
   | 'asr'
@@ -652,6 +709,10 @@ export interface AppSettings {
     autoFollow: boolean;
     /** 首次使用向导是否已完成 */
     wizardDone: boolean;
+    /** 退出时记住标签页，下次启动恢复 */
+    restoreSession: boolean;
+    /** 网页内选中文字时显示解释/翻译/总结工具条 */
+    selectionToolbar: boolean;
   };
   ai: {
     activeId: string;
@@ -663,6 +724,8 @@ export interface AppSettings {
     sendOnEnter: boolean;
     expandReasoning: boolean;
     presetVersion: number;
+    /** 允许模型调用本地只读工具（搜库/读条目） */
+    appTools: boolean;
   };
   asr: AsrSettings;
   prompt: {
@@ -806,6 +869,15 @@ export interface ChatRequest {
   lines: SubtitleLine[];
   messages: ChatMessage[];
   skillIds?: string[];
+  /** 是否把当前网页正文/选中内容带给模型（默认 true） */
+  includePage?: boolean;
+}
+
+export interface PageContextSummary {
+  title: string;
+  url: string;
+  chars: number;
+  selectionChars: number;
 }
 
 export interface ChatDeltaEvent {

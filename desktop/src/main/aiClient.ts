@@ -1,5 +1,6 @@
 import { session } from 'electron';
 import type { AiPlatform } from '../shared/types';
+import { needsApiKey } from './platformKey';
 
 // ---------------------------------------------------------------------------
 // AI 请求的公共层。
@@ -77,10 +78,11 @@ export function aiBaseUrl(platform: Pick<AiPlatform, 'baseUrl'>): string {
 }
 
 export function aiHeaders(platform: AiPlatform): Record<string, string> {
+  const key = platform.apiKey.trim();
   if (isAnthropicPlatform(platform)) {
     return {
       'content-type': 'application/json',
-      'x-api-key': platform.apiKey.trim(),
+      ...(key ? { 'x-api-key': key } : {}),
       'anthropic-version': '2023-06-01',
       // 浏览器/渲染进程里直连 Anthropic 需要这个头；主进程 fetch 不发也无害。
       'anthropic-dangerous-direct-browser-access': 'true'
@@ -88,7 +90,7 @@ export function aiHeaders(platform: AiPlatform): Record<string, string> {
   }
   return {
     'content-type': 'application/json',
-    authorization: `Bearer ${platform.apiKey.trim()}`
+    ...(key ? { authorization: `Bearer ${key}` } : {})
   };
 }
 
@@ -612,7 +614,7 @@ export async function testAiConnection(
 ): Promise<{ latencyMs: number; message: string }> {
   if (!platform.baseUrl.trim()) throw new Error('请填写 Base URL');
   if (!platform.model.trim()) throw new Error('请填写模型名');
-  if (!platform.apiKey.trim()) throw new Error('请填写 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('请填写 API Key');
   const started = Date.now();
   await chatOnce(
     platform,

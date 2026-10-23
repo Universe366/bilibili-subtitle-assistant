@@ -2,7 +2,7 @@
 // 仅数据，主进程与渲染进程共用；apiKey 一律为空。
 import type { AiPlatform, AsrPlatform, SearchPlatform } from './types';
 
-export const AI_PRESET_VERSION = 4;
+export const AI_PRESET_VERSION = 5;
 
 export const AI_PRESETS: AiPlatform[] = [
   {
@@ -402,6 +402,35 @@ export const AI_PRESETS: AiPlatform[] = [
     ],
     "homepage": "https://tokenrhythm.studio/",
     "keyUrl": "https://tokenrhythm.studio/account",
+    "kind": ""
+  },
+  {
+    "id": "ollama",
+    "name": "Ollama（本地）",
+    "baseUrl": "http://127.0.0.1:11434/v1",
+    "apiKey": "",
+    "model": "qwen2.5:7b",
+    "models": [
+      "qwen2.5:7b",
+      "qwen2.5:14b",
+      "llama3.1:8b",
+      "deepseek-r1:7b"
+    ],
+    "homepage": "https://ollama.com/",
+    "keyUrl": "",
+    "kind": ""
+  },
+  {
+    "id": "lmstudio",
+    "name": "LM Studio（本地）",
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "apiKey": "",
+    "model": "local-model",
+    "models": [
+      "local-model"
+    ],
+    "homepage": "https://lmstudio.ai/",
+    "keyUrl": "",
     "kind": ""
   },
   {

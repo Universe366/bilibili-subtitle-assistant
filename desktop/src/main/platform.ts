@@ -3,6 +3,7 @@ import type { AiPlatform, AppSettings, AsrPlatform, SearchPlatform } from '../sh
 import { isMaskedSecret, loadSettings, testPlatform } from './settings';
 import { searchWeb } from './search';
 import { listAiModels } from './aiClient';
+import { needsApiKey } from './platformKey';
 
 type Kind = 'ai' | 'asr' | 'search';
 
@@ -36,12 +37,12 @@ export async function probePlatformModels(
   }
   const base = String(target.baseUrl || '').replace(/\/+$/, '');
   if (!base) throw new Error('请先填写接口地址');
-  if (!target.apiKey) throw new Error('请先填写 API Key');
+  if (!target.apiKey && needsApiKey(target)) throw new Error('请先填写 API Key');
   const url = `${base}/models`;
   const response = await session.defaultSession.fetch(url, {
     headers: {
       accept: 'application/json',
-      authorization: `Bearer ${target.apiKey}`
+      ...(target.apiKey ? { authorization: `Bearer ${target.apiKey}` } : {})
     },
     signal: AbortSignal.timeout(30000)
   });

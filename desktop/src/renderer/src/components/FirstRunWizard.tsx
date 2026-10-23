@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronRight, KeyRound, Play, Sparkles, X } from 'lucide-react';
 import type { SettingsSnapshot } from '../../../shared/types';
+import { APP_NAME, APP_TAGLINE } from '../../../shared/brand';
 
 export function FirstRunWizard({
   snapshot,
@@ -15,18 +16,21 @@ export function FirstRunWizard({
     settings.ai.platforms.find((item) => item.id === settings.ai.activeId) ||
     settings.ai.platforms[0];
   const hasKey = Boolean(platform?.apiKey && !/^••••/.test(platform.apiKey));
+  const localEndpoint = /127\.0\.0\.1|localhost/i.test(platform?.baseUrl || '');
 
   const steps = [
     {
       icon: <Sparkles size={22} />,
-      title: '欢迎使用 B 站字幕助手',
+      title: `欢迎使用 ${APP_NAME}`,
       body: (
         <>
-          <p>这是一个自带浏览器的桌面端：B 站页面、字幕、AI 总结和本地库在同一个窗口里。</p>
+          <p>
+            {APP_TAGLINE}：网页、视频、字幕、AI 和本地库在同一个窗口里。
+          </p>
           <ul>
-            <li>有官方字幕就直接抓，没有就用音轨做语音转录；</li>
-            <li>可以 AI 总结、翻译、校对、生成章节；</li>
-            <li>拍到的字幕与总结会存进本地 SQLite 库，可全文搜索。</li>
+            <li>B 站视频有官方字幕就直接抓，没有就用音轨做语音转录；</li>
+            <li>任何网页都可以总结、翻译、划词提问（Ctrl+Shift+S）；</li>
+            <li>字幕、总结与笔记会存进本地 SQLite 库，可全文搜索。</li>
           </ul>
         </>
       )
@@ -38,15 +42,17 @@ export function FirstRunWizard({
         <>
           <p>
             当前平台：<b>{platform?.name || '未选择'}</b>
-            {hasKey ? (
+            {localEndpoint ? (
+              <span className="wizard-ok"> · 本地端点，无需 Key</span>
+            ) : hasKey ? (
               <span className="wizard-ok"> · Key 已配置</span>
             ) : (
               <span className="wizard-warn"> · 还没有填 Key</span>
             )}
           </p>
           <p className="wizard-muted">
-            只抓官方字幕不需要 Key；AI 总结、翻译、校对、语音转录需要。Key 只保存在本机
-            `settings.json`，不会上传。
+            只抓官方字幕不需要 Key；AI 总结、翻译、校对、语音转录需要。Key 用系统 DPAPI
+            加密后保存在本机，不会上传。
           </p>
         </>
       )

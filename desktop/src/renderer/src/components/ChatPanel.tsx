@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ImagePlus, Loader2, Send, Square, Trash2, X } from 'lucide-react';
-import type { ChatMessage, PageInfo, SkillItem, SubtitleLine, TabInfo } from '../../../shared/types';
+import type {
+  ChatMessage,
+  PageContextSummary,
+  PageInfo,
+  SkillItem,
+  SubtitleLine,
+  TabInfo
+} from '../../../shared/types';
 import { Markdown } from './Markdown';
-import { pickTrack, videoKeyOf } from '../lib/video';
+import { pickTrack, isVideoKey, videoKeyOf } from '../lib/video';
 import { getAsrResult } from '../lib/asrStore';
 
 const SUGGESTIONS = [
@@ -10,6 +17,13 @@ const SUGGESTIONS = [
   '列出视频里提到的数字、结论或方法',
   '有哪些地方值得质疑或需要补充？',
   '用 5 条以内总结这个视频'
+];
+
+const PAGE_SUGGESTIONS = [
+  '用 5 条要点总结这个页面',
+  '这篇内容里有哪些关键数字或结论？',
+  '把我选中的内容解释得更通俗',
+  '这个页面有哪些值得质疑的地方？'
 ];
 
 function newRequestId(): string {
@@ -53,13 +67,17 @@ export function ChatPanel({
   const [sendOnEnter, setSendOnEnter] = useState(true);
   const [expandReasoning, setExpandReasoning] = useState(false);
   const [streamReasoning, setStreamReasoning] = useState('');
+  const [pageContext, setPageContext] = useState<PageContextSummary | null>(null);
+  const [includePage, setIncludePage] = useState(true);
+  const [savedNotice, setSavedNotice] = useState('');
+  const autoSaveRef = useRef<{ title: string; url: string } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef('');
   const contextRef = useRef<{ info: PageInfo; lines: SubtitleLine[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const videoKey = videoKeyOf(activeTab?.url);
-  const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
+  const isVideoPage = isVideoKey(videoKey);
 
   useEffect(() => {
     void (async () => {
@@ -89,6 +107,20 @@ export function ChatPanel({
   }, [activeTab?.id, videoKey]);
 
   useEffect(() => {
+    let alive = true;
+    if (!activeTab || !/^https?:/i.test(activeTab.url)) {
+      setPageContext(null);
+      return;
+    }
+    void window.bsub.getPageContext().then((response) => {
+      if (alive) setPageContext(response.ok ? response.data : null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [activeTab?.id, activeTab?.url]);
+
+  useEffect(() => {
     const offDelta = window.bsub.onChatDelta((event) => {
       if (event.requestId === requestRef.current) {
         if (event.delta) setStreamText((previous) => previous + event.delta);
@@ -106,6 +138,29 @@ export function ChatPanel({
       setStreamReasoning('');
       setStatus('');
       requestRef.current = '';
+
+      const pending = autoSaveRef.current;
+      autoSaveRef.current = null;
+      if (pending && event.text.trim()) {
+        void window.bsub
+          .savePageSummary({
+            title: pending.title,
+            url: pending.url,
+            content: event.text,
+            model: event.model
+          })
+          .then((response) => {
+            if (response.ok) {
+              setSavedNotice(
+                response.data.created
+                  ? '已存入资料库，可在「库」里查看'
+                  : '已更新资料库里的网页总结'
+              );
+            } else {
+              setError(`存入资料库失败：${response.error}`);
+            }
+          });
+      }
     });
     const offError = window.bsub.onChatError((event) => {
       if (event.requestId !== requestRef.current) return;
@@ -154,43 +209,50 @@ export function ChatPanel({
   const ensureContext = async () => {
     if (contextRef.current) return contextRef.current;
     const infoResponse = await window.bsub.getPageInfo();
-    if (!infoResponse.ok) throw new Error(infoResponse.error);
-    const info = infoResponse.data;
+    const info: PageInfo = infoResponse.ok
+      ? infoResponse.data
+      : {
+          kind: 'page',
+          bvid: null,
+          aid: null,
+          cid: null,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: activeTab?.title || pageContext?.title || '当前页面',
+          owner: '',
+          desc: '',
+          duration: 0,
+          url: activeTab?.url || '',
+          signature: ''
+        };
 
-    const subtitles = await window.bsub.getSubtitles();
-    if (!subtitles.ok) throw new Error(subtitles.error);
-    const track = pickTrack(subtitles.data.tracks, info);
-    const fallback = () => {
+    const fallback = (lines: SubtitleLine[] = []) => {
       const cached = getAsrResult(videoKey);
-      if (!cached) return null;
-      const context = { info: cached.info, lines: cached.lines };
+      const context = cached ? { info: cached.info, lines: cached.lines } : { info, lines };
       contextRef.current = context;
       return context;
     };
 
-    if (!track) {
-      const cached = fallback();
-      if (cached) return cached;
-      // 没有字幕也能对话：只带视频信息，模型会说明哪些内容没有字幕依据。
-      const context = { info, lines: [] };
-      contextRef.current = context;
-      return context;
-    }
+    // 非视频页只带页面信息，正文由主进程在发送时读取。
+    if (!info.bvid && !info.epId) return fallback([]);
+
+    const subtitles = await window.bsub.getSubtitles().catch(() => null);
+    if (!subtitles || !subtitles.ok) return fallback([]);
+    const track = pickTrack(subtitles.data.tracks, info);
+
+    if (!track) return fallback([]);
 
     const body = await window.bsub.getTrackBody(track.url);
-    if (!body.ok) {
-      const cached = fallback();
-      if (cached) return cached;
-      const context = { info, lines: [] };
-      contextRef.current = context;
-      return context;
-    }
+    if (!body.ok) return fallback([]);
     const context = { info, lines: body.data.lines };
     contextRef.current = context;
     return context;
   };
 
-  const send = async (preset?: string) => {
+  const send = async (preset?: string, forcePage = false) => {
     const content = String(preset ?? input).trim();
     if ((!content && !images.length) || streaming) return;
 
@@ -198,7 +260,7 @@ export function ChatPanel({
     setError(null);
     setStreaming(true);
     setStreamText('');
-    setStatus('读取字幕…');
+    setStatus(isVideoPage ? '读取字幕…' : '读取页面…');
 
     const nextMessages: ChatMessage[] = [
       ...messages,
@@ -217,7 +279,8 @@ export function ChatPanel({
         info: context.info,
         lines: context.lines,
         messages: nextMessages,
-        skillIds: skillId ? [skillId] : []
+        skillIds: skillId ? [skillId] : [],
+        includePage: forcePage ? true : includePage
       });
       if (!started.ok) throw new Error(started.error);
     } catch (caught) {
@@ -231,6 +294,59 @@ export function ChatPanel({
   const stop = () => {
     if (requestRef.current) void window.bsub.cancelChat(requestRef.current);
   };
+
+  const summarizePage = () => {
+    if (!activeTab || isVideoPage || streaming) return;
+    autoSaveRef.current = { title: activeTab.title || pageContext?.title || activeTab.url, url: activeTab.url };
+    setSavedNotice('');
+    void send('用 5 条要点总结当前页面，先给结论，再列依据。', true);
+  };
+
+  const saveAnswer = async () => {
+    if (!activeTab || isVideoPage) return;
+    const last = [...messages].reverse().find((message) => message.role === 'assistant');
+    if (!last?.content.trim()) return;
+    const response = await window.bsub.savePageSummary({
+      title: activeTab.title || pageContext?.title || activeTab.url,
+      url: activeTab.url,
+      content: last.content,
+      model: 'AI'
+    });
+    if (response.ok) {
+      setSavedNotice(response.data.created ? '已存入资料库，可在「库」里查看' : '已更新资料库里的网页总结');
+    } else {
+      setError(`存入资料库失败：${response.error}`);
+    }
+  };
+
+  // Ctrl+Shift+S：把当前选中内容带进对话。
+  useEffect(() => {
+    const handler = () => {
+      void send('解释我选中的这段内容');
+    };
+    window.addEventListener('bsub:ask-selection', handler);
+    return () => window.removeEventListener('bsub:ask-selection', handler);
+  }, [send]);
+
+  // 网页里的划词工具条：解释 / 翻译 / 总结。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string; text?: string }>).detail || {};
+      const text = String(detail.text || '').trim();
+      if (!text) return;
+      const clipped = text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
+      const action = detail.action || 'explain';
+      const label =
+        action === 'translate'
+          ? '翻译成中文（原文是中文就翻译成英文）'
+          : action === 'summarize'
+            ? '用要点总结'
+            : '解释';
+      void send(`请${label}下面这段选中的内容：\n"""\n${clipped}\n"""`, true);
+    };
+    window.addEventListener('bsub:selection-action', handler);
+    return () => window.removeEventListener('bsub:selection-action', handler);
+  }, [send]);
 
   const clear = () => {
     if (requestRef.current) void window.bsub.cancelChat(requestRef.current);
@@ -250,6 +366,26 @@ export function ChatPanel({
       <div className="panel-toolbar">
         <div className="panel-title">对话</div>
         <div className="toolbar-actions">
+          {activeTab && !isVideoPage && (
+            <button
+              className="mini-btn"
+              disabled={streaming}
+              title="总结当前网页，并把结果存入本地库"
+              onClick={summarizePage}
+            >
+              总结本页
+            </button>
+          )}
+          {activeTab && !isVideoPage && messages.some((message) => message.role === 'assistant') && (
+            <button
+              className="mini-btn"
+              disabled={streaming}
+              title="把最近一条回答存为这个网页的总结"
+              onClick={() => void saveAnswer()}
+            >
+              存入库
+            </button>
+          )}
           <button
             className="mini-btn"
             disabled={!messages.length && !streaming}
@@ -266,19 +402,20 @@ export function ChatPanel({
         </div>
       </div>
 
-      {!activeTab && <div className="panel-empty">打开一个 B 站视频后开始对话</div>}
-      {activeTab && !isVideoPage && <div className="panel-empty">当前页面不是 B 站视频页</div>}
+      {!activeTab && <div className="panel-empty">打开一个网页或视频后开始对话</div>}
 
-      {isVideoPage && (
+      {activeTab && (
         <div className="chat-body" ref={scrollRef}>
           {!messages.length && !streaming && (
             <div className="chat-empty">
-              <div className="chat-empty-title">基于本片字幕提问</div>
+              <div className="chat-empty-title">{isVideoPage ? '基于本片字幕提问' : '就当前页面提问'}</div>
               <div className="chat-empty-desc">
-                会先读取当前视频字幕，再让设置里的 AI 平台回答。
+                {isVideoPage
+                  ? '会先读取当前视频字幕，再让设置里的 AI 平台回答。'
+                  : '会读取当前网页正文和你选中的内容，再让设置里的 AI 平台回答。'}
               </div>
               <div className="chat-suggestions">
-                {SUGGESTIONS.map((suggestion) => (
+                {(isVideoPage ? SUGGESTIONS : PAGE_SUGGESTIONS).map((suggestion) => (
                   <button
                     key={suggestion}
                     className="chat-suggestion"
@@ -375,6 +512,29 @@ export function ChatPanel({
         </div>
       )}
 
+      {activeTab && (
+        <div className="chat-context-bar">
+          <label className="chat-context-chip" title="把当前网页正文一并带给 AI">
+            <input
+              type="checkbox"
+              checked={includePage}
+              onChange={(event) => setIncludePage(event.target.checked)}
+            />
+            当前页面
+            {pageContext && pageContext.chars > 0
+              ? ` · ${pageContext.chars.toLocaleString('zh-CN')} 字`
+              : ''}
+          </label>
+          {pageContext && pageContext.selectionChars > 0 && (
+            <span className="chat-context-chip is-selection">
+              已选中 {pageContext.selectionChars.toLocaleString('zh-CN')} 字
+            </span>
+          )}
+        </div>
+      )}
+
+      {savedNotice && <div className="status-line chat-saved">{savedNotice}</div>}
+
       <div
         className="chat-composer"
         onDragOver={(event) => event.preventDefault()}
@@ -413,7 +573,7 @@ export function ChatPanel({
         <button
           className="icon-btn"
           title="添加图片（也可粘贴/拖入）"
-          disabled={!isVideoPage || streaming || images.length >= 2}
+          disabled={!activeTab || streaming || images.length >= 2}
           onClick={() => imageInputRef.current?.click()}
         >
           <ImagePlus size={14} />
@@ -422,8 +582,12 @@ export function ChatPanel({
           className="chat-input"
           rows={2}
           value={input}
-          placeholder={isVideoPage ? `基于本片字幕提问…（${sendOnEnter ? 'Enter' : 'Ctrl+Enter'} 发送）` : '打开 B 站视频后可用'}
-          disabled={!isVideoPage}
+          placeholder={
+            activeTab
+              ? `就当前页面提问…（${sendOnEnter ? 'Enter' : 'Ctrl+Enter'} 发送）`
+              : '打开网页后可用'
+          }
+          disabled={!activeTab}
           onChange={(event) => setInput(event.target.value)}
           onPaste={(event) => {
             const files = Array.from(event.clipboardData.files || []);
@@ -444,7 +608,7 @@ export function ChatPanel({
         />
         <button
           className="mini-btn primary"
-          disabled={!isVideoPage || (!input.trim() && !images.length) || streaming}
+          disabled={!activeTab || (!input.trim() && !images.length) || streaming}
           onClick={() => void send()}
           title="发送"
         >

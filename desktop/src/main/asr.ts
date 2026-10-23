@@ -13,6 +13,7 @@ import type {
 } from '../shared/types';
 import { fetchAudioRange, getAudioCandidates } from './page';
 import { loadSettings } from './settings';
+import { needsApiKey } from './platformKey';
 import { applyCorrectionToLines } from './correction';
 
 const CHUNK_BYTES = 384 * 1024;
@@ -34,7 +35,7 @@ function activeAsr(settings: AppSettings): AsrPlatform {
   if (!platform) throw new Error('没有可用的语音识别平台');
   if (!platform.baseUrl.trim()) throw new Error('语音识别平台缺少 Base URL');
   if (!platform.model.trim()) throw new Error('语音识别平台缺少模型名');
-  if (!platform.apiKey.trim()) throw new Error('语音识别平台还没填 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('语音识别平台还没填 API Key');
   return platform;
 }
 
@@ -367,7 +368,7 @@ async function transcribeChunk(
     throwIfAborted(signal);
     try {
       let body: BodyInit;
-      const headers: Record<string, string> = { authorization: `Bearer ${key}` };
+      const headers: Record<string, string> = key ? { authorization: `Bearer ${key}` } : {};
 
       if (transport === 'multipart') {
         const form = new FormData();

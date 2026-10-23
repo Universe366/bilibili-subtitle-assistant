@@ -1,8 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Globe, Home, RotateCw, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Globe, Home, MoreHorizontal, RotateCw, Star, X } from 'lucide-react';
 import type { TabInfo } from '../../../shared/types';
+import type { HubSection } from './BrowserHub';
 
-export function AddressBar({ tab, focusSignal = 0 }: { tab: TabInfo | null; focusSignal?: number }) {
+export function AddressBar({
+  tab,
+  focusSignal = 0,
+  bookmarked,
+  onToggleBookmark,
+  onOpenHub
+}: {
+  tab: TabInfo | null;
+  focusSignal?: number;
+  bookmarked: boolean;
+  onToggleBookmark: () => void;
+  onOpenHub: (section: HubSection) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,6 +95,23 @@ export function AddressBar({ tab, focusSignal = 0 }: { tab: TabInfo | null; focu
           }}
         />
       </div>
+
+      <button
+        className={`nav-btn${bookmarked ? ' is-active' : ''}`}
+        title={bookmarked ? '取消书签（Ctrl+D）' : '收藏此页（Ctrl+D）'}
+        disabled={!tab}
+        onClick={onToggleBookmark}
+      >
+        <Star size={15} fill={bookmarked ? 'currentColor' : 'none'} />
+      </button>
+
+      <button
+        className="nav-btn"
+        title="历史 / 书签 / 下载"
+        onClick={() => onOpenHub('history')}
+      >
+        <MoreHorizontal size={16} />
+      </button>
 
       <button
         className="zoom-btn"

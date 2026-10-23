@@ -75,7 +75,13 @@ import type {
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
-  GlobalSearchResult
+  GlobalSearchResult,
+  TrashItem,
+  HistoryEntry,
+  Bookmark,
+  DownloadRecord,
+  PageContextSummary,
+  PodcastFeed
 } from './types';
 
 export interface BsubApi {
@@ -92,8 +98,27 @@ export interface BsubApi {
   stop(): Promise<void>;
   setLayout(rect: LayoutRect): void;
   onTabs(cb: (tabs: TabInfo[]) => void): () => void;
+  reopenClosedTab(): Promise<string | null>;
+
+  listBrowseHistory(query?: string, limit?: number): Promise<Result<HistoryEntry[]>>;
+  clearBrowseHistory(): Promise<Result<{ removed: number }>>;
+  listBookmarks(): Promise<Result<Bookmark[]>>;
+  isBookmarked(url: string): Promise<Result<{ bookmarked: boolean }>>;
+  toggleBookmark(payload: {
+    url: string;
+    title?: string;
+    favicon?: string | null;
+  }): Promise<Result<{ bookmarked: boolean }>>;
+  removeBookmark(url: string): Promise<Result<{ removed: boolean }>>;
+  listDownloads(): Promise<Result<DownloadRecord[]>>;
+  deleteDownload(id: number): Promise<Result<{ removed: boolean }>>;
+  clearDownloads(): Promise<Result<{ removed: number }>>;
+  openDownload(id: number): Promise<Result<boolean>>;
+  revealDownload(id: number): Promise<Result<boolean>>;
+  onDownloadsChanged(cb: () => void): () => void;
 
   getPageInfo(): Promise<Result<PageInfo>>;
+  getPageContext(): Promise<Result<PageContextSummary>>;
   resolveCollection(input: string): Promise<Result<CollectionResolveResult>>;
   getSubtitles(expectSignature?: string): Promise<Result<SubtitleBundle>>;
   triggerSubtitleMenu(): Promise<Result<boolean>>;
@@ -115,6 +140,21 @@ export interface BsubApi {
   bulkTag(videoIds: number[], name: string): Promise<Result<{ linked: number }>>;
   bulkCollection(videoIds: number[], name: string): Promise<Result<{ linked: number }>>;
   bulkRemove(videoIds: number[]): Promise<Result<{ removed: number }>>;
+  importLocalMedia(): Promise<
+    Result<{ canceled: boolean; requestId?: string; filename?: string }>
+  >;
+  previewPodcast(url: string): Promise<Result<PodcastFeed>>;
+  importPodcast(payload: {
+    audioUrl: string;
+    title: string;
+    pageUrl?: string;
+    duration?: number;
+  }): Promise<Result<{ requestId: string }>>;
+  listTrash(): Promise<Result<TrashItem[]>>;
+  restoreTrash(id: number): Promise<Result<{ videoId: number }>>;
+  deleteTrash(id: number): Promise<Result<{ removed: boolean }>>;
+  clearTrash(): Promise<Result<{ removed: number }>>;
+  vacuumLibrary(): Promise<Result<{ before: number; after: number }>>;
   listCollections(): Promise<Result<LibraryCollection[]>>;
   createCollection(name: string): Promise<Result<LibraryCollection>>;
   addToCollection(videoId: number, name: string): Promise<Result<{ collections: string[] }>>;
@@ -140,12 +180,25 @@ export interface BsubApi {
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
   globalSearch(query: string): Promise<Result<GlobalSearchResult>>;
   onSearchRequest(cb: () => void): () => void;
+  onAskSelectionRequest(cb: () => void): () => void;
+  onSelectionAction(cb: (payload: { action: string; text: string }) => void): () => void;
+  onTabSearchRequest(cb: () => void): () => void;
+  onBookmarkRequest(cb: () => void): () => void;
   onTasksRequest(cb: () => void): () => void;
   removeLibrary(id: number): Promise<Result<{ removed: boolean }>>;
+  savePageSummary(payload: {
+    title: string;
+    url: string;
+    content: string;
+    model?: string;
+  }): Promise<Result<{ videoId: number; created: boolean }>>;
+  openLibrarySource(id: number): Promise<Result<boolean>>;
   onLibraryChanged(cb: () => void): () => void;
 
   getSettings(): Promise<Result<SettingsSnapshot>>;
   getDiagnostics(): Promise<Result<DiagnosticsInfo>>;
+  exportDiagnostics(): Promise<Result<{ canceled: boolean; path?: string }>>;
+  clearSitePermissions(): Promise<Result<{ removed: number }>>;
   saveSettings(next: AppSettings): Promise<Result<SettingsSnapshot>>;
   finishWizard(): Promise<Result<SettingsSnapshot>>;
   setWizardVisible(visible: boolean): Promise<Result<SettingsSnapshot>>;

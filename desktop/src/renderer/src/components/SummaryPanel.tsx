@@ -10,7 +10,7 @@ import type {
 } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { ExportMenu } from './ExportMenu';
-import { pickTrack, videoKeyOf } from '../lib/video';
+import { pickTrack, isVideoKey, videoKeyOf } from '../lib/video';
 import { getAsrResult } from '../lib/asrStore';
 
 function newRequestId(): string {
@@ -62,7 +62,7 @@ export function SummaryPanel({
   const liveRef = useRef<HTMLPreElement>(null);
 
   const videoKey = videoKeyOf(activeTab?.url);
-  const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
+  const isVideoPage = isVideoKey(videoKey);
 
   useEffect(() => {
     if (streamingRef.current) return;
@@ -371,8 +371,8 @@ export function SummaryPanel({
         </div>
       </div>
 
-      {!activeTab && <div className="panel-empty">打开一个 B 站视频后生成总结</div>}
-      {activeTab && !isVideoPage && <div className="panel-empty">当前页面不是 B 站视频页</div>}
+      {!activeTab && <div className="panel-empty">打开一个视频页后生成总结</div>}
+      {activeTab && !isVideoPage && <div className="panel-empty">当前页面不是视频页</div>}
 
       {loading && !info && (
         <div className="status-line">

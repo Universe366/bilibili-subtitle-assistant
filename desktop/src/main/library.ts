@@ -2,6 +2,7 @@ import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { migrateSchema, schemaVersion } from './migrations';
 import type {
   CollectionSearchHit,
   CollectionSummary,
@@ -36,7 +37,12 @@ import type {
   SummaryRef,
   SummarySearchHit,
   SummaryVersion,
-  SummaryVersionMeta
+  SummaryVersionMeta,
+  TrashItem,
+  Bookmark,
+  DownloadRecord,
+  DownloadState,
+  HistoryEntry
 } from '../shared/types';
 
 const SCHEMA = `
@@ -217,6 +223,10 @@ let db: DatabaseSync | null = null;
 let dbFile = '';
 let ftsEnabled = true;
 let staleChecked = false;
+let schemaState = { from: 0, to: 0 };
+
+const TRASH_KEEP_DAYS = 30;
+const TRASH_LIMIT = 200;
 
 export function initLibrary(): void {
   if (db) return;
@@ -226,6 +236,25 @@ export function initLibrary(): void {
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+
+  try {
+    const result = migrateSchema(db);
+    schemaState = { from: result.from, to: result.to };
+    if (result.applied.length) {
+      console.log('[library] schema migrated', result.from, '→', result.to, result.applied.join(','));
+    }
+  } catch (error) {
+    console.warn('[library] schema 迁移失败:', (error as Error).message);
+    throw error;
+  }
+
+  // 回收站只保留 30 天 / 最近 200 条，避免删掉的大文件一直占盘。
+  try {
+    purgeExpiredTrash();
+    trimTrash();
+  } catch (error) {
+    console.warn('[library] 回收站清理失败:', (error as Error).message);
+  }
 
   // 老库只有最新一份总结：升级时补一条版本记录，之后每次生成都会追加。
   try {
@@ -287,6 +316,25 @@ export function closeLibrary(): void {
 
 export function libraryPath(): string {
   return dbFile;
+}
+
+export function librarySchemaVersion(): number {
+  return db ? schemaVersion(db) : schemaState.to;
+}
+
+/** 压缩数据库：删除大条目后回收磁盘空间，并刷新查询计划统计。 */
+export function vacuumLibrary(): { before: number; after: number } {
+  const database = requireDb();
+  const before = fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0;
+  try {
+    database.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    database.exec('PRAGMA optimize;');
+    database.exec('VACUUM;');
+  } catch (error) {
+    throw new Error(`压缩数据库失败：${(error as Error).message}`, { cause: error });
+  }
+  const after = fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0;
+  return { before, after };
 }
 
 function requireDb(): DatabaseSync {
@@ -618,7 +666,7 @@ export function renameTag(oldName: string, newName: string): void {
     } catch {
       // ignore
     }
-    if (/UNIQUE/i.test((error as Error).message)) throw new Error('已有同名标签');
+    if (/UNIQUE/i.test((error as Error).message)) throw new Error('已有同名标签', { cause: error });
     throw error;
   }
 }
@@ -723,7 +771,112 @@ export function addCollectionToVideos(videoIds: number[], name: string): number 
   }
 }
 
-export function removeVideos(ids: number[]): number {
+interface TrashPayload {
+  video: Record<string, unknown>;
+  tracks: Array<Record<string, unknown> & { segments: Array<Record<string, unknown>> }>;
+  summaries: Array<Record<string, unknown>>;
+  summaryVersions: Array<Record<string, unknown>>;
+  note: Record<string, unknown> | null;
+  noteVersions: Array<Record<string, unknown>>;
+  tags: string[];
+  collections: string[];
+}
+
+function snapshotVideo(database: DatabaseSync, videoId: number): TrashPayload | null {
+  const video = database.prepare('SELECT * FROM videos WHERE id = ?').get(videoId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!video) return null;
+
+  const tracks = (
+    database.prepare('SELECT * FROM tracks WHERE video_id = ? ORDER BY id').all(videoId) as Array<
+      Record<string, unknown>
+    >
+  ).map((track) => ({
+    ...track,
+    segments: database
+      .prepare('SELECT start_ms, end_ms, text FROM segments WHERE track_id = ? ORDER BY start_ms')
+      .all(Number(track.id)) as Array<Record<string, unknown>>
+  }));
+
+  return {
+    video,
+    tracks,
+    summaries: database
+      .prepare('SELECT * FROM summaries WHERE video_id = ?')
+      .all(videoId) as Array<Record<string, unknown>>,
+    summaryVersions: database
+      .prepare('SELECT * FROM summary_versions WHERE video_id = ? ORDER BY id')
+      .all(videoId) as Array<Record<string, unknown>>,
+    note:
+      (database.prepare('SELECT * FROM notes WHERE video_id = ?').get(videoId) as
+        | Record<string, unknown>
+        | undefined) || null,
+    noteVersions: database
+      .prepare('SELECT * FROM note_versions WHERE video_id = ? ORDER BY id')
+      .all(videoId) as Array<Record<string, unknown>>,
+    tags: (
+      database
+        .prepare(
+          'SELECT t.name FROM tags t JOIN video_tags vt ON vt.tag_id = t.id WHERE vt.video_id = ?'
+        )
+        .all(videoId) as Array<{ name: string }>
+    ).map((row) => String(row.name || '')),
+    collections: (
+      database
+        .prepare(
+          'SELECT c.name FROM collections c JOIN collection_items ci ON ci.collection_id = c.id WHERE ci.video_id = ?'
+        )
+        .all(videoId) as Array<{ name: string }>
+    ).map((row) => String(row.name || ''))
+  };
+}
+
+function addTrashEntry(database: DatabaseSync, videoId: number): boolean {
+  const payload = snapshotVideo(database, videoId);
+  if (!payload) return false;
+  const video = payload.video;
+  const lineCount = payload.tracks.reduce((total, track) => total + track.segments.length, 0);
+  database
+    .prepare(
+      `INSERT INTO trash
+         (video_id, uid, title, owner, track_count, line_count, has_summary, has_note, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      videoId,
+      String(video.uid || ''),
+      String(video.title || ''),
+      String(video.owner || ''),
+      payload.tracks.length,
+      lineCount,
+      payload.summaries.length > 0 ? 1 : 0,
+      payload.note ? 1 : 0,
+      JSON.stringify(payload),
+      Date.now()
+    );
+  return true;
+}
+
+export function purgeExpiredTrash(days = TRASH_KEEP_DAYS): number {
+  const database = requireDb();
+  const cutoff = Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000;
+  return toNumber(database.prepare('DELETE FROM trash WHERE created_at < ?').run(cutoff).changes);
+}
+
+export function trimTrash(limit = TRASH_LIMIT): number {
+  const database = requireDb();
+  return toNumber(
+    database
+      .prepare(
+        `DELETE FROM trash WHERE id NOT IN (
+           SELECT id FROM trash ORDER BY created_at DESC, id DESC LIMIT ?)`
+      )
+      .run(Math.max(1, Math.round(limit))).changes
+  );
+}
+
+export function removeVideos(ids: number[], options: { trash?: boolean } = {}): number {
   const database = requireDb();
   const clean = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
   if (!clean.length) return 0;
@@ -731,6 +884,7 @@ export function removeVideos(ids: number[]): number {
   try {
     let removed = 0;
     for (const id of clean) {
+      if (options.trash !== false) addTrashEntry(database, id);
       if (ftsEnabled) {
         database
           .prepare(
@@ -751,6 +905,210 @@ export function removeVideos(ids: number[]): number {
     }
     throw error;
   }
+}
+
+export function listTrash(limit = 200): TrashItem[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT id, video_id, title, owner, track_count, line_count, has_summary, has_note, created_at
+       FROM trash ORDER BY created_at DESC, id DESC LIMIT ?`
+    )
+    .all(Math.min(500, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    videoId: toNumber(row.video_id),
+    title: String(row.title || ''),
+    owner: String(row.owner || ''),
+    trackCount: toNumber(row.track_count),
+    lineCount: toNumber(row.line_count),
+    hasSummary: toNumber(row.has_summary) > 0,
+    hasNote: toNumber(row.has_note) > 0,
+    deletedAt: toNumber(row.created_at)
+  }));
+}
+
+export function restoreTrash(id: number): { videoId: number } {
+  const database = requireDb();
+  const row = database
+    .prepare('SELECT id, payload FROM trash WHERE id = ?')
+    .get(Number(id)) as { id: number; payload: string } | undefined;
+  if (!row) throw new Error('回收站记录不存在');
+
+  let payload: TrashPayload;
+  try {
+    payload = JSON.parse(row.payload) as TrashPayload;
+  } catch {
+    throw new Error('回收站数据已损坏，无法恢复');
+  }
+  const video = payload.video || {};
+  const uid = String(video.uid || '');
+  if (!uid) throw new Error('回收站数据缺少条目标识');
+  if (database.prepare('SELECT id FROM videos WHERE uid = ?').get(uid)) {
+    throw new Error('同一个视频已经在库里，无法重复恢复');
+  }
+
+  const now = Date.now();
+  database.exec('BEGIN');
+  try {
+    const videoResult = database
+      .prepare(
+        `INSERT INTO videos
+           (uid, bvid, cid, ep_id, title, owner, duration, cover, pubdate, url, signature, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        uid,
+        video.bvid == null ? null : String(video.bvid),
+        video.cid == null ? null : toNumber(video.cid),
+        video.ep_id == null ? null : toNumber(video.ep_id),
+        String(video.title || ''),
+        String(video.owner || ''),
+        toNumber(video.duration),
+        video.cover == null ? null : String(video.cover),
+        video.pubdate == null ? null : toNumber(video.pubdate),
+        String(video.url || ''),
+        String(video.signature || ''),
+        toNumber(video.created_at) || now,
+        now
+      );
+    const videoId = toNumber(videoResult.lastInsertRowid);
+
+    for (const track of payload.tracks || []) {
+      const trackResult = database
+        .prepare(
+          `INSERT INTO tracks (video_id, lan, lan_doc, source, is_ai, url, line_count, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          videoId,
+          String(track.lan || ''),
+          String(track.lan_doc || track.lan || ''),
+          String(track.source || ''),
+          toNumber(track.is_ai) ? 1 : 0,
+          String(track.url || ''),
+          toNumber(track.line_count),
+          toNumber(track.created_at) || now,
+          toNumber(track.updated_at) || now
+        );
+      const trackId = toNumber(trackResult.lastInsertRowid);
+      const insertSegment = database.prepare(
+        'INSERT INTO segments (track_id, start_ms, end_ms, text) VALUES (?, ?, ?, ?)'
+      );
+      const insertFts = ftsEnabled
+        ? database.prepare('INSERT INTO segments_fts (rowid, text) VALUES (?, ?)')
+        : null;
+      for (const segment of track.segments || []) {
+        const result = insertSegment.run(
+          trackId,
+          toNumber(segment.start_ms),
+          toNumber(segment.end_ms),
+          String(segment.text || '')
+        );
+        if (insertFts) insertFts.run(toNumber(result.lastInsertRowid), String(segment.text || ''));
+      }
+    }
+
+    for (const summary of payload.summaries || []) {
+      database
+        .prepare(
+          `INSERT INTO summaries (uid, video_id, content_md, model, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          String(summary.uid || ''),
+          videoId,
+          String(summary.content_md || ''),
+          String(summary.model || ''),
+          toNumber(summary.created_at) || now,
+          toNumber(summary.updated_at) || now
+        );
+    }
+    for (const version of payload.summaryVersions || []) {
+      database
+        .prepare(
+          `INSERT INTO summary_versions (video_id, uid, content_md, model, created_at)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(
+          videoId,
+          String(version.uid || ''),
+          String(version.content_md || ''),
+          String(version.model || ''),
+          toNumber(version.created_at) || now
+        );
+    }
+
+    if (payload.note) {
+      database
+        .prepare(
+          `INSERT INTO notes (video_id, content_md, created_at, updated_at) VALUES (?, ?, ?, ?)`
+        )
+        .run(
+          videoId,
+          String(payload.note.content_md || ''),
+          toNumber(payload.note.created_at) || now,
+          toNumber(payload.note.updated_at) || now
+        );
+    }
+    for (const version of payload.noteVersions || []) {
+      database
+        .prepare('INSERT INTO note_versions (video_id, content_md, created_at) VALUES (?, ?, ?)')
+        .run(videoId, String(version.content_md || ''), toNumber(version.created_at) || now);
+    }
+
+    for (const name of payload.tags || []) {
+      const clean = String(name || '').trim();
+      if (!clean) continue;
+      database.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(clean);
+      const tag = database.prepare('SELECT id FROM tags WHERE name = ?').get(clean) as
+        | { id: number }
+        | undefined;
+      if (tag) {
+        database
+          .prepare('INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)')
+          .run(videoId, toNumber(tag.id));
+      }
+    }
+    for (const name of payload.collections || []) {
+      const clean = String(name || '').trim();
+      if (!clean) continue;
+      database
+        .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
+        .run(clean, now);
+      const collection = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
+        | { id: number }
+        | undefined;
+      if (collection) {
+        database
+          .prepare(
+            'INSERT OR IGNORE INTO collection_items (collection_id, video_id, added_at) VALUES (?, ?, ?)'
+          )
+          .run(toNumber(collection.id), videoId, now);
+      }
+    }
+
+    database.prepare('DELETE FROM trash WHERE id = ?').run(Number(id));
+    database.exec('COMMIT');
+    return { videoId };
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+}
+
+export function deleteTrash(id: number): boolean {
+  const database = requireDb();
+  return toNumber(database.prepare('DELETE FROM trash WHERE id = ?').run(Number(id)).changes) > 0;
+}
+
+export function clearTrash(): number {
+  const database = requireDb();
+  return toNumber(database.prepare('DELETE FROM trash').run().changes);
 }
 
 export function listCollections(): LibraryCollection[] {
@@ -849,7 +1207,7 @@ export function renameCollection(id: number, name: string): void {
   try {
     database.prepare('UPDATE collections SET name = ? WHERE id = ?').run(clean, Number(id));
   } catch (error) {
-    if (/UNIQUE/i.test((error as Error).message)) throw new Error('已有同名合集');
+    if (/UNIQUE/i.test((error as Error).message)) throw new Error('已有同名合集', { cause: error });
     throw error;
   }
 }
@@ -1294,24 +1652,14 @@ function pruneOrphans(database: DatabaseSync): void {
 }
 
 export function removeVideo(id: number): boolean {
-  const database = requireDb();
-  if (ftsEnabled) {
-    database
-      .prepare(
-        'DELETE FROM segments_fts WHERE rowid IN (SELECT s.id FROM segments s JOIN tracks t ON t.id = s.track_id WHERE t.video_id = ?)'
-      )
-      .run(id);
-  }
-  const result = database.prepare('DELETE FROM videos WHERE id = ?').run(id);
-  if (toNumber(result.changes) > 0) pruneOrphans(database);
-  return toNumber(result.changes) > 0;
+  return removeVideos([Number(id)]) > 0;
 }
 
 export function saveSummary(
   info: PageInfo,
   content: string,
   model: string
-): { id: number; updated: boolean } {
+): { id: number; updated: boolean; videoId: number } {
   if (!content.trim()) throw new Error('总结内容为空');
   const database = requireDb();
   const now = Date.now();
@@ -1352,7 +1700,7 @@ export function saveSummary(
 
     database.exec('COMMIT');
     const row = database.prepare('SELECT id FROM summaries WHERE uid = ?').get(uid) as { id: number };
-    return { id: Number(row.id), updated: Boolean(existing) };
+    return { id: Number(row.id), updated: Boolean(existing), videoId };
   } catch (error) {
     try {
       database.exec('ROLLBACK');
@@ -1727,6 +2075,209 @@ type JobsListener = () => void;
 
 let jobsListener: JobsListener | null = null;
 let jobsNotifyTimer: NodeJS.Timeout | null = null;
+
+const HISTORY_LIMIT = 5000;
+
+/** 记录一次网页访问；60 秒内同一 URL 只更新标题/时间，避免 SPA 刷出几十条。 */
+export function recordHistory(input: {
+  url: string;
+  title?: string;
+  favicon?: string | null;
+}): void {
+  const url = String(input?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) return;
+  const database = requireDb();
+  const now = Date.now();
+  const title = String(input.title || '').slice(0, 300);
+  const favicon = input.favicon ? String(input.favicon) : null;
+  const recent = database
+    .prepare('SELECT id, title, visited_at FROM history WHERE url = ? ORDER BY visited_at DESC LIMIT 1')
+    .get(url) as { id: number; title: string; visited_at: number } | undefined;
+
+  if (recent && now - Number(recent.visited_at) < 60_000) {
+    database
+      .prepare('UPDATE history SET visited_at = ?, title = ?, favicon = COALESCE(?, favicon) WHERE id = ?')
+      .run(now, title || recent.title || '', favicon, recent.id);
+  } else {
+    database
+      .prepare('INSERT INTO history (url, title, favicon, visited_at) VALUES (?, ?, ?, ?)')
+      .run(url, title, favicon, now);
+    database
+      .prepare(
+        'DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY visited_at DESC LIMIT ?)'
+      )
+      .run(HISTORY_LIMIT);
+  }
+}
+
+export function listBrowseHistory(query = '', limit = 100): HistoryEntry[] {
+  const database = requireDb();
+  const text = String(query || '').trim();
+  const capped = Math.min(500, Math.max(1, Math.round(limit)));
+  const rows = (
+    text
+      ? database
+          .prepare(
+            `SELECT id, url, title, favicon, visited_at FROM history
+             WHERE url LIKE ? OR title LIKE ?
+             ORDER BY visited_at DESC LIMIT ?`
+          )
+          .all(`%${text}%`, `%${text}%`, capped)
+      : database
+          .prepare(
+            'SELECT id, url, title, favicon, visited_at FROM history ORDER BY visited_at DESC LIMIT ?'
+          )
+          .all(capped)
+  ) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    url: String(row.url || ''),
+    title: String(row.title || ''),
+    favicon: row.favicon == null ? null : String(row.favicon),
+    visitedAt: toNumber(row.visited_at)
+  }));
+}
+
+export function clearBrowseHistory(): number {
+  const database = requireDb();
+  return toNumber(database.prepare('DELETE FROM history').run().changes);
+}
+
+export function listBookmarks(): Bookmark[] {
+  const database = requireDb();
+  const rows = database
+    .prepare('SELECT id, url, title, favicon, created_at FROM bookmarks ORDER BY created_at DESC')
+    .all() as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    url: String(row.url || ''),
+    title: String(row.title || ''),
+    favicon: row.favicon == null ? null : String(row.favicon),
+    createdAt: toNumber(row.created_at)
+  }));
+}
+
+export function isBookmarked(url: string): boolean {
+  const database = requireDb();
+  return Boolean(database.prepare('SELECT id FROM bookmarks WHERE url = ?').get(String(url || '')));
+}
+
+export function toggleBookmark(input: {
+  url: string;
+  title?: string;
+  favicon?: string | null;
+}): { bookmarked: boolean } {
+  const database = requireDb();
+  const url = String(input?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) throw new Error('只能收藏网页地址');
+  const existing = database.prepare('SELECT id FROM bookmarks WHERE url = ?').get(url) as
+    | { id: number }
+    | undefined;
+  if (existing) {
+    database.prepare('DELETE FROM bookmarks WHERE id = ?').run(existing.id);
+    return { bookmarked: false };
+  }
+  database
+    .prepare('INSERT INTO bookmarks (url, title, favicon, created_at) VALUES (?, ?, ?, ?)')
+    .run(url, String(input.title || url).slice(0, 300), input.favicon || null, Date.now());
+  return { bookmarked: true };
+}
+
+export function removeBookmark(url: string): boolean {
+  const database = requireDb();
+  return toNumber(database.prepare('DELETE FROM bookmarks WHERE url = ?').run(String(url)).changes) > 0;
+}
+
+export function addDownload(input: {
+  url: string;
+  filename: string;
+  path?: string;
+  total?: number;
+}): number {
+  const database = requireDb();
+  const result = database
+    .prepare(
+      `INSERT INTO downloads (url, filename, path, state, total, received, started_at)
+       VALUES (?, ?, ?, 'progressing', ?, 0, ?)`
+    )
+    .run(
+      String(input.url || ''),
+      String(input.filename || ''),
+      String(input.path || ''),
+      toNumber(input.total),
+      Date.now()
+    );
+  return toNumber(result.lastInsertRowid);
+}
+
+export function updateDownload(
+  id: number,
+  patch: {
+    state?: DownloadState;
+    path?: string;
+    total?: number;
+    received?: number;
+    finished?: boolean;
+  }
+): void {
+  const database = requireDb();
+  const fields: string[] = [];
+  const values: Array<string | number | null> = [];
+  if (patch.state) {
+    fields.push('state = ?');
+    values.push(patch.state);
+  }
+  if (patch.path !== undefined) {
+    fields.push('path = ?');
+    values.push(String(patch.path || ''));
+  }
+  if (patch.total !== undefined) {
+    fields.push('total = ?');
+    values.push(toNumber(patch.total));
+  }
+  if (patch.received !== undefined) {
+    fields.push('received = ?');
+    values.push(toNumber(patch.received));
+  }
+  if (patch.finished) {
+    fields.push('finished_at = ?');
+    values.push(Date.now());
+  }
+  if (!fields.length) return;
+  values.push(Number(id));
+  database.prepare(`UPDATE downloads SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+}
+
+export function listDownloads(limit = 100): DownloadRecord[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT id, url, filename, path, state, total, received, started_at, finished_at
+       FROM downloads ORDER BY started_at DESC LIMIT ?`
+    )
+    .all(Math.min(300, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: toNumber(row.id),
+    url: String(row.url || ''),
+    filename: String(row.filename || ''),
+    path: String(row.path || ''),
+    state: String(row.state || 'progressing') as DownloadState,
+    total: toNumber(row.total),
+    received: toNumber(row.received),
+    startedAt: toNumber(row.started_at),
+    finishedAt: row.finished_at == null ? null : toNumber(row.finished_at)
+  }));
+}
+
+export function deleteDownload(id: number): boolean {
+  const database = requireDb();
+  return toNumber(database.prepare('DELETE FROM downloads WHERE id = ?').run(Number(id)).changes) > 0;
+}
+
+export function clearDownloads(): number {
+  const database = requireDb();
+  return toNumber(database.prepare('DELETE FROM downloads').run().changes);
+}
 
 export function setJobsListener(listener: JobsListener | null): void {
   jobsListener = listener;

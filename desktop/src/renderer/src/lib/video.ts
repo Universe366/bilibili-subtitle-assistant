@@ -1,11 +1,28 @@
 import type { PageInfo, SubtitleTrack } from '../../../shared/types';
 
+export function isVideoKey(key: string): boolean {
+  return key.startsWith('v:') || key.startsWith('e:') || key.startsWith('y:');
+}
+
+function youtubeId(parsed: URL): string {
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+  if (host === 'youtu.be') return parsed.pathname.split('/').filter(Boolean)[0] || '';
+  if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com') {
+    if (parsed.pathname === '/watch') return parsed.searchParams.get('v') || '';
+    const match = /\/(?:shorts|embed|live)\/([\w-]+)/.exec(parsed.pathname);
+    return match ? match[1] : '';
+  }
+  return '';
+}
+
 // B 站是单页应用，?vd_source / ?spm_id_from 这类 query 变化不应触发重新抓取。
-// 只按「视频 + 分 P」生成 key。
+// 只按「视频 + 分 P」生成 key；YouTube 按 videoId，忽略 t / list 参数。
 export function videoKeyOf(url?: string): string {
   if (!url || url === 'about:blank') return '';
   try {
     const parsed = new URL(url);
+    const youtube = youtubeId(parsed);
+    if (youtube) return `y:${youtube}`;
     if (!/(^|\.)bilibili\.com$/i.test(parsed.hostname)) return `u:${parsed.href}`;
     const bv = parsed.pathname.match(/\/video\/(BV[0-9A-Za-z]{10})/i);
     const ep = parsed.pathname.match(/\/bangumi\/play\/(ep\d+)/i);

@@ -1,5 +1,6 @@
 import type { AiPlatform, PageInfo, SubtitleLine, VerificationSummary } from '../shared/types';
 import { activePlatform, activePrompt, loadSettings } from './settings';
+import { needsApiKey } from './platformKey';
 import { chatOnce, chatStream } from './aiClient';
 import { buildSearchQuery, rankReferences, searchWeb } from './search';
 import { buildVerifyBlock, verifySummary } from './verify';
@@ -332,7 +333,7 @@ export async function summarize(options: SummarizeOptions): Promise<{ text: stri
 
   if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
   if (!platform.model.trim()) throw new Error('请先在设置里填写模型名');
-  if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
 
   const info = options.info;
   let workingLines = options.lines;

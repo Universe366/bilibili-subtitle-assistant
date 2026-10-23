@@ -5,6 +5,7 @@ import { applyCorrectionToLines } from './correction';
 import { ingestVideo, saveSummary } from './library';
 import { summarize } from './ai';
 import { loadSettings } from './settings';
+import { youtubeVideoId } from './youtube';
 
 export interface UrlBatchResult {
   succeeded: number;
@@ -43,9 +44,14 @@ export function parseVideoUrls(text: string): string[] {
     } else if (/^https?:\/\//i.test(line)) {
       try {
         const parsed = new URL(line);
-        if (!/bilibili\.com$|b23\.tv$/i.test(parsed.hostname)) continue;
-        if (/bilibili\.com$/i.test(parsed.hostname) && !/^\/video\//.test(parsed.pathname)) continue;
-        url = parsed.toString();
+        const youtube = youtubeVideoId(line);
+        if (youtube) {
+          url = `https://www.youtube.com/watch?v=${youtube}`;
+        } else {
+          if (!/bilibili\.com$|b23\.tv$/i.test(parsed.hostname)) continue;
+          if (/bilibili\.com$/i.test(parsed.hostname) && !/^\/video\//.test(parsed.pathname)) continue;
+          url = parsed.toString();
+        }
       } catch {
         continue;
       }
@@ -79,7 +85,7 @@ export async function batchUrls(
   signal?: AbortSignal,
   hooks?: UrlBatchHooks
 ): Promise<UrlBatchResult> {
-  if (!urls.length) throw new Error('没有解析到 B 站视频链接');
+  if (!urls.length) throw new Error('没有解析到支持的视频链接');
   const settings = loadSettings();
   let succeeded = 0;
   let cancelled = false;
@@ -92,13 +98,14 @@ export async function batchUrls(
       const parsed = new URL(item);
       valid =
         /^https?:$/.test(parsed.protocol) &&
-        ((/bilibili\.com$/i.test(parsed.hostname) && /^\/video\//.test(parsed.pathname)) ||
+        (Boolean(youtubeVideoId(item)) ||
+          (/bilibili\.com$/i.test(parsed.hostname) && /^\/video\//.test(parsed.pathname)) ||
           /b23\.tv$/i.test(parsed.hostname));
     } catch {
       valid = false;
     }
     if (!valid) {
-      failed.push({ url: item, error: '不是 B 站视频链接' });
+      failed.push({ url: item, error: '不是支持的视频链接（B 站 / YouTube）' });
       continue;
     }
     if (targets.includes(item)) continue;

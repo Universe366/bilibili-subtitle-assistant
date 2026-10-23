@@ -2,6 +2,7 @@ import { session } from 'electron';
 import type { WebContents } from 'electron';
 import type { PageInfo, SubtitleBundle, SubtitleLine, SubtitleTrack, TrackBody } from '../shared/types';
 import { loadSettings } from './settings';
+import { isYouTubeUrl, parseJson3, parseTimedTextXml, readYouTubeData } from './youtube';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -11,7 +12,10 @@ const ALLOWED_SUBTITLE_HOSTS = [
   /(^|\.)hdslb\.com$/i,
   /(^|\.)bilibili\.com$/i,
   /(^|\.)bilivideo\.com$/i,
-  /(^|\.)bilivideo\.cn$/i
+  /(^|\.)bilivideo\.cn$/i,
+  /(^|\.)youtube\.com$/i,
+  /(^|\.)youtu\.be$/i,
+  /(^|\.)google\.com$/i
 ];
 
 const HELPER_DEF = String.raw`
@@ -139,6 +143,12 @@ async function fetchView(bvid: string): Promise<any | null> {
 }
 
 export async function getPageInfo(wc: WebContents): Promise<PageInfo> {
+  if (isYouTubeUrl(wc.getURL())) {
+    const youtube = await readYouTubeData(wc);
+    if (youtube) return youtube.info;
+    throw new Error('没有读取到 YouTube 视频信息');
+  }
+
   let raw: PageInfo & { ok?: boolean };
   try {
     raw = await callPage<PageInfo & { ok?: boolean }>(wc, 'getInfo', {}, 12000);
@@ -274,13 +284,38 @@ export async function getSubtitles(
   wc: WebContents,
   expectSignature?: string
 ): Promise<SubtitleBundle> {
+  if (isYouTubeUrl(wc.getURL())) {
+    const youtube = await readYouTubeData(wc);
+    const tracks = youtube?.tracks || [];
+    return {
+      needLogin: false,
+      tracks,
+      sources: ['youtube'],
+      errors: tracks.length
+        ? []
+        : [{ source: 'youtube', message: '这个视频没有可用的字幕轨' }],
+      identity: youtube?.info.signature,
+      diagnostics: {
+        groups: [],
+        sniffed: [],
+        foreignTracks: [],
+        sniffCount: 0,
+        staleSniffCount: 0,
+        signatureChanged: Boolean(expectSignature && youtube && expectSignature !== youtube.info.signature),
+        identityMismatch: Boolean(expectSignature && youtube && expectSignature !== youtube.info.signature),
+        identityUnstable: false,
+        reason: tracks.length ? '' : 'youtube-no-captions'
+      }
+    };
+  }
+
   const raw = await callPage<any>(
     wc,
     'getSubtitleBundle',
     expectSignature ? { expectSignature } : {},
     35000
   );
-  let tracks: SubtitleTrack[] = (raw && Array.isArray(raw.tracks) ? raw.tracks : [])
+  const tracks: SubtitleTrack[] = (raw && Array.isArray(raw.tracks) ? raw.tracks : [])
     .filter((track: any) => track && track.url)
     .map((track: any) => ({
       lan: String(track.lan || ''),
@@ -312,6 +347,7 @@ export async function getSubtitles(
 }
 
 export async function triggerSubtitleMenu(wc: WebContents): Promise<void> {
+  if (isYouTubeUrl(wc.getURL())) return;
   await callPage(wc, 'triggerSubtitleMenu', {}, 12000);
 }
 
@@ -334,14 +370,32 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     return { lines: cached.lines.map((line) => ({ ...line })) };
   }
 
+  const isYouTubeHost = /(^|\.)youtube\.com$/i.test(parsed.hostname) || /(^|\.)google\.com$/i.test(parsed.hostname);
   const res = await fetch(url, {
-    headers: { 'user-agent': UA, referer: REFERER },
+    headers: {
+      'user-agent': UA,
+      referer: isYouTubeHost ? 'https://www.youtube.com/' : REFERER
+    },
     signal: AbortSignal.timeout(25000)
   });
   if (!res.ok) throw new Error(`字幕下载失败（HTTP ${res.status}）`);
 
   const text = await res.text();
   if (text.length > 20 * 1024 * 1024) throw new Error('字幕文件过大');
+
+  if (isYouTubeHost) {
+    let lines = parseJson3(text);
+    if (!lines.length) lines = parseTimedTextXml(text);
+    if (!lines.length) throw new Error('YouTube 字幕为空或格式无法解析');
+    if (cacheEnabled && ttlMs > 0) {
+      trackCache.set(cacheKey, { at: Date.now(), lines });
+      if (trackCache.size > TRACK_CACHE_MAX) {
+        const oldest = trackCache.keys().next().value;
+        if (oldest) trackCache.delete(oldest);
+      }
+    }
+    return { lines };
+  }
 
   let json: any = null;
   try {
@@ -369,6 +423,20 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
 }
 
 export async function getTime(wc: WebContents): Promise<{ currentTime: number; duration: number }> {
+  if (isYouTubeUrl(wc.getURL())) {
+    try {
+      const data = (await wc.executeJavaScript(
+        `(() => { const v = document.querySelector('video'); return v ? { currentTime: v.currentTime || 0, duration: v.duration || 0 } : null; })()`,
+        true
+      )) as { currentTime?: number; duration?: number } | null;
+      return {
+        currentTime: Number(data?.currentTime) || 0,
+        duration: Number(data?.duration) || 0
+      };
+    } catch {
+      return { currentTime: 0, duration: 0 };
+    }
+  }
   const data = await callPage<{ currentTime: number; duration: number }>(wc, 'getTime', {}, 8000);
   return {
     currentTime: Number(data && data.currentTime) || 0,
@@ -377,6 +445,13 @@ export async function getTime(wc: WebContents): Promise<{ currentTime: number; d
 }
 
 export async function seek(wc: WebContents, time: number): Promise<void> {
+  if (isYouTubeUrl(wc.getURL())) {
+    await wc.executeJavaScript(
+      `(() => { const v = document.querySelector('video'); if (v) v.currentTime = ${Number(time) || 0}; })()`,
+      true
+    );
+    return;
+  }
   await callPage(wc, 'seek', { time }, 8000);
 }
 

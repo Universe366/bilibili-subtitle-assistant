@@ -11,7 +11,7 @@ import type {
   SubtitleTrackCheck,
   TabInfo
 } from '../../../shared/types';
-import { pickTrack, videoKeyOf } from '../lib/video';
+import { pickTrack, isVideoKey, videoKeyOf } from '../lib/video';
 import { getAsrResult, setAsrResult } from '../lib/asrStore';
 import {
   clearTranslationResult,
@@ -274,7 +274,7 @@ export function SubtitlesPanel({
 
   const refresh = useCallback(() => setReloadKey((value) => value + 1), []);
   const videoKey = videoKeyOf(activeTab?.url);
-  const isVideoPage = videoKey.startsWith('v:') || videoKey.startsWith('e:');
+  const isVideoPage = isVideoKey(videoKey);
   infoRef.current = info;
   videoKeyRef.current = videoKey;
   bundleRef.current = bundle;
@@ -1165,7 +1165,7 @@ export function SubtitlesPanel({
           </button>
           <button
             className="mini-btn"
-            disabled={!info?.url || collectionImporting}
+            disabled={!info?.url || collectionImporting || info.kind === 'youtube'}
             title="把当前视频所在的 UP 合集或多 P 全部入库（不自动总结）"
             onClick={() => void importCollection()}
           >
@@ -1173,8 +1173,12 @@ export function SubtitlesPanel({
           </button>
           <button
             className="mini-btn"
-            disabled={!info || asrRunning}
-            title="没有官方字幕时，用视频音轨做语音转录"
+            disabled={!info || asrRunning || info.kind === 'youtube'}
+            title={
+              info?.kind === 'youtube'
+                ? 'YouTube 暂不支持语音转录，请优先使用官方/自动字幕'
+                : '没有官方字幕时，用视频音轨做语音转录'
+            }
             onClick={() => void startAsr()}
           >
             {asrRunning ? <Loader2 size={12} className="spin" /> : '转写'}
@@ -1493,10 +1497,10 @@ export function SubtitlesPanel({
 
       {!asrRunning && asrMessage && <div className="save-status">{asrMessage}</div>}
 
-      {!activeTab && <div className="panel-empty">打开一个 B 站视频后显示字幕</div>}
+      {!activeTab && <div className="panel-empty">打开一个视频页后显示字幕</div>}
 
       {activeTab && !isVideoPage && (
-        <div className="panel-empty">当前页面不是 B 站视频页</div>
+        <div className="panel-empty">当前页面不是视频页</div>
       )}
 
       {activeTab && loading && !info && (
@@ -1518,12 +1522,14 @@ export function SubtitlesPanel({
               {info.title || '未识别到视频'}
             </div>
             <div className="video-sub">
-              {info.owner || '未知 UP'}
+              {info.owner || (info.kind === 'youtube' ? '未知频道' : '未知 UP')}
               {info.duration ? ` · ${fmtTime(info.duration)}` : ''}
             </div>
             <div className="video-tags">
               {info.bvid && <span className="mini-tag">{info.bvid}</span>}
-              {info.page > 0 && <span className="mini-tag">P{info.page}</span>}
+              {info.kind !== 'youtube' && info.page > 0 && (
+                <span className="mini-tag">P{info.page}</span>
+              )}
               {info.stat && info.stat.view > 0 && (
                 <span className="mini-tag">
                   <Eye size={11} />

@@ -1,5 +1,6 @@
 import type { Chapter, PageInfo, SubtitleLine } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
+import { needsApiKey } from './platformKey';
 import { chatOnce } from './aiClient';
 import { buildTranscript } from './ai';
 
@@ -74,7 +75,7 @@ export async function generateChapters(
   const platform = activePlatform(settings);
   if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
   if (!platform.model.trim()) throw new Error('请先在设置里填写模型名');
-  if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
   if (!lines.length) throw new Error('没有可用的字幕内容');
 
   const transcript = buildTranscript(info, lines);

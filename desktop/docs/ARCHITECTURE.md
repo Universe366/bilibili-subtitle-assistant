@@ -43,8 +43,10 @@ desktop/
 
 ```
 %APPDATA%\bsub-desktop\
-├─ settings.json      设置（含 API Key / 桥 Token）
-├─ library.db         SQLite：视频、字幕、总结、历史
+├─ settings.json      设置（API Key 用 DPAPI 加密；桥 Token 仍为明文）
+├─ permissions.json   站点权限记忆（摄像头/麦克风/通知等）
+├─ library.db         SQLite：视频、字幕、总结、历史、回收站
+├─ logs\              主进程日志（main-YYYY-MM-DD.log，保留 7 天）
 ├─ startup.log
 ├─ fatal.log
 ├─ Network\           登录 Cookie
@@ -195,6 +197,8 @@ SPA 切页瞬间拿到上一个视频的预取轨。
 | `collection_summaries` / `collection_summary_versions` | 合集对比 + 最近 20 个版本 |
 | `jobs` / `job_items` | 任务与逐项状态 |
 | `exports` | 导出登记（最近 100 条，只记路径不存文件） |
+| `trash` | 回收站快照（删除前保存完整条目，30 天 / 200 条上限） |
+| `schema_migrations` | 已执行的 schema 迁移记录 |
 
 约束：
 
@@ -356,10 +360,197 @@ node panel-test.js     # 至少跑这个
 ## 11. 发布与版本
 
 - 一次合并发布包含桌面端与插件两个版本号：
-  - 桌面端 `desktop/package.json`（例如 0.31.0）；
+  - 桌面端 `desktop/package.json`（例如 0.32.0）；
   - 插件 `bilibili-subtitle-assistant/manifest.json` 及 constants/content/page-bridge（例如 2.18.2）；
   - tag 用插件版本 `v2.18.2`，CI 会同时打包桌面安装包、绿色包、插件 zip 和 `latest.yml`；
 - 发布前：`npm run typecheck`、`npm run build`、`npm run release:notes` 检查发布说明能提取；
 - 本机 `release/` 不入库；CI 用 `desktop-release.yml`，push tag 即触发；
 - 桌面端自动更新只对安装版生效，依赖 Release 里的 `latest.yml` 与 setup exe；
 - 版本号、CHANGELOG、README 产物名必须同步，详细清单见 `docs/MAINTAINERS.md`。
+
+## 12. 加固与可观测性（0.31.x）
+
+这一层是「加功能之前先补的地基」，改动集中在主进程启动路径，后续不要绕过。
+验收命令与手工测试记录见 [`HARDENING.md`](HARDENING.md)。
+
+### 12.1 单实例
+
+`index.ts` 在模块顶层调用 `app.requestSingleInstanceLock()`：
+
+- 拿不到锁直接 `app.quit()`，避免第二个进程共用 `library.db` / 桥端口，
+  并在 `initLibrary()` 里把第一个实例的运行中任务标成失败；
+- 拿到锁时监听 `second-instance`：显示已有窗口，并把命令行里的 http(s) URL 作为新标签打开。
+
+### 12.2 API Key 加密
+
+- `secrets.ts`：`sealSecret` / `openSecret`，前缀 `enc:v1:`，底层是 `safeStorage`（Windows DPAPI）；
+- `settings.ts` 的 `loadSettings()` 解密、`saveSettings()` 加密，内存里始终是明文；
+- 启动时 `migrateSettingsSecrets()` 把老版本明文原地加密；
+- 导出设置、数据备份、诊断包都走 `stripSecrets()`，**不含 Key 与桥 Token**；
+- 恢复备份时 `restoreSettingsFromBackup()` 用「合并」而不是覆盖，保留本机 Key；
+- 解密失败（换机器/换账户）返回空串，让用户重填，不能把密文当 Key 发出去。
+
+### 12.3 站点权限
+
+`permissions.ts`：
+
+- 应用自己的渲染进程（按 webContents.id 判断）直接放行；
+- 普通网站首次请求摄像头/麦克风/通知/剪贴板/位置时弹窗，可记住选择；
+- 选择写入 `permissions.json`，默认全部拒绝；
+- `setDevicePermissionHandler` 一律拒绝 HID/串口；
+- `fullscreen` / `pointerLock` / `clipboard-sanitized-write` 视为安全权限直接放行。
+
+### 12.4 生产 CSP
+
+`csp.ts` 只给应用 UI 的响应加 `Content-Security-Policy`，按 `webContentsId` 过滤，
+内嵌网页完全不受影响；开发模式跳过，避免挡住 Vite HMR。
+
+### 12.5 日志与诊断
+
+- `logger.ts` 安装一次 console 钩子，把主进程日志写到 `logs/main-YYYY-MM-DD.log`，保留 7 天；
+- 落盘前脱敏（`sk-*`、`Bearer`、apiKey/token 字段）；
+- 设置 → 诊断 → **导出诊断包**：版本、数据规模、脱敏设置、站点权限、日志，
+  不包含字幕/总结正文与 Key。
+
+### 12.6 schema 迁移与回收站
+
+- `migrations.ts`：`PRAGMA user_version` + 顺序迁移，`LATEST_SCHEMA_VERSION = 2`；
+  新加列/表必须新增一个迁移版本，不能改老迁移；
+- `trash` 保存删除前的完整快照（视频、所有字幕轨、总结与版本、笔记与版本、标签、合集），
+  恢复时重新插入并重建 FTS 索引；
+- 删除统一走 `removeVideos(ids, { trash: false })` 才是彻底删除；
+- 启动时清理 30 天前与第 200 条之后的回收站记录；
+- 设置 → 数据与备份 → **压缩数据库**：`wal_checkpoint` + `PRAGMA optimize` + `VACUUM`。
+
+### 12.7 测试与 CI
+
+- `npm run lint`：ESLint flat config；存量 `any`/未使用变量以 warning 呈现，错误会阻塞；
+- `npm test`：Vitest，覆盖 URL 归一化、导出格式、选轨、密钥加解密、schema 迁移、
+  回收站恢复、备份校验、诊断包；
+- `.github/workflows/desktop-ci.yml`：PR / push main 跑 typecheck + lint + test + build。
+
+### 12.8 已知取舍
+
+- `safeStorage` 的同步 API 在 Electron 45 已标记 deprecated；改成 async 会牵动
+  `loadSettings()` 的所有同步调用点，暂时保留并在升级 Electron 大版本时处理；
+- 权限弹窗在回调前是异步的，窗口关闭后回调仍会执行，但已做 `isDestroyed` 判断；
+- 回收站快照按 JSON 存库，超大字幕（数万行）会明显增大 `library.db`，上限与 30 天清理是兜底。
+
+## 13. 浏览器基础盘与 AI 上下文（0.32 开发中）
+
+### 13.1 浏览器数据（schema v3）
+
+`history` / `bookmarks` / `downloads` 三张表在 `migrations.ts` 的 v3 迁移里创建：
+
+- 历史：`recordHistory()` 由 `TabManager` 在 `did-navigate` / `did-navigate-in-page` / 标题与 favicon 更新时调用；
+  同一 URL 60 秒内只更新一条，最多保留 5000 条；
+- 书签：`toggleBookmark()` / `isBookmarked()`，地址栏星标与 `Ctrl+D` 都走这里；
+- 下载：`will-download` 时 `addDownload()`，`updated` / `done` 时 `updateDownload()`，写入节流 500ms；
+  清空记录不会删除磁盘文件。
+
+### 13.2 标签会话
+
+- `session.ts` 把 `{activeUrl, tabs:[{url,title}]}` 写到 `userData/session.json`；
+- 标签变化后 1.5 秒去抖保存，`before-quit` 再同步保存一次；最多 40 个；
+- 启动时若 `general.restoreSession !== false` 且文件存在，按顺序重建标签并激活上次的 activeUrl；
+- `TabManager.reopenClosed()` 维护最近 20 个关闭标签，`Ctrl+Shift+T` 重开。
+
+### 13.3 浏览器面板
+
+`BrowserHub.tsx` 是应用 UI 里的模态层，分「历史 / 书签 / 下载 / 标签」四块：
+
+- 打开时 App 会 `setBrowserVisible(false)`，否则原生 WebContentsView 会盖住面板；
+- 历史支持搜索与清空；书签可移除；下载显示进度、打开、定位、移除记录；
+- 标签面板支持按标题/URL 过滤并切换；
+- 快捷键：`Ctrl+Shift+A` 打开标签面板，地址栏星标 / `Ctrl+D` 收藏，`Ctrl+Shift+T` 重开标签。
+
+### 13.4 AI 上下文
+
+- `pageContext.ts` 用 `executeJavaScript` 抽取正文与 `window.getSelection()`：
+  优先 `article/main`，去掉脚本、导航、表单，正文最多 2 万字，选中内容最多 4 千字；
+- `chat:send` 在主进程里读取当前标签的上下文，渲染层不需要把大段正文经 IPC 传上来；
+- 页面内容在 prompt 里明确标记为**不可信资料**，要求模型不要执行其中的指令；
+- 视频页仍以字幕为主；非视频页自动降级为「页面正文 + 选中内容」，`ChatPanel` 不再限制 B 站视频页；
+- 上下文芯片显示当前页面字数与选中字数，可关闭「带入页面」；
+- `Ctrl+Shift+S` 从网页里直接带着选中内容提问（主进程转发 `app:ask-selection`）。
+
+### 13.5 AI 本地工具
+
+`appTools.ts` 提供三个只读工具，复用 `chatToolLoop`：
+
+- `app__search_library`：搜本地库（标题 / 字幕 / 总结 / 笔记）
+- `app__read_library_item`：读条目详情、总结、笔记、字幕片段
+- `app__list_recent`：最近入库条目
+
+只读是硬约束：写操作必须由用户确认，暂不暴露给模型。设置 → AI 里有开关
+（`ai.appTools`，默认开）。
+
+### 13.6 本地模型
+
+`platformKey.ts` 判断 `baseUrl` 是否为本机（localhost / 127.0.0.1 / ::1）：
+
+- 本机端点不要求 API Key，`aiHeaders()` 也不会发空的 `Authorization`；
+- 新增 Ollama / LM Studio 预设（`AI_PRESET_VERSION = 5`）；
+- 总结、对话、章节、翻译、校对、合集对比、ASR 都走同一判断。
+
+### 13.7 首用与显示名
+
+- 空库提供「粘贴链接 → 导入并总结」入口，直接打开导入弹窗并勾选总结；
+- 显示名统一到 `src/shared/brand.ts`（当前工作名「拾字」）；
+- 技术标识（appId / userData / 安装包名）暂不改变，避免打断更新，详见 [`REBRAND.md`](REBRAND.md)。
+
+### 13.8 网页总结入库
+
+- 对话面板的「总结本页」只在非视频页出现：设置 `autoSaveRef` 后发送固定提示词，并在
+  `chat:done` 时调用 `library:save-page-summary`；
+- 主进程用 `PageInfo {kind:'page', url, title, bvid:null}` 调 `saveSummary()`，
+  `uidOf()` 会生成 `u:<url>`，因此同一网页再次总结会覆盖当前总结并追加版本；
+- 这种条目没有字幕轨（`bundle === null`），库详情页已经支持「只有总结」的展示；
+- 地址栏星标、历史、下载与网页总结共用同一套 `library.db`，不需要额外文件。
+
+### 13.9 本地音视频导入
+
+- `local:import`：`dialog.showOpenDialog` 选文件（自动化可用 `BSUB_LOCAL_MEDIA` 绕过）；
+- `media.ts` 用 ffmpeg 的 stderr 解析时长；`transcribeFile()` 复用现有 ASR 管线；
+- 入库时构造 `PageInfo {kind:'local', url:file:///..., title:文件名}`，字幕轨 `source='local'`，
+  库详情里用系统默认播放器打开（`library:open-source` 校验 URL 与文件存在），不会走地址栏 `normalizeUrl`；
+- 任务中心用 `asr` job 记录进度；`asrControllers` 注册同一个 requestId，取消按钮可中止；
+- 下载的自动化测试钩子：`BSUB_DOWNLOAD_DIR` 有值时跳过保存对话框。
+
+## 14. YouTube 适配（0.32 开发中）
+
+`youtube.ts` 不调用需要签名的 InnerTube 接口，而是读取页面自身的
+`ytInitialPlayerResponse`：
+
+- `youtubeVideoId()` 识别 `watch?v=` / `youtu.be` / `shorts` / `embed` / `live`；
+- `readYouTubeData()` 用 `executeJavaScript` 取 `videoDetails` 与 `captionTracks`，
+  5 秒内按 WebContents 缓存；页面没有 playerResponse 时返回 `null`，由上层显示无字幕；
+- 字幕 URL 统一补 `fmt=json3`，主进程 `getTrackBody()` 允许 youtube.com / google.com 域名，
+  先用 `parseJson3()`，失败再退化到 `parseTimedTextXml()`；
+- `getPageInfo()` / `getSubtitles()` / `getTime()` / `seek()` 在 `page.ts` 里按 URL 分派，
+  YouTube 走页面 DOM（`video.currentTime`），B 站继续走页面桥；
+- `videoKeyOf()` 用 `y:<videoId>`，忽略 `t` / `list` 参数；
+- 字幕的 `source='youtube'`，入库、总结、搜索、导出复用现有链路；
+- 「导入链接」的批量解析也接受 YouTube 单条视频；
+- 限制：YouTube 暂不支持语音转录（`转写`按钮置灰），合集解析仍是 B 站专属。
+
+### 13.10 划词工具条
+
+- `selectionToolbar.ts` 导出注入脚本，`TabManager.prepare()` 在目标页加载前通过
+  `Page.addScriptToEvaluateOnNewDocument` 注入；开关是 `general.selectionToolbar`（默认开）。
+- 脚本用 Shadow DOM + CSSOM 画「解释 / 翻译 / 总结」三个按钮，监听 `mouseup` 和
+  `getSelection()`，不侵入站点自己的选区逻辑；
+- 页面通过 CDP `Runtime.addBinding('__bsubSelectionAction')` 把 `{action,text}` 送回主进程，
+  主进程转发 `app:selection-action`，App 切到「对话」并把动作派发给 `ChatPanel`；
+- `ChatPanel` 自动发送带引用的提示词，并强制 `includePage`，页面正文仍作为不可信资料；
+- 站点如果拦截内联样式，工具条可能没有圆角/阴影，但按钮与事件仍然可用。
+
+### 13.11 播客 / RSS 导入
+
+- `podcast.ts` 解析 RSS 2.0 + iTunes 扩展：`channel.title`、`item`、`enclosure url`、
+  `itunes:duration`、`link`、`guid`；最多 60 集，单文件上限 8MB；
+- `podcast:preview` 只读取订阅、不下载音频；`podcast:import` 在后台下载音频到
+  `%TEMP%/bsub-podcast-<requestId>`，用 ffprobe 同款 ffmpeg 时长解析，再走 `transcribeFile()`；
+- 入库 `PageInfo {kind:'podcast', url:单集页面或音频地址}`、字幕轨 `source='podcast'`；
+- 任务记在 `jobs`（type=asr），取消走 `asrControllers`；结束后删除临时音频；
+- 只支持 RSS 2.0 的 `<item>`，Atom 仅做格式识别，不承诺完整解析。

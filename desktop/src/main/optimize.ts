@@ -5,6 +5,7 @@ import type {
   WebReference
 } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
+import { needsApiKey } from './platformKey';
 import { chatOnce } from './aiClient';
 import { glossaryTerms } from './correction';
 import { rankReferences, searchWeb } from './search';
@@ -193,7 +194,7 @@ export async function optimizeLines(
   const platform = activePlatform(settings);
   if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
   if (!platform.model.trim()) throw new Error('请先在设置里填写模型名');
-  if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
   if (!lines.length) throw new Error('没有可优化的字幕');
 
   const glossary = glossaryTerms(settings);

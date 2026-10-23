@@ -659,7 +659,7 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
         }
       }
     }
-    throw new Error(`检索失败（${platform.name}）：${(error as Error).message}`);
+    throw new Error(`检索失败（${platform.name}）：${(error as Error).message}`, { cause: error });
   }
 }
 

@@ -290,7 +290,7 @@ export function TaskCenter({
               <div className="task-row">
                 <span className="job-chip">{item.kind || '文件'}</span>
                 <span className="task-title" title={item.title}>
-                  {item.title || item.path.split(/[\/]/).pop()}
+                  {item.title || item.path.split(/[\\/]/).pop()}
                 </span>
               </div>
               <div className="task-meta">{item.path}</div>

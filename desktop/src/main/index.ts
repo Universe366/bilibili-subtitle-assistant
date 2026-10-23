@@ -4,14 +4,17 @@ import path from 'node:path';
 import { TabManager } from './tabs';
 import { registerIpc } from './ipc';
 import {
+  addDownload,
   closeLibrary,
   getSummaryFor,
   ingestVideo,
   initLibrary,
   listHistory,
   listLibrary,
+  recordHistory,
   saveSummary,
-  searchLibrary
+  searchLibrary,
+  updateDownload
 } from './library';
 import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrackBody } from './page';
 import { summarize } from './ai';
@@ -32,10 +35,15 @@ import { batchUrls } from './urlbatch';
 import { probePlatformModels, testPlatformConnection } from './platform';
 import { backupData, restoreData } from './backup';
 import { buildExport } from './exporters';
-import { loadSettings, saveSettings, settingsSnapshot } from './settings';
+import { loadSettings, migrateSettingsSecrets, saveSettings, settingsSnapshot } from './settings';
+import { installLogger } from './logger';
+import { installPermissionGate } from './permissions';
+import { installCsp } from './csp';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
 import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
+import { loadSession, saveSession } from './session';
+import { APP_NAME } from '../shared/brand';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -75,6 +83,19 @@ let tabManager: TabManager | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
+// 双开会共用 library.db 和桥端口，第二个实例启动时还会把第一个实例的
+// running 任务标成「应用退出」——必须只允许一个实例。
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    showWindow();
+    const url = argv.find((arg) => /^https?:\/\//i.test(arg));
+    if (url && tabManager) void tabManager.create(url);
+  });
+}
+
 function resolveResource(name: string): string | null {
   const candidates = [
     path.join(process.resourcesPath, name),
@@ -101,6 +122,23 @@ function showWindow(): void {
   mainWindow.focus();
 }
 
+let sessionTimer: NodeJS.Timeout | null = null;
+
+function persistSession(): void {
+  try {
+    if (!tabManager) return;
+    const snapshot = tabManager.sessionSnapshot();
+    if (snapshot.tabs.length) saveSession(snapshot.tabs, snapshot.activeUrl);
+  } catch (error) {
+    console.warn('[session] 保存失败:', (error as Error).message);
+  }
+}
+
+function scheduleSessionSave(): void {
+  if (sessionTimer) clearTimeout(sessionTimer);
+  sessionTimer = setTimeout(persistSession, 1500);
+}
+
 function createTray(): void {
   if (tray) return;
   const iconPath = resolveResource('tray.png');
@@ -111,7 +149,7 @@ function createTray(): void {
   try {
     const image = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
     tray = new Tray(image);
-    tray.setToolTip('B站字幕助手');
+    tray.setToolTip(APP_NAME);
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: '显示主窗口', click: () => showWindow() },
@@ -140,7 +178,7 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 640,
     show: false,
-    title: 'B站字幕助手',
+    title: APP_NAME,
     backgroundColor: dark ? '#141416' : '#f6f6f3',
     autoHideMenuBar: true,
     webPreferences: {
@@ -181,6 +219,7 @@ function createWindow(): void {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('tabs:changed', tabs);
       }
+      scheduleSessionSave();
     },
     (result) => {
       if (!app.isPackaged) {
@@ -194,6 +233,13 @@ function createWindow(): void {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('find:result', result);
       }
+    },
+    (visit) => {
+      try {
+        recordHistory(visit);
+      } catch (error) {
+        console.warn('[history] 记录失败:', (error as Error).message);
+      }
     }
   );
   registerIpc(mainWindow, tabManager);
@@ -202,7 +248,30 @@ function createWindow(): void {
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
-    void tabManager?.create(START_URL);
+    const saved = loadSettings().general.restoreSession !== false ? loadSession() : null;
+    if (saved && tabManager) {
+      const manager = tabManager;
+      void (async () => {
+        const created: Array<{ id: string; url: string }> = [];
+        for (const item of saved.tabs) {
+          try {
+            const id = await manager.create(item.url, { activate: false });
+            created.push({ id, url: item.url });
+          } catch (error) {
+            console.warn('[session] 恢复标签失败', item.url, (error as Error).message);
+          }
+        }
+        const target = created.find((item) => item.url === saved.activeUrl) || created.at(-1);
+        if (target) {
+          await manager.activate(target.id);
+          console.log('[session] restored', created.length, 'tabs');
+        } else {
+          await manager.create(START_URL);
+        }
+      })();
+    } else {
+      void tabManager?.create(START_URL);
+    }
 
     if (process.env.BSUB_AUDIO_TEST === '1') {
       setTimeout(async () => {
@@ -2200,19 +2269,83 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
+  installLogger();
   writeLog('startup.log', 'ready');
+  migrateSettingsSecrets();
   nativeTheme.themeSource = loadSettings().general.theme;
   if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
   session.defaultSession.setUserAgent(UA);
   session.defaultSession.on('will-download', (_event, item) => {
-    item.setSaveDialogOptions({
-      title: '保存文件',
-      defaultPath: path.join(app.getPath('downloads'), item.getFilename())
+    const autoDir = String(process.env.BSUB_DOWNLOAD_DIR || '').trim();
+    if (autoDir) {
+      // 自动化测试用：跳过保存对话框，直接落到指定目录。
+      try {
+        fs.mkdirSync(autoDir, { recursive: true });
+        item.setSavePath(path.join(autoDir, item.getFilename()));
+      } catch (error) {
+        console.warn('[download] 自动保存路径不可用:', (error as Error).message);
+      }
+    } else {
+      item.setSaveDialogOptions({
+        title: '保存文件',
+        defaultPath: path.join(app.getPath('downloads'), item.getFilename())
+      });
+    }
+
+    let downloadId = 0;
+    try {
+      downloadId = addDownload({
+        url: item.getURL(),
+        filename: item.getFilename(),
+        total: item.getTotalBytes()
+      });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('downloads:changed');
+      }
+    } catch (error) {
+      console.warn('[download] 登记失败:', (error as Error).message);
+    }
+
+    let lastWrite = 0;
+    const sync = (state: 'progressing' | 'completed' | 'cancelled' | 'interrupted', done = false) => {
+      if (!downloadId) return;
+      const now = Date.now();
+      if (!done && now - lastWrite < 500) return;
+      lastWrite = now;
+      try {
+        updateDownload(downloadId, {
+          state,
+          total: item.getTotalBytes(),
+          received: item.getReceivedBytes(),
+          path: item.getSavePath(),
+          finished: done
+        });
+      } catch (error) {
+        console.warn('[download] 更新失败:', (error as Error).message);
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('downloads:changed');
+      }
+    };
+
+    item.on('updated', (_event, state) => {
+      sync(state === 'interrupted' ? 'interrupted' : 'progressing');
+    });
+    item.on('done', (_event, state) => {
+      if (state === 'completed') sync('completed', true);
+      else if (state === 'cancelled') sync('cancelled', true);
+      else sync('interrupted', true);
     });
   });
   initLibrary();
   writeLog('startup.log', 'library ready');
   scheduleOldDataCleanup();
+  // 先装权限闸门和 CSP，再创建窗口：CSP 监听必须在 renderer 发起请求前注册。
+  installPermissionGate(() =>
+    mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null
+  );
+  installCsp(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null));
   createWindow();
   writeLog('startup.log', 'window created');
   createTray();
@@ -2236,6 +2369,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   writeLog('startup.log', 'before-quit');
   isQuitting = true;
+  persistSession();
   disposeUpdater();
   stopBridge();
   closeLibrary();

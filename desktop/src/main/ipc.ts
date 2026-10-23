@@ -74,10 +74,20 @@ import type {
   CollectionResolveResult,
   ExportRecord,
   JobRecord,
-  GlobalSearchResult
+  GlobalSearchResult,
+  HistoryEntry,
+  Bookmark,
+  DownloadRecord
 } from '../shared/types';
 import type { TabManager } from './tabs';
-import { getPageInfo, getSubtitles, getTime, getTrackBody, seek, triggerSubtitleMenu } from './page';
+import {
+  getPageInfo,
+  getSubtitles,
+  getTime,
+  getTrackBody,
+  seek,
+  triggerSubtitleMenu
+} from './page';
 import {
   addCollectionToVideos,
   addExportRecord,
@@ -85,15 +95,26 @@ import {
   addVideoToCollection,
   clearExports,
   clearFinishedJobs,
+  clearBrowseHistory,
   clearHistory,
+  listBrowseHistory,
+  clearDownloads,
+  clearTrash,
   createCollection,
   createJob,
   createJobItem,
   deleteCollection,
+  deleteDownload,
   deleteExport,
   deleteHistoryItem,
   deleteTag,
+  deleteTrash,
   finishJob,
+  isBookmarked,
+  listBookmarks,
+  listDownloads,
+  removeBookmark,
+  toggleBookmark,
   getCollectionSummary,
   getCollectionSummaryVersion,
   getJob,
@@ -113,6 +134,7 @@ import {
   listSummaryVersions,
   listTags,
   listTranscriptions,
+  listTrash,
   listLibrary,
   removeVideo,
   removeVideos,
@@ -121,13 +143,15 @@ import {
   renameTag,
   restoreCollectionSummaryVersion,
   restoreSummaryVersion,
+  restoreTrash,
   saveNote,
   saveSummary,
   searchLibrary,
   setJobsListener,
   setVideoTags,
   updateJob,
-  updateJobItem
+  updateJobItem,
+  vacuumLibrary
 } from './library';
 import { summarizeCollection } from './collectionSummary';
 import { resolveBilibiliCollection } from './biliCollection';
@@ -138,15 +162,28 @@ import {
   saveSettings,
   setSidebarWidth,
   setSidebarLayout,
+  settingsForExport,
   settingsSnapshot,
   testPlatform
 } from './settings';
+import { exportDiagnostics } from './diagnostics';
+import { clearSitePermissions } from './permissions';
+import { pageContextSummary, readPageContext } from './pageContext';
 import { bridgeStatus, restartBridge } from './bridge';
 import { installBrowserExtension } from './extension-install';
-import { checkForUpdates, downloadUpdate, installUpdate, skipUpdate, updateStatus } from './updater';
+import {
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+  skipUpdate,
+  updateStatus
+} from './updater';
 import { summarize } from './ai';
 import { chat } from './chat';
-import { transcribe } from './asr';
+import { transcribe, transcribeFile } from './asr';
+import { probeDuration } from './media';
+import { downloadPodcastAudio, loadPodcastFeed } from './podcast';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { translateLines } from './translate';
 import { optimizeLines } from './optimize';
 import { batchSummarize } from './batch';
@@ -283,7 +320,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     concurrencyInput?: number
   ): Result<{ requestId: string }> => {
     const ids = [
-      ...new Set((Array.isArray(inputIds) ? inputIds : []).filter((id) => Number.isFinite(id) && id > 0))
+      ...new Set(
+        (Array.isArray(inputIds) ? inputIds : []).filter((id) => Number.isFinite(id) && id > 0)
+      )
     ];
     if (!ids.length) return { ok: false, error: '没有选择视频' };
     const concurrency = Math.min(4, Math.max(1, Math.round(Number(concurrencyInput) || 1)));
@@ -585,7 +624,9 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('jobs:retry', (_event, id: string): Result<{ requestId: string }> => {
     const job = getJob(String(id));
     if (!job) return { ok: false, error: '任务不存在' };
-    const failed = job.items.filter((item) => item.status === 'failed').map((item) => item.targetId);
+    const failed = job.items
+      .filter((item) => item.status === 'failed')
+      .map((item) => item.targetId);
     if (!failed.length) return { ok: false, error: '没有失败项' };
     if (job.type === 'batch-summary') {
       let concurrency = 1;
@@ -665,14 +706,132 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('tab:zoom-reset', () => {
     tabs.zoomReset();
   });
-  ipcMain.handle('tab:find', (_event, query: string, options?: { forward?: boolean; findNext?: boolean }) => {
-    tabs.findInPage(query, options || {});
-  });
+  ipcMain.handle(
+    'tab:find',
+    (_event, query: string, options?: { forward?: boolean; findNext?: boolean }) => {
+      tabs.findInPage(query, options || {});
+    }
+  );
   ipcMain.handle('tab:stop-find', () => {
     tabs.stopFind();
   });
+  ipcMain.handle('tab:reopen-closed', async (): Promise<string | null> => tabs.reopenClosed());
+
+  ipcMain.handle(
+    'browse-history:list',
+    (_event, query?: string, limit?: number): Result<HistoryEntry[]> => {
+      try {
+        return { ok: true, data: listBrowseHistory(String(query || ''), Number(limit) || 100) };
+      } catch (error) {
+        return failure<HistoryEntry[]>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('browse-history:clear', (): Result<{ removed: number }> => {
+    try {
+      return { ok: true, data: { removed: clearBrowseHistory() } };
+    } catch (error) {
+      return failure<{ removed: number }>(error);
+    }
+  });
+
+  ipcMain.handle('bookmarks:list', (): Result<Bookmark[]> => {
+    try {
+      return { ok: true, data: listBookmarks() };
+    } catch (error) {
+      return failure<Bookmark[]>(error);
+    }
+  });
+
+  ipcMain.handle('bookmarks:check', (_event, url: string): Result<{ bookmarked: boolean }> => {
+    try {
+      return { ok: true, data: { bookmarked: isBookmarked(String(url || '')) } };
+    } catch (error) {
+      return failure<{ bookmarked: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'bookmarks:toggle',
+    (
+      _event,
+      payload: { url: string; title?: string; favicon?: string | null }
+    ): Result<{
+      bookmarked: boolean;
+    }> => {
+      try {
+        return { ok: true, data: toggleBookmark(payload || { url: '' }) };
+      } catch (error) {
+        return failure<{ bookmarked: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('bookmarks:remove', (_event, url: string): Result<{ removed: boolean }> => {
+    try {
+      return { ok: true, data: { removed: removeBookmark(String(url || '')) } };
+    } catch (error) {
+      return failure<{ removed: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle('downloads:list', (): Result<DownloadRecord[]> => {
+    try {
+      return { ok: true, data: listDownloads() };
+    } catch (error) {
+      return failure<DownloadRecord[]>(error);
+    }
+  });
+
+  ipcMain.handle('downloads:delete', (_event, id: number): Result<{ removed: boolean }> => {
+    try {
+      return { ok: true, data: { removed: deleteDownload(Number(id)) } };
+    } catch (error) {
+      return failure<{ removed: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle('downloads:clear', (): Result<{ removed: number }> => {
+    try {
+      return { ok: true, data: { removed: clearDownloads() } };
+    } catch (error) {
+      return failure<{ removed: number }>(error);
+    }
+  });
+
+  ipcMain.handle('downloads:open', async (_event, id: number): Promise<Result<boolean>> => {
+    try {
+      const item = listDownloads(300).find((row) => row.id === Number(id));
+      if (!item?.path) return { ok: false, error: '文件还没有保存到本地' };
+      const error = await shell.openPath(item.path);
+      return error ? { ok: false, error } : { ok: true, data: true };
+    } catch (error) {
+      return failure<boolean>(error);
+    }
+  });
+
+  ipcMain.handle('downloads:reveal', (_event, id: number): Result<boolean> => {
+    try {
+      const item = listDownloads(300).find((row) => row.id === Number(id));
+      if (!item?.path) return { ok: false, error: '文件还没有保存到本地' };
+      shell.showItemInFolder(item.path);
+      return { ok: true, data: true };
+    } catch (error) {
+      return failure<boolean>(error);
+    }
+  });
   ipcMain.on('layout:set', (_event, rect: LayoutRect) => {
     tabs.setLayout(rect);
+  });
+
+  ipcMain.handle('page:context', async () => {
+    try {
+      const context = await readPageContext(tabs.activeWebContents());
+      return { ok: true as const, data: pageContextSummary(context) };
+    } catch (error) {
+      return failure(error);
+    }
   });
 
   ipcMain.handle('page:info', async (): Promise<Result<PageInfo>> => {
@@ -699,27 +858,32 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
-  ipcMain.handle('page:subtitles', async (_event, expectSignature?: string): Promise<Result<SubtitleBundle>> => {
-    const wc = tabs.activeWebContents();
-    if (!wc) return { ok: false, error: '没有打开的页面' };
-    try {
-      const bundle = await getSubtitles(wc, String(expectSignature || '') || undefined);
-      console.log(
-        '[m2] subtitles',
-        `tracks=${bundle.tracks.length}`,
-        `needLogin=${bundle.needLogin}`,
-        `sources=${bundle.sources.join(',')}`
-      );
-      console.log(
-        '[m2] tracks',
-        bundle.tracks.map((track) => `${track.lan}/${track.lanDoc}#${track.url.slice(-10)}`).join(' ')
-      );
-      return { ok: true, data: bundle };
-    } catch (error) {
-      console.warn('[m2] subtitles failed:', (error as Error).message);
-      return failure<SubtitleBundle>(error);
+  ipcMain.handle(
+    'page:subtitles',
+    async (_event, expectSignature?: string): Promise<Result<SubtitleBundle>> => {
+      const wc = tabs.activeWebContents();
+      if (!wc) return { ok: false, error: '没有打开的页面' };
+      try {
+        const bundle = await getSubtitles(wc, String(expectSignature || '') || undefined);
+        console.log(
+          '[m2] subtitles',
+          `tracks=${bundle.tracks.length}`,
+          `needLogin=${bundle.needLogin}`,
+          `sources=${bundle.sources.join(',')}`
+        );
+        console.log(
+          '[m2] tracks',
+          bundle.tracks
+            .map((track) => `${track.lan}/${track.lanDoc}#${track.url.slice(-10)}`)
+            .join(' ')
+        );
+        return { ok: true, data: bundle };
+      } catch (error) {
+        console.warn('[m2] subtitles failed:', (error as Error).message);
+        return failure<SubtitleBundle>(error);
+      }
     }
-  });
+  );
 
   ipcMain.handle('page:trigger-subtitle', async (): Promise<Result<boolean>> => {
     const wc = tabs.activeWebContents();
@@ -757,15 +921,18 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('page:time', async (): Promise<Result<{ currentTime: number; duration: number }>> => {
-    const wc = tabs.activeWebContents();
-    if (!wc) return { ok: false, error: '没有打开的页面' };
-    try {
-      return { ok: true, data: await getTime(wc) };
-    } catch (error) {
-      return failure<{ currentTime: number; duration: number }>(error);
+  ipcMain.handle(
+    'page:time',
+    async (): Promise<Result<{ currentTime: number; duration: number }>> => {
+      const wc = tabs.activeWebContents();
+      if (!wc) return { ok: false, error: '没有打开的页面' };
+      try {
+        return { ok: true, data: await getTime(wc) };
+      } catch (error) {
+        return failure<{ currentTime: number; duration: number }>(error);
+      }
     }
-  });
+  );
 
   ipcMain.handle('page:seek', async (_event, time: number): Promise<void> => {
     const wc = tabs.activeWebContents();
@@ -777,24 +944,27 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('library:ingest', async (_event, payload: LibraryIngestPayload): Promise<Result<LibraryIngestResult>> => {
-    try {
-      // 字幕读取时已经套过校对规则；这里不再重复应用，避免 A→AA 被放大。
-      const result = ingestVideo(payload);
-      console.log(
-        '[m3] ingest',
-        `video=${result.videoId}`,
-        `track=${result.trackId}`,
-        `lines=${result.lineCount}`,
-        `created=${result.created}`
-      );
-      if (!win.isDestroyed()) win.webContents.send('library:changed');
-      return { ok: true, data: result };
-    } catch (error) {
-      console.warn('[m3] ingest failed:', (error as Error).message);
-      return failure<LibraryIngestResult>(error);
+  ipcMain.handle(
+    'library:ingest',
+    async (_event, payload: LibraryIngestPayload): Promise<Result<LibraryIngestResult>> => {
+      try {
+        // 字幕读取时已经套过校对规则；这里不再重复应用，避免 A→AA 被放大。
+        const result = ingestVideo(payload);
+        console.log(
+          '[m3] ingest',
+          `video=${result.videoId}`,
+          `track=${result.trackId}`,
+          `lines=${result.lineCount}`,
+          `created=${result.created}`
+        );
+        if (!win.isDestroyed()) win.webContents.send('library:changed');
+        return { ok: true, data: result };
+      } catch (error) {
+        console.warn('[m3] ingest failed:', (error as Error).message);
+        return failure<LibraryIngestResult>(error);
+      }
     }
-  });
+  );
 
   ipcMain.handle('library:list', async (_event, sort?: string): Promise<Result<LibraryList>> => {
     try {
@@ -834,16 +1004,13 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
-  ipcMain.handle(
-    'library:note-versions',
-    (_event, videoId: number): Result<NoteVersionMeta[]> => {
-      try {
-        return { ok: true, data: listNoteVersions(Number(videoId)) };
-      } catch (error) {
-        return failure<NoteVersionMeta[]>(error);
-      }
+  ipcMain.handle('library:note-versions', (_event, videoId: number): Result<NoteVersionMeta[]> => {
+    try {
+      return { ok: true, data: listNoteVersions(Number(videoId)) };
+    } catch (error) {
+      return failure<NoteVersionMeta[]>(error);
     }
-  );
+  });
 
   ipcMain.handle('library:note-version', (_event, id: number): Result<NoteVersion | null> => {
     try {
@@ -853,32 +1020,90 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('library:search', async (_event, query: string): Promise<Result<LibrarySearchResult>> => {
-    try {
-      return { ok: true, data: searchLibrary(query) };
-    } catch (error) {
-      return failure<LibrarySearchResult>(error);
-    }
-  });
-
   ipcMain.handle(
-    'search:global',
-    (_event, query: string): Result<GlobalSearchResult> => {
+    'library:search',
+    async (_event, query: string): Promise<Result<LibrarySearchResult>> => {
       try {
-        return { ok: true, data: globalSearch(String(query || '')) };
+        return { ok: true, data: searchLibrary(query) };
       } catch (error) {
-        return failure<GlobalSearchResult>(error);
+        return failure<LibrarySearchResult>(error);
       }
     }
   );
 
-  ipcMain.handle('library:remove', async (_event, id: number): Promise<Result<{ removed: boolean }>> => {
+  ipcMain.handle('search:global', (_event, query: string): Result<GlobalSearchResult> => {
     try {
-      const removed = removeVideo(id);
-      if (removed && !win.isDestroyed()) win.webContents.send('library:changed');
-      return { ok: true, data: { removed } };
+      return { ok: true, data: globalSearch(String(query || '')) };
     } catch (error) {
-      return failure<{ removed: boolean }>(error);
+      return failure<GlobalSearchResult>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'library:remove',
+    async (_event, id: number): Promise<Result<{ removed: boolean }>> => {
+      try {
+        const removed = removeVideo(id);
+        if (removed && !win.isDestroyed()) win.webContents.send('library:changed');
+        return { ok: true, data: { removed } };
+      } catch (error) {
+        return failure<{ removed: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:save-page-summary',
+    (
+      _event,
+      payload: { title: string; url: string; content: string; model?: string }
+    ): Result<{ videoId: number; created: boolean }> => {
+      try {
+        const url = String(payload?.url || '').trim();
+        const content = String(payload?.content || '').trim();
+        if (!/^https?:\/\//i.test(url)) return { ok: false, error: '只能保存网页地址' };
+        if (!content) return { ok: false, error: '总结内容为空' };
+        const info: PageInfo = {
+          kind: 'page',
+          bvid: null,
+          aid: null,
+          cid: null,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: String(payload?.title || url).slice(0, 300),
+          owner: '',
+          desc: '',
+          duration: 0,
+          url,
+          signature: `u:${url}`
+        };
+        const saved = saveSummary(info, content, String(payload?.model || 'AI'));
+        send('library:changed', null);
+        return { ok: true, data: { videoId: saved.videoId, created: !saved.updated } };
+      } catch (error) {
+        return failure<{ videoId: number; created: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('library:open-source', async (_event, id: number): Promise<Result<boolean>> => {
+    try {
+      const detail = getLibraryDetail(Number(id));
+      const url = detail.video.url;
+      if (/^https?:\/\//i.test(url)) {
+        await shell.openExternal(url);
+        return { ok: true, data: true };
+      }
+      if (!/^file:\/\//i.test(url)) return { ok: false, error: '这个条目没有可打开的来源' };
+      const file = fileURLToPath(url);
+      if (!fs.existsSync(file)) return { ok: false, error: '本地文件已被移动或删除' };
+      const error = await shell.openPath(file);
+      return error ? { ok: false, error } : { ok: true, data: true };
+    } catch (error) {
+      return failure<boolean>(error);
     }
   });
 
@@ -916,18 +1141,15 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
-  ipcMain.handle(
-    'library:tag-delete',
-    (_event, name: string): Result<{ removed: boolean }> => {
-      try {
-        const removed = deleteTag(String(name || ''));
-        send('library:changed', null);
-        return { ok: true, data: { removed } };
-      } catch (error) {
-        return failure<{ removed: boolean }>(error);
-      }
+  ipcMain.handle('library:tag-delete', (_event, name: string): Result<{ removed: boolean }> => {
+    try {
+      const removed = deleteTag(String(name || ''));
+      send('library:changed', null);
+      return { ok: true, data: { removed } };
+    } catch (error) {
+      return failure<{ removed: boolean }>(error);
     }
-  );
+  });
 
   ipcMain.handle(
     'library:bulk-tag',
@@ -946,10 +1168,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     'library:bulk-collection',
     (_event, payload: { videoIds: number[]; name: string }): Result<{ linked: number }> => {
       try {
-        const linked = addCollectionToVideos(
-          payload?.videoIds || [],
-          String(payload?.name || '')
-        );
+        const linked = addCollectionToVideos(payload?.videoIds || [], String(payload?.name || ''));
         send('library:changed', null);
         return { ok: true, data: { linked } };
       } catch (error) {
@@ -971,6 +1190,48 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
+  ipcMain.handle('trash:list', (): Result<ReturnType<typeof listTrash>> => {
+    try {
+      return { ok: true, data: listTrash() };
+    } catch (error) {
+      return failure<ReturnType<typeof listTrash>>(error);
+    }
+  });
+
+  ipcMain.handle('trash:restore', (_event, id: number): Result<{ videoId: number }> => {
+    try {
+      const restored = restoreTrash(Number(id));
+      send('library:changed', null);
+      return { ok: true, data: restored };
+    } catch (error) {
+      return failure<{ videoId: number }>(error);
+    }
+  });
+
+  ipcMain.handle('trash:delete', (_event, id: number): Result<{ removed: boolean }> => {
+    try {
+      return { ok: true, data: { removed: deleteTrash(Number(id)) } };
+    } catch (error) {
+      return failure<{ removed: boolean }>(error);
+    }
+  });
+
+  ipcMain.handle('trash:clear', (): Result<{ removed: number }> => {
+    try {
+      return { ok: true, data: { removed: clearTrash() } };
+    } catch (error) {
+      return failure<{ removed: number }>(error);
+    }
+  });
+
+  ipcMain.handle('library:vacuum', (): Result<{ before: number; after: number }> => {
+    try {
+      return { ok: true, data: vacuumLibrary() };
+    } catch (error) {
+      return failure<{ before: number; after: number }>(error);
+    }
+  });
+
   ipcMain.handle('library:collections', (): Result<LibraryCollection[]> => {
     try {
       return { ok: true, data: listCollections() };
@@ -981,10 +1242,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle(
     'library:collection-add',
-    (
-      _event,
-      payload: { videoId: number; name: string }
-    ): Result<{ collections: string[] }> => {
+    (_event, payload: { videoId: number; name: string }): Result<{ collections: string[] }> => {
       try {
         const collections = addVideoToCollection(
           Number(payload?.videoId),
@@ -1000,10 +1258,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle(
     'library:collection-remove',
-    (
-      _event,
-      payload: { videoId: number; name: string }
-    ): Result<{ collections: string[] }> => {
+    (_event, payload: { videoId: number; name: string }): Result<{ collections: string[] }> => {
       try {
         const collections = removeVideoFromCollection(
           Number(payload?.videoId),
@@ -1043,18 +1298,15 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
-  ipcMain.handle(
-    'library:collection-create',
-    (_event, name: string): Result<LibraryCollection> => {
-      try {
-        const collection = createCollection(String(name || ''));
-        send('library:changed', null);
-        return { ok: true, data: collection };
-      } catch (error) {
-        return failure<LibraryCollection>(error);
-      }
+  ipcMain.handle('library:collection-create', (_event, name: string): Result<LibraryCollection> => {
+    try {
+      const collection = createCollection(String(name || ''));
+      send('library:changed', null);
+      return { ok: true, data: collection };
+    } catch (error) {
+      return failure<LibraryCollection>(error);
     }
-  );
+  });
 
   ipcMain.handle(
     'collection:summary',
@@ -1145,24 +1397,24 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
+  ipcMain.handle('collection:summary-restore', (_event, id: number): Result<CollectionSummary> => {
+    try {
+      return { ok: true, data: restoreCollectionSummaryVersion(Number(id)) };
+    } catch (error) {
+      return failure<CollectionSummary>(error);
+    }
+  });
+
   ipcMain.handle(
-    'collection:summary-restore',
-    (_event, id: number): Result<CollectionSummary> => {
+    'library:get-summary',
+    async (_event, ref: SummaryRef): Promise<Result<StoredSummary | null>> => {
       try {
-        return { ok: true, data: restoreCollectionSummaryVersion(Number(id)) };
+        return { ok: true, data: getSummaryFor(ref) };
       } catch (error) {
-        return failure<CollectionSummary>(error);
+        return failure<StoredSummary | null>(error);
       }
     }
   );
-
-  ipcMain.handle('library:get-summary', async (_event, ref: SummaryRef): Promise<Result<StoredSummary | null>> => {
-    try {
-      return { ok: true, data: getSummaryFor(ref) };
-    } catch (error) {
-      return failure<StoredSummary | null>(error);
-    }
-  });
 
   ipcMain.handle(
     'library:summary-versions',
@@ -1175,16 +1427,13 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   );
 
-  ipcMain.handle(
-    'library:summary-version',
-    (_event, id: number): Result<SummaryVersion | null> => {
-      try {
-        return { ok: true, data: getSummaryVersion(Number(id)) };
-      } catch (error) {
-        return failure<SummaryVersion | null>(error);
-      }
+  ipcMain.handle('library:summary-version', (_event, id: number): Result<SummaryVersion | null> => {
+    try {
+      return { ok: true, data: getSummaryVersion(Number(id)) };
+    } catch (error) {
+      return failure<SummaryVersion | null>(error);
     }
-  );
+  });
 
   ipcMain.handle('library:restore-version', (_event, id: number): Result<StoredSummary> => {
     try {
@@ -1204,32 +1453,38 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('settings:set', async (_event, next: AppSettings): Promise<Result<ReturnType<typeof settingsSnapshot>>> => {
-    try {
-      const saved = saveSettings(next);
-      nativeTheme.themeSource = saved.general.theme;
-      tabs.setSuspendMinutes(saved.general.suspendMinutes);
-      await restartBridge(win);
-      const snapshot = settingsSnapshot();
-      send('settings:changed', snapshot);
-      return { ok: true, data: snapshot };
-    } catch (error) {
-      return failure(error);
+  ipcMain.handle(
+    'settings:set',
+    async (_event, next: AppSettings): Promise<Result<ReturnType<typeof settingsSnapshot>>> => {
+      try {
+        const saved = saveSettings(next);
+        nativeTheme.themeSource = saved.general.theme;
+        tabs.setSuspendMinutes(saved.general.suspendMinutes);
+        await restartBridge(win);
+        const snapshot = settingsSnapshot();
+        send('settings:changed', snapshot);
+        return { ok: true, data: snapshot };
+      } catch (error) {
+        return failure(error);
+      }
     }
-  });
+  );
 
-  ipcMain.handle('settings:wizard', async (_event, done: boolean): Promise<Result<ReturnType<typeof settingsSnapshot>>> => {
-    try {
-      const settings = loadSettings();
-      settings.general.wizardDone = done === true;
-      saveSettings(settings);
-      const snapshot = settingsSnapshot();
-      send('settings:changed', snapshot);
-      return { ok: true, data: snapshot };
-    } catch (error) {
-      return failure(error);
+  ipcMain.handle(
+    'settings:wizard',
+    async (_event, done: boolean): Promise<Result<ReturnType<typeof settingsSnapshot>>> => {
+      try {
+        const settings = loadSettings();
+        settings.general.wizardDone = done === true;
+        saveSettings(settings);
+        const snapshot = settingsSnapshot();
+        send('settings:changed', snapshot);
+        return { ok: true, data: snapshot };
+      } catch (error) {
+        return failure(error);
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     'settings:export',
@@ -1241,7 +1496,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           filters: [{ name: 'JSON', extensions: ['json'] }]
         });
         if (result.canceled || !result.filePath) return { ok: true, data: { canceled: true } };
-        fs.writeFileSync(result.filePath, JSON.stringify(loadSettings(), null, 2), 'utf8');
+        // 导出的设置不含 API Key / 桥 Token；重新导入时保留本机原值。
+        fs.writeFileSync(result.filePath, JSON.stringify(settingsForExport(), null, 2), 'utf8');
         return { ok: true, data: { canceled: false, path: result.filePath } };
       } catch (error) {
         return failure(error);
@@ -1282,13 +1538,16 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('bridge:install-extension', async (): Promise<Result<{ path: string; browser: string; opened: boolean }>> => {
-    try {
-      return { ok: true, data: await installBrowserExtension(win) };
-    } catch (error) {
-      return failure<{ path: string; browser: string; opened: boolean }>(error);
+  ipcMain.handle(
+    'bridge:install-extension',
+    async (): Promise<Result<{ path: string; browser: string; opened: boolean }>> => {
+      try {
+        return { ok: true, data: await installBrowserExtension(win) };
+      } catch (error) {
+        return failure<{ path: string; browser: string; opened: boolean }>(error);
+      }
     }
-  });
+  );
 
   ipcMain.handle('system:open-external', async (_event, url: string) => {
     const value = String(url || '');
@@ -1381,10 +1640,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle(
     'settings:sidebar-layout',
-    (
-      _event,
-      patch: { width?: number; position?: 'left' | 'right'; collapsed?: boolean }
-    ) => {
+    (_event, patch: { width?: number; position?: 'left' | 'right'; collapsed?: boolean }) => {
       try {
         setSidebarLayout(patch || {});
         const snapshot = settingsSnapshot();
@@ -1519,17 +1775,38 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
+  ipcMain.handle('permissions:clear', (): Result<{ removed: number }> => {
+    try {
+      return { ok: true, data: { removed: clearSitePermissions() } };
+    } catch (error) {
+      return failure<{ removed: number }>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'diagnostics:export',
+    async (): Promise<Result<{ canceled: boolean; path?: string }>> => {
+      try {
+        return { ok: true, data: await exportDiagnostics() };
+      } catch (error) {
+        return failure<{ canceled: boolean; path?: string }>(error);
+      }
+    }
+  );
+
   ipcMain.handle('settings:open-data', async () => {
     await shell.openPath(app.getPath('userData'));
   });
 
   ipcMain.handle(
     'ai:summarize',
-    async (
-      _event,
-      payload: SummarizeRequest
-    ): Promise<Result<{ requestId: string }>> => {
-      if (!payload || !payload.info || !Array.isArray(payload.lines) || payload.lines.length === 0) {
+    async (_event, payload: SummarizeRequest): Promise<Result<{ requestId: string }>> => {
+      if (
+        !payload ||
+        !payload.info ||
+        !Array.isArray(payload.lines) ||
+        payload.lines.length === 0
+      ) {
         return { ok: false, error: '没有可用的字幕内容' };
       }
 
@@ -1569,17 +1846,19 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
                     : ' judged=false')
               : 'none'
           );
-          send(
-            'ai:done',
-            {
-              requestId,
-              text: result.text,
-              model: result.model,
-              verification: result.verification
-            } satisfies AiDoneEvent
-          );
+          send('ai:done', {
+            requestId,
+            text: result.text,
+            model: result.model,
+            verification: result.verification
+          } satisfies AiDoneEvent);
           trackJob(() =>
-            finishJob(requestId, 'done', null, `完成 · ${result.text.length.toLocaleString('zh-CN')} 字`)
+            finishJob(
+              requestId,
+              'done',
+              null,
+              `完成 · ${result.text.length.toLocaleString('zh-CN')} 字`
+            )
           );
           send('library:changed', null);
           console.log('[m4] summary saved', saved.id, `chars=${result.text.length}`);
@@ -1605,218 +1884,452 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     aiControllers.get(requestId)?.abort();
   });
 
-  ipcMain.handle('chat:send', async (_event, payload: ChatRequest): Promise<Result<{ requestId: string }>> => {
-    if (!payload || !payload.info || !Array.isArray(payload.lines) || payload.lines.length === 0) {
-      return { ok: false, error: '没有可用的字幕内容' };
-    }
-    if (!Array.isArray(payload.messages) || payload.messages.length === 0) {
-      return { ok: false, error: '没有对话内容' };
-    }
+  ipcMain.handle(
+    'chat:send',
+    async (_event, payload: ChatRequest): Promise<Result<{ requestId: string }>> => {
+      if (!payload || !payload.info) {
+        return { ok: false, error: '没有可用的页面信息' };
+      }
+      if (!Array.isArray(payload.messages) || payload.messages.length === 0) {
+        return { ok: false, error: '没有对话内容' };
+      }
 
-    const requestId = payload.requestId || randomUUID();
-    const controller = new AbortController();
-    chatControllers.set(requestId, controller);
+      const requestId = payload.requestId || randomUUID();
+      const controller = new AbortController();
+      chatControllers.set(requestId, controller);
+      const page =
+        payload.includePage === false ? null : await readPageContext(tabs.activeWebContents());
+      const lines = Array.isArray(payload.lines) ? payload.lines : [];
 
-    void (async () => {
-      try {
-        const result = await chat({
-          info: payload.info,
-          lines: payload.lines,
-          messages: payload.messages,
-          skillIds: payload.skillIds,
-          signal: controller.signal,
-          onDelta: (delta) => send('chat:delta', { requestId, delta } satisfies ChatDeltaEvent),
-          onReasoning: (reasoning) =>
-            send('chat:delta', { requestId, delta: '', reasoning } satisfies ChatDeltaEvent)
-        });
-        send(
-          'chat:done',
-          {
+      void (async () => {
+        try {
+          const result = await chat({
+            info: payload.info,
+            lines,
+            messages: payload.messages,
+            skillIds: payload.skillIds,
+            page,
+            signal: controller.signal,
+            onDelta: (delta) => send('chat:delta', { requestId, delta } satisfies ChatDeltaEvent),
+            onReasoning: (reasoning) =>
+              send('chat:delta', { requestId, delta: '', reasoning } satisfies ChatDeltaEvent)
+          });
+          send('chat:done', {
             requestId,
             text: result.text,
             model: result.model,
             reasoning: result.reasoning
-          } satisfies ChatDoneEvent
-        );
-      } catch (error) {
-        const message = controller.signal.aborted ? '已取消' : (error as Error)?.message || String(error);
-        console.warn('[chat] failed:', message);
-        send('chat:error', { requestId, error: message } satisfies ChatErrorEvent);
-      } finally {
-        chatControllers.delete(requestId);
-      }
-    })();
+          } satisfies ChatDoneEvent);
+        } catch (error) {
+          const message = controller.signal.aborted
+            ? '已取消'
+            : (error as Error)?.message || String(error);
+          console.warn('[chat] failed:', message);
+          send('chat:error', { requestId, error: message } satisfies ChatErrorEvent);
+        } finally {
+          chatControllers.delete(requestId);
+        }
+      })();
 
-    return { ok: true, data: { requestId } };
-  });
+      return { ok: true, data: { requestId } };
+    }
+  );
 
   ipcMain.handle('chat:cancel', (_event, requestId: string) => {
     chatControllers.get(requestId)?.abort();
   });
 
-  ipcMain.handle('asr:transcribe', async (_event, payload: { requestId: string }): Promise<Result<{ requestId: string }>> => {
-    const wc = tabs.activeWebContents();
-    if (!wc) return { ok: false, error: '当前没有活动页面' };
-    const requestId = payload?.requestId || randomUUID();
-    const controller = new AbortController();
-    asrControllers.set(requestId, controller);
-    trackJob(() => createJob({ id: requestId, type: 'asr', title: '语音转录' }));
+  ipcMain.handle(
+    'asr:transcribe',
+    async (_event, payload: { requestId: string }): Promise<Result<{ requestId: string }>> => {
+      const wc = tabs.activeWebContents();
+      if (!wc) return { ok: false, error: '当前没有活动页面' };
+      const requestId = payload?.requestId || randomUUID();
+      const controller = new AbortController();
+      asrControllers.set(requestId, controller);
+      trackJob(() => createJob({ id: requestId, type: 'asr', title: '语音转录' }));
 
-    void (async () => {
+      void (async () => {
+        try {
+          const info = await getPageInfo(wc);
+          trackJob(() => updateJob(requestId, { title: `语音转录 · ${info.title || '当前视频'}` }));
+          const result = await transcribe(
+            wc,
+            info,
+            (stage, percent, message) => {
+              trackJob(() => updateJob(requestId, { progress: percent, message }));
+              send('asr:progress', {
+                requestId,
+                stage,
+                percent,
+                message
+              } satisfies AsrProgressEvent);
+            },
+            controller.signal
+          );
+          send('asr:done', {
+            requestId,
+            lines: result.lines,
+            model: result.model,
+            duration: result.duration
+          } satisfies AsrDoneEvent);
+          trackJob(() => finishJob(requestId, 'done', null, `完成 · ${result.lines.length} 行`));
+        } catch (error) {
+          const message = controller.signal.aborted
+            ? '已终止'
+            : (error as Error)?.message || String(error);
+          console.warn('[asr] failed:', message);
+          trackJob(() =>
+            finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+          );
+          send('asr:error', { requestId, error: message } satisfies AsrErrorEvent);
+        } finally {
+          asrControllers.delete(requestId);
+        }
+      })();
+
+      return { ok: true, data: { requestId } };
+    }
+  );
+
+  ipcMain.handle(
+    'local:import',
+    async (): Promise<Result<{ canceled: boolean; requestId?: string; filename?: string }>> => {
       try {
-        const info = await getPageInfo(wc);
-        trackJob(() =>
-          updateJob(requestId, { title: `语音转录 · ${info.title || '当前视频'}` })
-        );
-        const result = await transcribe(
-          wc,
-          info,
-          (stage, percent, message) => {
-            trackJob(() => updateJob(requestId, { progress: percent, message }));
-            send('asr:progress', {
-              requestId,
-              stage,
-              percent,
-              message
-            } satisfies AsrProgressEvent);
-          },
-          controller.signal
-        );
-        send('asr:done', {
-          requestId,
-          lines: result.lines,
-          model: result.model,
-          duration: result.duration
-        } satisfies AsrDoneEvent);
-        trackJob(() =>
-          finishJob(requestId, 'done', null, `完成 · ${result.lines.length} 行`)
-        );
-      } catch (error) {
-        const message = controller.signal.aborted
-          ? '已终止'
-          : (error as Error)?.message || String(error);
-        console.warn('[asr] failed:', message);
-        trackJob(() =>
-          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
-        );
-        send('asr:error', { requestId, error: message } satisfies AsrErrorEvent);
-      } finally {
-        asrControllers.delete(requestId);
-      }
-    })();
+        const directFile = String(process.env.BSUB_LOCAL_MEDIA || '').trim();
+        const picked = directFile
+          ? { canceled: false, filePaths: [directFile] }
+          : await dialog.showOpenDialog(win, {
+              title: '选择本地音视频',
+              properties: ['openFile'],
+              filters: [
+                {
+                  name: '音视频',
+                  extensions: [
+                    'mp4',
+                    'mkv',
+                    'mov',
+                    'webm',
+                    'flv',
+                    'mp3',
+                    'm4a',
+                    'wav',
+                    'aac',
+                    'flac',
+                    'ogg'
+                  ]
+                }
+              ]
+            });
+        if (picked.canceled || !picked.filePaths[0]) {
+          return { ok: true, data: { canceled: true } };
+        }
+        const file = picked.filePaths[0];
+        const filename = path.basename(file);
+        const requestId = randomUUID();
+        const controller = new AbortController();
+        asrControllers.set(requestId, controller);
+        trackJob(() => createJob({ id: requestId, type: 'asr', title: `本地文件：${filename}` }));
 
-    return { ok: true, data: { requestId } };
+        void (async () => {
+          try {
+            const duration = await probeDuration(file);
+            const info: PageInfo = {
+              kind: 'local',
+              bvid: null,
+              aid: null,
+              cid: null,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title: filename,
+              owner: '本地文件',
+              desc: '',
+              duration,
+              url: pathToFileURL(file).toString(),
+              signature: `local:${file}`
+            };
+            const result = await transcribeFile(
+              file,
+              info,
+              (_stage, percent, message) => {
+                trackJob(() =>
+                  updateJob(requestId, {
+                    progress: Math.min(99, Math.max(0, Math.round(percent))),
+                    message
+                  })
+                );
+              },
+              controller.signal
+            );
+            if (controller.signal.aborted) throw new Error('已取消');
+            const ingested = ingestVideo({
+              info,
+              track: {
+                lan: 'zh-CN',
+                lanDoc: '中文',
+                url: `local:${file}`,
+                isAi: false,
+                aiStatus: null,
+                source: 'local'
+              },
+              lines: result.lines
+            });
+            trackJob(() => updateJob(requestId, { progress: 100, message: '已入库' }));
+            trackJob(() =>
+              finishJob(requestId, 'done', null, `已入库 ${result.lines.length} 行字幕`)
+            );
+            send('library:changed', null);
+            send('local:done', {
+              requestId,
+              videoId: ingested.videoId,
+              title: filename,
+              lineCount: result.lines.length
+            });
+          } catch (error) {
+            const message = controller.signal.aborted
+              ? '已取消'
+              : (error as Error)?.message || String(error);
+            trackJob(() =>
+              finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+            );
+            send('local:error', { requestId, error: message });
+          } finally {
+            asrControllers.delete(requestId);
+          }
+        })();
+
+        return { ok: true, data: { canceled: false, requestId, filename } };
+      } catch (error) {
+        return failure<{ canceled: boolean; requestId?: string; filename?: string }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle('podcast:preview', async (_event, url: string) => {
+    try {
+      return { ok: true as const, data: await loadPodcastFeed(String(url || '')) };
+    } catch (error) {
+      return failure(error);
+    }
   });
+
+  ipcMain.handle(
+    'podcast:import',
+    async (
+      _event,
+      payload: { audioUrl: string; title: string; pageUrl?: string; duration?: number }
+    ): Promise<Result<{ requestId: string }>> => {
+      try {
+        const audioUrl = String(payload?.audioUrl || '');
+        if (!/^https?:\/\//i.test(audioUrl)) return { ok: false, error: '音频地址无效' };
+        const title = String(payload?.title || '播客单集').slice(0, 200);
+        const requestId = randomUUID();
+        const controller = new AbortController();
+        asrControllers.set(requestId, controller);
+        trackJob(() => createJob({ id: requestId, type: 'asr', title: `播客：${title}` }));
+        const workDir = path.join(app.getPath('temp'), `bsub-podcast-${requestId}`);
+
+        void (async () => {
+          try {
+            trackJob(() => updateJob(requestId, { progress: 2, message: '下载音频…' }));
+            const file = await downloadPodcastAudio(audioUrl, workDir, controller.signal);
+            const duration = Number(payload?.duration) || (await probeDuration(file));
+            const info: PageInfo = {
+              kind: 'podcast',
+              bvid: null,
+              aid: null,
+              cid: null,
+              epId: null,
+              seasonId: null,
+              page: 1,
+              partTitle: '',
+              parts: [],
+              title,
+              owner: '播客',
+              desc: '',
+              duration,
+              url: String(payload?.pageUrl || audioUrl),
+              signature: `podcast:${audioUrl}`
+            };
+            const result = await transcribeFile(
+              file,
+              info,
+              (_stage, percent, message) => {
+                trackJob(() =>
+                  updateJob(requestId, {
+                    progress: Math.min(99, Math.max(0, Math.round(percent))),
+                    message
+                  })
+                );
+              },
+              controller.signal
+            );
+            if (controller.signal.aborted) throw new Error('已取消');
+            const ingested = ingestVideo({
+              info,
+              track: {
+                lan: 'zh-CN',
+                lanDoc: '中文',
+                url: `podcast:${audioUrl}`,
+                isAi: false,
+                aiStatus: null,
+                source: 'podcast'
+              },
+              lines: result.lines
+            });
+            trackJob(() => updateJob(requestId, { progress: 100, message: '已入库' }));
+            trackJob(() =>
+              finishJob(requestId, 'done', null, `已入库 ${result.lines.length} 行字幕`)
+            );
+            send('library:changed', null);
+            send('podcast:done', {
+              requestId,
+              videoId: ingested.videoId,
+              title,
+              lineCount: result.lines.length
+            });
+          } catch (error) {
+            const message = controller.signal.aborted
+              ? '已取消'
+              : (error as Error)?.message || String(error);
+            trackJob(() =>
+              finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+            );
+            send('podcast:error', { requestId, error: message });
+          } finally {
+            asrControllers.delete(requestId);
+            try {
+              fs.rmSync(workDir, { recursive: true, force: true });
+            } catch {
+              // ignore
+            }
+          }
+        })();
+
+        return { ok: true, data: { requestId } };
+      } catch (error) {
+        return failure<{ requestId: string }>(error);
+      }
+    }
+  );
 
   ipcMain.handle('asr:cancel', (_event, requestId: string) => {
     asrControllers.get(requestId)?.abort();
   });
 
-  ipcMain.handle('translate:start', async (_event, payload: TranslateRequest): Promise<Result<{ requestId: string }>> => {
-    if (!payload || !Array.isArray(payload.lines) || payload.lines.length === 0) {
-      return { ok: false, error: '没有可翻译的字幕' };
-    }
-    const requestId = payload.requestId || randomUUID();
-    const controller = new AbortController();
-    translateControllers.set(requestId, controller);
-    trackJob(() =>
-      createJob({
-        id: requestId,
-        type: 'translate',
-        title: `翻译 · ${String(payload.target || '中文')}`
-      })
-    );
-
-    void (async () => {
-      try {
-        const result = await translateLines(
-          payload.lines,
-          String(payload.target || '中文'),
-          (percent, message) => {
-            trackJob(() => updateJob(requestId, { progress: percent, message }));
-            send('translate:progress', {
-              requestId,
-              percent,
-              message
-            } satisfies TranslateProgressEvent);
-          },
-          controller.signal
-        );
-        send('translate:done', {
-          requestId,
-          lines: result.lines,
-          language: result.language
-        } satisfies TranslateDoneEvent);
-        trackJob(() =>
-          finishJob(requestId, 'done', null, `完成 · ${result.lines.length} 行`)
-        );
-      } catch (error) {
-        const message = controller.signal.aborted
-          ? '已终止'
-          : (error as Error)?.message || String(error);
-        console.warn('[translate] failed:', message);
-        trackJob(() =>
-          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
-        );
-        send('translate:error', { requestId, error: message } satisfies TranslateErrorEvent);
-      } finally {
-        translateControllers.delete(requestId);
+  ipcMain.handle(
+    'translate:start',
+    async (_event, payload: TranslateRequest): Promise<Result<{ requestId: string }>> => {
+      if (!payload || !Array.isArray(payload.lines) || payload.lines.length === 0) {
+        return { ok: false, error: '没有可翻译的字幕' };
       }
-    })();
+      const requestId = payload.requestId || randomUUID();
+      const controller = new AbortController();
+      translateControllers.set(requestId, controller);
+      trackJob(() =>
+        createJob({
+          id: requestId,
+          type: 'translate',
+          title: `翻译 · ${String(payload.target || '中文')}`
+        })
+      );
 
-    return { ok: true, data: { requestId } };
-  });
+      void (async () => {
+        try {
+          const result = await translateLines(
+            payload.lines,
+            String(payload.target || '中文'),
+            (percent, message) => {
+              trackJob(() => updateJob(requestId, { progress: percent, message }));
+              send('translate:progress', {
+                requestId,
+                percent,
+                message
+              } satisfies TranslateProgressEvent);
+            },
+            controller.signal
+          );
+          send('translate:done', {
+            requestId,
+            lines: result.lines,
+            language: result.language
+          } satisfies TranslateDoneEvent);
+          trackJob(() => finishJob(requestId, 'done', null, `完成 · ${result.lines.length} 行`));
+        } catch (error) {
+          const message = controller.signal.aborted
+            ? '已终止'
+            : (error as Error)?.message || String(error);
+          console.warn('[translate] failed:', message);
+          trackJob(() =>
+            finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+          );
+          send('translate:error', { requestId, error: message } satisfies TranslateErrorEvent);
+        } finally {
+          translateControllers.delete(requestId);
+        }
+      })();
+
+      return { ok: true, data: { requestId } };
+    }
+  );
 
   ipcMain.handle('translate:cancel', (_event, requestId: string) => {
     translateControllers.get(requestId)?.abort();
   });
 
-  ipcMain.handle('optimize:start', async (_event, payload: { requestId: string; lines: SubtitleLine[] }): Promise<Result<{ requestId: string }>> => {
-    if (!payload || !Array.isArray(payload.lines) || payload.lines.length === 0) {
-      return { ok: false, error: '没有可优化的字幕' };
-    }
-    const requestId = payload.requestId || randomUUID();
-    const controller = new AbortController();
-    optimizeControllers.set(requestId, controller);
-    trackJob(() => createJob({ id: requestId, type: 'optimize', title: 'AI 校对' }));
-
-    void (async () => {
-      try {
-        const suggestions = await optimizeLines(
-          payload.lines,
-          (percent, message) => {
-            trackJob(() => updateJob(requestId, { progress: percent, message }));
-            send('optimize:progress', {
-              requestId,
-              percent,
-              message
-            } satisfies OptimizeProgressEvent);
-          },
-          controller.signal
-        );
-        send('optimize:done', {
-          requestId,
-          suggestions
-        } satisfies OptimizeDoneEvent);
-        trackJob(() =>
-          finishJob(requestId, 'done', null, `完成 · ${suggestions.length} 条建议`)
-        );
-      } catch (error) {
-        const message = controller.signal.aborted
-          ? '已终止'
-          : (error as Error)?.message || String(error);
-        console.warn('[optimize] failed:', message);
-        trackJob(() =>
-          finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
-        );
-        send('optimize:error', { requestId, error: message } satisfies OptimizeErrorEvent);
-      } finally {
-        optimizeControllers.delete(requestId);
+  ipcMain.handle(
+    'optimize:start',
+    async (
+      _event,
+      payload: { requestId: string; lines: SubtitleLine[] }
+    ): Promise<Result<{ requestId: string }>> => {
+      if (!payload || !Array.isArray(payload.lines) || payload.lines.length === 0) {
+        return { ok: false, error: '没有可优化的字幕' };
       }
-    })();
+      const requestId = payload.requestId || randomUUID();
+      const controller = new AbortController();
+      optimizeControllers.set(requestId, controller);
+      trackJob(() => createJob({ id: requestId, type: 'optimize', title: 'AI 校对' }));
 
-    return { ok: true, data: { requestId } };
-  });
+      void (async () => {
+        try {
+          const suggestions = await optimizeLines(
+            payload.lines,
+            (percent, message) => {
+              trackJob(() => updateJob(requestId, { progress: percent, message }));
+              send('optimize:progress', {
+                requestId,
+                percent,
+                message
+              } satisfies OptimizeProgressEvent);
+            },
+            controller.signal
+          );
+          send('optimize:done', {
+            requestId,
+            suggestions
+          } satisfies OptimizeDoneEvent);
+          trackJob(() => finishJob(requestId, 'done', null, `完成 · ${suggestions.length} 条建议`));
+        } catch (error) {
+          const message = controller.signal.aborted
+            ? '已终止'
+            : (error as Error)?.message || String(error);
+          console.warn('[optimize] failed:', message);
+          trackJob(() =>
+            finishJob(requestId, controller.signal.aborted ? 'cancelled' : 'failed', message)
+          );
+          send('optimize:error', { requestId, error: message } satisfies OptimizeErrorEvent);
+        } finally {
+          optimizeControllers.delete(requestId);
+        }
+      })();
+
+      return { ok: true, data: { requestId } };
+    }
+  );
 
   ipcMain.handle('optimize:cancel', (_event, requestId: string) => {
     optimizeControllers.get(requestId)?.abort();
@@ -1939,7 +2452,6 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-
   ipcMain.handle('mcp:test', async (_event, server: McpServer): Promise<Result<McpTool[]>> => {
     try {
       return { ok: true, data: await listMcpTools(server) };
@@ -1955,7 +2467,10 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       payload: { server: McpServer; name: string; args: Record<string, unknown> }
     ): Promise<Result<string>> => {
       try {
-        return { ok: true, data: await callMcpTool(payload.server, payload.name, payload.args || {}) };
+        return {
+          ok: true,
+          data: await callMcpTool(payload.server, payload.name, payload.args || {})
+        };
       } catch (error) {
         return failure<string>(error);
       }
@@ -1993,7 +2508,10 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle(
     'chapters:generate',
-    async (_event, payload: { info: PageInfo; lines: SubtitleLine[] }): Promise<Result<Chapter[]>> => {
+    async (
+      _event,
+      payload: { info: PageInfo; lines: SubtitleLine[] }
+    ): Promise<Result<Chapter[]>> => {
       try {
         if (!payload || !payload.info || !Array.isArray(payload.lines) || !payload.lines.length) {
           throw new Error('缺少字幕数据');
@@ -2017,7 +2535,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   ipcMain.handle('rules:export', async (_event, group: CorrectionRuleGroup) => {
     try {
       const result = await dialog.showSaveDialog({
-        defaultPath: `${String(group?.name || '字幕规则组').replace(/[\/:*?"<>|]/g, '_')}.json`,
+        defaultPath: `${String(group?.name || '字幕规则组').replace(/[\\/:*?"<>|]/g, '_')}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }]
       });
       if (result.canceled || !result.filePath) return { ok: true, data: { canceled: true } };
@@ -2042,7 +2560,11 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: [] as CorrectionRuleGroup[] };
       }
       const parsed = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'));
-      const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.groups) ? parsed.groups : [];
+      const rows = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.groups)
+          ? parsed.groups
+          : [];
       const groups: CorrectionRuleGroup[] = rows
         .filter((row: any) => row && typeof row === 'object')
         .map((row: any, index: number) => ({
@@ -2065,16 +2587,19 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('correction:preview', (_event, text: string, settings?: AppSettings): Result<string> => {
-    try {
-      return {
-        ok: true,
-        data: applyCorrectionToText(String(text || ''), settings || loadSettings())
-      };
-    } catch (error) {
-      return failure<string>(error);
+  ipcMain.handle(
+    'correction:preview',
+    (_event, text: string, settings?: AppSettings): Result<string> => {
+      try {
+        return {
+          ok: true,
+          data: applyCorrectionToText(String(text || ''), settings || loadSettings())
+        };
+      } catch (error) {
+        return failure<string>(error);
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     'export:save',
@@ -2091,8 +2616,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
           filenamePattern: payload.filenamePattern || settings.export.filenamePattern,
           template: payload.template || settings.export.template,
           assFontSize: payload.assFontSize || settings.export.assFontSize,
-          estimateTimestamps:
-            payload.estimateTimestamps ?? settings.export.estimateTimestamps
+          estimateTimestamps: payload.estimateTimestamps ?? settings.export.estimateTimestamps
         });
         let target = payload.savePath;
 

@@ -5,6 +5,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { FindResult, LayoutRect, TabInfo } from '../shared/types';
 import { normalizeUrl } from './url';
+import { SELECTION_TOOLBAR_SCRIPT } from './selectionToolbar';
+import { loadSettings } from './settings';
 
 // 后台标签闲置多久后释放渲染进程。环境变量用于测试覆盖。
 const ENV_SUSPEND_MS = Number(process.env.BSUB_SUSPEND_MS) || 0;
@@ -64,11 +66,14 @@ export class TabManager {
   private bounds: LayoutRect = { x: 0, y: 0, width: 0, height: 0 };
   private suspendAfterMs = ENV_SUSPEND_MS > 0 ? Math.max(2000, ENV_SUSPEND_MS) : DEFAULT_SUSPEND_MS;
   private suspendTimer: NodeJS.Timeout | null = null;
+  // Ctrl+Shift+T 用：最近关掉的标签（最多 20 个）。
+  private readonly closedStack: Array<{ url: string; title: string }> = [];
 
   constructor(
     private readonly win: BrowserWindow,
     private readonly onChanged: (tabs: TabInfo[]) => void,
-    private readonly onFindResult?: (result: FindResult) => void
+    private readonly onFindResult?: (result: FindResult) => void,
+    private readonly onVisited?: (visit: { url: string; title: string; favicon?: string }) => void
   ) {
     this.startSuspendTimer();
   }
@@ -192,6 +197,34 @@ export class TabManager {
       await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
         source: bridgeSource()
       });
+      if (loadSettings().general.selectionToolbar !== false) {
+        await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+          source: SELECTION_TOOLBAR_SCRIPT
+        });
+        await wc.debugger.sendCommand('Runtime.enable');
+        await wc.debugger.sendCommand('Runtime.addBinding', {
+          name: '__bsubSelectionAction'
+        });
+        wc.debugger.on('message', (_event, method, params) => {
+          if (method !== 'Runtime.bindingCalled' || params?.name !== '__bsubSelectionAction') {
+            return;
+          }
+          try {
+            const data = JSON.parse(String(params.payload || '{}')) as {
+              action?: string;
+              text?: string;
+            };
+            const text = String(data.text || '').slice(0, 4000);
+            if (!text) return;
+            const action = ['explain', 'translate', 'summarize'].includes(String(data.action))
+              ? String(data.action)
+              : 'explain';
+            this.win.webContents.send('app:selection-action', { action, text });
+          } catch (error) {
+            console.warn('[selection] 解析划词动作失败:', (error as Error).message);
+          }
+        });
+      }
     } catch (err) {
       console.warn('[tab] 注入 page-bridge 失败:', (err as Error).message);
     }
@@ -236,6 +269,26 @@ export class TabManager {
         this.win.webContents.send('app:search');
         return;
       }
+      if (input.control && input.shift && input.key.toLowerCase() === 's') {
+        event.preventDefault();
+        this.win.webContents.send('app:ask-selection');
+        return;
+      }
+      if (input.control && input.shift && input.key.toLowerCase() === 't') {
+        event.preventDefault();
+        void this.reopenClosed();
+        return;
+      }
+      if (input.control && input.shift && input.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        this.win.webContents.send('app:tab-search');
+        return;
+      }
+      if (input.control && !input.shift && input.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        this.win.webContents.send('app:bookmark');
+        return;
+      }
       if (input.control && input.shift && input.key.toLowerCase() === 'q') {
         event.preventDefault();
         app.quit();
@@ -245,20 +298,32 @@ export class TabManager {
     wc.on('page-title-updated', (_event, title) => {
       if (!title || title === 'about:blank') return;
       record.title = title;
+      if (record.url && /^https?:/i.test(record.url)) {
+        this.onVisited?.({ url: record.url, title, favicon: record.favicon });
+      }
       touch();
     });
     wc.on('page-favicon-updated', (_event, icons) => {
       record.favicon = icons[0];
+      if (record.url && /^https?:/i.test(record.url)) {
+        this.onVisited?.({ url: record.url, title: record.title, favicon: record.favicon });
+      }
       touch();
     });
     wc.on('did-navigate', (_event, url) => {
       if (!url || url === 'about:blank') return;
       record.url = url;
+      if (/^https?:/i.test(url)) {
+        this.onVisited?.({ url, title: record.title, favicon: record.favicon });
+      }
       touch();
     });
     wc.on('did-navigate-in-page', (_event, url) => {
       if (!url || url === 'about:blank') return;
       record.url = url;
+      if (/^https?:/i.test(url)) {
+        this.onVisited?.({ url, title: record.title, favicon: record.favicon });
+      }
       touch();
     });
     wc.on('did-start-loading', () => {
@@ -407,6 +472,11 @@ export class TabManager {
     const record = this.tabs.get(id);
     if (!record) return;
 
+    if (record.url && /^https?:/i.test(record.url)) {
+      this.closedStack.push({ url: record.url, title: record.title || '' });
+      if (this.closedStack.length > 20) this.closedStack.shift();
+    }
+
     this.tabs.delete(id);
     this.releaseView(record);
 
@@ -432,6 +502,21 @@ export class TabManager {
       }
     }
     this.emit();
+  }
+
+  async reopenClosed(): Promise<string | null> {
+    const last = this.closedStack.pop();
+    if (!last) return null;
+    return this.create(last.url);
+  }
+
+  /** 当前会话快照，用于退出时保存。 */
+  sessionSnapshot(): { tabs: Array<{ url: string; title: string }>; activeUrl: string } {
+    const tabs = [...this.tabs.values()]
+      .filter((record) => /^https?:/i.test(record.url))
+      .map((record) => ({ url: record.url, title: record.title || '' }));
+    const active = this.activeRecord();
+    return { tabs, activeUrl: active?.url || tabs[tabs.length - 1]?.url || '' };
   }
 
   private releaseView(record: TabRecord): void {

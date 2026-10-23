@@ -18,6 +18,7 @@ import {
   SEARCH_PRESETS
 } from '../shared/presets';
 import { testAiConnection } from './aiClient';
+import { isSealedSecret, openSecret, sealSecret, canEncrypt } from './secrets';
 
 export const DEFAULT_PROMPT =
   '整理这期视频的内容（可以用表格、代码块、高亮块、引用、超链接、公式、图片等飞书支持的格式输出，可以加上一些图标增加可读性）';
@@ -94,7 +95,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     sidebarPosition: 'left',
     sidebarCollapsed: false,
     autoFollow: true,
-    wizardDone: false
+    wizardDone: false,
+    restoreSession: true,
+    selectionToolbar: true
   },
   ai: {
     activeId: 'deepseek',
@@ -104,6 +107,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     preProofread: false,
     sendOnEnter: true,
     expandReasoning: false,
+    appTools: true,
     presetVersion: AI_PRESET_VERSION,
     platforms: AI_PRESETS.map((platform) => ({
       ...platform,
@@ -268,6 +272,8 @@ function normalize(raw: any): AppSettings {
       base.general.sidebarCollapsed = raw.general.sidebarCollapsed === true;
       base.general.autoFollow = raw.general.autoFollow !== false;
       base.general.wizardDone = raw.general.wizardDone === true;
+      base.general.restoreSession = raw.general.restoreSession !== false;
+      base.general.selectionToolbar = raw.general.selectionToolbar !== false;
       const minutes = Number(raw.general.suspendMinutes);
       if (Number.isFinite(minutes)) {
         base.general.suspendMinutes = Math.min(120, Math.max(1, Math.round(minutes)));
@@ -336,6 +342,7 @@ function normalize(raw: any): AppSettings {
     base.ai.stream = raw.ai?.stream !== false;
     base.ai.preProofread = raw.ai?.preProofread === true;
     base.ai.sendOnEnter = raw.ai?.sendOnEnter !== false;
+    base.ai.appTools = raw.ai?.appTools !== false;
     base.ai.expandReasoning = raw.ai?.expandReasoning === true;
 
     if (raw.asr && typeof raw.asr === 'object') {
@@ -668,12 +675,92 @@ function normalize(raw: any): AppSettings {
   return base;
 }
 
+function eachPlatform(
+  settings: AppSettings,
+  visit: (platform: { apiKey: string }, group: 'ai' | 'asr' | 'search') => void
+): void {
+  for (const platform of settings.ai.platforms) visit(platform, 'ai');
+  for (const platform of settings.asr.platforms) visit(platform, 'asr');
+  for (const platform of settings.search.platforms) visit(platform, 'search');
+}
+
+/** 磁盘 → 内存：DPAPI 密文解成明文；老版本明文原样返回。 */
+function openSecrets(settings: AppSettings): AppSettings {
+  eachPlatform(settings, (platform) => {
+    platform.apiKey = openSecret(platform.apiKey);
+  });
+  return settings;
+}
+
+/** 内存 → 磁盘：只加密非空 Key；已经封装的不要重复加密。 */
+function sealSecrets(settings: AppSettings): AppSettings {
+  const clone: AppSettings = JSON.parse(JSON.stringify(settings));
+  eachPlatform(clone, (platform) => {
+    platform.apiKey = sealSecret(platform.apiKey);
+  });
+  return clone;
+}
+
+/** 导出/诊断/备份用：Key 与桥 Token 一律置空，导入时保留本机原值。 */
+export function stripSecrets(settings: AppSettings): AppSettings {
+  const clone: AppSettings = JSON.parse(JSON.stringify(settings));
+  eachPlatform(clone, (platform) => {
+    platform.apiKey = '';
+  });
+  clone.bridge.token = '';
+  return clone;
+}
+
+export function settingsForExport(): AppSettings {
+  return stripSecrets(loadSettings());
+}
+
+/**
+ * 启动时把老版本的明文 Key 原地加密。
+ * 只在确实存在明文 Key 时写盘，避免每次启动都重写 settings.json。
+ */
+export function migrateSettingsSecrets(): number {
+  try {
+    // 系统没有可用 keyring 时保持明文，不要每次启动都重写文件。
+    if (!canEncrypt()) return 0;
+    // 首次启动还没有 settings.json，属于正常情况，不要打错误日志。
+    if (!fs.existsSync(settingsFile())) return 0;
+    const raw = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    const groups = [raw?.ai?.platforms, raw?.asr?.platforms, raw?.search?.platforms];
+    let plaintext = 0;
+    for (const group of groups) {
+      if (!Array.isArray(group)) continue;
+      for (const platform of group) {
+        const key = String(platform?.apiKey || '');
+        if (key && !isSealedSecret(key)) plaintext += 1;
+      }
+    }
+    if (!plaintext) return 0;
+    saveSettings(loadSettings());
+    console.log(`[settings] 已加密 ${plaintext} 个 API Key`);
+    return plaintext;
+  } catch (error) {
+    console.warn('[settings] Key 加密迁移失败:', (error as Error).message);
+    return 0;
+  }
+}
+
+/**
+ * 从备份恢复设置：备份里的 Key 是空的，合并时保留本机现有 Key，
+ * 避免「恢复一份备份把 API Key 清空」。
+ */
+export function restoreSettingsFromBackup(raw: unknown): AppSettings {
+  const current = loadSettings();
+  const incoming = normalize(raw);
+  return saveSettings(mergeSecrets(incoming, current));
+}
+
 export function loadSettings(): AppSettings {
   try {
     const raw = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
-    return normalize(raw);
+    return openSecrets(normalize(raw));
   } catch {
-    return normalize(null);
+    return openSecrets(normalize(null));
   }
 }
 
@@ -752,7 +839,7 @@ export function setSidebarLayout(patch: {
 export function saveSettings(next: AppSettings): AppSettings {
   const normalized = normalize(mergeSecrets(next, loadSettings()));
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-  fs.writeFileSync(settingsFile(), JSON.stringify(normalized, null, 2), 'utf8');
+  fs.writeFileSync(settingsFile(), JSON.stringify(sealSecrets(normalized), null, 2), 'utf8');
   return normalized;
 }
 

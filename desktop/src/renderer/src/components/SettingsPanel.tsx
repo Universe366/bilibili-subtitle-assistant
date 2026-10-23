@@ -933,6 +933,53 @@ export function SettingsPanel() {
     setMessage('备份已恢复，程序正在重启…');
   };
 
+  const exportDiag = async () => {
+    setMessage('');
+    setError('');
+    const response = await window.bsub.exportDiagnostics();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setMessage(
+      response.data.canceled ? '已取消' : `诊断包已导出到：${response.data.path || ''}`
+    );
+  };
+
+  const compactDatabase = async () => {
+    if (
+      !window.confirm(
+        '压缩数据库会重建 library.db 并回收磁盘空间；库里条目很多时可能需要几十秒，期间不要关闭程序。继续？'
+      )
+    ) {
+      return;
+    }
+    setMessage('');
+    setError('');
+    const response = await window.bsub.vacuumLibrary();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    const { before, after } = response.data;
+    const saved = Math.max(0, before - after);
+    setMessage(
+      `数据库已压缩：${(before / 1024 / 1024).toFixed(1)} MB → ${(after / 1024 / 1024).toFixed(
+        1
+      )} MB（回收 ${(saved / 1024 / 1024).toFixed(1)} MB）`
+    );
+  };
+
+  const clearPermissions = async () => {
+    if (!window.confirm('清除所有已记住的站点权限？下次访问这些站点时会重新询问。')) return;
+    const response = await window.bsub.clearSitePermissions();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setMessage(`已清除 ${response.data.removed} 条站点权限记录`);
+  };
+
   const importSettings = async () => {
     if (!window.confirm('导入会覆盖当前设置（含 API Key 和插件桥 Token），继续？')) return;
     setMessage('');
@@ -1061,6 +1108,24 @@ export function SettingsPanel() {
             onChange={(event) => updateGeneral({ closeToTray: event.target.checked })}
           />
           关闭窗口时缩到托盘
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.general.restoreSession !== false}
+            onChange={(event) => updateGeneral({ restoreSession: event.target.checked })}
+          />
+          启动时恢复上次打开的标签页
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.general.selectionToolbar !== false}
+            onChange={(event) => updateGeneral({ selectionToolbar: event.target.checked })}
+          />
+          选中网页文字时显示「解释 / 翻译 / 总结」工具条
         </label>
 
         <label className="settings-check">
@@ -1371,6 +1436,15 @@ export function SettingsPanel() {
             onChange={(event) => updateAi({ expandReasoning: event.target.checked })}
           />
           思维链默认展开（推理模型会显示思考过程）
+        </label>
+
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={draft.ai.appTools !== false}
+            onChange={(event) => updateAi({ appTools: event.target.checked })}
+          />
+          允许 AI 查询本地库（只读：搜字幕、读总结和笔记）
         </label>
 
         <button className="mini-btn" disabled={testing} onClick={() => void test()}>
@@ -2844,6 +2918,9 @@ export function SettingsPanel() {
           <button className="mini-btn" onClick={() => void copyDiagnostics()}>
             复制诊断
           </button>
+          <button className="mini-btn" onClick={() => void exportDiag()}>
+            <Download size={12} /> 导出诊断包
+          </button>
           <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
             <FolderOpen size={12} /> 打开数据目录
           </button>
@@ -2899,11 +2976,18 @@ export function SettingsPanel() {
           <button className="mini-btn" onClick={() => void restoreAll()}>
             <Upload size={12} /> 恢复备份
           </button>
+          <button className="mini-btn" onClick={() => void compactDatabase()}>
+            <RefreshCw size={12} /> 压缩数据库
+          </button>
+          <button className="mini-btn" onClick={() => void clearPermissions()}>
+            清除站点权限
+          </button>
         </div>
         <div className="settings-hint">
           更改位置会把设置、字幕库、总结、登录状态和日志复制到新目录，然后自动重启；
-          缓存类文件不会复制。日志在数据目录的 startup.log / fatal.log。
-          导出设置只含配置；备份数据会复制 settings.json 和 library.db（含 API Key、桥 Token、字幕、总结、历史），请妥善保管。
+          缓存类文件不会复制。日志在数据目录的 logs/ 下（保留 7 天）。
+          导出设置与数据备份都不含 API Key / 桥 Token；恢复备份后需要在设置里重新填写 Key，
+          桥 Token 会自动重新生成。
         </div>
       </SettingsSection>
 
@@ -2921,7 +3005,7 @@ export function SettingsPanel() {
       )}
 
       <div className="panel-foot">
-        <span>Key 只保存在本机 settings.json</span>
+        <span>API Key 用系统 DPAPI 加密后保存在本机</span>
         <span>v{version}</span>
       </div>
     </div>

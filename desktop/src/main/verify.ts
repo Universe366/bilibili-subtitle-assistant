@@ -8,6 +8,7 @@ import type {
   WebReference
 } from '../shared/types';
 import { activePlatform } from './settings';
+import { needsApiKey } from './platformKey';
 import { chatOnce } from './aiClient';
 import { rankReferences, searchWeb } from './search';
 
@@ -264,7 +265,7 @@ async function judgeEvidence(
   onProgress: Progress
 ): Promise<{ items: VerifyItem[]; supplements: string[]; dropped: number } | null> {
   const platform = activePlatform(settings);
-  if (!platform || !platform.baseUrl.trim() || !platform.apiKey.trim() || !platform.model.trim()) {
+  if (!platform || !platform.baseUrl.trim() || (needsApiKey(platform) && !platform.apiKey.trim()) || !platform.model.trim()) {
     return null;
   }
 
@@ -470,7 +471,7 @@ async function buildAiQueries(
 ): Promise<VerifyItem[]> {
   const platform = activePlatform(settings);
   const sample = sampleSubtitleText(lines);
-  if (!sample || !platform || !platform.baseUrl.trim() || !platform.apiKey.trim()) return [];
+  if (!sample || !platform || !platform.baseUrl.trim() || (needsApiKey(platform) && !platform.apiKey.trim())) return [];
 
   // 先把全文里「实体 + 具体说法」抽出来，连同原句交给模型，避免它只看节选就编查询。
   const candidates = extractItems(lines, 16);
@@ -737,7 +738,7 @@ async function buildSupplements(
   signal?: AbortSignal
 ): Promise<string[]> {
   const platform = activePlatform(settings);
-  if (!platform || !platform.baseUrl.trim() || !platform.apiKey.trim()) return [];
+  if (!platform || !platform.baseUrl.trim() || (needsApiKey(platform) && !platform.apiKey.trim())) return [];
   const rows: string[] = [];
   for (const item of items) {
     for (const reference of item.references) {

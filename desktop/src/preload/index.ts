@@ -77,7 +77,13 @@ import type {
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
-  GlobalSearchResult
+  GlobalSearchResult,
+  TrashItem,
+  HistoryEntry,
+  Bookmark,
+  DownloadRecord,
+  PageContextSummary,
+  PodcastFeed
 } from '../shared/types';
 
 const on = <T>(channel: string, cb: (payload: T) => void) => {
@@ -111,8 +117,35 @@ const api: BsubApi = {
   onFindResult: (cb: (result: FindResult) => void) => on<FindResult>('find:result', cb),
   setLayout: (rect: LayoutRect) => ipcRenderer.send('layout:set', rect),
   onTabs: (cb: (tabs: TabInfo[]) => void) => on<TabInfo[]>('tabs:changed', cb),
+  reopenClosedTab: () => ipcRenderer.invoke('tab:reopen-closed') as Promise<string | null>,
+
+  listBrowseHistory: (query?: string, limit?: number) =>
+    ipcRenderer.invoke('browse-history:list', query, limit) as Promise<Result<HistoryEntry[]>>,
+  clearBrowseHistory: () =>
+    ipcRenderer.invoke('browse-history:clear') as Promise<Result<{ removed: number }>>,
+
+  listBookmarks: () => ipcRenderer.invoke('bookmarks:list') as Promise<Result<Bookmark[]>>,
+  isBookmarked: (url: string) =>
+    ipcRenderer.invoke('bookmarks:check', url) as Promise<Result<{ bookmarked: boolean }>>,
+  toggleBookmark: (payload: { url: string; title?: string; favicon?: string | null }) =>
+    ipcRenderer.invoke('bookmarks:toggle', payload) as Promise<Result<{ bookmarked: boolean }>>,
+  removeBookmark: (url: string) =>
+    ipcRenderer.invoke('bookmarks:remove', url) as Promise<Result<{ removed: boolean }>>,
+
+  listDownloads: () => ipcRenderer.invoke('downloads:list') as Promise<Result<DownloadRecord[]>>,
+  deleteDownload: (id: number) =>
+    ipcRenderer.invoke('downloads:delete', id) as Promise<Result<{ removed: boolean }>>,
+  clearDownloads: () =>
+    ipcRenderer.invoke('downloads:clear') as Promise<Result<{ removed: number }>>,
+  openDownload: (id: number) =>
+    ipcRenderer.invoke('downloads:open', id) as Promise<Result<boolean>>,
+  revealDownload: (id: number) =>
+    ipcRenderer.invoke('downloads:reveal', id) as Promise<Result<boolean>>,
+  onDownloadsChanged: (cb: () => void) => on<null>('downloads:changed', () => cb()),
 
   getPageInfo: () => ipcRenderer.invoke('page:info') as Promise<Result<PageInfo>>,
+  getPageContext: () =>
+    ipcRenderer.invoke('page:context') as Promise<Result<PageContextSummary>>,
   resolveCollection: (input: string) =>
     ipcRenderer.invoke('source:resolve-collection', input) as Promise<
       Result<CollectionResolveResult>
@@ -165,6 +198,26 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:bulk-remove', { videoIds }) as Promise<
       Result<{ removed: number }>
     >,
+  importLocalMedia: () =>
+    ipcRenderer.invoke('local:import') as Promise<
+      Result<{ canceled: boolean; requestId?: string; filename?: string }>
+    >,
+  previewPodcast: (url: string) =>
+    ipcRenderer.invoke('podcast:preview', url) as Promise<Result<PodcastFeed>>,
+  importPodcast: (payload: {
+    audioUrl: string;
+    title: string;
+    pageUrl?: string;
+    duration?: number;
+  }) => ipcRenderer.invoke('podcast:import', payload) as Promise<Result<{ requestId: string }>>,
+  listTrash: () => ipcRenderer.invoke('trash:list') as Promise<Result<TrashItem[]>>,
+  restoreTrash: (id: number) =>
+    ipcRenderer.invoke('trash:restore', id) as Promise<Result<{ videoId: number }>>,
+  deleteTrash: (id: number) =>
+    ipcRenderer.invoke('trash:delete', id) as Promise<Result<{ removed: boolean }>>,
+  clearTrash: () => ipcRenderer.invoke('trash:clear') as Promise<Result<{ removed: number }>>,
+  vacuumLibrary: () =>
+    ipcRenderer.invoke('library:vacuum') as Promise<Result<{ before: number; after: number }>>,
   listCollections: () =>
     ipcRenderer.invoke('library:collections') as Promise<Result<LibraryCollection[]>>,
   createCollection: (name: string) =>
@@ -217,13 +270,30 @@ const api: BsubApi = {
   globalSearch: (query: string) =>
     ipcRenderer.invoke('search:global', query) as Promise<Result<GlobalSearchResult>>,
   onSearchRequest: (cb: () => void) => on<null>('app:search', () => cb()),
+  onAskSelectionRequest: (cb: () => void) => on<null>('app:ask-selection', () => cb()),
+  onSelectionAction: (cb: (payload: { action: string; text: string }) => void) =>
+    on<{ action: string; text: string }>('app:selection-action', cb),
+  onTabSearchRequest: (cb: () => void) => on<null>('app:tab-search', () => cb()),
+  onBookmarkRequest: (cb: () => void) => on<null>('app:bookmark', () => cb()),
   onTasksRequest: (cb: () => void) => on<null>('app:tasks', () => cb()),
   removeLibrary: (id: number) =>
     ipcRenderer.invoke('library:remove', id) as Promise<Result<{ removed: boolean }>>,
+  savePageSummary: (payload: { title: string; url: string; content: string; model?: string }) =>
+    ipcRenderer.invoke('library:save-page-summary', payload) as Promise<
+      Result<{ videoId: number; created: boolean }>
+    >,
+  openLibrarySource: (id: number) =>
+    ipcRenderer.invoke('library:open-source', id) as Promise<Result<boolean>>,
   onLibraryChanged: (cb: () => void) => on<null>('library:changed', () => cb()),
 
   getSettings: () => ipcRenderer.invoke('settings:get') as Promise<Result<SettingsSnapshot>>,
   getDiagnostics: () => ipcRenderer.invoke('diagnostics:get') as Promise<Result<DiagnosticsInfo>>,
+  exportDiagnostics: () =>
+    ipcRenderer.invoke('diagnostics:export') as Promise<
+      Result<{ canceled: boolean; path?: string }>
+    >,
+  clearSitePermissions: () =>
+    ipcRenderer.invoke('permissions:clear') as Promise<Result<{ removed: number }>>,
   beginSidebarDrag: () =>
     ipcRenderer.invoke('browser:begin-drag') as Promise<Result<string | null>>,
   endSidebarDrag: () => ipcRenderer.invoke('browser:end-drag') as Promise<void>,

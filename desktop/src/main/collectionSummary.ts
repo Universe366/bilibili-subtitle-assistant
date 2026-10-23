@@ -2,6 +2,7 @@ import type { CollectionSummary } from '../shared/types';
 import type { AiMessage } from './aiClient';
 import { chatOnce, chatStream } from './aiClient';
 import { activePlatform, loadSettings } from './settings';
+import { needsApiKey } from './platformKey';
 import { getCollectionMaterial, saveCollectionSummary } from './library';
 
 const SYSTEM_PROMPT = [
@@ -56,7 +57,7 @@ export async function summarizeCollection(
   const platform = activePlatform(settings);
   if (!platform || !platform.baseUrl.trim()) throw new Error('请先在设置里选择一个 AI 平台');
   if (!platform.model.trim()) throw new Error('请先在设置里填写模型名');
-  if (!platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('请先在设置里填写 API Key');
 
   onStatus?.('正在收集合集内容…');
   const material = getCollectionMaterial(collectionId);

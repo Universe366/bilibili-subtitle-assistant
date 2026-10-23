@@ -7,6 +7,7 @@ import { Sidebar } from './components/Sidebar';
 import { BrowserStage } from './components/BrowserStage';
 import { FirstRunWizard } from './components/FirstRunWizard';
 import { GlobalSearch } from './components/GlobalSearch';
+import { BrowserHub, type HubSection } from './components/BrowserHub';
 
 export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
@@ -32,13 +33,15 @@ export default function App() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [hub, setHub] = useState<HubSection | null>(null);
+  const [bookmarked, setBookmarked] = useState(false);
 
   // 内置浏览器是原生 WebContentsView，永远盖在 renderer 上面。
   // 向导/全局搜索是 renderer 里的全屏遮罩，不隐藏页面就会出现
   // 「卡片被页面挡住、只剩左侧点不了」的情况。
   useEffect(() => {
-    void window.bsub.setBrowserVisible(!wizard && !searchOpen);
-  }, [wizard, searchOpen]);
+    void window.bsub.setBrowserVisible(!wizard && !searchOpen && !hub);
+  }, [wizard, searchOpen, hub]);
 
   const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
@@ -78,6 +81,30 @@ export default function App() {
 
   const active = useMemo(() => tabs.find((tab) => tab.active) ?? null, [tabs]);
 
+  const toggleBookmark = async () => {
+    if (!active || !/^https?:/i.test(active.url)) return;
+    const response = await window.bsub.toggleBookmark({
+      url: active.url,
+      title: active.title,
+      favicon: active.favicon
+    });
+    if (response.ok) setBookmarked(response.data.bookmarked);
+  };
+
+  useEffect(() => {
+    let alive = true;
+    if (!active || !/^https?:/i.test(active.url)) {
+      setBookmarked(false);
+      return;
+    }
+    void window.bsub.isBookmarked(active.url).then((response) => {
+      if (alive && response.ok) setBookmarked(response.data.bookmarked);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [active?.url]);
+
   useEffect(() => {
     let alive = true;
     window.bsub
@@ -98,6 +125,40 @@ export default function App() {
   // 焦点在网页（原生 WebContentsView）里时，renderer 收不到 Ctrl+K，
   // 由主进程 before-input-event 转发过来。
   useEffect(() => window.bsub.onSearchRequest(() => setSearchOpen(true)), []);
+
+  useEffect(
+    () =>
+      window.bsub.onAskSelectionRequest(() => {
+        setSection('chat');
+        window.setTimeout(() => window.dispatchEvent(new Event('bsub:ask-selection')), 150);
+      }),
+    []
+  );
+
+  useEffect(() => window.bsub.onTabSearchRequest(() => setHub('tabs')), []);
+
+  useEffect(
+    () =>
+      window.bsub.onSelectionAction((payload) => {
+        setSection('chat');
+        window.setTimeout(
+          () =>
+            window.dispatchEvent(
+              new CustomEvent('bsub:selection-action', { detail: payload })
+            ),
+          150
+        );
+      }),
+    []
+  );
+
+  useEffect(
+    () =>
+      window.bsub.onBookmarkRequest(() => {
+        void toggleBookmark();
+      }),
+    [active?.url]
+  );
 
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
@@ -152,6 +213,21 @@ export default function App() {
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
 
+      if (mod && event.shiftKey && key === 't') {
+        event.preventDefault();
+        void window.bsub.reopenClosedTab();
+        return;
+      }
+      if (mod && event.shiftKey && key === 'a') {
+        event.preventDefault();
+        setHub('tabs');
+        return;
+      }
+      if (mod && !event.shiftKey && key === 'd') {
+        event.preventDefault();
+        void toggleBookmark();
+        return;
+      }
       if (mod && key === 't') {
         event.preventDefault();
         void window.bsub.newTab();
@@ -215,11 +291,14 @@ export default function App() {
       if (event.key === 'Escape' && findOpen) {
         closeFind();
       }
+      if (event.key === 'Escape' && hub) {
+        setHub(null);
+      }
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, findOpen, findQuery]);
+  }, [active, findOpen, findQuery, hub]);
 
   const finishWizard = (openSettings: boolean) => {
     setWizard(null);
@@ -230,7 +309,13 @@ export default function App() {
   return (
     <div className="app-shell">
       <TabStrip tabs={tabs} onSearch={() => setSearchOpen(true)} />
-      <AddressBar tab={active} focusSignal={addressFocus} />
+      <AddressBar
+        tab={active}
+        focusSignal={addressFocus}
+        bookmarked={bookmarked}
+        onToggleBookmark={() => void toggleBookmark()}
+        onOpenHub={(section) => setHub(section)}
+      />
       {findOpen && (
         <FindBar
           query={findQuery}
@@ -274,6 +359,14 @@ export default function App() {
           snapshot={dragSnapshot}
         />
       </div>
+      <BrowserHub
+        open={Boolean(hub)}
+        initial={hub || 'history'}
+        tabs={tabs}
+        onClose={() => setHub(null)}
+        onOpenUrl={(url) => void window.bsub.openUrl(url)}
+        onSelectTab={(id) => void window.bsub.activateTab(id)}
+      />
       {wizard && <FirstRunWizard snapshot={wizard} onFinish={finishWizard} />}
       <GlobalSearch
         open={searchOpen}

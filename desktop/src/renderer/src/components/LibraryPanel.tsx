@@ -15,11 +15,13 @@ import type {
   NoteVersion,
   NoteVersionMeta,
   SummaryVersion,
-  SummaryVersionMeta
+  SummaryVersionMeta,
+  TrashItem
 } from '../../../shared/types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
+import { PodcastImport } from './PodcastImport';
 import { diffLines, type DiffOp } from '../lib/diff';
 
 const SORTS: Array<{ id: LibrarySort; label: string }> = [
@@ -126,6 +128,8 @@ export function LibraryPanel() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
+  const [quickLink, setQuickLink] = useState('');
+  const [podcastOpen, setPodcastOpen] = useState(false);
   const [importSummary, setImportSummary] = useState(true);
   const [resolving, setResolving] = useState(false);
   const [resolved, setResolved] = useState<CollectionResolveResult | null>(null);
@@ -152,6 +156,11 @@ export function LibraryPanel() {
   const [collectionVersionsOpen, setCollectionVersionsOpen] = useState(false);
   const [collectionPreview, setCollectionPreview] =
     useState<CollectionSummaryVersion | null>(null);
+
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashBusy, setTrashBusy] = useState(0);
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -389,6 +398,11 @@ export function LibraryPanel() {
 
   const openInBrowser = (video: LibraryVideo, start?: number) => {
     if (!video.url) return;
+    if (/^file:\/\//i.test(video.url)) {
+      // 本地音视频没有网页可开，用系统默认播放器。
+      void window.bsub.openLibrarySource(video.id);
+      return;
+    }
     void window.bsub.openUrl(video.url, start);
   };
 
@@ -507,6 +521,59 @@ export function LibraryPanel() {
     window.setTimeout(() => setNotice(''), 3500);
   };
 
+  const refreshTrash = async () => {
+    setTrashLoading(true);
+    const response = await window.bsub.listTrash();
+    setTrashLoading(false);
+    if (response.ok) {
+      setTrashItems(response.data);
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const openTrash = () => {
+    setTrashOpen(true);
+    void refreshTrash();
+  };
+
+  const restoreFromTrash = async (item: TrashItem) => {
+    setTrashBusy(item.id);
+    const response = await window.bsub.restoreTrash(item.id);
+    setTrashBusy(0);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    await load();
+    await refreshTrash();
+    flash(`已恢复「${item.title || '未命名视频'}」`);
+  };
+
+  const purgeTrashItem = async (item: TrashItem) => {
+    if (!window.confirm(`彻底删除「${item.title || '未命名视频'}」？此操作不可恢复。`)) return;
+    setTrashBusy(item.id);
+    const response = await window.bsub.deleteTrash(item.id);
+    setTrashBusy(0);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    await refreshTrash();
+  };
+
+  const clearAllTrash = async () => {
+    if (!trashItems.length) return;
+    if (!window.confirm(`清空回收站里的 ${trashItems.length} 个条目？此操作不可恢复。`)) return;
+    const response = await window.bsub.clearTrash();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    await refreshTrash();
+    flash('回收站已清空');
+  };
+
   const exportNote = async () => {
     if (!detail || !noteDraft.trim()) return;
     const content = [
@@ -595,6 +662,19 @@ export function LibraryPanel() {
     setImportText('');
     setResolved(null);
     flash('已开始抓取链接，进度见底部任务按钮');
+  };
+
+  const importLocalMedia = async () => {
+    const response = await window.bsub.importLocalMedia();
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    if (response.data.canceled) return;
+    setImportOpen(false);
+    setImportText('');
+    setResolved(null);
+    flash(`已开始识别「${response.data.filename || '本地文件'}」，进度见底部任务按钮`);
   };
 
   const resolveImportLinks = async () => {
@@ -1264,6 +1344,9 @@ export function LibraryPanel() {
           >
             筛选
           </button>
+          <button className="icon-btn" title="回收站" onClick={openTrash}>
+            <Trash2 size={13} />
+          </button>
           <button
             className={`mini-btn${selectMode ? ' is-active' : ''}`}
             disabled={!list?.videos.length}
@@ -1612,10 +1695,35 @@ export function LibraryPanel() {
           {!list.videos.length && (
             <div className="panel-empty">
               还没有入库的视频
-              <div className="panel-hint">打开视频后，在「字幕」面板点「入库」。</div>
-              <div className="panel-empty-actions">
+              <div className="panel-hint">粘贴一个视频链接，导入字幕后可以直接生成总结。</div>
+              <div className="quick-import">
+                <input
+                  value={quickLink}
+                  placeholder="粘贴视频链接或 BV 号…"
+                  spellCheck={false}
+                  onChange={(event) => setQuickLink(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || !quickLink.trim()) return;
+                    setImportText(quickLink.trim());
+                    setImportSummary(true);
+                    setImportOpen(true);
+                  }}
+                />
                 <button
                   className="mini-btn primary"
+                  disabled={!quickLink.trim()}
+                  onClick={() => {
+                    setImportText(quickLink.trim());
+                    setImportSummary(true);
+                    setImportOpen(true);
+                  }}
+                >
+                  导入并总结
+                </button>
+              </div>
+              <div className="panel-empty-actions">
+                <button
+                  className="mini-btn"
                   onClick={() => void window.bsub.newTab('https://www.bilibili.com/')}
                 >
                   打开 B 站
@@ -1699,6 +1807,18 @@ export function LibraryPanel() {
               入库后同时生成总结
             </label>
             <div className="confirm-actions">
+              <button
+                className="mini-btn"
+                onClick={() => {
+                  setImportOpen(false);
+                  setPodcastOpen(true);
+                }}
+              >
+                播客 / RSS
+              </button>
+              <button className="mini-btn" onClick={() => void importLocalMedia()}>
+                选择本地音视频
+              </button>
               <button className="mini-btn" onClick={() => setImportOpen(false)}>
                 取消
               </button>
@@ -2065,12 +2185,14 @@ export function LibraryPanel() {
         </div>
       )}
 
+      <PodcastImport open={podcastOpen} onClose={() => setPodcastOpen(false)} />
+
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         title="从库中删除？"
         description={
           pendingDelete
-            ? `「${pendingDelete.title}」的字幕、总结和搜索索引会一起删除，无法撤销。`
+            ? `「${pendingDelete.title}」的字幕、总结和搜索索引会一起移入回收站，可在回收站恢复。`
             : undefined
         }
         confirmText="删除"
@@ -2107,11 +2229,79 @@ export function LibraryPanel() {
       <ConfirmDialog
         open={bulkDeleteOpen}
         title={`删除选中的 ${selectedIds.size} 个条目？`}
-        description="这些条目的字幕、总结、标签/合集关联和搜索索引会一起删除，无法撤销。"
+        description="这些条目的字幕、总结、标签/合集关联和搜索索引会一起移入回收站，可在回收站恢复。"
         confirmText="删除"
         onConfirm={() => void confirmBulkDelete()}
         onCancel={() => setBulkDeleteOpen(false)}
       />
+
+      {trashOpen && (
+        <div className="confirm-backdrop" onClick={() => setTrashOpen(false)}>
+          <div
+            className="confirm-card trash-panel"
+            role="dialog"
+            aria-label="回收站"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-title">回收站</div>
+            <div className="confirm-desc">
+              删除的条目会在这里保留 30 天（最多 200 条），恢复后字幕、总结、笔记和标签都会回来。
+            </div>
+            {trashLoading ? (
+              <div className="status-line">
+                <Loader2 size={13} className="spin" /> 读取中…
+              </div>
+            ) : trashItems.length === 0 ? (
+              <div className="panel-empty">回收站是空的</div>
+            ) : (
+              <div className="trash-list">
+                {trashItems.map((item) => (
+                  <div className="trash-row" key={item.id}>
+                    <div className="trash-main">
+                      <div className="trash-title" title={item.title}>
+                        {item.title || '未命名视频'}
+                      </div>
+                      <div className="trash-meta">
+                        {item.owner || '未知 UP'} · {item.lineCount.toLocaleString('zh-CN')} 行
+                        {item.hasSummary ? ' · 含总结' : ''}
+                        {item.hasNote ? ' · 含笔记' : ''} · {fmtDateTime(item.deletedAt)} 删除
+                      </div>
+                    </div>
+                    <div className="trash-actions">
+                      <button
+                        className="mini-btn"
+                        disabled={trashBusy === item.id}
+                        onClick={() => void restoreFromTrash(item)}
+                      >
+                        恢复
+                      </button>
+                      <button
+                        className="mini-btn danger"
+                        disabled={trashBusy === item.id}
+                        onClick={() => void purgeTrashItem(item)}
+                      >
+                        彻底删除
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="confirm-actions">
+              <button className="mini-btn" onClick={() => setTrashOpen(false)}>
+                关闭
+              </button>
+              <button
+                className="mini-btn danger"
+                disabled={!trashItems.length}
+                onClick={() => void clearAllTrash()}
+              >
+                清空回收站
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
