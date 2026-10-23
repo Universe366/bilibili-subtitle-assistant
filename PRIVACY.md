@@ -62,7 +62,7 @@ API Key 不会同步到其它设备，也不会被开发者读取。你可以随
 
 如有隐私相关问题，请在本仓库提交 Issue：
 
-https://github.com/Universe366/bilibili-subtitle-assistant/issues
+https://github.com/Universe366/shizi/issues
 
 ---
 
@@ -70,4 +70,4 @@ https://github.com/Universe366/bilibili-subtitle-assistant/issues
 
 This extension stores settings, API keys, subtitle caches, history and temporary audio chunks locally in your browser. It sends only the data required for a feature you trigger (Bilibili video metadata/subtitles/audio, and prompts/subtitles/evidence to the AI/ASR/search provider you configure). The developer operates no server that receives user data, and does not collect, sell or share personal data. API keys never leave your device except when sent directly to the provider you selected. A user-initiated settings backup (which contains API keys in plain text) is downloaded locally and is never uploaded by the extension. You can delete all local data by clearing caches in the settings or uninstalling the extension.
 
-Contact: https://github.com/Universe366/bilibili-subtitle-assistant/issues
+Contact: https://github.com/Universe366/shizi/issues

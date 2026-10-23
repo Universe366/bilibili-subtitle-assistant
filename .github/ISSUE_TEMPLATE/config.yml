@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: 使用文档 / 故障排查
-    url: https://github.com/Universe366/bilibili-subtitle-assistant/blob/master/bilibili-subtitle-assistant/README.md
+    url: https://github.com/Universe366/shizi/blob/master/bilibili-subtitle-assistant/README.md
     about: 安装、配置、抓不到字幕、更新后设置丢失等问题先看这里
   - name: 隐私政策
     url: https://gist.github.com/Universe366/ec06f35cf9e74238d5085b3b1bfc6ad6
     about: API Key 存放、数据流向与第三方服务说明
   - name: 安全问题
-    url: https://github.com/Universe366/bilibili-subtitle-assistant/blob/master/SECURITY.md
+    url: https://github.com/Universe366/shizi/blob/master/SECURITY.md
     about: 不要公开贴 Key / Cookie / 抓包；先看安全政策

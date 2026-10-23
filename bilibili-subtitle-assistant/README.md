@@ -1,6 +1,6 @@
 # B站字幕助手（Chrome / Edge MV3 扩展）
 
-[![Release](https://img.shields.io/github/v/release/Universe366/bilibili-subtitle-assistant?sort=semver&display_name=tag)](https://github.com/Universe366/bilibili-subtitle-assistant/releases)
+[![Release](https://img.shields.io/github/v/release/Universe366/bilibili-subtitle-assistant?sort=semver&display_name=tag)](https://github.com/Universe366/shizi/releases)
 [![License](https://img.shields.io/github/license/Universe366/bilibili-subtitle-assistant)](../LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![Chrome](https://img.shields.io/badge/Chrome-116%2B-4285F4)](https://www.google.com/chrome/)
@@ -10,8 +10,8 @@
 
 > 非官方项目，与哔哩哔哩无关联。自己的代码使用 MIT；内置 FFmpeg core 按 GPL 分发，见 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)。
 
-> 最新版本见 [Releases](https://github.com/Universe366/bilibili-subtitle-assistant/releases)；逐版本变化见 [CHANGELOG.md](CHANGELOG.md)。
-> 遇到问题请提 [Issue](https://github.com/Universe366/bilibili-subtitle-assistant/issues)，并附上侧边栏「诊断」里复制出的信息。
+> 最新版本见 [Releases](https://github.com/Universe366/shizi/releases)；逐版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+> 遇到问题请提 [Issue](https://github.com/Universe366/shizi/issues)，并附上侧边栏「诊断」里复制出的信息。
 
 ---
 

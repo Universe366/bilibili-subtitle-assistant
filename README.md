@@ -4,8 +4,8 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/Universe366/bilibili-subtitle-assistant/releases"><img src="https://img.shields.io/github/v/release/Universe366/bilibili-subtitle-assistant?sort=semver&display_name=tag" alt="Release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Universe366/bilibili-subtitle-assistant" alt="License" /></a>
+  <a href="https://github.com/Universe366/shizi/releases"><img src="https://img.shields.io/github/v/release/Universe366/shizi?sort=semver&display_name=tag" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Universe366/shizi" alt="License" /></a>
   <img src="https://img.shields.io/badge/Manifest-V3-4285F4" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/Chrome-116%2B-4285F4" alt="Chrome 116+" />
   <img src="https://img.shields.io/badge/Edge-116%2B-0078D7" alt="Edge 116+" />
@@ -20,7 +20,7 @@
   <a href="#架构">架构</a> ·
   <a href="#开发与测试">开发与测试</a> ·
   <a href="#文档">文档</a> ·
-  <a href="https://github.com/Universe366/bilibili-subtitle-assistant/releases">下载</a>
+  <a href="https://github.com/Universe366/shizi/releases">下载</a>
 </p>
 
 > Chrome / Edge MV3 扩展 · 所有配置在侧边栏内完成 · 无 Obsidian 集成 · API Key 只保存在本机
@@ -90,9 +90,9 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 - 数据位置迁移：复制到新目录并自动重启，成功后删除旧目录
 - 侧栏可拖拽调宽、折叠成图标栏、左右换边；安装时可输入新父目录，卸载时可选择是否删除本地数据（含自定义位置）
 
-源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.34.0**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
+源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.35.0**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
 
-安装版直接运行 `bsub-desktop-setup-*.exe`，绿色版解压后双击 `拾字.exe`。数据默认在 `%APPDATA%\shizi`（设置、字幕库、登录态、缓存、日志；旧版 `bsub-desktop` 首次启动自动迁移）；可在设置里迁移到其他目录，迁移成功后旧目录会自动删除。卸载页默认保留数据，勾选后才会删除（包括自定义位置）。
+安装版直接运行 `shizi-setup-*.exe`，绿色版解压后双击 `拾字.exe`。数据默认在 `%APPDATA%\shizi`（设置、字幕库、登录态、缓存、日志；旧版 `bsub-desktop` 首次启动自动迁移）；可在设置里迁移到其他目录，迁移成功后旧目录会自动删除。卸载页默认保留数据，勾选后才会删除（包括自定义位置）。
 
 开发与打包：
 
@@ -109,7 +109,7 @@ npm run dist                 # NSIS 安装包 + 绿色 zip + latest.yml
 
 ## 快速开始
 
-1. 从 **[Releases](https://github.com/Universe366/bilibili-subtitle-assistant/releases)** 下载最新 zip，解压。
+1. 从 **[Releases](https://github.com/Universe366/shizi/releases)** 下载最新 zip，解压。
 2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）→ 开启「开发者模式」→「加载已解压的扩展程序」。
 3. 选择解压后的 **`bilibili-subtitle-assistant/`** 目录（包含 `manifest.json` 的那一层，不是仓库根目录）。
 4. 打开任意 B 站视频页：右侧会自动出现内嵌面板；也可以点工具栏图标打开浏览器侧边栏（两者可切换）。

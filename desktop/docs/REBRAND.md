@@ -22,16 +22,18 @@ export const APP_TAGLINE = '视频与网页的 AI 笔记工作台';
 - 安装包 `productName`、快捷方式、可执行文件：拾字；
 - `package.json` `name` 与 userData：`shizi` / `%APPDATA%\shizi`，旧 `bsub-desktop` 首次启动自动迁移。
 
+0.35.0 已完成：
+- `appId`: `com.shizi.desktop`；
+- GitHub 仓库：`Universe366/shizi`；
+- 安装包资产名：`shizi-setup-*` / `shizi-*-win-x64-green.zip`；
+- 自动更新 feed 指向新仓库。
+
 仍保留：
-- `appId`: `com.bsub.desktop`（保证旧版本 NSIS 升级与自动更新 GUID 不变）
-- GitHub Release tag / 仓库名：`bilibili-subtitle-assistant` / `v2.x`
-- 安装包资产名：`artifactName` 固定为 `bsub-desktop-*`
-- 扩展桥的 `name` 字段：`bsub-desktop`
+- 扩展桥的 `app` 字段：`bsub-desktop`（协议常量，改它需要同步扩展并中断旧插件连接）；
+- 扩展源码目录名：`bilibili-subtitle-assistant/`（插件本身仍以 B 站为主）。
 
-## 如果要继续改 appId / 仓库名
+> `appId` 变更后，0.34 及更早版本的自动更新链路不再指向新包；
+> 当前只有单个用户且未下载旧安装包，因此直接切换。以后再做同类迁移需要
+> “旧包继续更新到最后一版 → 提示手动安装新包”的过渡。
 
-1. 定名（商标 / 域名 / GitHub 仓库名一起确认）；
-2. 改 `appId` 前先做自动更新过渡：旧包继续更新到最后一版，提示用户手动装新包；
-3. 同步 Release 资产名、`latest.yml`、`docs/SIGNING.md`、商店材料；
-4. 改 `brand.ts` 一处即可让 UI 全量切换。
 

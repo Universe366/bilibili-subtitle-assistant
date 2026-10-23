@@ -48,12 +48,12 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $dir = 'release/win-unpacked'
           @"
-          B站字幕助手 $version 绿色版
+          拾字 $version 绿色版
 
           1. 进入本目录，双击 拾字.exe。
-          2. 数据保存在 %APPDATA%\bsub-desktop。
+          2. 数据保存在 %APPDATA%\shizi（旧版 bsub-desktop 自动迁移）。
           "@ | Set-Content -Path "$dir/README.txt" -Encoding UTF8
-          Compress-Archive -Path "$dir/*" -DestinationPath "release/bsub-desktop-$version-win-x64-green.zip" -Force
+          Compress-Archive -Path "$dir/*" -DestinationPath "release/shizi-$version-win-x64-green.zip" -Force
 
       - name: Package browser extension
         shell: pwsh
@@ -71,8 +71,8 @@ jobs:
           name: 桌面端 + 插件 ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
           body_path: desktop/release/release-notes.md
           files: |
-            desktop/release/bsub-desktop-setup-*.exe
-            desktop/release/bsub-desktop-*.zip
+            desktop/release/shizi-setup-*.exe
+            desktop/release/shizi-*.zip
             desktop/release/bilibili-subtitle-assistant-*.zip
             desktop/release/latest.yml
             desktop/release/*.blockmap

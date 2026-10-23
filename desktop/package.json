@@ -1,6 +1,6 @@
 {
   "name": "shizi",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "private": true,
   "description": "B站字幕助手桌面端",
   "author": "bsub",
@@ -50,7 +50,7 @@
     "vitest": "^5.0.5"
   },
   "build": {
-    "appId": "com.bsub.desktop",
+    "appId": "com.shizi.desktop",
     "productName": "拾字",
     "directories": {
       "output": "release",
@@ -82,7 +82,7 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "bsub-desktop-setup-${version}.${ext}",
+      "artifactName": "shizi-setup-${version}.${ext}",
       "shortcutName": "拾字",
       "include": "build/installer.nsh",
       "deleteAppDataOnUninstall": false,
@@ -95,7 +95,7 @@
     "publish": {
       "provider": "github",
       "owner": "Universe366",
-      "repo": "bilibili-subtitle-assistant",
+      "repo": "shizi",
       "releaseType": "release"
     },
     "asarUnpack": [

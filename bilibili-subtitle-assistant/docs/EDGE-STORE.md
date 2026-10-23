@@ -58,7 +58,7 @@ unzip -p edge-2.17.8.zip manifest.json | head
 >
 > 作者的话：此插件是本人 vibe coding 作品，有 bug 不代表本人能修；本人是新手，请各位大佬高抬贵手。遇到问题欢迎提 Issue，但请温柔一点 🙏
 >
-> 问题反馈：https://github.com/Universe366/bilibili-subtitle-assistant/issues
+> 问题反馈：https://github.com/Universe366/shizi/issues
 
 **类别**：Productivity（生产力）；备选 Utilities
 
