@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const esbuild = require('esbuild');
 
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', 'shizi-extension');
 const OUT = path.join(__dirname, 'build', 'panel.iife.js');
 
 async function build() {

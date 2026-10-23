@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CSS = fs.readFileSync(
-  path.resolve(HERE, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'panel.css'),
+  path.resolve(HERE, '..', 'shizi-extension', 'src', 'sidepanel', 'panel.css'),
   'utf8'
 );
 

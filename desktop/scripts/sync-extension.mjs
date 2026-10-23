@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktop = path.resolve(here, '..');
-const source = path.resolve(desktop, '..', 'bilibili-subtitle-assistant');
+const source = path.resolve(desktop, '..', 'shizi-extension');
 const dest = path.join(desktop, 'resources', 'extension');
 
 if (!fs.existsSync(path.join(source, 'manifest.json'))) {

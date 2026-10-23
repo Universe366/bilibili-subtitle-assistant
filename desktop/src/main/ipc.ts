@@ -1649,7 +1649,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
 
   ipcMain.handle('update:open-releases', async () => {
     await shell.openExternal(
-      'https://github.com/Universe366/bilibili-subtitle-assistant/releases/latest'
+      'https://github.com/Universe366/shizi-extension/releases/latest'
     );
   });
 

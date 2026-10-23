@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const desktop = path.resolve(here, '..');
-const src = path.resolve(desktop, '../bilibili-subtitle-assistant/src/content/page-bridge.js');
+const src = path.resolve(desktop, '../shizi-extension/src/content/page-bridge.js');
 const dest = path.resolve(desktop, 'resources/page-bridge.js');
 
 if (!fs.existsSync(src)) {
@@ -17,7 +17,7 @@ fs.copyFileSync(src, dest);
 console.log(`[sync-bridge] ${fs.statSync(dest).size} bytes -> ${path.relative(desktop, dest)}`);
 
 // 托盘图标：复用扩展的 32px 图标
-const traySrc = path.resolve(desktop, '../bilibili-subtitle-assistant/icons/icon32.png');
+const traySrc = path.resolve(desktop, '../shizi-extension/icons/icon32.png');
 const trayDest = path.resolve(desktop, 'resources/tray.png');
 if (fs.existsSync(traySrc)) {
   fs.copyFileSync(traySrc, trayDest);

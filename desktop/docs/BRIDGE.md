@@ -11,7 +11,7 @@
 
 手动配对仍然支持：桌面端设置里能看到端口和 Token；只有自动发现失败（例如改过端口/安全软件拦截）时才需要手动填。
 
-Token 首次启动时自动生成，保存在 `%APPDATA%\bsub-desktop\settings.json`。
+Token 首次启动时自动生成，保存在 `%APPDATA%\shizi\settings.json`（旧版为 `bsub-desktop`）。
 泄漏后可在设置里改端口 / 清空 Token 重启，会重新生成。
 
 ## 接口
@@ -26,9 +26,9 @@ Origin: chrome-extension://<扩展 ID>
 ```json
 {
   "ok": true,
-  "app": "bsub-desktop",
-  "name": "B站字幕助手",
-  "version": "0.30.9",
+  "app": "shizi",
+  "name": "拾字",
+  "version": "0.35.0",
   "port": 47821,
   "token": "…"
 }

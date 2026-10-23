@@ -6,7 +6,7 @@ require('fake-indexeddb/auto');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', 'shizi-extension');
 const EXT_VERSION = require(path.join(EXT, 'manifest.json')).version;
 const errors = [];
 const calls = [];

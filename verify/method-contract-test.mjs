@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', 'shizi-extension');
 
 const results = [];
 const check = (name, ok, extra = '') => results.push({ name, ok: !!ok, extra });

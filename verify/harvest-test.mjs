@@ -178,7 +178,7 @@ globalThis.chrome = {
   }
 };
 
-const { harvestSubtitles } = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/subtitles.js');
+const { harvestSubtitles } = await import('../shizi-extension/src/sidepanel/modules/subtitles.js');
 
 // 每个用例开始前重置场景，避免上一个用例的状态串味
 function resetCase(next = {}) {

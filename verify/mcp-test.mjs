@@ -76,8 +76,8 @@ const server = http.createServer((req, res) => {
 const port = await new Promise((r) => server.listen(0, '127.0.0.1', () => r(server.address().port)));
 const URL_ = `http://127.0.0.1:${port}/mcp`;
 
-const M = await import('../bilibili-subtitle-assistant/src/background/mcp.js');
-const T = await import('../bilibili-subtitle-assistant/src/background/tools.js');
+const M = await import('../shizi-extension/src/background/mcp.js');
+const T = await import('../shizi-extension/src/background/tools.js');
 
 const server1 = { id: 's1', name: 'Fake', url: URL_, transport: 'http', token: 'sk-x' };
 

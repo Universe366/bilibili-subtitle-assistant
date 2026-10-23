@@ -167,8 +167,8 @@ function createHandler(win: BrowserWindow, token: string) {
           200,
           {
             ok: true,
-            app: 'bsub-desktop',
-            name: 'B站字幕助手',
+            app: 'shizi',
+            name: '拾字',
             version: app.getVersion(),
             port: runningPort || loadSettings().bridge.port,
             token

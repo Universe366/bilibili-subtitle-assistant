@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../..');
-const BRIDGE_FILE = path.join(REPO, 'bilibili-subtitle-assistant/src/content/page-bridge.js');
+const BRIDGE_FILE = path.join(REPO, 'shizi-extension/src/content/page-bridge.js');
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -4,7 +4,7 @@ globalThis.window = { parent: null, addEventListener() {} };
 globalThis.chrome = { runtime: { id: 'test-extension' } };
 
 const mod = await import(
-  '../../bilibili-subtitle-assistant/src/sidepanel/modules/desktop-bridge.js'
+  '../../shizi-extension/src/sidepanel/modules/desktop-bridge.js'
 );
 
 const payload = mod.buildDesktopPayload({

@@ -1,4 +1,4 @@
-// 插件平台目录（与 bilibili-subtitle-assistant/src/shared/settings.js 对齐）。
+// 插件平台目录（与 shizi-extension/src/shared/settings.js 对齐）。
 // 仅数据，主进程与渲染进程共用；apiKey 一律为空。
 import type { AiPlatform, AsrPlatform, SearchPlatform } from './types';
 

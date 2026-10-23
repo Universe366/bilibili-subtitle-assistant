@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer-core');
 
-const EXT = path.join(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.join(__dirname, '..', 'shizi-extension');
 const VIDEO_URL = process.env.VIDEO_URL || 'https://www.bilibili.com/video/BV1GJ411x7h7/';
 const failures = [];
 const passes = [];

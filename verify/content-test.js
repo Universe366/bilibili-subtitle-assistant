@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', 'shizi-extension');
 const EXT_VERSION = require(path.join(EXT, 'manifest.json')).version;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];

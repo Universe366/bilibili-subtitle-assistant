@@ -2,10 +2,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareVersions, normalizeVersion, isNewerVersion } from '../bilibili-subtitle-assistant/src/shared/version.js';
+import { compareVersions, normalizeVersion, isNewerVersion } from '../shizi-extension/src/shared/version.js';
 import { extractChangelogSection, buildReleaseBody } from './tools/release.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'bilibili-subtitle-assistant');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'shizi-extension');
 let pass = 0;
 let fail = 0;
 function check(name, ok, detail = '') {

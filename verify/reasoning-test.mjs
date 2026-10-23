@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src');
+const SRC = path.join(__dirname, '..', 'shizi-extension', 'src');
 const mod = (rel) => pathToFileURL(path.join(SRC, rel)).href;
 
 const P = await import(mod('background/providers.js'));

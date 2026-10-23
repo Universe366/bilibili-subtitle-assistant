@@ -13,8 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
-const EXT = path.join(ROOT, 'bilibili-subtitle-assistant');
-const REPO = 'Universe366/bilibili-subtitle-assistant';
+const EXT = path.join(ROOT, 'shizi-extension');
+const REPO = 'Universe366/shizi-extension';
 
 export function extractChangelogSection(text, version) {
   const src = String(text || '').replace(/\r\n/g, '\n');
@@ -55,7 +55,7 @@ async function api(url, opts = {}) {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'bilibili-subtitle-assistant-release',
+      'User-Agent': 'shizi-extension-release',
       ...(opts.headers || {})
     }
   });
@@ -106,8 +106,8 @@ async function main() {
     throw new Error('工作区不干净；先提交，或去掉 --create 只生成说明');
   }
 
-  const zipPath = path.join(ROOT, `bilibili-subtitle-assistant-v${version}.zip`);
-  execFileSync('git', ['-C', ROOT, 'archive', '--format=zip', '--output', zipPath, 'HEAD:bilibili-subtitle-assistant']);
+  const zipPath = path.join(ROOT, `shizi-extension-v${version}.zip`);
+  execFileSync('git', ['-C', ROOT, 'archive', '--format=zip', '--output', zipPath, 'HEAD:shizi-extension']);
   console.log(`已打包 ${zipPath}`);
 
   const update = process.argv.includes('--update');

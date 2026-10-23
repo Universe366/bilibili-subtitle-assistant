@@ -58,8 +58,8 @@ jobs:
       - name: Package browser extension
         shell: pwsh
         run: |
-          $extVersion = (Get-Content ../bilibili-subtitle-assistant/manifest.json -Raw | ConvertFrom-Json).version
-          Compress-Archive -Path ../bilibili-subtitle-assistant -DestinationPath "release/bilibili-subtitle-assistant-v$extVersion.zip" -Force
+          $extVersion = (Get-Content ../shizi-extension/manifest.json -Raw | ConvertFrom-Json).version
+          Compress-Archive -Path ../shizi-extension -DestinationPath "release/shizi-extension-v$extVersion.zip" -Force
           Write-Output "extension=$extVersion"
 
       - run: npm run release:notes
@@ -73,7 +73,7 @@ jobs:
           files: |
             desktop/release/shizi-setup-*.exe
             desktop/release/shizi-*.zip
-            desktop/release/bilibili-subtitle-assistant-*.zip
+            desktop/release/shizi-extension-*.zip
             desktop/release/latest.yml
             desktop/release/*.blockmap
           draft: false

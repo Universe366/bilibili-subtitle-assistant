@@ -25,7 +25,7 @@
 
 > Chrome / Edge MV3 扩展 · 所有配置在侧边栏内完成 · 无 Obsidian 集成 · API Key 只保存在本机
 >
-> **非官方项目**，与哔哩哔哩无关联。自己的代码使用 MIT；内置 FFmpeg core 按 GPL 分发，见 [`THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md)。
+> **非官方项目**，与哔哩哔哩无关联。自己的代码使用 MIT；内置 FFmpeg core 按 GPL 分发，见 [`THIRD-PARTY-NOTICES.md`](shizi-extension/THIRD-PARTY-NOTICES.md)。
 
 ---
 
@@ -90,7 +90,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 - 数据位置迁移：复制到新目录并自动重启，成功后删除旧目录
 - 侧栏可拖拽调宽、折叠成图标栏、左右换边；安装时可输入新父目录，卸载时可选择是否删除本地数据（含自定义位置）
 
-源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.35.0**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
+源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.36.0**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
 
 安装版直接运行 `shizi-setup-*.exe`，绿色版解压后双击 `拾字.exe`。数据默认在 `%APPDATA%\shizi`（设置、字幕库、登录态、缓存、日志；旧版 `bsub-desktop` 首次启动自动迁移）；可在设置里迁移到其他目录，迁移成功后旧目录会自动删除。卸载页默认保留数据，勾选后才会删除（包括自定义位置）。
 
@@ -111,7 +111,7 @@ npm run dist                 # NSIS 安装包 + 绿色 zip + latest.yml
 
 1. 从 **[Releases](https://github.com/Universe366/shizi/releases)** 下载最新 zip，解压。
 2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）→ 开启「开发者模式」→「加载已解压的扩展程序」。
-3. 选择解压后的 **`bilibili-subtitle-assistant/`** 目录（包含 `manifest.json` 的那一层，不是仓库根目录）。
+3. 选择解压后的 **`shizi-extension/`** 目录（包含 `manifest.json` 的那一层，不是仓库根目录）。
 4. 打开任意 B 站视频页：右侧会自动出现内嵌面板；也可以点工具栏图标打开浏览器侧边栏（两者可切换）。
 
 首次使用可以只抓官方字幕，不需要任何 Key。要用 AI 总结 / 转录 / 联网时，再去 **设置** 里填对应平台的 Key。
@@ -170,7 +170,7 @@ npm run dist
 
 | 文件 | 内容 |
 |---|---|
-| [`bilibili-subtitle-assistant/README.md`](bilibili-subtitle-assistant/README.md) | 用户文档：安装、配置、功能、故障排查 |
+| [`shizi-extension/README.md`](shizi-extension/README.md) | 用户文档：安装、配置、功能、故障排查 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
 | [`desktop/README.md`](desktop/README.md) | 桌面端安装、开发、打包、数据与卸载 |
 | [`desktop/docs/ARCHITECTURE.md`](desktop/docs/ARCHITECTURE.md) | 桌面端模块、数据流、字幕/数据目录/安装器维护笔记 |
@@ -181,12 +181,12 @@ npm run dist
 | [`SECURITY.md`](SECURITY.md) | 安全问题与密钥泄露的处理方式 |
 | [`docs/SIGNING.md`](docs/SIGNING.md) | Windows 代码签名、CI Secrets 与验证 |
 | [`LICENSE`](LICENSE) | MIT（本项目代码） |
-| [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方组件许可证 |
-| [`bilibili-subtitle-assistant/CHANGELOG.md`](bilibili-subtitle-assistant/CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
-| [`bilibili-subtitle-assistant/AGENTS.md`](bilibili-subtitle-assistant/AGENTS.md) | 给 AI / 贡献者：环境硬约束、踩坑、排查方法论 |
-| [`bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md`](bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘（开发记录，不是使用文档） |
+| [`shizi-extension/THIRD-PARTY-NOTICES.md`](shizi-extension/THIRD-PARTY-NOTICES.md) | FFmpeg.wasm 等第三方组件许可证 |
+| [`shizi-extension/CHANGELOG.md`](shizi-extension/CHANGELOG.md) | 按版本汇总的新增 / 修复 / 清理 |
+| [`shizi-extension/AGENTS.md`](shizi-extension/AGENTS.md) | 给 AI / 贡献者：环境硬约束、踩坑、排查方法论 |
+| [`shizi-extension/docs/history/DEVELOPMENT-LOG.md`](shizi-extension/docs/history/DEVELOPMENT-LOG.md) | 逐轮缺陷与修复复盘（开发记录，不是使用文档） |
 | [`PRIVACY.md`](PRIVACY.md) | 隐私政策 |
-| [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md) | Edge 商店包、文案、权限理由、素材与认证备注 |
+| [`shizi-extension/docs/EDGE-STORE.md`](shizi-extension/docs/EDGE-STORE.md) | Edge 商店包、文案、权限理由、素材与认证备注 |
 | [`verify/README.md`](verify/README.md) | 测试套件说明与运行方式 |
 
 ## 说明
@@ -208,7 +208,7 @@ npm run dist
 
 ## License
 
-本项目代码使用 [MIT](LICENSE)。内置 FFmpeg core 为 GPL-2.0-or-later 构建，详见 [`THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md)。
+本项目代码使用 [MIT](LICENSE)。内置 FFmpeg core 为 GPL-2.0-or-later 构建，详见 [`THIRD-PARTY-NOTICES.md`](shizi-extension/THIRD-PARTY-NOTICES.md)。
 
 ---
 

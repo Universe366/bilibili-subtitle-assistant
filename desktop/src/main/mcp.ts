@@ -217,7 +217,7 @@ async function ensureSession(server: McpServer): Promise<void> {
   await rpc(server, 'initialize', {
     protocolVersion: PROTOCOL_VERSION,
     capabilities: {},
-    clientInfo: { name: 'bsub-desktop', version: '1.0.0' }
+    clientInfo: { name: 'shizi', version: '1.0.0' }
   }, nextId());
   await notifyInitialized(server);
 }

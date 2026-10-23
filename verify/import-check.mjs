@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..', 'bilibili-subtitle-assistant', 'src');
+const ROOT = path.resolve(HERE, '..', 'shizi-extension', 'src');
 
 const results = [];
 const errors = [];

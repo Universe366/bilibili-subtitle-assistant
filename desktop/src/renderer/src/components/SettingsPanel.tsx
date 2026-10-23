@@ -2981,7 +2981,7 @@ export function SettingsPanel() {
             className="mini-btn"
             onClick={() =>
               void window.bsub.openExternal(
-                'https://github.com/Universe366/bilibili-subtitle-assistant/issues'
+                'https://github.com/Universe366/shizi-extension/issues'
               )
             }
           >

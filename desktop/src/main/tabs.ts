@@ -46,7 +46,7 @@ function bridgeSource(): string {
   const candidates = [
     path.join(process.resourcesPath, 'page-bridge.js'),
     path.join(app.getAppPath(), 'resources/page-bridge.js'),
-    path.resolve(app.getAppPath(), '../bilibili-subtitle-assistant/src/content/page-bridge.js')
+    path.resolve(app.getAppPath(), '../shizi-extension/src/content/page-bridge.js')
   ];
   for (const file of candidates) {
     try {

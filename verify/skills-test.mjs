@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const S = await import('../bilibili-subtitle-assistant/src/shared/skills.js');
+const S = await import('../shizi-extension/src/shared/skills.js');
 
 const results = [];
 const check = (n, ok, extra = '') => results.push({ n, ok: !!ok, extra });

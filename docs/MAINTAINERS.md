@@ -2,18 +2,18 @@
 
 > 读者：下一个接手仓库的人（或 AI）。这里只记录**发布流程、易踩坑和不能随便改的约束**。
 > 桌面端模块/数据流/安装器细节见 [`../desktop/docs/ARCHITECTURE.md`](../desktop/docs/ARCHITECTURE.md)；
-> 环境限制与历史复盘见 [`../bilibili-subtitle-assistant/AGENTS.md`](../bilibili-subtitle-assistant/AGENTS.md) 和
-> [`../bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md`](../bilibili-subtitle-assistant/docs/history/DEVELOPMENT-LOG.md)。
+> 环境限制与历史复盘见 [`../shizi-extension/AGENTS.md`](../shizi-extension/AGENTS.md) 和
+> [`../shizi-extension/docs/history/DEVELOPMENT-LOG.md`](../shizi-extension/docs/history/DEVELOPMENT-LOG.md)。
 
 ## 1. 仓库地图
 
 | 路径 | 作用 |
 |---|---|
-| `bilibili-subtitle-assistant/` | 扩展运行时（加载这一层，不是仓库根目录） |
-| `bilibili-subtitle-assistant/src/background/` | Service Worker：RPC、平台适配、检索、缓存 |
-| `bilibili-subtitle-assistant/src/content/` | `page-bridge.js`（MAIN world）+ `content.js`（ISOLATED） |
-| `bilibili-subtitle-assistant/src/sidepanel/` | 侧边栏 / 内嵌面板 UI |
-| `bilibili-subtitle-assistant/src/shared/` | 设置、常量、存储、校验 |
+| `shizi-extension/` | 扩展运行时（加载这一层，不是仓库根目录） |
+| `shizi-extension/src/background/` | Service Worker：RPC、平台适配、检索、缓存 |
+| `shizi-extension/src/content/` | `page-bridge.js`（MAIN world）+ `content.js`（ISOLATED） |
+| `shizi-extension/src/sidepanel/` | 侧边栏 / 内嵌面板 UI |
+| `shizi-extension/src/shared/` | 设置、常量、存储、校验 |
 | `desktop/` | Windows 桌面端（Electron + React + SQLite） |
 | `desktop/src/main/` | 主进程：窗口、WebContentsView 标签、CDP 注入、IPC、更新、托盘 |
 | `desktop/src/main/dataDir.ts` | 自定义数据目录、迁移、旧目录清理 |
@@ -31,10 +31,10 @@
 一次版本 bump 至少检查这些位置：
 
 ```text
-bilibili-subtitle-assistant/manifest.json                     2.18.2
-bilibili-subtitle-assistant/src/shared/constants.js          VERSION
-bilibili-subtitle-assistant/src/content/content.js            CONTENT_VERSION
-bilibili-subtitle-assistant/src/content/page-bridge.js        bridge version
+shizi-extension/manifest.json                     2.18.2
+shizi-extension/src/shared/constants.js          VERSION
+shizi-extension/src/content/content.js            CONTENT_VERSION
+shizi-extension/src/content/page-bridge.js        bridge version
 desktop/package.json                                          0.31.0
 desktop/package-lock.json                                     顶层与 packages[""].version
 desktop/README.md / CHANGELOG.md                              产物名与版本说明
@@ -67,7 +67,7 @@ Chromium 153+ 可能禁用 `--load-extension`；脚本会输出 `SKIP`，不要�
 
 ```bash
 # Edge 商店包（manifest.json 必须在 zip 根目录）
-git archive --format=zip -o edge-<ver>.zip HEAD:bilibili-subtitle-assistant \
+git archive --format=zip -o edge-<ver>.zip HEAD:shizi-extension \
   manifest.json rules.json src vendor icons _locales LICENSE \
   THIRD-PARTY-NOTICES.md LICENSES
 
@@ -296,7 +296,7 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 
 | 改动 | 需要更新 |
 |---|---|
-| 用户可见功能 / 设置项 | `bilibili-subtitle-assistant/README.md`、根 README 功能表 |
+| 用户可见功能 / 设置项 | `shizi-extension/README.md`、根 README 功能表 |
 | 版本 / 修复 | `CHANGELOG.md`、Release notes |
 | 权限 / 隐私 / 商店文案 | `PRIVACY.md`、`docs/EDGE-STORE.md` |
 | 测试命令 / 新增套件 | `verify/README.md`、根 README |

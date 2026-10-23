@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../..');
-const BRIDGE_FILE = path.join(REPO, 'bilibili-subtitle-assistant/src/content/page-bridge.js');
+const BRIDGE_FILE = path.join(REPO, 'shizi-extension/src/content/page-bridge.js');
 const OUT = path.join(__dirname, 'report3.json');
 
 const CHROME = process.versions.chrome;

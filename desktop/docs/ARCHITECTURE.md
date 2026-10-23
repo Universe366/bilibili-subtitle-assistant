@@ -295,7 +295,7 @@ CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --win nsis --publish neve
 - 扩展侧 `desktop-bridge.js` 自动扫描 47821–47830；
 - 修改桥 API 后同步：
   - `desktop/src/main/bridge.ts`
-  - `bilibili-subtitle-assistant/src/sidepanel/modules/desktop-bridge.js`
+  - `shizi-extension/src/sidepanel/modules/desktop-bridge.js`
   - `docs/BRIDGE.md`
 
 ## 8. 构建与测试
@@ -319,7 +319,7 @@ node panel-test.js     # 至少跑这个
 
 - `desktop/package.json` 版本 > 最新 Release；
 - `desktop/CHANGELOG.md`、`desktop/README.md` 的产物名同步；
-- `bilibili-subtitle-assistant/manifest.json` / constants / content / page-bridge
+- `shizi-extension/manifest.json` / constants / content / page-bridge
   版本一致；
 - `verify/package.json` 可按需同步；
 - `release/` 不提交。
@@ -365,7 +365,7 @@ node panel-test.js     # 至少跑这个
 
 - 一次合并发布包含桌面端与插件两个版本号：
   - 桌面端 `desktop/package.json`（例如 0.32.0）；
-  - 插件 `bilibili-subtitle-assistant/manifest.json` 及 constants/content/page-bridge（例如 2.18.2）；
+  - 插件 `shizi-extension/manifest.json` 及 constants/content/page-bridge（例如 2.18.2）；
   - tag 用插件版本 `v2.18.2`，CI 会同时打包桌面安装包、绿色包、插件 zip 和 `latest.yml`；
 - 发布前：`npm run typecheck`、`npm run build`、`npm run release:notes` 检查发布说明能提取；
 - 本机 `release/` 不入库；CI 用 `desktop-release.yml`，push tag 即触发；

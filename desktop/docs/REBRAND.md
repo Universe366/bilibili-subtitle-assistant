@@ -28,9 +28,15 @@ export const APP_TAGLINE = '视频与网页的 AI 笔记工作台';
 - 安装包资产名：`shizi-setup-*` / `shizi-*-win-x64-green.zip`；
 - 自动更新 feed 指向新仓库。
 
-仍保留：
-- 扩展桥的 `app` 字段：`bsub-desktop`（协议常量，改它需要同步扩展并中断旧插件连接）；
-- 扩展源码目录名：`bilibili-subtitle-assistant/`（插件本身仍以 B 站为主）。
+0.36.0 已完成：
+- 插件源码目录：`shizi-extension/`；
+- 桌面桥 `app` 字段：`shizi`（需与插件 2.18.5 同步更新）；
+- 插件名称：拾字 · B站字幕助手，短名称「拾字」；
+- 插件资产名：`shizi-extension-v*`。
+
+仍保留的只有历史兼容路径（不是品牌）：
+- 旧数据目录 `%APPDATA%\bsub-desktop` 的读取与迁移；
+- 旧指针 `bsub-desktop-location.txt` / `bsub-desktop-cleanup.txt` 的兼容读取。
 
 > `appId` 变更后，0.34 及更早版本的自动更新链路不再指向新包；
 > 当前只有单个用户且未下载旧安装包，因此直接切换。以后再做同类迁移需要

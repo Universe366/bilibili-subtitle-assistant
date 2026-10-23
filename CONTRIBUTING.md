@@ -38,10 +38,10 @@ npm run test:browser:smoke  # 真实扩展：内嵌 / 评论区 / 侧边栏 / �
 
 | 目录 | 内容 |
 |---|---|
-| `bilibili-subtitle-assistant/src/background/` | service worker：RPC、平台适配、检索、MCP |
-| `bilibili-subtitle-assistant/src/content/` | MAIN world 页面桥 + ISOLATED 内容脚本 |
-| `bilibili-subtitle-assistant/src/sidepanel/` | 侧边栏 UI 与业务逻辑 |
-| `bilibili-subtitle-assistant/src/shared/` | 设置、常量、存储、版本等 |
+| `shizi-extension/src/background/` | service worker：RPC、平台适配、检索、MCP |
+| `shizi-extension/src/content/` | MAIN world 页面桥 + ISOLATED 内容脚本 |
+| `shizi-extension/src/sidepanel/` | 侧边栏 UI 与业务逻辑 |
+| `shizi-extension/src/shared/` | 设置、常量、存储、版本等 |
 | `verify/` | 自动化测试，不属于扩展运行时 |
 
-改代码前建议先读 [`bilibili-subtitle-assistant/AGENTS.md`](bilibili-subtitle-assistant/AGENTS.md)：里面记录了 CSP、service worker 生命周期、音轨请求等环境坑。
+改代码前建议先读 [`shizi-extension/AGENTS.md`](shizi-extension/AGENTS.md)：里面记录了 CSP、service worker 生命周期、音轨请求等环境坑。

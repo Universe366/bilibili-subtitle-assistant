@@ -6,7 +6,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const desktop = path.resolve(here, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(desktop, 'package.json'), 'utf8'));
 const extManifest = JSON.parse(
-  fs.readFileSync(path.resolve(desktop, '../bilibili-subtitle-assistant/manifest.json'), 'utf8')
+  fs.readFileSync(path.resolve(desktop, '../shizi-extension/manifest.json'), 'utf8')
 );
 
 const desktopVersion = pkg.version;
@@ -28,7 +28,7 @@ if (!desktopBody) {
   process.exit(1);
 }
 const extensionBody = section(
-  fs.readFileSync(path.resolve(desktop, '../bilibili-subtitle-assistant/CHANGELOG.md'), 'utf8'),
+  fs.readFileSync(path.resolve(desktop, '../shizi-extension/CHANGELOG.md'), 'utf8'),
   extVersion
 );
 
@@ -58,8 +58,8 @@ fs.writeFileSync(
     '- 自动更新只对安装版有效，并依赖本 Release 的 `latest.yml`；绿色版请手动替换。',
     '',
     '### 浏览器插件',
-    `- 下载 \`bilibili-subtitle-assistant-v${extVersion}.zip\`，解压。`,
-    '- 打开 `chrome://extensions` 或 `edge://extensions`，开启开发者模式，加载解压后的 `bilibili-subtitle-assistant/` 目录。',
+    `- 下载 \`shizi-extension-v${extVersion}.zip\`，解压。`,
+    '- 打开 `chrome://extensions` 或 `edge://extensions`，开启开发者模式，加载解压后的 `shizi-extension/` 目录。',
     '- 更新后请在扩展页点刷新，并刷新所有已打开的 B 站页面。',
     ''
   ].join('\n'),
@@ -72,7 +72,7 @@ console.log(`notes=${path.relative(desktop, notesFile)}`);
 console.log(
   `assets=release/shizi-setup-${desktopVersion}.exe release/latest.yml ` +
     `release/shizi-${desktopVersion}-win-x64-green.zip ` +
-    `release/bilibili-subtitle-assistant-v${extVersion}.zip`
+    `release/shizi-extension-v${extVersion}.zip`
 );
 console.log('\n--- release notes ---\n');
 console.log(desktopBody);

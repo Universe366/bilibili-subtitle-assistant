@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', 'shizi-extension');
 
 const results = [];
 const check = (name, ok, extra = '') => results.push({ name, ok: !!ok, extra });
@@ -118,7 +118,7 @@ globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 
 // 用 RPC 分发器直接调（等价于侧边栏发来的消息）
-const worker = await import('../bilibili-subtitle-assistant/src/background/service-worker.js');
+const worker = await import('../shizi-extension/src/background/service-worker.js');
 const send = (method, params) =>
   new Promise((resolve) => {
     const handled = worker.__dispatch
@@ -148,7 +148,7 @@ origChrome.runtime.onMessage = {
 // 重新 import 以捕获监听器（ESM 有缓存，这里直接用已加载的模块）
 const { handleRpc } = await (async () => {
   try {
-    return await import('../bilibili-subtitle-assistant/src/background/service-worker.js');
+    return await import('../shizi-extension/src/background/service-worker.js');
   } catch (err) {
     return {};
   }
@@ -158,7 +158,7 @@ void handleRpc;
 void send;
 
 // 走到这里如果拿不到分发器，就退化成直接测 providers（仍然覆盖核心逻辑）
-const providers = await import('../bilibili-subtitle-assistant/src/background/providers.js');
+const providers = await import('../shizi-extension/src/background/providers.js');
 
 let err = null;
 try {

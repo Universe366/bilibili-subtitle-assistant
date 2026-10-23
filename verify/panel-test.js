@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
-const ROOT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const ROOT = path.resolve(__dirname, '..', 'shizi-extension');
 const BUNDLE = path.join(__dirname, 'build', 'panel.iife.js');
 const PANEL_HTML = path.join(ROOT, 'src/sidepanel', 'panel.html');
 const PANEL_CSS = path.join(ROOT, 'src/sidepanel', 'panel.css');
@@ -628,7 +628,7 @@ async function main() {
   }
 
   const settingsSrc = fs.readFileSync(
-    path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-settings.js'),
+    path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-settings.js'),
     'utf8'
   );
   check('清除 Key 使用显式标记（不被「留空不改动」吞掉）', /apiKeyClear = true/.test(settingsSrc));
@@ -648,7 +648,7 @@ async function main() {
     ''
   );
   const actionsSrc = fs.readFileSync(
-    path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
+    path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
     'utf8'
   );
   check(
@@ -834,7 +834,7 @@ async function main() {
   // ---- 三个使用体验问题 ----
   {
     const modSrc = (rel) =>
-      fs.readFileSync(path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', rel), 'utf8');
+      fs.readFileSync(path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', rel), 'utf8');
 
     // ① 长连接复用 + 自动重连（不再动不动报「与后台的连接已断开」）
     const bridgeSrc = modSrc('bridge.js');
@@ -1401,7 +1401,7 @@ async function main() {
   // ---- AI 优化升级 / 侧边栏打开 / 切换视频清残留 ----
   {
     const srcOf = (rel) =>
-      fs.readFileSync(path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', rel), 'utf8');
+      fs.readFileSync(path.join(__dirname, '..', 'shizi-extension', 'src', rel), 'utf8');
     const ctxSrc = srcOf('sidepanel/modules/context.js');
     const optSrc = srcOf('sidepanel/modules/optimize.js');
     const appSrc = srcOf('sidepanel/app.js');
@@ -1541,7 +1541,7 @@ async function main() {
       '校对阶段也能终止（verifyItems 支持 shouldAbort）',
       /shouldAbort/.test(
         fs.readFileSync(
-          path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'shared', 'verify.js'),
+          path.join(__dirname, '..', 'shizi-extension', 'src', 'shared', 'verify.js'),
           'utf8'
         )
       ) && /shouldAbort/.test(srcOf('sidepanel/modules/panel-ai.js')),
@@ -1551,13 +1551,13 @@ async function main() {
       '清空字幕有二次确认',
       /confirmDialog\([\s\S]{0,160}清空字幕/.test(
         fs.readFileSync(
-          path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
+          path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
           'utf8'
         )
       ) &&
         /confirmDialog\([\s\S]{0,160}清空字幕/.test(
           fs.readFileSync(
-            path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-subtitles.js'),
+            path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-subtitles.js'),
             'utf8'
           )
         ),
@@ -1791,7 +1791,7 @@ async function main() {
   // ---- 读取视频后自动载入上次结果（用户要求：不用重新搞）----
   {
     const ctxSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'context.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'context.js'),
       'utf8'
     );
     check('loadVideo 会查历史并回填', /restoreFromHistory\(video, \{ toast: true \}\)/.test(ctxSrc), '');
@@ -1806,7 +1806,7 @@ async function main() {
     check('saveHistory 不写空 summary', /if \(st\.summary\) entry\.summary = st\.summary;/.test(ctxSrc), '');
     check('summary 为空时先读已有值再决定', /const prev = \(await call\('history\.get'/.test(ctxSrc), '');
     const storSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'shared', 'storage.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'shared', 'storage.js'),
       'utf8'
     );
     check('historyPut 兜底：空 summary 不覆盖', /entry && entry\.summary === '' && prev\.summary/.test(storSrc), '');
@@ -1845,13 +1845,13 @@ async function main() {
       check('二进制文本解析为空数组', Array.isArray(parsed) && parsed.length === 0, JSON.stringify(parsed).slice(0, 80));
     }
     const subSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'subtitles.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'subtitles.js'),
       'utf8'
     );
     check('缓存命中后仍做校验', /cachedValidation = validateLines\(cached, video\.duration, expectFor\(video\)\)/.test(subSrc), '');
     check('校验不过就不采用缓存', /attempt\.cacheRejected = cachedValidation/.test(subSrc), '');
     const swSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'background', 'service-worker.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'background', 'service-worker.js'),
       'utf8'
     );
     check('后台拒绝 octet-stream 响应', /octet-stream/.test(swSrc) && /接口返回二进制/.test(swSrc), '');
@@ -1936,12 +1936,12 @@ async function main() {
     // 现象之一是「界面没重新开始，还停在 A 的总结上」。
     // 原因是 SPA 导航处理器调 loadVideo() → 触发自动回填历史 → 把 A 的内容载了回来。
     const appSrc2 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'app.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'app.js'),
       'utf8'
     );
     check('导航处理器要求不回填历史', /loadVideo\(\{ noRestore: true \}\)/.test(appSrc2), '');
     const ctxSrc2 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'context.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'context.js'),
       'utf8'
     );
     check('loadVideo 支持 noRestore 选项', /if \(changed && !opts\.noRestore\)/.test(ctxSrc2), '');
@@ -1953,7 +1953,7 @@ async function main() {
     check(
       '旧默认 4096 会被迁移',
       /Number\(merged\.ai\.maxTokens\) === 4096/.test(
-        fs.readFileSync(path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'shared', 'settings.js'), 'utf8')
+        fs.readFileSync(path.join(__dirname, '..', 'shizi-extension', 'src', 'shared', 'settings.js'), 'utf8')
       ),
       ''
     );
@@ -1968,7 +1968,7 @@ async function main() {
     // codec 对不上 → appendBuffer 报错，而旧代码只抛
     // 「音频数据追加失败」，完全看不出真因。
     const audioSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'audio.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'audio.js'),
       'utf8'
     );
     check('SourceBuffer 按实际 codec 建', /audio\/mp4; codecs="\$\{codecs\}"/.test(audioSrc), '');
@@ -1986,7 +1986,7 @@ async function main() {
     check('重采样直接写进 OfflineAudioContext 输入', /mixToMonoInto\(audioBuffer, tmp\.getChannelData\(0\)\)/.test(audioSrc), '');
     check('decodeAudioBytes 透传 codecs', /decodeViaMediaSource\(bytes, \{ \.\.\.opts, codecs \}\)/.test(audioSrc), '');
     const txSrc3 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'transcribe.js'),
       'utf8'
     );
     check('转录把音轨 codec 传给解码器', /codecs: audio\.codecs \|\| ''/.test(txSrc3), '');
@@ -2035,7 +2035,7 @@ async function main() {
     // 它是个独立模块，不能依赖 audio.js 的内部函数。
     // 我第一版漏了，只有真正跑到才报 ReferenceError（测试全绿也发现不了）。
     const oaSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'original-audio.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'original-audio.js'),
       'utf8'
     );
     check('original-audio 自带 throwIfAborted 定义', /function throwIfAborted\(signal\)/.test(oaSrc), '');
@@ -2052,7 +2052,7 @@ async function main() {
     );
     check('面板层把 base64 解成 bytes', /base64ToBytes\(res\.base64\)/.test(txSrc3), '');
     const bSrc4 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'content', 'page-bridge.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'content', 'page-bridge.js'),
       'utf8'
     );
     check('页面桥支持 Range 串写法', /typeof start === 'string' && start/.test(bSrc4), '');
@@ -2089,7 +2089,7 @@ async function main() {
       check('最后一段包含视频结尾', lastChunk.includes(lastLabel), `期望含 ${lastLabel}`);
     }
     const aiSrc2 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-ai.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-ai.js'),
       'utf8'
     );
     check('总结在截断时走分段合并', /if \(ctx\.truncated\)/.test(aiSrc2) && /summarizeInChunks/.test(aiSrc2), '');
@@ -2133,7 +2133,7 @@ async function main() {
     check('明确禁止模型议论字幕完整性', /不要\*\*写任何关于「字幕是否完整/.test(aiSrc2), '');
     check('字幕原文说明改为「已提供的全部」', /已提供的全部/.test(aiSrc2), '');
     const actSrc2 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
       'utf8'
     );
     check('操作区显示字幕覆盖范围', /fmtClockFull\(span\.first\)/.test(actSrc2), '');
@@ -2142,7 +2142,7 @@ async function main() {
 
     // ---- 清空字幕（用户报「读取出来的字幕为什么不能清除」）----
     const ctxSrc3 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'context.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'context.js'),
       'utf8'
     );
     check('导出了 clearSubtitles', /export function clearSubtitles\(/.test(ctxSrc3), '');
@@ -2150,11 +2150,11 @@ async function main() {
     check('清空时清掉章节与统计', /chapters: \[\], stats: null/.test(ctxSrc3), '');
     check('清空会留痕', /recordTimeline\('清空字幕'\)/.test(ctxSrc3), '');
     const actSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-actions.js'),
       'utf8'
     );
     const subSrc4 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'panel-subtitles.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'panel-subtitles.js'),
       'utf8'
     );
     check('操作区菜单有「清空字幕」', /label: '清空字幕'/.test(actSrc), '');
@@ -2173,14 +2173,14 @@ async function main() {
     check('字幕面板浮层也走 runTranscribe', /app\.panels\.actions\.runTranscribe\(\)/.test(subSrc4), '');
     // 向导文案同步
     const wizSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'wizard.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'wizard.js'),
       'utf8'
     );
     check('向导按钮文案已同步为「获取字幕」', /button\('获取字幕'/.test(wizSrc) && !/button\('抓取字幕'/.test(wizSrc), '');
 
     // ---- 身份绑定：面板要把「自己展示的那个视频」告诉页面 ----
     const subSrc3 = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'subtitles.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'subtitles.js'),
       'utf8'
     );
     check('字幕请求带上期望签名', /expectSignature: expected/.test(subSrc3), '');
@@ -2202,7 +2202,7 @@ async function main() {
   // 语法检查、打包、其它测试**全都发现不了**：
   // 它们只检查「函数存在」，不检查「函数挂上去了没有」。
   {
-    const dir = path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules');
+    const dir = path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules');
     const MODULE_OF = { actions: 'panel-actions.js', ai: 'panel-ai.js', subtitles: 'panel-subtitles.js' };
     const sources = {};
     for (const f of Object.values(MODULE_OF)) sources[f] = fs.readFileSync(path.join(dir, f), 'utf8');

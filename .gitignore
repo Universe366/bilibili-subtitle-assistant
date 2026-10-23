@@ -38,7 +38,7 @@ verify/*-probe*.js
 
 # 发布脚本生成的说明与打包产物
 release-notes-v*.md
-bilibili-subtitle-assistant-v*.zip
+shizi-extension-v*.zip
 
 # Edge 商店提交包（可重新生成）
 edge-*.zip

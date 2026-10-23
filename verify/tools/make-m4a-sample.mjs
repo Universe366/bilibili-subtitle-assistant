@@ -7,7 +7,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXT = path.resolve(__dirname, '..', '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', '..', 'shizi-extension');
 const PROFILE = path.join(process.env.TEMP || '/tmp', `cdp-samp-${Date.now()}`);
 const PORT = 9777;
 const HTTP_PORT = 9888;

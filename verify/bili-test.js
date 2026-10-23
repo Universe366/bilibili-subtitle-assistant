@@ -3,7 +3,7 @@
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const EXT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const EXT = path.resolve(__dirname, '..', 'shizi-extension');
 const results = [];
 const check = (name, ok, extra = '') => results.push({ name, ok: !!ok, extra });
 

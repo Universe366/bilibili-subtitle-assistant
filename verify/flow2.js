@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
-const ROOT = path.resolve(__dirname, '..', 'bilibili-subtitle-assistant');
+const ROOT = path.resolve(__dirname, '..', 'shizi-extension');
 const BUNDLE = path.join(__dirname, 'build', 'panel.iife.js');
 const results = [];
 const errors = [];

@@ -445,7 +445,7 @@ async function searchExa(query: string, settings: AppSettings): Promise<WebRefer
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'bsub-desktop', version: '1' }
+        clientInfo: { name: 'shizi', version: '1' }
       }
     })
   });

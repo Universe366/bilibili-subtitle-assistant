@@ -24,11 +24,11 @@
 
 ## 扩展权限
 
-扩展需要的权限及用途见 [`bilibili-subtitle-assistant/docs/EDGE-STORE.md`](bilibili-subtitle-assistant/docs/EDGE-STORE.md)。
+扩展需要的权限及用途见 [`shizi-extension/docs/EDGE-STORE.md`](shizi-extension/docs/EDGE-STORE.md)。
 如果你发现某个权限被用于非文档描述的目的，请按上面的方式报告。
 
 ## 依赖
 
 - 项目代码：MIT；
 - 内置 FFmpeg.wasm core：GPL-2.0-or-later，见
-  [`bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md`](bilibili-subtitle-assistant/THIRD-PARTY-NOTICES.md)。
+  [`shizi-extension/THIRD-PARTY-NOTICES.md`](shizi-extension/THIRD-PARTY-NOTICES.md)。

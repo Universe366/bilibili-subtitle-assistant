@@ -66,7 +66,7 @@ export function extensionSourceDir(): string {
     return path.join(process.resourcesPath, 'extension');
   }
   // 开发期直接用仓库里的扩展源码，避免每次启动复制 30MB。
-  const fromRepo = path.resolve(app.getAppPath(), '..', 'bilibili-subtitle-assistant');
+  const fromRepo = path.resolve(app.getAppPath(), '..', 'shizi-extension');
   if (exists(path.join(fromRepo, 'manifest.json'))) return fromRepo;
   return path.join(app.getAppPath(), 'resources', 'extension');
 }

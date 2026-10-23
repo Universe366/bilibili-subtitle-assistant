@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const results = [];
 const check = (name, ok, extra = '') => results.push({ name, ok: !!ok, extra });
 
-const providers = await import('../bilibili-subtitle-assistant/src/background/providers.js');
+const providers = await import('../shizi-extension/src/background/providers.js');
 
 const WAV = new Uint8Array(1200); // 假 PCM 数据，够用即可
 
@@ -642,8 +642,8 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 
 // ---------------- 22. 分片策略对齐参考实现（600s / 45s / 0.72 安全系数）----------------
 {
-  const { computeSliceSeconds, planSlices } = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/audio.js');
-  const { ASR_LIMITS } = await import('../bilibili-subtitle-assistant/src/shared/constants.js');
+  const { computeSliceSeconds, planSlices } = await import('../shizi-extension/src/sidepanel/modules/audio.js');
+  const { ASR_LIMITS } = await import('../shizi-extension/src/shared/constants.js');
 
   check('默认分片时长对齐 Bilitato 的 600s', ASR_LIMITS.defaultSliceSeconds === 600, String(ASR_LIMITS.defaultSliceSeconds));
   check('最小分片时长 45s', ASR_LIMITS.minSliceSeconds === 45, String(ASR_LIMITS.minSliceSeconds));
@@ -655,7 +655,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('默认并发为 4（预热后并行）', ASR_LIMITS.defaultConcurrency === 4, String(ASR_LIMITS.defaultConcurrency));
   {
     const txSrc = fs.readFileSync(
-      path.join(__dirname, '..', 'bilibili-subtitle-assistant', 'src', 'sidepanel', 'modules', 'transcribe.js'),
+      path.join(__dirname, '..', 'shizi-extension', 'src', 'sidepanel', 'modules', 'transcribe.js'),
       'utf8'
     );
     check('存在「先单跑第一片」的预热逻辑', /预热：先单独跑第一片/.test(txSrc), '');
@@ -685,7 +685,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 
 // ---------------- 23. M4A 流复制路径的行组装（对齐主路径结构）----------------
 {
-  const T = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/transcribe.js');
+  const T = await import('../shizi-extension/src/sidepanel/modules/transcribe.js');
 
   // 带时间戳的结果优先按 segment 切行，且不打 estimated 标记
   const withSeg = {
@@ -730,7 +730,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 
 // ---------------- 24. 各平台的上传格式判定（Groq 必须走 WAV 而不是 M4A）----------------
 {
-  const SET = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const SET = await import('../shizi-extension/src/shared/settings.js');
   const defaults = SET.defaultSettings();
   const byId = (id, model) => {
     const p = defaults.asr.platforms.find((x) => x.id === id);
@@ -818,7 +818,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 //   XingChenAGI/XingChenGSR-V1.0  + WAV → 200 ；+ M4A → 400
 // 同一平台不同模型要求完全不同，所以绝不能按平台一刀切。
 {
-  const T = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/transcribe.js');
+  const T = await import('../shizi-extension/src/sidepanel/modules/transcribe.js');
   const f = T.audioFormatFor;
   const sf = (model, extra = {}) => ({
     id: 'siliconflow',
@@ -887,8 +887,8 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // 而旧 SW 可能仍在运行 —— 表现为「日志是新版、请求却还是旧版行为」。
 // 这正是真实事故中最后卡住排查的一环，所以必须有自动化覆盖。
 {
-  const T = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/transcribe.js');
-  const { CONTENT_VERSION } = await import('../bilibili-subtitle-assistant/src/shared/constants.js');
+  const T = await import('../shizi-extension/src/sidepanel/modules/transcribe.js');
+  const { CONTENT_VERSION } = await import('../shizi-extension/src/shared/constants.js');
 
   const runWith = async (bgVersion) => {
     const logs = [];
@@ -950,7 +950,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // 而上传 13MB WAV 恰好要约 30 秒 → 每次都「操作超时」。
 // 更普遍的问题：RPC 超时若小于 HTTP 超时，就会出现「RPC 先超时、HTTP 其实还在跑」的假失败。
 {
-  const { METHOD_TIMEOUT, DEFAULT_RPC_TIMEOUT } = await import('../bilibili-subtitle-assistant/src/shared/constants.js');
+  const { METHOD_TIMEOUT, DEFAULT_RPC_TIMEOUT } = await import('../shizi-extension/src/shared/constants.js');
 
   check('asr.transcribe 显式登记了超时（不能靠默认值）', typeof METHOD_TIMEOUT['asr.transcribe'] === 'number', String(METHOD_TIMEOUT['asr.transcribe']));
   check('asr.transcribe 的 RPC 超时 ≥ 5 分钟（要覆盖上传+转录）', (METHOD_TIMEOUT['asr.transcribe'] || 0) >= 300000, String(METHOD_TIMEOUT['asr.transcribe']));
@@ -995,7 +995,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
     const path2 = await import('node:path');
     const url2 = await import('node:url');
     const HERE = path2.dirname(url2.fileURLToPath(import.meta.url));
-    const SRC = path2.join(HERE, '..', 'bilibili-subtitle-assistant', 'src');
+    const SRC = path2.join(HERE, '..', 'shizi-extension', 'src');
     const walk = (d, out = []) => {
       for (const e of fs2.readdirSync(d, { withFileTypes: true })) {
         const p = path2.join(d, e.name);
@@ -1028,7 +1028,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 //   String contains non ISO-8859-1 code point.
 // 这个原生错误完全看不出「该改什么」。常见成因是把中文说明/全角符号一起粘进了 Key。
 {
-  const providers2 = await import('../bilibili-subtitle-assistant/src/background/providers.js');
+  const providers2 = await import('../shizi-extension/src/background/providers.js');
   installFetch(() => jsonResponse({ text: 'ok' }));
 
   const bad = (label, apiKey) => {
@@ -1070,7 +1070,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 //   "segments":[{"start":0.1,"end":6.14,"text":"...","speaker":"1"}, ...]
 // 而旧代码只认 {t,d} 字段，把真正的 start/end 完全忽略了 —— 于是有时间戳也没用上。
 {
-  const T = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/transcribe.js');
+  const T = await import('../shizi-extension/src/sidepanel/modules/transcribe.js');
 
   // Diarize 的真实返回结构（setXX 字段名是 start/end，且 text 带 "1: " 前缀）
   const diarize = {
@@ -1118,7 +1118,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // **自己从不发起检索** —— 也就是必须先前手动搜一次才有资料。
 // 现在会在问题涉及外部信息时自动检索。这里锁死判定规则。
 {
-  const S = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const S = await import('../shizi-extension/src/shared/settings.js');
   const d = S.defaultSettings();
 
   check('对话自动联网默认开启', d.search.autoSearchOnChat === true, String(d.search.autoSearchOnChat));
@@ -1158,7 +1158,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   check('纯视频内容类问题不触发检索（省额度）', falsePositive.length === 0, falsePositive.join(' | '));
 
   // 搜索上下文块：抓到正文时应给更多内容
-  const SEARCH = await import('../bilibili-subtitle-assistant/src/sidepanel/modules/search.js');
+  const SEARCH = await import('../shizi-extension/src/sidepanel/modules/search.js');
   const withContent = SEARCH.searchContextBlock([
     { title: 'T', url: 'https://e.com', snippet: '短摘要', content: '正'.repeat(5000) }
   ], {});
@@ -1192,8 +1192,8 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // zhipu-web / metaso / baidu / brave / exa / jina / searxng）。
 // 这里锁死「请求打到哪、带什么头、body 长什么样」以及「各种响应形态都能解析出结果」。
 {
-  const providers3 = await import('../bilibili-subtitle-assistant/src/background/providers.js');
-  const SET = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const providers3 = await import('../shizi-extension/src/background/providers.js');
+  const SET = await import('../shizi-extension/src/shared/settings.js');
 
   const defaults = SET.defaultSearchPlatforms();
   const ids = defaults.map((p) => p.id);
@@ -1286,7 +1286,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // 真实反馈：「我进入插件咋没看到」—— 因为早期迁移只在 platforms 为空时才填默认值，
 // 于是后来新增的 21 个 AI 平台 / 8 个搜索平台对已安装用户永远不可见。
 {
-  const SET = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const SET = await import('../shizi-extension/src/shared/settings.js');
   const allAi = SET.defaultAiPlatforms();
   const allSearch = SET.defaultSearchPlatforms();
 
@@ -1328,8 +1328,8 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // 它走 OpenAI 兼容协议（POST /v1/chat/completions，基础地址 .../v1），不是 Anthropic 原生协议；
 // 基础地址 / 默认模型 / 模型清单 / manifest 域名权限，四者缺一都会让用户「配好 Key 却调不通」。
 {
-  const SET2 = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
-  const ERR = await import('../bilibili-subtitle-assistant/src/background/errors.js');
+  const SET2 = await import('../shizi-extension/src/shared/settings.js');
+  const ERR = await import('../shizi-extension/src/background/errors.js');
   const allAi2 = SET2.defaultAiPlatforms();
   const tr = allAi2.find((p) => p.id === 'tokenrhythm');
 
@@ -1354,7 +1354,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
     const path2 = await import('node:path');
     const { fileURLToPath: f2 } = await import('node:url');
     const manifest2 = JSON.parse(
-      fs2.readFileSync(path2.resolve(path2.dirname(f2(import.meta.url)), '..', 'bilibili-subtitle-assistant', 'manifest.json'), 'utf8')
+      fs2.readFileSync(path2.resolve(path2.dirname(f2(import.meta.url)), '..', 'shizi-extension', 'manifest.json'), 'utf8')
     );
     const hosts = manifest2.host_permissions || [];
     check('manifest 已静态授权 tokenrhythm.studio', hosts.includes('https://tokenrhythm.studio/*'), hosts.join(','));
@@ -1383,8 +1383,8 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
 // 修法是让 background/header-rules.js 用 declarativeNetRequest 把这三个头摘掉，
 // 并且**只在平台声明 stripBrowserHeaders 时**生效（不能污染其它平台）。
 {
-  const RULES = await import('../bilibili-subtitle-assistant/src/background/header-rules.js');
-  const SET3 = await import('../bilibili-subtitle-assistant/src/shared/settings.js');
+  const RULES = await import('../shizi-extension/src/background/header-rules.js');
+  const SET3 = await import('../shizi-extension/src/shared/settings.js');
   const tr = SET3.defaultAiPlatforms().find((p) => p.id === 'tokenrhythm');
 
   check('基元律动打开了 stripBrowserHeaders', !!tr && tr.stripBrowserHeaders === true, tr && String(tr.stripBrowserHeaders));
@@ -1420,7 +1420,7 @@ check('模型名一致时不误报「模型不在列表」', !!err && !/不在�
   const path = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(here, '..', 'bilibili-subtitle-assistant');
+  const root = path.resolve(here, '..', 'shizi-extension');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 
   check('manifest.icons 已声明', !!manifest.icons && typeof manifest.icons === 'object', JSON.stringify(manifest.icons));
