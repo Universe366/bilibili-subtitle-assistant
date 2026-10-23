@@ -1,14 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import {
-  app,
-  clipboard,
-  dialog,
-  ipcMain,
-  nativeTheme,
-  Notification,
-  session,
-  shell
-} from 'electron';
+import { app, clipboard, dialog, ipcMain, nativeTheme, Notification, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -39,7 +30,6 @@ import type {
   OptimizeDoneEvent,
   OptimizeErrorEvent,
   ExportPayload,
-  LayoutRect,
   PageInfo,
   Result,
   SubtitleBundle,
@@ -63,10 +53,7 @@ import type {
   SkillItem,
   CollectionResolveResult,
   ExportRecord,
-  JobRecord,
-  HistoryEntry,
-  Bookmark,
-  DownloadRecord
+  JobRecord
 } from '../shared/types';
 import type { TabManager } from './tabs';
 import {
@@ -81,21 +68,12 @@ import {
   addExportRecord,
   clearExports,
   clearFinishedJobs,
-  clearBrowseHistory,
   clearHistory,
-  listBrowseHistory,
-  clearDownloads,
   createJob,
   createJobItem,
-  deleteDownload,
   deleteExport,
   deleteHistoryItem,
   finishJob,
-  isBookmarked,
-  listBookmarks,
-  listDownloads,
-  removeBookmark,
-  toggleBookmark,
   getJob,
   ingestVideo,
   listExports,
@@ -106,10 +84,8 @@ import {
   saveSummary,
   setJobsListener,
   updateJob,
-  updateJobItem,
-  updateDownload
+  updateJobItem
 } from './library';
-/* removed unused imports from ./collectionSummary */
 import { resolveBilibiliCollection } from './biliCollection';
 import {
   activePlatform,
@@ -124,7 +100,7 @@ import {
 } from './settings';
 import { exportDiagnostics } from './diagnostics';
 import { clearSitePermissions, permissionSummary, revokeSitePermission } from './permissions';
-import { controlDownload } from './downloads';
+
 import { pageContextSummary, readPageContext } from './pageContext';
 import { bridgeStatus, restartBridge } from './bridge';
 import { installBrowserExtension } from './extension-install';
@@ -156,20 +132,9 @@ import { backupData, restoreData } from './backup';
 import { changeDataDir } from './dataDir';
 import { applyCorrectionToLines, applyCorrectionToText } from './correction';
 import { buildExport, exportFilters } from './exporters';
+import { registerBrowserIpc } from './ipc/browser';
 import { registerLibraryIpc } from './ipc/library';
 import { failure, trackJob } from './ipc/shared';
-
-function withStartParam(url: string, seconds: number): string {
-  if (!url || !(seconds > 0)) return url;
-  try {
-    const parsed = new URL(url);
-    if (!/^https?:$/.test(parsed.protocol)) return url;
-    parsed.searchParams.set('t', String(Math.floor(seconds)));
-    return parsed.toString();
-  } catch {
-    return url;
-  }
-}
 
 const aiControllers = new Map<string, AbortController>();
 const chatControllers = new Map<string, AbortController>();
@@ -602,217 +567,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  ipcMain.handle('tabs:list', () => tabs.list());
-  ipcMain.handle('tab:new', (_event, url?: string) => tabs.create(url));
-  ipcMain.handle('tab:open', async (_event, url: string, start?: number) => {
-    const time = Number(start);
-    const safeTime = Number.isFinite(time) && time > 0 ? Math.floor(time) : 0;
-    // 新标签靠 URL 的 t 参数落点；复用标签不会被重新导航，下面再补 seek。
-    const target = withStartParam(String(url || ''), safeTime);
-    const result = await tabs.openOrActivate(target);
-    if (result.reused && result.ready && safeTime > 0) {
-      const wc = tabs.webContentsOf(result.id);
-      if (wc) {
-        try {
-          await seek(wc, safeTime);
-        } catch (error) {
-          console.warn('[tab] seek 失败:', (error as Error).message);
-        }
-      }
-    }
-    return result;
-  });
-  ipcMain.handle('tab:close', (_event, id: string) => {
-    tabs.close(id);
-  });
-  ipcMain.handle('tab:activate', async (_event, id: string) => {
-    await tabs.activate(id);
-  });
-  ipcMain.handle('tab:navigate', (_event, url: string) => {
-    tabs.navigate(url);
-  });
-  ipcMain.handle('tab:back', () => {
-    tabs.back();
-  });
-  ipcMain.handle('tab:forward', () => {
-    tabs.forward();
-  });
-  ipcMain.handle('tab:reload', () => {
-    tabs.reload();
-  });
-  ipcMain.handle('tab:stop', () => {
-    tabs.stop();
-  });
-  ipcMain.handle('tab:zoom-in', () => {
-    tabs.zoomIn();
-  });
-  ipcMain.handle('tab:zoom-out', () => {
-    tabs.zoomOut();
-  });
-  ipcMain.handle('tab:zoom-reset', () => {
-    tabs.zoomReset();
-  });
-  ipcMain.handle(
-    'tab:find',
-    (_event, query: string, options?: { forward?: boolean; findNext?: boolean }) => {
-      tabs.findInPage(query, options || {});
-    }
-  );
-  ipcMain.handle('tab:stop-find', () => {
-    tabs.stopFind();
-  });
-  ipcMain.handle('tab:reopen-closed', async (): Promise<string | null> => tabs.reopenClosed());
-
-  ipcMain.handle(
-    'browse-history:list',
-    (_event, query?: string, limit?: number): Result<HistoryEntry[]> => {
-      try {
-        return { ok: true, data: listBrowseHistory(String(query || ''), Number(limit) || 100) };
-      } catch (error) {
-        return failure<HistoryEntry[]>(error);
-      }
-    }
-  );
-
-  ipcMain.handle('browse-history:clear', (): Result<{ removed: number }> => {
-    try {
-      return { ok: true, data: { removed: clearBrowseHistory() } };
-    } catch (error) {
-      return failure<{ removed: number }>(error);
-    }
-  });
-
-  ipcMain.handle('bookmarks:list', (): Result<Bookmark[]> => {
-    try {
-      return { ok: true, data: listBookmarks() };
-    } catch (error) {
-      return failure<Bookmark[]>(error);
-    }
-  });
-
-  ipcMain.handle('bookmarks:check', (_event, url: string): Result<{ bookmarked: boolean }> => {
-    try {
-      return { ok: true, data: { bookmarked: isBookmarked(String(url || '')) } };
-    } catch (error) {
-      return failure<{ bookmarked: boolean }>(error);
-    }
-  });
-
-  ipcMain.handle(
-    'bookmarks:toggle',
-    (
-      _event,
-      payload: { url: string; title?: string; favicon?: string | null }
-    ): Result<{
-      bookmarked: boolean;
-    }> => {
-      try {
-        return { ok: true, data: toggleBookmark(payload || { url: '' }) };
-      } catch (error) {
-        return failure<{ bookmarked: boolean }>(error);
-      }
-    }
-  );
-
-  ipcMain.handle('bookmarks:remove', (_event, url: string): Result<{ removed: boolean }> => {
-    try {
-      return { ok: true, data: { removed: removeBookmark(String(url || '')) } };
-    } catch (error) {
-      return failure<{ removed: boolean }>(error);
-    }
-  });
-
-  ipcMain.handle('downloads:list', (): Result<DownloadRecord[]> => {
-    try {
-      return { ok: true, data: listDownloads() };
-    } catch (error) {
-      return failure<DownloadRecord[]>(error);
-    }
-  });
-
-  ipcMain.handle('downloads:delete', (_event, id: number): Result<{ removed: boolean }> => {
-    try {
-      return { ok: true, data: { removed: deleteDownload(Number(id)) } };
-    } catch (error) {
-      return failure<{ removed: boolean }>(error);
-    }
-  });
-
-  ipcMain.handle('downloads:clear', (): Result<{ removed: number }> => {
-    try {
-      return { ok: true, data: { removed: clearDownloads() } };
-    } catch (error) {
-      return failure<{ removed: number }>(error);
-    }
-  });
-
-  ipcMain.handle(
-    'downloads:control',
-    (
-      _event,
-      payload: { id: number; action: 'pause' | 'resume' | 'cancel' }
-    ): Result<{ state: string }> => {
-      try {
-        const result = controlDownload(Number(payload?.id), payload?.action);
-        if (!result.ok) return { ok: false, error: result.error || '下载已结束' };
-        updateDownload(Number(payload.id), {
-          state: result.state,
-          finished: result.state === 'cancelled'
-        });
-        send('downloads:changed', null);
-        return { ok: true, data: { state: result.state } };
-      } catch (error) {
-        return failure<{ state: string }>(error);
-      }
-    }
-  );
-
-  ipcMain.handle('browser:clear-data', async (): Promise<Result<{ cleared: boolean }>> => {
-    try {
-      const ses = session.defaultSession;
-      await ses.clearStorageData({
-        storages: [
-          'cookies',
-          'filesystem',
-          'indexdb',
-          'localstorage',
-          'shadercache',
-          'serviceworkers',
-          'cachestorage'
-        ]
-      });
-      await ses.clearCache();
-      await ses.clearAuthCache();
-      return { ok: true, data: { cleared: true } };
-    } catch (error) {
-      return failure<{ cleared: boolean }>(error);
-    }
-  });
-
-  ipcMain.handle('downloads:open', async (_event, id: number): Promise<Result<boolean>> => {
-    try {
-      const item = listDownloads(300).find((row) => row.id === Number(id));
-      if (!item?.path) return { ok: false, error: '文件还没有保存到本地' };
-      const error = await shell.openPath(item.path);
-      return error ? { ok: false, error } : { ok: true, data: true };
-    } catch (error) {
-      return failure<boolean>(error);
-    }
-  });
-
-  ipcMain.handle('downloads:reveal', (_event, id: number): Result<boolean> => {
-    try {
-      const item = listDownloads(300).find((row) => row.id === Number(id));
-      if (!item?.path) return { ok: false, error: '文件还没有保存到本地' };
-      shell.showItemInFolder(item.path);
-      return { ok: true, data: true };
-    } catch (error) {
-      return failure<boolean>(error);
-    }
-  });
-  ipcMain.on('layout:set', (_event, rect: LayoutRect) => {
-    tabs.setLayout(rect);
-  });
+  registerBrowserIpc({ win, send, tabs, aiControllers });
 
   ipcMain.handle('page:document', async () => {
     try {
@@ -948,7 +703,7 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
     }
   });
 
-  registerLibraryIpc({ win, send, aiControllers });
+  registerLibraryIpc({ win, send, tabs, aiControllers });
 
   ipcMain.handle('settings:get', (): Result<ReturnType<typeof settingsSnapshot>> => {
     try {
