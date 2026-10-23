@@ -125,6 +125,12 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:set-tags', { videoId, tags }) as Promise<
       Result<{ tags: string[] }>
     >,
+  renameTag: (name: string, newName: string) =>
+    ipcRenderer.invoke('library:tag-rename', { name, newName }) as Promise<
+      Result<{ renamed: boolean }>
+    >,
+  deleteTag: (name: string) =>
+    ipcRenderer.invoke('library:tag-delete', name) as Promise<Result<{ removed: boolean }>>,
   listCollections: () =>
     ipcRenderer.invoke('library:collections') as Promise<Result<LibraryCollection[]>>,
   addToCollection: (videoId: number, name: string) =>

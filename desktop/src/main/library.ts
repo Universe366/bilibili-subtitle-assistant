@@ -512,6 +512,61 @@ export function setVideoTags(videoId: number, names: string[]): string[] {
   return clean;
 }
 
+export function renameTag(oldName: string, newName: string): void {
+  const database = requireDb();
+  const from = String(oldName || '').trim();
+  const to = String(newName || '').trim().slice(0, 24);
+  if (!to) throw new Error('标签名称不能为空');
+  if (!from || from === to) return;
+
+  const source = database.prepare('SELECT id FROM tags WHERE name = ?').get(from) as
+    | { id: number }
+    | undefined;
+  if (!source) throw new Error('标签不存在');
+  const sourceId = Number(source.id);
+  const target = database.prepare('SELECT id FROM tags WHERE name = ?').get(to) as
+    | { id: number }
+    | undefined;
+
+  database.exec('BEGIN');
+  try {
+    if (target && Number(target.id) !== sourceId) {
+      // 目标标签已存在：把关联并过去，再删掉旧标签（合并）。
+      database
+        .prepare(
+          'INSERT OR IGNORE INTO video_tags (video_id, tag_id) SELECT video_id, ? FROM video_tags WHERE tag_id = ?'
+        )
+        .run(Number(target.id), sourceId);
+      database.prepare('DELETE FROM video_tags WHERE tag_id = ?').run(sourceId);
+      database.prepare('DELETE FROM tags WHERE id = ?').run(sourceId);
+    } else {
+      database.prepare('UPDATE tags SET name = ? WHERE id = ?').run(to, sourceId);
+    }
+    database.exec('COMMIT');
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    if (/UNIQUE/i.test((error as Error).message)) throw new Error('已有同名标签');
+    throw error;
+  }
+}
+
+export function deleteTag(name: string): boolean {
+  const database = requireDb();
+  const clean = String(name || '').trim();
+  const row = database.prepare('SELECT id FROM tags WHERE name = ?').get(clean) as
+    | { id: number }
+    | undefined;
+  if (!row) return false;
+  const id = Number(row.id);
+  database.prepare('DELETE FROM video_tags WHERE tag_id = ?').run(id);
+  const result = database.prepare('DELETE FROM tags WHERE id = ?').run(id);
+  return toNumber(result.changes) > 0;
+}
+
 export function listCollections(): LibraryCollection[] {
   const database = requireDb();
   const rows = database

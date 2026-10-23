@@ -97,6 +97,8 @@ export interface BsubApi {
   getLibraryItem(id: number): Promise<Result<LibraryDetail>>;
   listTags(): Promise<Result<LibraryTag[]>>;
   setLibraryTags(videoId: number, tags: string[]): Promise<Result<{ tags: string[] }>>;
+  renameTag(name: string, newName: string): Promise<Result<{ renamed: boolean }>>;
+  deleteTag(name: string): Promise<Result<{ removed: boolean }>>;
   listCollections(): Promise<Result<LibraryCollection[]>>;
   addToCollection(videoId: number, name: string): Promise<Result<{ collections: string[] }>>;
   removeFromCollection(

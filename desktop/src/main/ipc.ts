@@ -78,6 +78,7 @@ import {
   createJobItem,
   deleteCollection,
   deleteHistoryItem,
+  deleteTag,
   finishJob,
   getJob,
   getLibraryDetail,
@@ -95,6 +96,7 @@ import {
   removeVideo,
   removeVideoFromCollection,
   renameCollection,
+  renameTag,
   restoreSummaryVersion,
   saveSummary,
   searchLibrary,
@@ -819,6 +821,32 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
         return { ok: true, data: { tags } };
       } catch (error) {
         return failure<{ tags: string[] }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:tag-rename',
+    (_event, payload: { name: string; newName: string }): Result<{ renamed: boolean }> => {
+      try {
+        renameTag(String(payload?.name || ''), String(payload?.newName || ''));
+        send('library:changed', null);
+        return { ok: true, data: { renamed: true } };
+      } catch (error) {
+        return failure<{ renamed: boolean }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'library:tag-delete',
+    (_event, name: string): Result<{ removed: boolean }> => {
+      try {
+        const removed = deleteTag(String(name || ''));
+        send('library:changed', null);
+        return { ok: true, data: { removed } };
+      } catch (error) {
+        return failure<{ removed: boolean }>(error);
       }
     }
   );

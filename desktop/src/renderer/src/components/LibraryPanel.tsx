@@ -96,6 +96,9 @@ export function LibraryPanel() {
   const [renameDraft, setRenameDraft] = useState('');
   const [pendingCollectionDelete, setPendingCollectionDelete] =
     useState<LibraryCollection | null>(null);
+  const [tagRenameName, setTagRenameName] = useState('');
+  const [tagRenameDraft, setTagRenameDraft] = useState('');
+  const [pendingTagDelete, setPendingTagDelete] = useState<LibraryTag | null>(null);
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -375,6 +378,33 @@ export function LibraryPanel() {
     if (response.ok) {
       if (collectionFilter === target.name) setCollectionFilter('');
       await loadCollections();
+      if (selectedId != null) void fetchDetail(selectedId);
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const saveTagRename = async (tag: LibraryTag) => {
+    const name = tagRenameDraft.trim();
+    if (!name) return;
+    const response = await window.bsub.renameTag(tag.name, name);
+    if (response.ok) {
+      setTagRenameName('');
+      await loadTags();
+      if (selectedId != null) void fetchDetail(selectedId);
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const confirmTagDelete = async () => {
+    const target = pendingTagDelete;
+    setPendingTagDelete(null);
+    if (!target) return;
+    const response = await window.bsub.deleteTag(target.name);
+    if (response.ok) {
+      if (tagFilter === target.name) setTagFilter('');
+      await loadTags();
       if (selectedId != null) void fetchDetail(selectedId);
     } else {
       setError(response.error);
@@ -762,7 +792,7 @@ export function LibraryPanel() {
               ))}
             </select>
           )}
-          {allCollections.length > 0 && (
+          {(allCollections.length > 0 || allTags.length > 0) && (
             <button className="mini-btn" onClick={() => setManageOpen(true)}>
               管理
             </button>
@@ -943,9 +973,63 @@ export function LibraryPanel() {
             if (event.target === event.currentTarget) setManageOpen(false);
           }}
         >
-          <div className="confirm-card collection-manage" role="dialog" aria-label="管理合集">
-            <div className="confirm-title">管理合集</div>
+          <div className="confirm-card collection-manage" role="dialog" aria-label="管理标签与合集">
+            <div className="confirm-title">管理标签与合集</div>
             <div className="collection-manage-list">
+              {allTags.length > 0 && <div className="manage-section-label">标签</div>}
+              {allTags.map((tag) => (
+                <div key={`tag-${tag.name}`} className="collection-manage-row">
+                  {tagRenameName === tag.name ? (
+                    <>
+                      <input
+                        className="tag-input"
+                        autoFocus
+                        value={tagRenameDraft}
+                        onChange={(event) => setTagRenameDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void saveTagRename(tag);
+                          } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            setTagRenameName('');
+                          }
+                        }}
+                      />
+                      <button className="mini-btn primary" onClick={() => void saveTagRename(tag)}>
+                        保存
+                      </button>
+                      <button className="mini-btn" onClick={() => setTagRenameName('')}>
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="collection-manage-name" title={tag.name}>
+                        {tag.name}
+                        <span className="collection-manage-count"> · {tag.count}</span>
+                      </span>
+                      <button
+                        className="mini-btn"
+                        onClick={() => {
+                          setTagRenameName(tag.name);
+                          setTagRenameDraft(tag.name);
+                        }}
+                      >
+                        重命名
+                      </button>
+                      <button
+                        className="mini-btn danger"
+                        onClick={() => setPendingTagDelete(tag)}
+                      >
+                        删除
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+
+              {allCollections.length > 0 && <div className="manage-section-label">合集</div>}
               {allCollections.map((item) => (
                 <div key={item.id} className="collection-manage-row">
                   {renameId === item.id ? (
@@ -997,7 +1081,9 @@ export function LibraryPanel() {
                   )}
                 </div>
               ))}
-              {!allCollections.length && <div className="panel-empty">还没有合集</div>}
+              {!allCollections.length && !allTags.length && (
+                <div className="panel-empty">还没有标签或合集</div>
+              )}
             </div>
             <div className="confirm-actions">
               <button className="mini-btn" onClick={() => setManageOpen(false)}>
@@ -1032,6 +1118,19 @@ export function LibraryPanel() {
         confirmText="删除"
         onConfirm={() => void confirmCollectionDelete()}
         onCancel={() => setPendingCollectionDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingTagDelete)}
+        title="删除这个标签？"
+        description={
+          pendingTagDelete
+            ? `「${pendingTagDelete.name}」会从所有视频上移除，视频、字幕和总结都不受影响。`
+            : undefined
+        }
+        confirmText="删除"
+        onConfirm={() => void confirmTagDelete()}
+        onCancel={() => setPendingTagDelete(null)}
       />
     </div>
   );

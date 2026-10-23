@@ -4157,3 +4157,11 @@ button:disabled {
 .diff-line.is-same .diff-text {
   color: var(--muted);
 }
+
+.manage-section-label {
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
