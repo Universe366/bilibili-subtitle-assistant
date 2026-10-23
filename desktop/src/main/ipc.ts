@@ -63,6 +63,7 @@ import type {
   LibrarySearchResult,
   LibraryDetail,
   LibrarySort,
+  LibraryTag,
   GlobalSearchResult
 } from '../shared/types';
 import type { TabManager } from './tabs';
@@ -83,6 +84,7 @@ import {
   listHistory,
   listJobs,
   listSummaryVersions,
+  listTags,
   listTranscriptions,
   listLibrary,
   removeVideo,
@@ -90,6 +92,7 @@ import {
   saveSummary,
   searchLibrary,
   setJobsListener,
+  setVideoTags,
   updateJob,
   updateJobItem
 } from './library';
@@ -730,6 +733,27 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
       return failure<{ removed: boolean }>(error);
     }
   });
+
+  ipcMain.handle('library:tags', (): Result<LibraryTag[]> => {
+    try {
+      return { ok: true, data: listTags() };
+    } catch (error) {
+      return failure<LibraryTag[]>(error);
+    }
+  });
+
+  ipcMain.handle(
+    'library:set-tags',
+    (_event, payload: { videoId: number; tags: string[] }): Result<{ tags: string[] }> => {
+      try {
+        const tags = setVideoTags(Number(payload?.videoId), payload?.tags || []);
+        send('library:changed', null);
+        return { ok: true, data: { tags } };
+      } catch (error) {
+        return failure<{ tags: string[] }>(error);
+      }
+    }
+  );
 
   ipcMain.handle('library:get-summary', async (_event, ref: SummaryRef): Promise<Result<StoredSummary | null>> => {
     try {

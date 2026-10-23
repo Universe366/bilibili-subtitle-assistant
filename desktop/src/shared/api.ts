@@ -60,6 +60,7 @@ import type {
   LibrarySearchResult,
   LibraryDetail,
   LibrarySort,
+  LibraryTag,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -91,6 +92,8 @@ export interface BsubApi {
   ingestLibrary(payload: LibraryIngestPayload): Promise<Result<LibraryIngestResult>>;
   listLibrary(sort?: LibrarySort): Promise<Result<LibraryList>>;
   getLibraryItem(id: number): Promise<Result<LibraryDetail>>;
+  listTags(): Promise<Result<LibraryTag[]>>;
+  setLibraryTags(videoId: number, tags: string[]): Promise<Result<{ tags: string[] }>>;
   searchLibrary(query: string): Promise<Result<LibrarySearchResult>>;
   globalSearch(query: string): Promise<Result<GlobalSearchResult>>;
   onSearchRequest(cb: () => void): () => void;

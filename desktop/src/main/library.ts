@@ -13,6 +13,7 @@ import type {
   LibraryDetail,
   LibraryHistoryItem,
   LibrarySort,
+  LibraryTag,
   LibraryTranscriptionItem,
   LibraryIngestPayload,
   LibraryIngestResult,
@@ -92,6 +93,19 @@ CREATE TABLE IF NOT EXISTS summary_versions (
 
 CREATE INDEX IF NOT EXISTS idx_summary_versions_video
   ON summary_versions(video_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+CREATE TABLE IF NOT EXISTS video_tags (
+  video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+  tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (video_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_video_tags_tag ON video_tags(tag_id);
 
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
@@ -348,7 +362,9 @@ const VIDEO_COLUMNS = `
          (SELECT COALESCE(SUM(t.line_count), 0) FROM tracks t WHERE t.video_id = v.id) AS line_count,
          (SELECT MAX(s.updated_at) FROM summaries s WHERE s.video_id = v.id) AS summary_at,
          (SELECT s.model FROM summaries s WHERE s.video_id = v.id
-            ORDER BY s.updated_at DESC LIMIT 1) AS summary_model
+            ORDER BY s.updated_at DESC LIMIT 1) AS summary_model,
+         (SELECT group_concat(tg.name, char(31)) FROM video_tags vt
+            JOIN tags tg ON tg.id = vt.tag_id WHERE vt.video_id = v.id) AS tags
   FROM videos v`;
 
 function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
@@ -366,6 +382,7 @@ function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
     updatedAt: toNumber(row.updated_at),
     summaryUpdatedAt: summaryAt && summaryAt > 0 ? summaryAt : null,
     summaryModel: row.summary_model == null ? undefined : String(row.summary_model),
+    tags: row.tags == null ? [] : String(row.tags).split('\u001f').filter(Boolean),
     trackCount: toNumber(row.track_count),
     lineCount: toNumber(row.line_count)
   };
@@ -410,6 +427,65 @@ export function listLibrary(sort: LibrarySort = 'updated'): LibraryList {
   };
 
   return { videos: rows.map(mapVideoRow), stats, total: stats.videos };
+}
+
+export function listTags(): LibraryTag[] {
+  const database = requireDb();
+  const rows = database
+    .prepare(
+      `SELECT tg.name, COUNT(vt.video_id) AS count
+       FROM tags tg LEFT JOIN video_tags vt ON vt.tag_id = tg.id
+       GROUP BY tg.id
+       ORDER BY count DESC, tg.name ASC`
+    )
+    .all() as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    name: String(row.name || ''),
+    count: toNumber(row.count)
+  }));
+}
+
+export function setVideoTags(videoId: number, names: string[]): string[] {
+  const database = requireDb();
+  const id = Number(videoId);
+  const exists = database.prepare('SELECT id FROM videos WHERE id = ?').get(id);
+  if (!exists) throw new Error('视频不存在');
+
+  const clean: string[] = [];
+  for (const raw of Array.isArray(names) ? names : []) {
+    const name = String(raw || '').trim().slice(0, 24);
+    if (!name) continue;
+    if (clean.some((item) => item.toLowerCase() === name.toLowerCase())) continue;
+    clean.push(name);
+    if (clean.length >= 8) break;
+  }
+
+  database.exec('BEGIN');
+  try {
+    database.prepare('DELETE FROM video_tags WHERE video_id = ?').run(id);
+    const insertTag = database.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)');
+    const findTag = database.prepare('SELECT id FROM tags WHERE name = ?');
+    const link = database.prepare(
+      'INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)'
+    );
+    for (const name of clean) {
+      insertTag.run(name);
+      const row = findTag.get(name) as { id: number } | undefined;
+      if (row) link.run(id, Number(row.id));
+    }
+    database
+      .prepare('DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM video_tags)')
+      .run();
+    database.exec('COMMIT');
+  } catch (error) {
+    try {
+      database.exec('ROLLBACK');
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+  return clean;
 }
 
 function sanitizeQuery(input: string): string {

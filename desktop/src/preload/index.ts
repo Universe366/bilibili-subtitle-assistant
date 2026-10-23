@@ -62,6 +62,7 @@ import type {
   LibrarySearchResult,
   LibraryDetail,
   LibrarySort,
+  LibraryTag,
   JobRecord,
   SummaryVersion,
   SummaryVersionMeta,
@@ -116,6 +117,11 @@ const api: BsubApi = {
     ipcRenderer.invoke('library:list', sort) as Promise<Result<LibraryList>>,
   getLibraryItem: (id: number) =>
     ipcRenderer.invoke('library:get', id) as Promise<Result<LibraryDetail>>,
+  listTags: () => ipcRenderer.invoke('library:tags') as Promise<Result<LibraryTag[]>>,
+  setLibraryTags: (videoId: number, tags: string[]) =>
+    ipcRenderer.invoke('library:set-tags', { videoId, tags }) as Promise<
+      Result<{ tags: string[] }>
+    >,
   searchLibrary: (query: string) =>
     ipcRenderer.invoke('library:search', query) as Promise<Result<LibrarySearchResult>>,
   globalSearch: (query: string) =>

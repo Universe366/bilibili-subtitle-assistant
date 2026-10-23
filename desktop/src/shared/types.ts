@@ -141,8 +141,14 @@ export interface LibraryVideo {
   /** 最后一次保存总结的时间；null 表示尚未总结 */
   summaryUpdatedAt: number | null;
   summaryModel?: string;
+  tags: string[];
   trackCount: number;
   lineCount: number;
+}
+
+export interface LibraryTag {
+  name: string;
+  count: number;
 }
 
 export interface LibraryStats {

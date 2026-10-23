@@ -3975,3 +3975,59 @@ button:disabled {
   font-size: 10px;
   text-align: right;
 }
+
+/* ---------- 标签 ---------- */
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.tag-chip button {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.tag-chip button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.tag-input {
+  flex: 1;
+  min-width: 80px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.tag-input:focus {
+  border-color: var(--accent);
+}
+
+.tag-filter {
+  max-width: 96px;
+}

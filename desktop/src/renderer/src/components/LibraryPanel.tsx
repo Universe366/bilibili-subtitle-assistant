@@ -5,6 +5,7 @@ import type {
   LibraryList,
   LibrarySearchResult,
   LibrarySort,
+  LibraryTag,
   LibraryVideo,
   SummaryVersion,
   SummaryVersionMeta
@@ -81,6 +82,9 @@ export function LibraryPanel() {
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [preview, setPreview] = useState<SummaryVersion | null>(null);
   const [busyVersion, setBusyVersion] = useState(0);
+  const [allTags, setAllTags] = useState<LibraryTag[]>([]);
+  const [tagFilter, setTagFilter] = useState('');
+  const [tagDraft, setTagDraft] = useState('');
 
   const searchSeq = useRef(0);
   const detailSeq = useRef(0);
@@ -99,6 +103,11 @@ export function LibraryPanel() {
       setLoading(false);
     }
   }, [sort]);
+
+  const loadTags = useCallback(async () => {
+    const response = await window.bsub.listTags();
+    if (response.ok) setAllTags(response.data);
+  }, []);
 
   const loadVersions = useCallback(async (videoId: number) => {
     const response = await window.bsub.getSummaryVersions(videoId);
@@ -130,15 +139,21 @@ export function LibraryPanel() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadTags();
+  }, [load, loadTags]);
+
+  useEffect(() => {
+    if (tagFilter && !allTags.some((tag) => tag.name === tagFilter)) setTagFilter('');
+  }, [allTags, tagFilter]);
 
   useEffect(() => {
     return window.bsub.onLibraryChanged(() => {
       void load();
+      void loadTags();
       if (selectedId != null) void fetchDetail(selectedId);
       setSearchNonce((value) => value + 1);
     });
-  }, [load, selectedId, fetchDetail]);
+  }, [load, loadTags, selectedId, fetchDetail]);
 
   // 记录面板的「在库中查看」：切到库之后由这套监听打开对应条目。
   useEffect(() => {
@@ -237,6 +252,36 @@ export function LibraryPanel() {
     }
   };
 
+  const saveTags = async (next: string[]) => {
+    if (!detail) return;
+    const response = await window.bsub.setLibraryTags(detail.video.id, next);
+    if (response.ok) {
+      setDetail((previous) =>
+        previous
+          ? { ...previous, video: { ...previous.video, tags: response.data.tags } }
+          : previous
+      );
+      setTagDraft('');
+    } else {
+      setError(response.error);
+    }
+  };
+
+  const addTag = () => {
+    const name = tagDraft.trim();
+    if (!name || !detail) return;
+    if (detail.video.tags.some((tag) => tag.toLowerCase() === name.toLowerCase())) {
+      setTagDraft('');
+      return;
+    }
+    void saveTags([...detail.video.tags, name]);
+  };
+
+  const removeTag = (name: string) => {
+    if (!detail) return;
+    void saveTags(detail.video.tags.filter((tag) => tag !== name));
+  };
+
   const confirmDelete = async () => {
     const video = pendingDelete;
     setPendingDelete(null);
@@ -252,6 +297,11 @@ export function LibraryPanel() {
 
   const stats = list?.stats;
   const activeVideo = detail?.video ?? list?.videos.find((video) => video.id === selectedId) ?? null;
+  const visibleVideos = list
+    ? tagFilter
+      ? list.videos.filter((video) => video.tags.includes(tagFilter))
+      : list.videos
+    : [];
 
   if (selectedId != null) {
     return (
@@ -295,6 +345,37 @@ export function LibraryPanel() {
             {activeVideo.owner || '未知 UP'} · {fmtTime(activeVideo.duration)} ·{' '}
             {activeVideo.lineCount.toLocaleString('zh-CN')} 行
             {detail?.summary ? ` · 总结于 ${fmtDate(detail.summary.updatedAt)}` : ' · 未总结'}
+          </div>
+        )}
+
+        {detail && (
+          <div className="tag-row">
+            {detail.video.tags.map((tag) => (
+              <span key={tag} className="tag-chip">
+                {tag}
+                <button title="移除标签" onClick={() => removeTag(tag)}>
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              className="tag-input"
+              value={tagDraft}
+              list="lib-tag-options"
+              placeholder={detail.video.tags.length ? '添加标签' : '添加标签…'}
+              onChange={(event) => setTagDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  addTag();
+                }
+              }}
+            />
+            <datalist id="lib-tag-options">
+              {allTags.map((tag) => (
+                <option key={tag.name} value={tag.name} />
+              ))}
+            </datalist>
           </div>
         )}
 
@@ -448,6 +529,21 @@ export function LibraryPanel() {
       <div className="panel-toolbar">
         <div className="panel-title">库</div>
         <div className="toolbar-actions">
+          {allTags.length > 0 && (
+            <select
+              className="mini-select tag-filter"
+              title="按标签筛选"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+            >
+              <option value="">全部标签</option>
+              {allTags.map((tag) => (
+                <option key={tag.name} value={tag.name}>
+                  {tag.name}（{tag.count}）
+                </option>
+              ))}
+            </select>
+          )}
           <select
             className="mini-select"
             title="排序"
@@ -573,7 +669,7 @@ export function LibraryPanel() {
 
       {!result && list && (
         <div className="lib-videos">
-          {list.videos.map((video) => (
+          {visibleVideos.map((video) => (
             <div
               key={video.id}
               className="lib-video"
@@ -603,9 +699,11 @@ export function LibraryPanel() {
                   {video.lineCount.toLocaleString('zh-CN')} 行
                 </div>
                 <div className="lib-sub faint">
-                  {video.summaryUpdatedAt != null
-                    ? `总结于 ${fmtDate(video.summaryUpdatedAt)}`
-                    : `入库于 ${fmtDate(video.createdAt)}`}
+                  {video.tags.length > 0
+                    ? video.tags.slice(0, 3).join(' · ')
+                    : video.summaryUpdatedAt != null
+                      ? `总结于 ${fmtDate(video.summaryUpdatedAt)}`
+                      : `入库于 ${fmtDate(video.createdAt)}`}
                 </div>
               </div>
               <button
@@ -626,6 +724,10 @@ export function LibraryPanel() {
               还没有入库的视频
               <div className="panel-hint">打开视频后，在「字幕」面板点「入库」。</div>
             </div>
+          )}
+
+          {list.videos.length > 0 && !visibleVideos.length && (
+            <div className="panel-empty">该标签下还没有视频</div>
           )}
 
           {list.total > list.videos.length && (
