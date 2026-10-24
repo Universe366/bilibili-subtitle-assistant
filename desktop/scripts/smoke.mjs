@@ -292,6 +292,50 @@ try {
     return `trashId=${result.trashId} cleared=${result.cleared}`;
   });
 
+  // 7. 任务中心（jobs 域）
+  await step('任务中心通道', async () => {
+    const result = await run(
+      ws,
+      `
+      const list = await window.bsub.listJobs();
+      if (!list.ok || !Array.isArray(list.data)) throw new Error('jobs:list 异常');
+      const retry = await window.bsub.retryJob('smoke-not-a-job');
+      if (retry.ok || !retry.error) throw new Error('jobs:retry 应返回错误');
+      await window.bsub.cancelJob('smoke-not-a-job');
+      return JSON.stringify({ jobs: list.data.length });
+      `
+    );
+    return `jobs=${result.jobs}`;
+  });
+
+  // 8. AI 参数校验（不发网络请求）
+  await step('AI 参数校验', async () => {
+    const result = await run(
+      ws,
+      `
+      const bad = await window.bsub.summarize({});
+      if (bad.ok) throw new Error('空载荷不应通过校验');
+      return JSON.stringify({ error: bad.error });
+      `
+    );
+    return result.error;
+  });
+
+  // 9. 历史与导出记录
+  await step('历史与导出记录', async () => {
+    const result = await run(
+      ws,
+      `
+      const history = await window.bsub.getHistory();
+      if (!history.ok || !Array.isArray(history.data)) throw new Error('history:list 异常');
+      const exports = await window.bsub.listExports();
+      if (!exports.ok || !Array.isArray(exports.data)) throw new Error('exports:list 异常');
+      return JSON.stringify({ history: history.data.length, exports: exports.data.length });
+      `
+    );
+    return `history=${result.history} exports=${result.exports}`;
+  });
+
   ws.close();
   console.log(`SMOKE OK title=拾字 version=${pkg.version} tabs=${state.tabCount}`);
   console.log(`E2E OK ${passed.length}/${passed.length} ${passed.join(' / ')}`);
