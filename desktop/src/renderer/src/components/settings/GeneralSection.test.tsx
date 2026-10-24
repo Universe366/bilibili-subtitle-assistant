@@ -17,7 +17,10 @@ const value = {
   autoFollow: true,
   wizardDone: false,
   restoreSession: true,
-  selectionToolbar: true
+  selectionToolbar: true,
+  searchEngine: 'bilibili',
+  searchEngineCustom: '',
+  verticalTabs: false
 } as AppSettings['general'];
 
 function props(overrides: Record<string, unknown> = {}) {
@@ -41,6 +44,13 @@ describe('GeneralSection', () => {
     expect(p.onChange).toHaveBeenCalledWith({ theme: 'dark' });
     fireEvent.click(screen.getByLabelText('关闭窗口时缩到托盘'));
     expect(p.onChange).toHaveBeenCalledWith({ closeToTray: false });
+  });
+
+  it('垂直标签栏开关回传补丁', () => {
+    const p = props();
+    render(<GeneralSection {...p} />);
+    fireEvent.click(screen.getByLabelText(/垂直标签栏/));
+    expect(p.onChange).toHaveBeenCalledWith({ verticalTabs: true });
   });
 
   it('侧栏宽度超范围时夹到 260–560', () => {

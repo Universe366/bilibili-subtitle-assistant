@@ -86,6 +86,7 @@ export function ChatPanel({
   const [expandReasoning, setExpandReasoning] = useState(false);
   const [pageContext, setPageContext] = useState<PageContextSummary | null>(null);
   const [includePage, setIncludePage] = useState(true);
+  const [webSearch, setWebSearch] = useState(false);
   const [savedNotice, setSavedNotice] = useState('');
   const autoSaveRef = useRef<{ title: string; url: string } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -309,7 +310,8 @@ export function ChatPanel({
         lines: context.lines,
         messages: nextMessages,
         skillIds: skillId ? [skillId] : [],
-        includePage: forcePage ? true : includePage
+        includePage: forcePage ? true : includePage,
+        web: webSearch
       });
       if (!started.ok) throw new Error(started.error);
     } catch (caught) {
@@ -573,6 +575,14 @@ export function ChatPanel({
                   pageContext.chars / 1.6
                 ).toLocaleString('zh-CN')} tokens`
               : ''}
+          </label>
+          <label className="chat-context-chip" title="本次对话强制联网检索，回答会列出参考链接">
+            <input
+              type="checkbox"
+              checked={webSearch}
+              onChange={(event) => setWebSearch(event.target.checked)}
+            />
+            联网
           </label>
           {pageContext && pageContext.selectionChars > 0 && (
             <span className="chat-context-chip is-selection">

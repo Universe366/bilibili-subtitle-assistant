@@ -53,6 +53,15 @@ export function GeneralSection({ value, onChange }: GeneralSectionProps) {
       <label className="settings-check">
         <input
           type="checkbox"
+          checked={value.verticalTabs === true}
+          onChange={(event) => onChange({ verticalTabs: event.target.checked })}
+        />
+        垂直标签栏（标签放在左侧）
+      </label>
+
+      <label className="settings-check">
+        <input
+          type="checkbox"
           checked={value.cacheSubtitles !== false}
           onChange={(event) => onChange({ cacheSubtitles: event.target.checked })}
         />

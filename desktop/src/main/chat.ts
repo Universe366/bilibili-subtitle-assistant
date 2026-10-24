@@ -21,6 +21,7 @@ export interface ChatOptions {
   lines: SubtitleLine[];
   messages: ChatMessage[];
   skillIds?: string[];
+  web?: boolean;
   page?: PageContext | null;
   signal?: AbortSignal;
   onDelta?: (delta: string) => void;
@@ -54,8 +55,9 @@ export async function chat(
   const question = String(lastUser?.content || '').trim();
   const wantsSearch =
     settings.search.enabled &&
-    question &&
-    (settings.search.alwaysSearchOnChat ||
+    Boolean(question) &&
+    (options.web === true ||
+      settings.search.alwaysSearchOnChat ||
       (settings.search.autoSearchOnChat &&
         /最新|今天|现在|谁|多少|价格|新闻|发布|核实|查一下|搜索|什么时候|latest|news|price|who|when/i.test(
           question
@@ -109,6 +111,9 @@ export async function chat(
             : '当前页面没有提取到可用正文：可以基于问题本身、选中内容和联网结果回答，但要明确说明依据有限。'
         ]),
     pageBlock,
+    webBlock
+      ? '如果使用了上面的联网参考，请在回答末尾用「参考：」开头列出实际引用到的链接（只列用到的）。'
+      : '',
     webBlock
   ]
     .filter(Boolean)

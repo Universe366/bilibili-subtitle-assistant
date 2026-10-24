@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, nativeTheme, session } from 'electron';
+import { app, BrowserWindow, dialog, Tray, nativeTheme, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { TabManager } from './tabs';
@@ -13,6 +13,7 @@ import {
 import {
   loadSettings,
   migrateSettingsSecrets,
+  saveSettings,
 } from './settings';
 import { installLogger } from './logger';
 import { fatal, writeLog } from './log';
@@ -66,7 +67,7 @@ let mainWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-let trayHintShown = false;
+let closingChoicePending = false;
 
 // 双开会共用 library.db 和桥端口，第二个实例启动时还会把第一个实例的
 // running 任务标成「应用退出」——必须只允许一个实例。
@@ -292,20 +293,42 @@ function createWindow(): void {
     if (isQuitting) return;
     // 设置里关掉「关闭到托盘」后，点关闭直接退出。
     if (loadSettings().general.closeToTray === false) return;
+    if (closingChoicePending) return;
     event.preventDefault();
-    mainWindow?.hide();
-    if (!trayHintShown && tray) {
-      trayHintShown = true;
-      try {
-        tray.displayBalloon({
-          title: APP_NAME,
-          content: '窗口已最小化到托盘，双击托盘图标或右键菜单可恢复。',
-          iconType: 'info'
-        });
-      } catch {
-        // 某些系统不支持气泡提示，忽略。
-      }
-    }
+
+    closingChoicePending = true;
+    void dialog
+      .showMessageBox(mainWindow as BrowserWindow, {
+        type: 'question',
+        title: APP_NAME,
+        message: '要最小化到托盘，还是退出应用？',
+        detail: '最小化后可以从托盘图标恢复；选择「记住」下次不再询问。',
+        buttons: ['最小化到托盘', '退出应用', '取消'],
+        defaultId: 0,
+        cancelId: 2,
+        checkboxLabel: '记住我的选择',
+        checkboxChecked: false,
+        noLink: true
+      })
+      .then((result) => {
+        closingChoicePending = false;
+        if (result.response === 2) return;
+        const toTray = result.response === 0;
+        if (result.checkboxChecked) {
+          const settings = loadSettings();
+          settings.general.closeToTray = toTray;
+          saveSettings(settings);
+        }
+        if (toTray) {
+          mainWindow?.hide();
+        } else {
+          isQuitting = true;
+          app.quit();
+        }
+      })
+      .catch(() => {
+        closingChoicePending = false;
+      });
   });
 
   mainWindow.on('closed', () => {

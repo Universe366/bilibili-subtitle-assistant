@@ -312,9 +312,9 @@ export function SearchSection({
           type="number"
           min={1}
           max={20}
-          value={draft.search.verifyItemCount || 12}
+          value={draft.search.verifyItemCount || 8}
           onChange={(event) =>
-            updateSearch({ verifyItemCount: Number(event.target.value) || 12 })
+            updateSearch({ verifyItemCount: Number(event.target.value) || 8 })
           }
         />
       </div>

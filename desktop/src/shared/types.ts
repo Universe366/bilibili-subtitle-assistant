@@ -709,6 +709,8 @@ export interface AppSettings {
     fontScale: number;
     sidebarWidth: number;
     sidebarPosition: 'left' | 'right';
+    /** 标签栏放左侧（纵向） */
+    verticalTabs: boolean;
     sidebarCollapsed: boolean;
     autoFollow: boolean;
     /** 首次使用向导是否已完成 */
@@ -879,6 +881,8 @@ export interface ChatRequest {
   skillIds?: string[];
   /** 是否把当前网页正文/选中内容带给模型（默认 true） */
   includePage?: boolean;
+  /** 本次对话强制联网检索（覆盖设置里的自动检索策略） */
+  web?: boolean;
 }
 
 export interface PageContextSummary {

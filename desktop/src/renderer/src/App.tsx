@@ -33,6 +33,7 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(320);
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>('left');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [verticalTabs, setVerticalTabs] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
@@ -49,10 +50,20 @@ export default function App() {
     void window.bsub.setBrowserVisible(!wizard && !searchOpen && !hub && !readerOpen);
   }, [wizard, searchOpen, hub, readerOpen]);
 
-  const applyLayout = (snapshot: { settings: { general: { sidebarWidth: number; sidebarPosition: 'left' | 'right'; sidebarCollapsed: boolean } } }) => {
+  const applyLayout = (snapshot: {
+    settings: {
+      general: {
+        sidebarWidth: number;
+        sidebarPosition: 'left' | 'right';
+        sidebarCollapsed: boolean;
+        verticalTabs?: boolean;
+      };
+    };
+  }) => {
     setSidebarWidth(snapshot.settings.general.sidebarWidth);
     setSidebarPosition(snapshot.settings.general.sidebarPosition);
     setSidebarCollapsed(snapshot.settings.general.sidebarCollapsed);
+    setVerticalTabs(snapshot.settings.general.verticalTabs === true);
   };
 
   useEffect(() => {
@@ -412,10 +423,11 @@ export default function App() {
 
   return (
     <div
-      className="app-shell"
+      className={`app-shell${verticalTabs ? ' vertical-tabs' : ''}`}
       {...drop.handlers}
     >
       <TabStrip tabs={tabs} onSearch={() => setSearchOpen(true)} />
+      <div className="app-main">
       <AddressBar
         tab={active}
         focusSignal={addressFocus}
@@ -529,6 +541,7 @@ export default function App() {
         commands={wrappedCommands}
         onClose={() => setPaletteOpen(false)}
       />
+      </div>
     </div>
   );
 }

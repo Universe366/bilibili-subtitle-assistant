@@ -89,6 +89,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     fontScale: 1,
     sidebarWidth: 320,
     sidebarPosition: 'left',
+    verticalTabs: false,
     sidebarCollapsed: false,
     autoFollow: true,
     wizardDone: false,
@@ -208,7 +209,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     timeRange: 'any',
     verify: false,
     verifySummary: true,
-    verifyItemCount: 12,
+    verifyItemCount: 8,
     keylessFallback: true,
     keylessOrder: ['exa', 'anysearch'],
     cacheMinutes: 5,
@@ -274,6 +275,7 @@ function normalize(input: unknown): AppSettings {
       }
       base.general.sidebarPosition = raw.general.sidebarPosition === 'right' ? 'right' : 'left';
       base.general.sidebarCollapsed = raw.general.sidebarCollapsed === true;
+      base.general.verticalTabs = raw.general.verticalTabs === true;
       base.general.autoFollow = raw.general.autoFollow !== false;
       base.general.wizardDone = raw.general.wizardDone === true;
       base.general.restoreSession = raw.general.restoreSession !== false;

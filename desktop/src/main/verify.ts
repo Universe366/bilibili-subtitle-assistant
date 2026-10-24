@@ -299,12 +299,12 @@ async function judgeEvidence(
     ...evidence.map(
       (row) =>
         `${row.id} | 待核实项：${row.item.label || row.item.query} | 字幕：${row.item.line.slice(0, 70)} | ` +
-        `标题：${row.reference.title} | 摘要：${row.reference.snippet.slice(0, 320)}`
+        `标题：${row.reference.title} | 证据：${row.reference.snippet.slice(0, 600)}`
     )
   ].join('\n');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('证据判定超时')), 90000);
+  const timer = setTimeout(() => controller.abort(new Error('证据判定超时')), 45000);
   const forward = () => controller.abort();
   signal?.addEventListener('abort', forward, { once: true });
   try {
@@ -317,7 +317,7 @@ async function judgeEvidence(
         },
         { role: 'user', content: prompt }
       ],
-      { temperature: 0, maxTokens: 3000, signal: controller.signal, timeoutMs: 90000 }
+      { temperature: 0, maxTokens: 3000, signal: controller.signal, timeoutMs: 45000 }
     );
     const content = result.text;
     const start = content.indexOf('{');
@@ -543,7 +543,7 @@ export async function verifySummary(
   signal: AbortSignal | undefined,
   onProgress: Progress
 ): Promise<VerifyResult> {
-  const limit = Math.max(1, Math.min(20, Number(settings.search.verifyItemCount) || 12));
+  const limit = Math.max(1, Math.min(20, Number(settings.search.verifyItemCount) || 8));
 
   // 优先让 AI 从字幕里挑「实体 + 具体说法」生成检索词；关闭或失败时退回规则抽取。
   let items: VerifyItem[] = [];
@@ -747,7 +747,7 @@ async function buildSupplements(
         `- ${item.label || item.query}｜字幕：${item.line.slice(0, 60)}｜证据：${reference.title.slice(
           0,
           60
-        )}｜${reference.snippet.replace(/\s+/g, ' ').slice(0, 220)}`
+        )}｜${reference.snippet.replace(/\s+/g, ' ').slice(0, 400)}`
       );
     }
   }
