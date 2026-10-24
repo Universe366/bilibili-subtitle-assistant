@@ -18,8 +18,9 @@ import type {
   TrashItem
 } from '../../../shared/types';
 import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
-import { LINE_PAGE, SORTS, metaLine, safeFilename } from '../lib/libraryView';
+import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LibraryFilters } from './LibraryFilters';
 import { LibraryVideoRow } from './LibraryVideoRow';
 import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
@@ -1325,82 +1326,18 @@ export function LibraryPanel() {
         />
       </div>
 
-      {filtersOpen && (
-        <div className="library-filters">
-          <select
-            className="mini-select"
-            title="排序"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as LibrarySort)}
-          >
-            {SORTS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {allTags.length > 0 && (
-            <select
-              className="mini-select"
-              title="按标签筛选"
-              value={tagFilter}
-              onChange={(event) => setTagFilter(event.target.value)}
-            >
-              <option value="">全部标签</option>
-              {allTags.map((tag) => (
-                <option key={tag.name} value={tag.name}>
-                  {tag.name}（{tag.count}）
-                </option>
-              ))}
-            </select>
-          )}
-          {allCollections.length > 0 && (
-            <select
-              className="mini-select"
-              title="按合集筛选"
-              value={collectionFilter}
-              onChange={(event) => setCollectionFilter(event.target.value)}
-            >
-              <option value="">全部合集</option>
-              {allCollections.map((item) => (
-                <option key={item.id} value={item.name}>
-                  {item.name}（{item.count}）
-                </option>
-              ))}
-            </select>
-          )}
-          {(allCollections.length > 0 || allTags.length > 0) && (
-            <button className="mini-btn" onClick={() => setManageOpen(true)}>
-              管理
-            </button>
-          )}
-          <button
-            className="mini-btn"
-            onClick={() => {
-              setTagFilter('');
-              setCollectionFilter('');
-            }}
-          >
-            清除
-          </button>
-        </div>
-      )}
-
-      {!filtersOpen && (tagFilter || collectionFilter) && (
-        <div className="filter-summary">
-          {tagFilter && <span>标签：{tagFilter}</span>}
-          {collectionFilter && <span>合集：{collectionFilter}</span>}
-          <button
-            className="mini-btn"
-            onClick={() => {
-              setTagFilter('');
-              setCollectionFilter('');
-            }}
-          >
-            清除
-          </button>
-        </div>
-      )}
+      <LibraryFilters
+        open={filtersOpen}
+        sort={sort}
+        onSort={setSort}
+        tags={allTags}
+        tagFilter={tagFilter}
+        onTagFilter={setTagFilter}
+        collections={allCollections}
+        collectionFilter={collectionFilter}
+        onCollectionFilter={setCollectionFilter}
+        onManage={() => setManageOpen(true)}
+      />
 
       {selectMode && (
         <div className="bulk-bar">
