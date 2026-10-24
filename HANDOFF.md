@@ -77,7 +77,7 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（均为入口/桶文件）/ `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
+| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.25k（15 section 已拆）/ `LibraryPanel.tsx` 1.5k（12 section 已拆）/ `index.ts` 2.4k |
 | 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
