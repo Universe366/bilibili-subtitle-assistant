@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticsInfo } from '../../../shared/types';
 import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
+import { DataBackupSection } from './settings/DataBackupSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
 import { UpdateSection } from './settings/UpdateSection';
 import {
   Download,
-  FolderOpen,
   Loader2,
   Plus,
   RefreshCw,
@@ -2592,56 +2592,18 @@ export function SettingsPanel() {
       />
 
 
-      <SettingsSection title="数据与备份" defaultOpen={false}>
-        <div className="settings-row">
-          <span>数据目录</span>
-        </div>
-        <div className="settings-path" title={dataDir}>
-          {dataDir}
-        </div>
-        <div className="settings-row">
-          <span>数据库</span>
-          <code>{dataDir}\library.db</code>
-        </div>
-        <div className="settings-inline">
-          <button className="mini-btn" onClick={() => void window.bsub.openDataDir()}>
-            <FolderOpen size={12} /> 打开目录
-          </button>
-          <button
-            className="mini-btn"
-            onClick={() => void changeDataLocation()}
-            disabled={migrating}
-          >
-            <FolderOpen size={12} /> {migrating ? '迁移中…' : '更改位置'}
-          </button>
-          <button className="mini-btn" onClick={() => void exportSettings()}>
-            <Download size={12} /> 导出设置
-          </button>
-          <button className="mini-btn" onClick={() => void importSettings()}>
-            <Upload size={12} /> 导入设置
-          </button>
-        </div>
-        <div className="settings-inline">
-          <button className="mini-btn primary" onClick={() => void backupAll()}>
-            <Download size={12} /> 备份数据
-          </button>
-          <button className="mini-btn" onClick={() => void restoreAll()}>
-            <Upload size={12} /> 恢复备份
-          </button>
-          <button className="mini-btn" onClick={() => void compactDatabase()}>
-            <RefreshCw size={12} /> 压缩数据库
-          </button>
-          <button className="mini-btn danger" onClick={() => void clearBrowsingData()}>
-            清除浏览数据
-          </button>
-        </div>
-        <div className="settings-hint">
-          更改位置会把设置、字幕库、总结、登录状态和日志复制到新目录，然后自动重启；
-          缓存类文件不会复制。日志在数据目录的 logs/ 下（保留 7 天）。
-          导出设置与数据备份都不含 API Key / 桥 Token；恢复备份后需要在设置里重新填写 Key，
-          桥 Token 会自动重新生成。
-        </div>
-      </SettingsSection>
+      <DataBackupSection
+        dataDir={dataDir}
+        migrating={migrating}
+        onChangeLocation={() => void changeDataLocation()}
+        onExportSettings={() => void exportSettings()}
+        onImportSettings={() => void importSettings()}
+        onBackup={() => void backupAll()}
+        onRestore={() => void restoreAll()}
+        onCompact={() => void compactDatabase()}
+        onClearBrowsingData={() => void clearBrowsingData()}
+      />
+
 
       {(message || error) && (
         <div
