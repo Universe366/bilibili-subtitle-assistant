@@ -91,6 +91,7 @@ export interface BsubApi {
   openUrl(url: string, start?: number): Promise<{ id: string; reused: boolean; ready: boolean }>;
   moveTab(id: string, index: number): void;
   setPetEnabled(enabled: boolean): Promise<void>;
+  focusMain(): Promise<void>;
   setPlaybackRate(rate: number): Promise<{ ok: true; data: number }>;
   setActiveViewVisible(visible: boolean): Promise<void>;
   pinTab(id: string, pinned: boolean): Promise<void>;

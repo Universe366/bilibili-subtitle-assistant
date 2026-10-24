@@ -15,6 +15,8 @@ function installBsub() {
       data: { title: '测试页', url: 'https://example.com', kind: 'video' }
     })),
     chat: vi.fn(async () => ({ ok: true as const, data: { requestId: 'pet-1' } })),
+    focusMain: vi.fn(async () => undefined),
+    setPetEnabled: vi.fn(async () => undefined),
     onChatDelta: vi.fn((cb: (event: unknown) => void) => {
       handlers.delta = cb;
       return () => {};
@@ -39,36 +41,48 @@ describe('PetWindow', () => {
     installBsub();
     render(<PetWindow />);
     expect(screen.queryByPlaceholderText(/输入问题/)).toBeNull();
-    fireEvent.click(screen.getByTitle('点击和桌宠聊天'));
+    fireEvent.click(screen.getByTitle(/点击聊天/));
     expect(screen.getByPlaceholderText(/输入问题/)).toBeTruthy();
   });
 
-  it('发送问题调用 chat，并在完成事件后显示回答', async () => {
+  it('快捷动作直接发送预设提示词', async () => {
+    const { api } = installBsub();
+    render(<PetWindow />);
+    fireEvent.click(screen.getByTitle(/点击聊天/));
+    fireEvent.click(screen.getByText('总结这个页面'));
+    await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
+    const payload = (api.chat.mock.calls[0] as unknown[])[0] as {
+      messages: Array<{ content: string }>;
+    };
+    expect(payload.messages[0].content).toContain('总结当前页面');
+  });
+
+  it('发送问题后，完成事件显示回答', async () => {
     const { api, handlers } = installBsub();
     render(<PetWindow />);
-    fireEvent.click(screen.getByTitle('点击和桌宠聊天'));
+    fireEvent.click(screen.getByTitle(/点击聊天/));
     const input = screen.getByPlaceholderText(/输入问题/);
     fireEvent.change(input, { target: { value: '这个视频讲了什么' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
-    const payload = (api.chat.mock.calls[0] as unknown[])[0] as unknown as {
-      messages: Array<{ content: string }>;
-    };
-    expect(payload.messages[0].content).toBe('这个视频讲了什么');
-
-    handlers.done?.({
-      requestId: ((api.chat.mock.calls[0] as unknown[])[0] as { requestId: string }).requestId,
-      text: '它讲了三个要点',
-      model: 'test'
-    });
+    const requestId = ((api.chat.mock.calls[0] as unknown[])[0] as { requestId: string }).requestId;
+    handlers.done?.({ requestId, text: '它讲了三个要点', model: 'test' });
     expect(await screen.findByText('它讲了三个要点')).toBeTruthy();
   });
 
-  it('输入为空时发送按钮禁用', () => {
-    installBsub();
+  it('双击桌宠打开主窗口', () => {
+    const { api } = installBsub();
     render(<PetWindow />);
-    fireEvent.click(screen.getByTitle('点击和桌宠聊天'));
-    expect((screen.getByText('发送') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.doubleClick(screen.getByTitle(/点击聊天/));
+    expect(api.focusMain).toHaveBeenCalled();
+  });
+
+  it('气泡里的隐藏按钮关闭桌宠', () => {
+    const { api } = installBsub();
+    render(<PetWindow />);
+    fireEvent.click(screen.getByTitle(/点击聊天/));
+    fireEvent.click(screen.getByTitle(/隐藏桌宠/));
+    expect(api.setPetEnabled).toHaveBeenCalledWith(false);
   });
 });
