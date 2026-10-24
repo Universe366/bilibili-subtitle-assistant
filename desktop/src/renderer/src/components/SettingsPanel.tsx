@@ -6,6 +6,7 @@ import { DataBackupSection } from './settings/DataBackupSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
+import { SkillsSection } from './settings/SkillsSection';
 import { UpdateSection } from './settings/UpdateSection';
 import {
   Download,
@@ -2518,61 +2519,15 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Skills" defaultOpen={false}>
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.skills.enabled}
-            onChange={(event) => updateSkills({ enabled: event.target.checked })}
-          />
-          启用技能提示词
-        </label>
-        <div className="settings-inline">
-          <button className="mini-btn" onClick={() => void importSkill()}>
-            <Plus size={12} /> 导入 SKILL.md
-          </button>
-          <button className="mini-btn" onClick={addSkill}>
-            <Plus size={12} /> 新建技能
-          </button>
-        </div>
+      <SkillsSection
+        value={draft.skills}
+        onToggle={(enabled) => updateSkills({ enabled })}
+        onImport={() => void importSkill()}
+        onCreate={addSkill}
+        onUpdate={(id, patch) => updateSkill(id, patch)}
+        onRemove={removeSkill}
+      />
 
-        {draft.skills.items.map((skill) => (
-          <div key={skill.id} className="skill-card">
-            <div className="settings-inline">
-              <input
-                className="settings-input"
-                value={skill.name}
-                onChange={(event) => updateSkill(skill.id, { name: event.target.value })}
-              />
-              <label className="settings-check">
-                <input
-                  type="checkbox"
-                  checked={skill.enabled}
-                  onChange={(event) => updateSkill(skill.id, { enabled: event.target.checked })}
-                />
-                启用
-              </label>
-              <button className="mini-btn" onClick={() => removeSkill(skill.id)}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-            <input
-              className="settings-input"
-              placeholder="触发条件 / 描述"
-              value={skill.description}
-              onChange={(event) => updateSkill(skill.id, { description: event.target.value })}
-            />
-            <textarea
-              className="settings-textarea"
-              rows={4}
-              value={skill.body}
-              onChange={(event) => updateSkill(skill.id, { body: event.target.value })}
-            />
-            <div className="settings-hint">来源：{skill.source}</div>
-          </div>
-        ))}
-        <div className="settings-hint">启用后会注入总结和对话的系统提示词。</div>
-      </SettingsSection>
 
       <DiagnosticsSection
         diagnostics={diagnostics}
