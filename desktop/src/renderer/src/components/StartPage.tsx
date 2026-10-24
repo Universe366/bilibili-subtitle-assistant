@@ -22,6 +22,12 @@ export function StartPage({
 }: StartPageProps) {
   const [query, setQuery] = useState('');
   const [recent, setRecent] = useState<LibraryVideo[]>([]);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     void window.bsub.listLibrary().then((response) => {
@@ -42,7 +48,10 @@ export function StartPage({
         ×
       </button>
       <div className="start-hero">
-        <div className="start-brand">拾字</div>
+        <div className="start-clock">{now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>
+        <div className="start-date">
+          {now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+        </div>
         <div className="start-search">
           <Search size={16} />
           <input

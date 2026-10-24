@@ -350,8 +350,9 @@ export default function App() {
   }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
 
   useEffect(() => {
-    void window.bsub.setActiveViewVisible(!(startOpen || settingsOpen));
-  }, [startOpen, settingsOpen]);
+    const pageOpen = startOpen || settingsOpen || tabs.length === 0;
+    void window.bsub.setActiveViewVisible(!pageOpen);
+  }, [startOpen, settingsOpen, tabs.length]);
 
   const handleSectionSelect = (next: Section) => {
     setSection(next);
@@ -433,7 +434,7 @@ export default function App() {
 
   return (
     <div
-      className={`app-shell${verticalTabs ? ' vertical-tabs' : ''}`}
+      className={`app-shell${verticalTabs ? ' vertical-tabs' : ''}${startOpen || settingsOpen || tabs.length === 0 ? ' is-page' : ''}`}
       {...drop.handlers}
     >
       <TabStrip tabs={tabs} vertical={verticalTabs} onSearch={() => setSearchOpen(true)} onNewTab={() => setStartOpen(true)} />
@@ -445,6 +446,8 @@ export default function App() {
         onToggleBookmark={() => void toggleBookmark()}
         onOpenHub={(section) => setHub(section)}
         onOpenReader={() => setReaderOpen(true)}
+        onOpenStart={() => setStartOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       {findOpen && (
         <FindBar
@@ -489,6 +492,46 @@ export default function App() {
           snapshot={dragSnapshot}
         />
       </div>
+      {(startOpen || settingsOpen || tabs.length === 0) && (
+        <div className="page-host">
+          {settingsOpen ? (
+            <div className="settings-page">
+              <div className="settings-page-head">
+                <span>设置</span>
+                <button className="mini-btn" onClick={() => setSettingsOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <SettingsPanel />
+            </div>
+          ) : (
+            <StartPage
+              onNavigate={(input) => {
+                setStartOpen(false);
+                void window.bsub.newTab(input);
+              }}
+              onOpenLibrary={() => {
+                setStartOpen(false);
+                handleSectionSelect('library');
+              }}
+              onOpenHistory={() => {
+                setStartOpen(false);
+                setHub('history');
+              }}
+              onOpenTasks={() => {
+                setStartOpen(false);
+                setHub('tabs');
+              }}
+              onOpenSettings={() => {
+                setStartOpen(false);
+                setSettingsOpen(true);
+              }}
+              onClose={() => setStartOpen(false)}
+            />
+          )}
+        </div>
+      )}
+
       <BrowserHub
         open={Boolean(hub)}
         initial={hub || 'history'}
@@ -543,41 +586,6 @@ export default function App() {
       {drop.dragging && (
         <div className="drop-overlay">
           <div className="drop-card">松手打开链接或 BV 号</div>
-        </div>
-      )}
-
-      {startOpen && (
-        <StartPage
-          onNavigate={(input) => void window.bsub.newTab(input)}
-          onOpenLibrary={() => {
-            setStartOpen(false);
-            handleSectionSelect('library');
-          }}
-          onOpenHistory={() => {
-            setStartOpen(false);
-            setHub('history');
-          }}
-          onOpenTasks={() => {
-            setStartOpen(false);
-            setHub('tabs');
-          }}
-          onOpenSettings={() => {
-            setStartOpen(false);
-            setSettingsOpen(true);
-          }}
-          onClose={() => setStartOpen(false)}
-        />
-      )}
-
-      {settingsOpen && (
-        <div className="settings-page">
-          <div className="settings-page-head">
-            <span>设置</span>
-            <button className="mini-btn" onClick={() => setSettingsOpen(false)}>
-              关闭
-            </button>
-          </div>
-          <SettingsPanel />
         </div>
       )}
 

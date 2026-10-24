@@ -5197,3 +5197,114 @@ button:disabled {
   font-size: 8px;
   margin-right: 1px;
 }
+
+/* ---------- 页面宿主与起始页（iTab 风格） ---------- */
+.page-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell.is-page .app-body {
+  display: none;
+}
+
+.page-host .start-page,
+.page-host .settings-page {
+  position: static;
+  inset: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page-host .start-page {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(237, 98, 139, 0.22), transparent 42%),
+    radial-gradient(circle at 82% 8%, rgba(112, 130, 255, 0.2), transparent 40%),
+    linear-gradient(160deg, var(--bg), var(--surface-2));
+}
+
+.start-clock {
+  font-size: 46px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  line-height: 1;
+}
+
+.start-date {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.address-menu-wrap {
+  position: relative;
+}
+
+.address-menu {
+  position: absolute;
+  right: 0;
+  top: 32px;
+  z-index: 30;
+  min-width: 168px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.address-menu button {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.address-menu button:hover {
+  background: var(--surface-2);
+}
+
+.address-menu-sep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--border);
+}
+
+.tab-vertical-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 4px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.tab-collapse {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tab-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.app-shell.vertical-tabs .tab-strip {
+  position: relative;
+}

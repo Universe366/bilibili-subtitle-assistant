@@ -44,6 +44,8 @@ function props(overrides: Record<string, unknown> = {}) {
     onToggleBookmark: vi.fn(),
     onOpenHub: vi.fn(),
     onOpenReader: vi.fn(),
+    onOpenStart: vi.fn(),
+    onOpenSettings: vi.fn(),
     ...overrides
   };
 }
@@ -53,10 +55,10 @@ describe('AddressBar', () => {
   afterEach(cleanup);
 
   it('展示 URL、缩放与书签状态', () => {
-    const { container } = render(<AddressBar {...props()} />);
+    render(<AddressBar {...props()} />);
     expect(screen.getByDisplayValue(tab.url)).toBeTruthy();
-    expect(screen.getByText('125%')).toBeTruthy();
-    expect((container.querySelector('.nav-btn.is-active') as HTMLElement) ?? null).toBeNull();
+    fireEvent.click(screen.getByTitle('菜单'));
+    expect(screen.getByText(/重置缩放（125%/)).toBeTruthy();
   });
 
   it('按前后退/刷新调用 IPC，无历史时禁用', () => {
@@ -84,24 +86,33 @@ describe('AddressBar', () => {
     expect(screen.getByDisplayValue(tab.url)).toBeTruthy();
   });
 
-  it('书签、阅读模式、面板与首页按钮回调', () => {
+  it('书签、起始页与菜单项回调', () => {
     const p = props({ bookmarked: true });
-    const api = installBsub();
     render(<AddressBar {...p} />);
+
     fireEvent.click(screen.getByTitle(/取消书签/));
     expect(p.onToggleBookmark).toHaveBeenCalled();
-    fireEvent.click(screen.getByTitle(/阅读模式/));
-    expect(p.onOpenReader).toHaveBeenCalled();
-    fireEvent.click(screen.getByTitle('历史 / 书签 / 下载'));
+
+    fireEvent.click(screen.getByTitle('起始页'));
+    expect(p.onOpenStart).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle('菜单'));
+    fireEvent.click(screen.getByText('历史记录'));
     expect(p.onOpenHub).toHaveBeenCalledWith('history');
-    fireEvent.click(screen.getByTitle('打开 B 站首页'));
-    expect(api.newTab).toHaveBeenCalledWith('https://www.bilibili.com/');
+
+    fireEvent.click(screen.getByTitle('菜单'));
+    fireEvent.click(screen.getByText(/阅读模式/));
+    expect(p.onOpenReader).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle('菜单'));
+    fireEvent.click(screen.getByText('设置'));
+    expect(p.onOpenSettings).toHaveBeenCalled();
   });
 
   it('没有标签页时阅读模式与书签禁用', () => {
     render(<AddressBar {...props({ tab: null, bookmarked: false })} />);
-    expect((screen.getByTitle(/阅读模式/) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTitle(/收藏此页/) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTitle('起始页')).toBeTruthy();
   });
 
   it('聚焦后给出历史建议，方向键与回车打开', async () => {

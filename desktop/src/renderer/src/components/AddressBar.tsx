@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookOpen, Globe, Home, MoreHorizontal, RotateCw, Star, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Globe, Home, MoreHorizontal, RotateCw, Star, X } from 'lucide-react';
 import type { HistoryEntry, TabInfo } from '../../../shared/types';
 import type { HubSection } from './BrowserHub';
 
@@ -9,7 +9,9 @@ export function AddressBar({
   bookmarked,
   onToggleBookmark,
   onOpenHub,
-  onOpenReader
+  onOpenReader,
+  onOpenStart,
+  onOpenSettings
 }: {
   tab: TabInfo | null;
   focusSignal?: number;
@@ -17,6 +19,8 @@ export function AddressBar({
   onToggleBookmark: () => void;
   onOpenHub: (section: HubSection) => void;
   onOpenReader: () => void;
+  onOpenStart: () => void;
+  onOpenSettings: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
@@ -24,6 +28,24 @@ export function AddressBar({
   const [suggestIndex, setSuggestIndex] = useState(-1);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!editing) setValue(tab?.url ?? '');
@@ -166,15 +188,6 @@ export function AddressBar({
       )}
 
       <button
-        className="nav-btn"
-        title="阅读模式（Alt+R）"
-        disabled={!tab}
-        onClick={onOpenReader}
-      >
-        <BookOpen size={15} />
-      </button>
-
-      <button
         className={`nav-btn${bookmarked ? ' is-active' : ''}`}
         title={bookmarked ? '取消书签（Ctrl+D）' : '收藏此页（Ctrl+D）'}
         disabled={!tab}
@@ -183,29 +196,35 @@ export function AddressBar({
         <Star size={15} fill={bookmarked ? 'currentColor' : 'none'} />
       </button>
 
-      <button
-        className="nav-btn"
-        title="历史 / 书签 / 下载"
-        onClick={() => onOpenHub('history')}
-      >
-        <MoreHorizontal size={16} />
+      <button className="nav-btn" title="起始页" onClick={onOpenStart}>
+        <Home size={15} />
       </button>
 
-      <button
-        className="zoom-btn"
-        title="重置缩放（Ctrl+0）"
-        onClick={() => void window.bsub.zoomReset()}
-      >
-        {Math.round((tab?.zoom ?? 1) * 100)}%
-      </button>
+      <div className="address-menu-wrap" ref={menuRef}>
+        <button
+          className={`nav-btn${menuOpen ? ' is-active' : ''}`}
+          title="菜单"
+          onClick={() => setMenuOpen((value) => !value)}
+        >
+          <MoreHorizontal size={17} />
+        </button>
+        {menuOpen && (
+          <div className="address-menu" role="menu">
+            <button onClick={() => { setMenuOpen(false); onOpenHub('history'); }}>历史记录</button>
+            <button onClick={() => { setMenuOpen(false); onOpenHub('bookmarks'); }}>书签</button>
+            <button onClick={() => { setMenuOpen(false); onOpenHub('downloads'); }}>下载</button>
+            <button onClick={() => { setMenuOpen(false); onOpenHub('tabs'); }}>标签页</button>
+            <div className="address-menu-sep" />
+            <button onClick={() => { setMenuOpen(false); onOpenReader(); }}>阅读模式（Alt+R）</button>
+            <button onClick={() => { setMenuOpen(false); void window.bsub.zoomReset(); }}>
+              重置缩放（{Math.round((tab?.zoom ?? 1) * 100)}%）
+            </button>
+            <button onClick={() => { setMenuOpen(false); onOpenStart(); }}>起始页</button>
+            <button onClick={() => { setMenuOpen(false); onOpenSettings(); }}>设置</button>
+          </div>
+        )}
+      </div>
 
-      <button
-        className="nav-btn"
-        title="打开 B 站首页"
-        onClick={() => void window.bsub.newTab('https://www.bilibili.com/')}
-      >
-        <Home size={16} />
-      </button>
     </div>
   );
 }

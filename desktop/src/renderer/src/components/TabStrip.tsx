@@ -22,6 +22,9 @@ export function TabStrip({
 }) {
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const [filter, setFilter] = useState('');
+  const [collapsed, setCollapsed] = useState(false);
+  const [width, setWidth] = useState(220);
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const visibleTabs = filter.trim()
     ? tabs.filter((tab) =>
         `${tab.title} ${tab.url}`.toLowerCase().includes(filter.trim().toLowerCase())
@@ -58,8 +61,23 @@ export function TabStrip({
   };
 
   return (
-    <div className={`tab-strip${vertical ? ' is-vertical' : ''}`}>
+    <div
+      className={`tab-strip${vertical ? ' is-vertical' : ''}${collapsed ? ' is-collapsed' : ''}`}
+      style={vertical ? { width: collapsed ? 52 : width } : undefined}
+    >
       {vertical && (
+        <div className="tab-vertical-head">
+          <button
+            className="tab-collapse"
+            title={collapsed ? '展开标签栏' : '折叠标签栏'}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? '»' : '«'}
+          </button>
+          {!collapsed && <span className="tab-vertical-title">标签</span>}
+        </div>
+      )}
+      {vertical && !collapsed && (
         <div className="tab-filter">
           <Search size={12} />
           <input
@@ -69,6 +87,27 @@ export function TabStrip({
             onChange={(event) => setFilter(event.target.value)}
           />
         </div>
+      )}
+      {vertical && !collapsed && (
+        <div
+          className="tab-resize"
+          title="拖动调整宽度"
+          onMouseDown={(event) => {
+            dragRef.current = { startX: event.clientX, startWidth: width };
+            const move = (moveEvent: MouseEvent) => {
+              const state = dragRef.current;
+              if (!state) return;
+              setWidth(Math.min(360, Math.max(160, state.startWidth + moveEvent.clientX - state.startX)));
+            };
+            const up = () => {
+              dragRef.current = null;
+              window.removeEventListener('mousemove', move);
+              window.removeEventListener('mouseup', up);
+            };
+            window.addEventListener('mousemove', move);
+            window.addEventListener('mouseup', up);
+          }}
+        />
       )}
       <div className="tab-strip-list">
         {visibleTabs.map((tab) => (
@@ -112,7 +151,7 @@ export function TabStrip({
                 ★
               </span>
             )}
-            <span className="tab-title">{tab.title || '新标签页'}</span>
+            {!collapsed && <span className="tab-title">{tab.title || '新标签页'}</span>}
             <button
               className="tab-close"
               title="关闭标签页"
