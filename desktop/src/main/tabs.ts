@@ -269,6 +269,21 @@ export class TabManager {
         win?.setFullScreen(!win.isFullScreen());
         return;
       }
+      if (input.control && (input.key === '=' || input.key === '+')) {
+        event.preventDefault();
+        this.zoomIn();
+        return;
+      }
+      if (input.control && (input.key === '-' || input.key === '_')) {
+        event.preventDefault();
+        this.zoomOut();
+        return;
+      }
+      if (input.control && input.key === '0') {
+        event.preventDefault();
+        this.zoomReset();
+        return;
+      }
       if (input.alt && !input.control && input.key.toLowerCase() === 'r') {
         event.preventDefault();
         this.win.webContents.send('app:reader');
@@ -349,6 +364,12 @@ export class TabManager {
       record.loading = false;
       console.warn('[tab] 加载失败', code, description, url);
       touch();
+    });
+
+    wc.on('zoom-changed', (_event, direction) => {
+      // Ctrl + 滚轮：Chromium 只发方向，这里自己套用同样的 ±10% 步进。
+      if (direction === 'in') this.zoomIn();
+      else this.zoomOut();
     });
 
     wc.setWindowOpenHandler(({ url }) => {

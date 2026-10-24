@@ -64,8 +64,9 @@ CREATE TABLE IF NOT EXISTS summaries (
   content_md TEXT NOT NULL,
   model TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
+  updated_at INTEGER NOT NULL,
+  verification_json TEXT
+  );
 
 CREATE INDEX IF NOT EXISTS idx_summaries_video ON summaries(video_id);
 

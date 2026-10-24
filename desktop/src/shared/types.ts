@@ -1014,6 +1014,8 @@ export interface StoredSummary {
   content: string;
   model: string;
   updatedAt: number;
+  /** 保存总结时的联网核对结果（旧数据没有该字段） */
+  verification?: VerificationSummary | null;
 }
 
 export interface SummaryVersionMeta {

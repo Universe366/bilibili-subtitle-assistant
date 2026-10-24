@@ -408,7 +408,7 @@ export function registerMediaIpc(ctx: IpcContext): void {
             onReasoning: (delta) =>
               ctx.send('ai:reasoning', { requestId, delta } satisfies AiReasoningEvent)
           });
-          const saved = saveSummary(payload.info, result.text, result.model);
+          const saved = saveSummary(payload.info, result.text, result.model, result.verification);
           console.log(
             '[m4] verification',
             result.verification

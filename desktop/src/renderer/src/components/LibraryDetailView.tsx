@@ -177,6 +177,7 @@ export function LibraryDetailView(props: LibraryDetailViewProps) {
       {detailTab === 'summary' && (
         <LibrarySummaryTab
           summary={detail?.summary ?? null}
+          verification={detail?.summary?.verification ?? null}
           hasDetail={Boolean(detail)}
           preview={preview}
           diff={diff}

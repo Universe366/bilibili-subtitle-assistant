@@ -114,6 +114,7 @@ export function SummaryPanel({
           setFromSaved(true);
           setModel(saved.data.model);
           setUpdatedAt(saved.data.updatedAt);
+          setVerification(saved.data.verification ?? null);
         }
       } finally {
         if (!cancelled) setLoading(false);

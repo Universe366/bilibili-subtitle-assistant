@@ -84,7 +84,7 @@ describe('回收站与 schema 迁移', () => {
     setVideoTags(ingested.videoId, ['测试标签']);
     addVideoToCollection(ingested.videoId, '测试合集');
 
-    expect(librarySchemaVersion()).toBe(4);
+    expect(librarySchemaVersion()).toBe(5);
 
     expect(removeVideos([ingested.videoId])).toBe(1);
     expect(() => getLibraryDetail(ingested.videoId)).toThrow();

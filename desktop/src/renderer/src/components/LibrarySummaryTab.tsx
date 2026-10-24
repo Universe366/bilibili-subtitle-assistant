@@ -1,6 +1,8 @@
 import { Markdown } from './Markdown';
 import { formatDateTime } from '../lib/format';
 import type { DiffOp } from '../lib/diff';
+import type { VerificationSummary } from '../../../shared/types';
+import { VerifyCard } from './VerifyCard';
 import type { StoredSummary, SummaryVersion, SummaryVersionMeta } from '../../../shared/types';
 
 interface LibrarySummaryTabProps {
@@ -8,6 +10,7 @@ interface LibrarySummaryTabProps {
   hasDetail: boolean;
   preview: SummaryVersion | null;
   diff: DiffOp[] | null;
+  verification?: VerificationSummary | null;
   versions: SummaryVersionMeta[];
   versionsOpen: boolean;
   busyVersion: number;
@@ -24,6 +27,7 @@ export function LibrarySummaryTab({
   hasDetail,
   preview,
   diff,
+  verification,
   versions,
   versionsOpen,
   busyVersion,
@@ -89,6 +93,8 @@ export function LibrarySummaryTab({
       ) : (
         <Markdown content={preview ? preview.content : summary.content} />
       )}
+
+      {!preview && !diff && verification && <VerifyCard verification={verification} />}
 
       {versions.length > 0 && (
         <div className="version-block">

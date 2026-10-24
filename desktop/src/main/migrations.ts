@@ -7,7 +7,7 @@ import type { DatabaseSync } from 'node:sqlite';
  * 现在用 `PRAGMA user_version` 记录版本，迁移只能顺序向前，每一步都必须幂等，
  * 这样「给 videos 加 kind/source」这类改动才有地方落。
  */
-export const LATEST_SCHEMA_VERSION = 4;
+export const LATEST_SCHEMA_VERSION = 5;
 
 interface Migration {
   version: number;
@@ -118,6 +118,21 @@ const MIGRATIONS: Migration[] = [
         END
         WHERE source = '';
       `);
+    }
+  },
+  {
+    version: 5,
+    name: 'summary-verification',
+    up: (db) => {
+      // 联网核对结果随总结一起保存，重开视频时仍能看到证据与判定。
+      const table = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='summaries'")
+        .get();
+      if (!table) return;
+      const columns = db.prepare('PRAGMA table_info(summaries)').all() as Array<{ name: string }>;
+      if (!columns.some((column) => column.name === 'verification_json')) {
+        db.exec('ALTER TABLE summaries ADD COLUMN verification_json TEXT');
+      }
     }
   }
 ];

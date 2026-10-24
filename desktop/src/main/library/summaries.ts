@@ -5,14 +5,35 @@ import type {
   StoredSummary,
   SummaryRef,
   SummaryVersion,
-  SummaryVersionMeta
+  SummaryVersionMeta,
+  VerificationSummary
 } from '../../shared/types';
 
 /** 总结正文与版本历史。 */
+function encodeVerification(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+export function decodeVerification(raw: unknown): VerificationSummary | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as VerificationSummary) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function saveSummary(
   info: PageInfo,
   content: string,
-  model: string
+  model: string,
+  verification?: VerificationSummary | null
 ): { id: number; updated: boolean; videoId: number } {
   if (!content.trim()) throw new Error('总结内容为空');
   const database = requireDb();
@@ -26,15 +47,16 @@ export function saveSummary(
     const { videoId } = ensureVideo(database, info, now);
     database
       .prepare(
-        `INSERT INTO summaries (uid, video_id, content_md, model, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO summaries (uid, video_id, content_md, model, created_at, updated_at, verification_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(uid) DO UPDATE SET
            video_id = excluded.video_id,
            content_md = excluded.content_md,
            model = excluded.model,
-           updated_at = excluded.updated_at`
+           updated_at = excluded.updated_at,
+           verification_json = excluded.verification_json`
       )
-      .run(uid, videoId, content, model, now, now);
+      .run(uid, videoId, content, model, now, now, encodeVerification(verification));
 
     database
       .prepare(
@@ -76,24 +98,28 @@ export function getSummaryFor(ref: SummaryRef): StoredSummary | null {
   if (!uid) return null;
 
   let row = database
-    .prepare('SELECT content_md, model, updated_at FROM summaries WHERE uid = ?')
-    .get(uid) as { content_md: string; model: string; updated_at: number } | undefined;
+    .prepare('SELECT content_md, model, updated_at, verification_json FROM summaries WHERE uid = ?')
+    .get(uid) as
+    | { content_md: string; model: string; updated_at: number; verification_json?: string | null }
+    | undefined;
 
   // 页面 cid 可能取不到/变化；按 bvid 兜底，避免重开视频找不到已保存总结。
   if (!row && ref.bvid) {
     row = database
       .prepare(
-        'SELECT content_md, model, updated_at FROM summaries WHERE uid LIKE ? ORDER BY updated_at DESC LIMIT 1'
+        'SELECT content_md, model, updated_at, verification_json FROM summaries WHERE uid LIKE ? ORDER BY updated_at DESC LIMIT 1'
       )
       .get(`v:${ref.bvid}:%`) as
-      { content_md: string; model: string; updated_at: number } | undefined;
+      | { content_md: string; model: string; updated_at: number; verification_json?: string | null }
+      | undefined;
   }
 
   if (!row) return null;
   return {
     content: String(row.content_md || ''),
     model: String(row.model || ''),
-    updatedAt: toNumber(row.updated_at)
+    updatedAt: toNumber(row.updated_at),
+    verification: decodeVerification(row.verification_json)
   };
 }
 

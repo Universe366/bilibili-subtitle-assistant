@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { isFtsEnabled, libraryFilePath, requireDb, toNumber } from './db';
 import { VIDEO_COLUMNS, ensureVideo, mapVideoRow } from './core';
 import { getNote } from './notes';
+import { decodeVerification } from './summaries';
 import { removeVideos } from './trash';
 import type {
   LibraryBundle,
@@ -217,10 +218,12 @@ export function getLibraryDetail(videoId: number): LibraryDetail {
 
   const summaryRow = database
     .prepare(
-      `SELECT content_md, model, updated_at FROM summaries
+      `SELECT content_md, model, updated_at, verification_json FROM summaries
        WHERE video_id = ? ORDER BY updated_at DESC LIMIT 1`
     )
-    .get(Number(videoId)) as { content_md: string; model: string; updated_at: number } | undefined;
+    .get(Number(videoId)) as
+    | { content_md: string; model: string; updated_at: number; verification_json?: string | null }
+    | undefined;
 
   return {
     video: mapVideoRow(row),
@@ -229,7 +232,8 @@ export function getLibraryDetail(videoId: number): LibraryDetail {
       ? {
           content: String(summaryRow.content_md || ''),
           model: String(summaryRow.model || ''),
-          updatedAt: toNumber(summaryRow.updated_at)
+          updatedAt: toNumber(summaryRow.updated_at),
+          verification: decodeVerification(summaryRow.verification_json)
         }
       : null,
     note: getNote(Number(videoId))
