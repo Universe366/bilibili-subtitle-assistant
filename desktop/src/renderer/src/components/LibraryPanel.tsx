@@ -23,6 +23,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { LibraryBulkBar } from './LibraryBulkBar';
 import { LibraryBulkCollectionDialog } from './LibraryBulkCollectionDialog';
 import { LibraryCollectionRow } from './LibraryCollectionRow';
+import { LibraryCollectionSummaryDialog } from './LibraryCollectionSummaryDialog';
 import { LibraryImportDialog } from './LibraryImportDialog';
 import { LibraryManageDialog } from './LibraryManageDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
@@ -33,7 +34,6 @@ import { LibrarySummaryTab } from './LibrarySummaryTab';
 import { LibraryTabBar } from './LibraryTabBar';
 import { LibraryTrashDialog } from './LibraryTrashDialog';
 import { LibraryVideoRow } from './LibraryVideoRow';
-import { Markdown } from './Markdown';
 import { PodcastImport } from './PodcastImport';
 import { diffLines, type DiffOp } from '../lib/diff';
 
@@ -1355,127 +1355,22 @@ export function LibraryPanel() {
         onClose={() => setManageOpen(false)}
       />
 
-      {summaryCollection && (
-        <div
-          className="confirm-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSummaryCollection(null);
-          }}
-        >
-          <div
-            className="confirm-card collection-summary"
-            role="dialog"
-            aria-label={`合集对比 ${summaryCollection.name}`}
-          >
-            <div className="confirm-title">合集对比 · {summaryCollection.name}</div>
-            <div className="collection-summary-body">
-              {collectionPreview && (
-                <div className="version-banner">
-                  <span>
-                    预览版本 · {formatDateTime(collectionPreview.createdAt)} ·{' '}
-                    {collectionPreview.model || 'AI'}
-                  </span>
-                  <div className="version-banner-actions">
-                    <button
-                      className="mini-btn"
-                      onClick={() => void restoreCollectionVersion(collectionPreview.id)}
-                    >
-                      恢复此版本
-                    </button>
-                    <button className="mini-btn" onClick={() => setCollectionPreview(null)}>
-                      退出预览
-                    </button>
-                  </div>
-                </div>
-              )}
-              {summaryLoading && !collectionSummary && (
-                <div className="status-line">
-                  <Loader2 size={13} className="spin" />
-                  正在生成对比总结…
-                </div>
-              )}
-              {(collectionPreview || collectionSummary) ? (
-                <Markdown
-                  content={
-                    collectionPreview ? collectionPreview.content : collectionSummary?.content || ''
-                  }
-                />
-              ) : (
-                !summaryLoading && <div className="panel-empty">还没有对比总结</div>
-              )}
-              {summaryLoading && collectionSummary && (
-                <div className="panel-hint">正在重新生成…</div>
-              )}
-              {summaryError && <div className="status-line error">{summaryError}</div>}
-              {collectionSummary && (
-                <div className="panel-hint">
-                  模型 {collectionSummary.model || 'AI'} · {collectionSummary.itemCount} 个视频 ·
-                  {' '}
-                  {formatDateTime(collectionSummary.updatedAt)}
-                </div>
-              )}
-
-              {collectionVersions.length > 0 && (
-                <div className="version-block">
-                  <button
-                    className="version-toggle"
-                    onClick={() => setCollectionVersionsOpen((value) => !value)}
-                  >
-                    历史版本 {collectionVersions.length} · {collectionVersionsOpen ? '收起' : '展开'}
-                  </button>
-                  {collectionVersionsOpen && (
-                    <div className="version-list">
-                      {collectionVersions.map((version) => (
-                        <div
-                          key={version.id}
-                          className={`version-row${
-                            collectionPreview?.id === version.id ? ' is-active' : ''
-                          }`}
-                        >
-                          <span className="version-time">{formatDateTime(version.createdAt)}</span>
-                          <span className="version-model">{version.model || 'AI'}</span>
-                          <span className="version-chars">{version.chars} 字</span>
-                          <button
-                            className="mini-btn"
-                            onClick={() => void previewCollectionVersion(version)}
-                          >
-                            预览
-                          </button>
-                          <button
-                            className="mini-btn"
-                            onClick={() => void restoreCollectionVersion(version.id)}
-                          >
-                            恢复
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="confirm-actions">
-              <button className="mini-btn" onClick={() => setSummaryCollection(null)}>
-                关闭
-              </button>
-              <button
-                className="mini-btn"
-                disabled={!collectionSummary}
-                onClick={() => void exportCollectionSummary()}
-              >
-                导出
-              </button>
-              <button
-                className="mini-btn primary"
-                disabled={summaryLoading}
-                onClick={() => void generateCollectionSummary()}
-              >
-                {summaryLoading ? '生成中…' : collectionSummary ? '重新生成' : '生成对比'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LibraryCollectionSummaryDialog
+        collection={summaryCollection}
+        summary={collectionSummary}
+        loading={summaryLoading}
+        error={summaryError}
+        preview={collectionPreview}
+        versions={collectionVersions}
+        versionsOpen={collectionVersionsOpen}
+        onClose={() => setSummaryCollection(null)}
+        onExitPreview={() => setCollectionPreview(null)}
+        onRestoreVersion={(id) => void restoreCollectionVersion(id)}
+        onPreviewVersion={(version) => void previewCollectionVersion(version)}
+        onToggleVersions={() => setCollectionVersionsOpen((value) => !value)}
+        onGenerate={() => void generateCollectionSummary()}
+        onExport={() => void exportCollectionSummary()}
+      />
 
       <PodcastImport open={podcastOpen} onClose={() => setPodcastOpen(false)} />
 

@@ -9,7 +9,7 @@
 |---|---|
 | Git 跟踪文件 | 278 |
 | 当前树体积 | 约 36 MB（FFmpeg.wasm 占 31 MB） |
-| 桌面单测 | 49 个文件 / 200 个用例 |
+| 桌面单测 | 50 个文件 / 205 个用例 |
 | 插件测试 | 520 项 |
 | ESLint | **0 error / 0 warning** |
 | 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，9 条 E2E） |
@@ -37,7 +37,7 @@
 |---|---:|---|
 | `src/main/library.ts` | 102 行 | 纯桶文件；14 个域模块在 `library/*.ts` |
 | `src/renderer/.../SettingsPanel.tsx` | ~1.25k | 15 个 section 已完成拆出，主文件只剩状态与组装 |
-| `src/renderer/.../LibraryPanel.tsx` | ~1.5k | 12 个 section/弹窗已拆；剩详情容器与合集对比弹窗 |
+| `src/renderer/.../LibraryPanel.tsx` | ~1.44k | 13 个 section/弹窗已拆；剩详情容器骨架 |
 
 为什么现在没动：`library.ts` 与两个 React 组件没有组件级测试兜底，直接拆容易“编译通过、交互坏掉”。
 `ipc` 域现在有 9 条 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出）兜底，可以照着同样的节奏来；
