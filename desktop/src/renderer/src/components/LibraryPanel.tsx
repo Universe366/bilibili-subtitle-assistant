@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import type {
   CollectionResolveResult,
   CollectionSummary,
@@ -28,6 +28,7 @@ import { LibraryImportDialog } from './LibraryImportDialog';
 import { LibraryManageDialog } from './LibraryManageDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryEmptyState } from './LibraryEmptyState';
+import { LibraryListHeader } from './LibraryListHeader';
 import { LibraryFilters } from './LibraryFilters';
 import { LibraryNoteTab } from './LibraryNoteTab';
 import { LibrarySubtitlesTab } from './LibrarySubtitlesTab';
@@ -1003,58 +1004,27 @@ export function LibraryPanel() {
 
   return (
     <div className="panel">
-      <div className="panel-toolbar">
-        <div className="panel-title">库</div>
-        <div className="toolbar-actions">
-          <button
-            className="mini-btn"
-            title="新建一个合集，然后在「选择」模式里加视频"
-            onClick={() => setNewCollectionOpen(true)}
-          >
-            ＋合集
-          </button>
-          <button className="mini-btn" onClick={() => setImportOpen(true)}>
-            导入链接
-          </button>
-          <button
-            className={`mini-btn${
-              filtersOpen || tagFilter || collectionFilter ? ' is-active' : ''
-            }`}
-            onClick={() => setFiltersOpen((value) => !value)}
-          >
-            筛选
-          </button>
-          <button className="icon-btn" title="回收站" onClick={openTrash}>
-            <Trash2 size={13} />
-          </button>
-          <button
-            className={`mini-btn${selectMode ? ' is-active' : ''}`}
-            disabled={!list?.videos.length}
-            onClick={() => {
-              if (selectMode) exitSelect();
-              else {
-                setSelectMode(true);
-                setSelectedIds(new Set());
-              }
-            }}
-          >
-            {selectMode ? '取消' : '选择'}
-          </button>
-          <button className="icon-btn" title="刷新" onClick={() => void load()}>
-            <RefreshCw size={13} className={loading ? 'spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      <div className="library-search">
-        <Search size={13} />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索标题、UP、标签、合集、笔记或字幕…"
-          spellCheck={false}
-        />
-      </div>
+      <LibraryListHeader
+        query={query}
+        onQuery={setQuery}
+        filtersOpen={filtersOpen}
+        filterActive={Boolean(tagFilter || collectionFilter)}
+        selectMode={selectMode}
+        canSelect={Boolean(list?.videos.length)}
+        loading={loading}
+        onToggleFilters={() => setFiltersOpen((value) => !value)}
+        onNewCollection={() => setNewCollectionOpen(true)}
+        onImport={() => setImportOpen(true)}
+        onOpenTrash={openTrash}
+        onToggleSelect={() => {
+          if (selectMode) exitSelect();
+          else {
+            setSelectMode(true);
+            setSelectedIds(new Set());
+          }
+        }}
+        onRefresh={() => void load()}
+      />
 
       <LibraryFilters
         open={filtersOpen}
