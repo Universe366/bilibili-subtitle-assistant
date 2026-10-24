@@ -150,9 +150,13 @@ function withJson3(url: string): string {
 
 /** 解析 timedtext json3；没有 events 时返回空数组（调用方再尝试 XML）。 */
 export function parseJson3(text: string): SubtitleLine[] {
-  let json: any = null;
+  let json: {
+    events?: Array<{ tStartMs?: number; dDurationMs?: number; segs?: Array<{ utf8?: string }> }>;
+  } | null = null;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text) as {
+      events?: Array<{ tStartMs?: number; dDurationMs?: number; segs?: Array<{ utf8?: string }> }>;
+    };
   } catch {
     return [];
   }
@@ -161,7 +165,7 @@ export function parseJson3(text: string): SubtitleLine[] {
   for (const event of events) {
     const segments = Array.isArray(event?.segs) ? event.segs : [];
     const content = segments
-      .map((segment: any) => String(segment?.utf8 || ''))
+      .map((segment) => String(segment?.utf8 || ''))
       .join('')
       .replace(/\s+/g, ' ')
       .trim();

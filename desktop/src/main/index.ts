@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TabManager } from './tabs';
 import { registerIpc } from './ipc';
+import type { SubtitleLine } from '../shared/types';
 import {
   addDownload,
   closeLibrary,
@@ -16,7 +17,13 @@ import {
   searchLibrary,
   updateDownload
 } from './library';
-import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrackBody } from './page';
+import {
+  fetchAudioRange,
+  getAudioCandidates,
+  getPageInfo,
+  getSubtitles,
+  getTrackBody
+} from './page';
 import { summarize } from './ai';
 import { verifySummary } from './verify';
 import { searchWeb } from './search';
@@ -217,9 +224,12 @@ function createWindow(): void {
     if (input.key === 'Escape' || input.key === 'Esc') {
       if (!mainWindow?.isFullScreen()) return;
       event.preventDefault();
-      void tabManager?.activeWebContents()?.executeJavaScript(
-        'document.fullscreenElement ? document.exitFullscreen().catch(() => null) : null'
-      ).catch(() => undefined);
+      void tabManager
+        ?.activeWebContents()
+        ?.executeJavaScript(
+          'document.fullscreenElement ? document.exitFullscreen().catch(() => null) : null'
+        )
+        .catch(() => undefined);
       mainWindow.setFullScreen(false);
       return;
     }
@@ -521,8 +531,7 @@ function createWindow(): void {
               id: 'verify-search',
               name: 'Verify Search',
               kind: 'custom',
-              baseUrl:
-                process.env.BSUB_MOCK_VERIFY_SEARCH || 'http://127.0.0.1:8892/search',
+              baseUrl: process.env.BSUB_MOCK_VERIFY_SEARCH || 'http://127.0.0.1:8892/search',
               apiKey: ''
             }
           ];
@@ -558,8 +567,12 @@ function createWindow(): void {
             { start: 10, end: 15, text: '这是第三句普通字幕。' },
             { start: 15, end: 20, text: '这是第四句普通字幕。' }
           ];
-          const result = await verifySummary(settings, info, lines, undefined, (done, total, label) =>
-            console.log('[verify-test] progress', done, total, label)
+          const result = await verifySummary(
+            settings,
+            info,
+            lines,
+            undefined,
+            (done, total, label) => console.log('[verify-test] progress', done, total, label)
           );
           console.log(
             '[verify-test]',
@@ -819,7 +832,8 @@ function createWindow(): void {
       setTimeout(async () => {
         try {
           if (!tabManager) return;
-          const url = process.env.BSUB_URLBATCH_URL || 'https://www.bilibili.com/video/BV1xrnz6gEVD';
+          const url =
+            process.env.BSUB_URLBATCH_URL || 'https://www.bilibili.com/video/BV1xrnz6gEVD';
           const result = await batchUrls(
             tabManager,
             [url],
@@ -859,7 +873,10 @@ function createWindow(): void {
           };
           const tools = await listMcpTools(server);
           const result = await callMcpTool(server, 'echo', { text: 'hello-sse' });
-          console.log('[mcp-sse-test]', JSON.stringify({ tools: tools.map((tool) => tool.name), result }));
+          console.log(
+            '[mcp-sse-test]',
+            JSON.stringify({ tools: tools.map((tool) => tool.name), result })
+          );
         } catch (error) {
           console.warn('[mcp-sse-test] failed', (error as Error).message);
         }
@@ -1216,7 +1233,11 @@ function createWindow(): void {
             undefined,
             settings
           );
-          console.log('[asr-test] done', result.lines.length, JSON.stringify(result.lines.slice(0, 4)));
+          console.log(
+            '[asr-test] done',
+            result.lines.length,
+            JSON.stringify(result.lines.slice(0, 4))
+          );
           writeLog('asr-test.log', `done lines=${result.lines.length}`);
           fs.rmSync(dir, { recursive: true, force: true });
         } catch (error) {
@@ -1243,7 +1264,8 @@ function createWindow(): void {
           settings.ai.activeId = 'mock';
           saveSettings(settings);
 
-          const result = await mainWindow.webContents.executeJavaScript(`new Promise(async (resolve) => {
+          const result = await mainWindow.webContents
+            .executeJavaScript(`new Promise(async (resolve) => {
             const info = { title: '测试视频', owner: '测试UP', duration: 60, bvid: 'BV1', cid: 1, url: '' };
             const lines = [
               { start: 0, end: 5, text: '这是第一句字幕。' },
@@ -1373,9 +1395,7 @@ function createWindow(): void {
             ]
           }
         ];
-        settings.correction.glossary.terms = [
-          { id: 't', from: 'UP主', to: 'UP 主', note: '' }
-        ];
+        settings.correction.glossary.terms = [{ id: 't', from: 'UP主', to: 'UP 主', note: '' }];
         console.log(
           '[correction-test]',
           applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
@@ -1389,7 +1409,10 @@ function createWindow(): void {
           if (!tabManager) throw new Error('标签管理器未就绪');
           const raw = String(process.env.BSUB_LIVE_URLBATCH_URLS || '').trim();
           const urls = raw
-            ? raw.split(',').map((item) => item.trim()).filter(Boolean)
+            ? raw
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean)
             : [
                 'https://www.bilibili.com/video/BV1GJ411x7h7',
                 'https://www.bilibili.com/video/BV1xrnz6gEVD'
@@ -1399,7 +1422,7 @@ function createWindow(): void {
             urls,
             false,
             (index, total, url, title, stage, percent) =>
-              console.log('[live-urlbatch]', index + 1, total, stage, Math.round(percent), title),
+              console.log('[live-urlbatch]', index + 1, total, stage, Math.round(percent), title)
           );
           const library = listLibrary().videos;
           console.log(
@@ -1429,7 +1452,10 @@ function createWindow(): void {
             transport: 'http' as const
           };
           const tools = await listMcpTools(server);
-          console.log('[live-mcp] tools', tools.map((tool) => tool.name));
+          console.log(
+            '[live-mcp] tools',
+            tools.map((tool) => tool.name)
+          );
           const result = await callMcpTool(
             server,
             'web_search_exa',
@@ -1453,7 +1479,14 @@ function createWindow(): void {
             ['https://www.bilibili.com/video/BV0000000000'],
             false,
             (index, total, url, title, stage, percent) =>
-              console.log('[live-urlbatch-404]', index + 1, total, stage, Math.round(percent), title),
+              console.log(
+                '[live-urlbatch-404]',
+                index + 1,
+                total,
+                stage,
+                Math.round(percent),
+                title
+              )
           );
           console.log(
             '[live-urlbatch-404] done',
@@ -1480,7 +1513,14 @@ function createWindow(): void {
             urls,
             false,
             (index, total, url, title, stage, percent) =>
-              console.log('[live-urlbatch-fail]', index + 1, total, stage, Math.round(percent), title),
+              console.log(
+                '[live-urlbatch-fail]',
+                index + 1,
+                total,
+                stage,
+                Math.round(percent),
+                title
+              )
           );
           const library = listLibrary().videos;
           console.log(
@@ -1504,10 +1544,17 @@ function createWindow(): void {
           if (!wc) throw new Error('没有活动标签');
           const info = await getPageInfo(wc);
           const bundle = await getSubtitles(wc);
-          console.log('[live-ai] info', info.title, 'tracks', bundle.tracks.length, 'needLogin', bundle.needLogin);
+          console.log(
+            '[live-ai] info',
+            info.title,
+            'tracks',
+            bundle.tracks.length,
+            'needLogin',
+            bundle.needLogin
+          );
           if (!bundle.tracks.length) throw new Error('没有字幕轨');
           let track = bundle.tracks[0];
-          let lines: any[] = [];
+          let lines: SubtitleLine[] = [];
           for (const candidate of bundle.tracks.slice(0, 6)) {
             try {
               const body = await getTrackBody(candidate.url);
@@ -1528,14 +1575,24 @@ function createWindow(): void {
             signal: undefined,
             onStatus: (status) => console.log('[live-ai] status', status)
           });
-          console.log('[live-ai] summary', summary.model, summary.text.length, JSON.stringify(summary.text.slice(0, 220)));
+          console.log(
+            '[live-ai] summary',
+            summary.model,
+            summary.text.length,
+            JSON.stringify(summary.text.slice(0, 220))
+          );
 
           const answer = await chat({
             info,
             lines,
             messages: [{ role: 'user', content: '用三句话概括这个视频。' }]
           });
-          console.log('[live-ai] chat', answer.model, answer.text.length, JSON.stringify(answer.text.slice(0, 180)));
+          console.log(
+            '[live-ai] chat',
+            answer.model,
+            answer.text.length,
+            JSON.stringify(answer.text.slice(0, 180))
+          );
 
           const translated = await translateLines(
             lines.slice(0, 20),
@@ -1544,10 +1601,23 @@ function createWindow(): void {
             undefined,
             loadSettings()
           );
-          console.log('[live-ai] translate', translated.lines.length, JSON.stringify(translated.lines[0]?.text?.slice(0, 120)));
+          console.log(
+            '[live-ai] translate',
+            translated.lines.length,
+            JSON.stringify(translated.lines[0]?.text?.slice(0, 120))
+          );
 
-          const suggestions = await optimizeLines(lines.slice(0, 30), () => undefined, undefined, loadSettings());
-          console.log('[live-ai] optimize', suggestions.length, JSON.stringify(suggestions.slice(0, 2)));
+          const suggestions = await optimizeLines(
+            lines.slice(0, 30),
+            () => undefined,
+            undefined,
+            loadSettings()
+          );
+          console.log(
+            '[live-ai] optimize',
+            suggestions.length,
+            JSON.stringify(suggestions.slice(0, 2))
+          );
 
           const chapters = await generateChapters(info, lines);
           console.log('[live-ai] chapters', chapters.length, JSON.stringify(chapters.slice(0, 2)));
@@ -1766,10 +1836,13 @@ function createWindow(): void {
           await new Promise((resolve) => setTimeout(resolve, 400));
           win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
           await new Promise((resolve) => setTimeout(resolve, 600));
-          console.log('[fullscreen-test]', JSON.stringify({
-            afterViewEscape: afterView,
-            afterWindowEscape: win.isFullScreen()
-          }));
+          console.log(
+            '[fullscreen-test]',
+            JSON.stringify({
+              afterViewEscape: afterView,
+              afterWindowEscape: win.isFullScreen()
+            })
+          );
           win.setFullScreen(false);
         } catch (error) {
           console.warn('[fullscreen-test] failed', (error as Error).message);
@@ -2007,9 +2080,7 @@ function createWindow(): void {
         const search = settings.search.platforms.find(
           (platform) => platform.id === settings.search.activeId
         );
-        const ai = settings.ai.platforms.find(
-          (platform) => platform.id === settings.ai.activeId
-        );
+        const ai = settings.ai.platforms.find((platform) => platform.id === settings.ai.activeId);
         console.log(
           '[platform-test]',
           JSON.stringify({
@@ -2086,7 +2157,8 @@ function createWindow(): void {
       }, 7000);
     }
 
-    if (process.env.BSUB_TAB_TEST === '1') {      setTimeout(async () => {
+    if (process.env.BSUB_TAB_TEST === '1') {
+      setTimeout(async () => {
         if (!tabManager) return;
         await tabManager.create('https://www.bilibili.com/');
         await tabManager.create('https://www.bilibili.com/video/BV1xrnz6gEVD');
@@ -2095,12 +2167,19 @@ function createWindow(): void {
           const total = app
             .getAppMetrics()
             .reduce(
-              (sum, metric) => sum + Math.round(((metric.memory && metric.memory.workingSetSize) || 0) / 1024),
+              (sum, metric) =>
+                sum + Math.round(((metric.memory && metric.memory.workingSetSize) || 0) / 1024),
               0
             );
           console.log(
             '[tabs-test]',
-            JSON.stringify(list.map((tab) => ({ title: tab.title, suspended: tab.suspended, active: tab.active }))),
+            JSON.stringify(
+              list.map((tab) => ({
+                title: tab.title,
+                suspended: tab.suspended,
+                active: tab.active
+              }))
+            ),
             `memMB=${total}`
           );
 
@@ -2112,7 +2191,11 @@ function createWindow(): void {
                 console.log(
                   '[tabs-test] resumed',
                   JSON.stringify(
-                    after.map((tab) => ({ title: tab.title, suspended: tab.suspended, active: tab.active }))
+                    after.map((tab) => ({
+                      title: tab.title,
+                      suspended: tab.suspended,
+                      active: tab.active
+                    }))
                   )
                 );
               }, 4000);
@@ -2266,7 +2349,9 @@ function createWindow(): void {
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   const section = process.env.BSUB_START_SECTION;
   if (rendererUrl) {
-    void mainWindow.loadURL(section ? `${rendererUrl}?section=${encodeURIComponent(section)}` : rendererUrl);
+    void mainWindow.loadURL(
+      section ? `${rendererUrl}?section=${encodeURIComponent(section)}` : rendererUrl
+    );
   } else {
     void mainWindow.loadFile(
       path.join(__dirname, '../renderer/index.html'),
@@ -2289,105 +2374,111 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
-  if (!hasSingleInstanceLock) return;
-  installLogger();
-  writeLog('startup.log', 'ready');
-  migrateSettingsSecrets();
-  nativeTheme.themeSource = loadSettings().general.theme;
-  if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
-  session.defaultSession.setUserAgent(UA);
-  session.defaultSession.on('will-download', (_event, item) => {
-    const autoDir = String(process.env.BSUB_DOWNLOAD_DIR || '').trim();
-    if (autoDir) {
-      // 自动化测试用：跳过保存对话框，直接落到指定目录。
-      try {
-        fs.mkdirSync(autoDir, { recursive: true });
-        item.setSavePath(path.join(autoDir, item.getFilename()));
-      } catch (error) {
-        console.warn('[download] 自动保存路径不可用:', (error as Error).message);
-      }
-    } else {
-      item.setSaveDialogOptions({
-        title: '保存文件',
-        defaultPath: path.join(app.getPath('downloads'), item.getFilename())
-      });
-    }
-
-    let downloadId = 0;
-    try {
-      downloadId = addDownload({
-        url: item.getURL(),
-        filename: item.getFilename(),
-        total: item.getTotalBytes()
-      });
-      if (downloadId) registerDownloadItem(downloadId, item);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('downloads:changed');
-      }
-    } catch (error) {
-      console.warn('[download] 登记失败:', (error as Error).message);
-    }
-
-    let lastWrite = 0;
-    const sync = (state: 'progressing' | 'completed' | 'cancelled' | 'interrupted', done = false) => {
-      if (!downloadId) return;
-      const now = Date.now();
-      if (!done && now - lastWrite < 500) return;
-      lastWrite = now;
-      try {
-        updateDownload(downloadId, {
-          state,
-          total: item.getTotalBytes(),
-          received: item.getReceivedBytes(),
-          path: item.getSavePath(),
-          finished: done
+app
+  .whenReady()
+  .then(() => {
+    if (!hasSingleInstanceLock) return;
+    installLogger();
+    writeLog('startup.log', 'ready');
+    migrateSettingsSecrets();
+    nativeTheme.themeSource = loadSettings().general.theme;
+    if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
+    session.defaultSession.setUserAgent(UA);
+    session.defaultSession.on('will-download', (_event, item) => {
+      const autoDir = String(process.env.BSUB_DOWNLOAD_DIR || '').trim();
+      if (autoDir) {
+        // 自动化测试用：跳过保存对话框，直接落到指定目录。
+        try {
+          fs.mkdirSync(autoDir, { recursive: true });
+          item.setSavePath(path.join(autoDir, item.getFilename()));
+        } catch (error) {
+          console.warn('[download] 自动保存路径不可用:', (error as Error).message);
+        }
+      } else {
+        item.setSaveDialogOptions({
+          title: '保存文件',
+          defaultPath: path.join(app.getPath('downloads'), item.getFilename())
         });
+      }
+
+      let downloadId = 0;
+      try {
+        downloadId = addDownload({
+          url: item.getURL(),
+          filename: item.getFilename(),
+          total: item.getTotalBytes()
+        });
+        if (downloadId) registerDownloadItem(downloadId, item);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('downloads:changed');
+        }
       } catch (error) {
-        console.warn('[download] 更新失败:', (error as Error).message);
+        console.warn('[download] 登记失败:', (error as Error).message);
       }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('downloads:changed');
-      }
-    };
 
-    item.on('updated', (_event, state) => {
-      sync(state === 'interrupted' ? 'interrupted' : 'progressing');
-    });
-    item.on('done', (_event, state) => {
-      if (state === 'completed') sync('completed', true);
-      else if (state === 'cancelled') sync('cancelled', true);
-      else sync('interrupted', true);
-      unregisterDownloadItem(downloadId);
-    });
-  });
-  initLibrary();
-  writeLog('startup.log', 'library ready');
-  scheduleOldDataCleanup();
-  // 先装权限闸门和 CSP，再创建窗口：CSP 监听必须在 renderer 发起请求前注册。
-  installPermissionGate(() =>
-    mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null
-  );
-  installCsp(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null));
-  createWindow();
-  writeLog('startup.log', 'window created');
-  createTray();
-  if (mainWindow) {
-    void startBridge(mainWindow);
-    initUpdater(mainWindow);
-  }
+      let lastWrite = 0;
+      const sync = (
+        state: 'progressing' | 'completed' | 'cancelled' | 'interrupted',
+        done = false
+      ) => {
+        if (!downloadId) return;
+        const now = Date.now();
+        if (!done && now - lastWrite < 500) return;
+        lastWrite = now;
+        try {
+          updateDownload(downloadId, {
+            state,
+            total: item.getTotalBytes(),
+            received: item.getReceivedBytes(),
+            path: item.getSavePath(),
+            finished: done
+          });
+        } catch (error) {
+          console.warn('[download] 更新失败:', (error as Error).message);
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('downloads:changed');
+        }
+      };
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-      if (mainWindow) void startBridge(mainWindow);
-    } else {
-      showWindow();
+      item.on('updated', (_event, state) => {
+        sync(state === 'interrupted' ? 'interrupted' : 'progressing');
+      });
+      item.on('done', (_event, state) => {
+        if (state === 'completed') sync('completed', true);
+        else if (state === 'cancelled') sync('cancelled', true);
+        else sync('interrupted', true);
+        unregisterDownloadItem(downloadId);
+      });
+    });
+    initLibrary();
+    writeLog('startup.log', 'library ready');
+    scheduleOldDataCleanup();
+    // 先装权限闸门和 CSP，再创建窗口：CSP 监听必须在 renderer 发起请求前注册。
+    installPermissionGate(() =>
+      mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null
+    );
+    installCsp(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null));
+    createWindow();
+    writeLog('startup.log', 'window created');
+    createTray();
+    if (mainWindow) {
+      void startBridge(mainWindow);
+      initUpdater(mainWindow);
     }
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+        if (mainWindow) void startBridge(mainWindow);
+      } else {
+        showWindow();
+      }
+    });
+  })
+  .catch((error) => {
+    fatal('whenReady', error);
   });
-}).catch((error) => {
-  fatal('whenReady', error);
-});
 
 app.on('before-quit', () => {
   writeLog('startup.log', 'before-quit');

@@ -3,12 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { app } from 'electron';
 import type { BrowserWindow } from 'electron';
-import type {
-  BridgeStatus,
-  PageInfo,
-  SubtitleLine,
-  SubtitleTrack
-} from '../shared/types';
+import type { BridgeStatus, PageInfo, SubtitleLine, SubtitleTrack } from '../shared/types';
 import { ingestVideo, listLibrary, saveSummary } from './library';
 import { loadSettings, saveSettings } from './settings';
 import { applyCorrectionToLines } from './correction';
@@ -127,7 +122,8 @@ function toTrack(track: Record<string, unknown>, info: PageInfo): SubtitleTrack 
 function toLines(raw: unknown): SubtitleLine[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((line: any) => ({
+    .map((line) => ({
+      ...(line as Record<string, unknown>),
       start: Math.max(0, Number(line?.start) || 0),
       end: Math.max(0, Number(line?.end) || 0),
       text: String(line?.text || '').trim()
@@ -199,7 +195,7 @@ function createHandler(win: BrowserWindow, token: string) {
         }
 
         const body = await readBody(request);
-        let payload: any;
+        let payload: Record<string, unknown>;
         try {
           payload = JSON.parse(body);
         } catch {
@@ -212,8 +208,8 @@ function createHandler(win: BrowserWindow, token: string) {
           return;
         }
 
-        const info = toInfo(payload.video);
-        const track = toTrack(payload.track || {}, info);
+        const info = toInfo(payload.video as Record<string, unknown>);
+        const track = toTrack((payload.track || {}) as Record<string, unknown>, info);
         const lines = toLines(payload.lines);
         if (!lines.length) {
           json(response, 400, { ok: false, error: 'lines 为空' });

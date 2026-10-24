@@ -132,26 +132,39 @@ export function registerToolsIpc(ctx: IpcContext): void {
       if (result.canceled || !result.filePaths.length) {
         return { ok: true, data: [] as CorrectionRuleGroup[] };
       }
-      const parsed = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'));
-      const rows = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.groups)
-          ? parsed.groups
-          : [];
+      interface RuleRow {
+        name?: unknown;
+        enabled?: unknown;
+        rules?: unknown;
+        pattern?: unknown;
+        replacement?: unknown;
+        from?: unknown;
+        to?: unknown;
+        regex?: unknown;
+        caseSensitive?: unknown;
+      }
+      const parsed = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8')) as unknown;
+      const parsedGroups =
+        parsed &&
+        typeof parsed === 'object' &&
+        Array.isArray((parsed as { groups?: unknown[] }).groups)
+          ? (parsed as { groups: unknown[] }).groups
+          : null;
+      const rows: unknown[] = Array.isArray(parsed) ? parsed : (parsedGroups ?? []);
       const groups: CorrectionRuleGroup[] = rows
-        .filter((row: any) => row && typeof row === 'object')
-        .map((row: any, index: number) => ({
+        .filter((row): row is RuleRow => Boolean(row) && typeof row === 'object')
+        .map((row, index: number) => ({
           id: `group_${Date.now().toString(36)}_${index}`,
           name: String(row.name || `导入规则组 ${index + 1}`).slice(0, 80),
           enabled: row.enabled !== false,
           rules: (Array.isArray(row.rules) ? row.rules : [])
-            .filter((rule: any) => rule && typeof rule === 'object')
-            .map((rule: any, ruleIndex: number) => ({
+            .filter((rule) => rule && typeof rule === 'object')
+            .map((rule, ruleIndex: number) => ({
               id: `rule_${Date.now().toString(36)}_${ruleIndex}`,
-              pattern: String(rule.pattern ?? rule.from ?? ''),
-              replacement: String(rule.replacement ?? rule.to ?? ''),
-              regex: rule.regex === true,
-              caseSensitive: rule.caseSensitive === true
+              pattern: String((rule as RuleRow).pattern ?? (rule as RuleRow).from ?? ''),
+              replacement: String((rule as RuleRow).replacement ?? (rule as RuleRow).to ?? ''),
+              regex: (rule as RuleRow).regex === true,
+              caseSensitive: (rule as RuleRow).caseSensitive === true
             }))
         }));
       return { ok: true, data: groups };

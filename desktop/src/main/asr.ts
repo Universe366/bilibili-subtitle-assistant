@@ -18,7 +18,11 @@ import { applyCorrectionToLines } from './correction';
 
 const CHUNK_BYTES = 384 * 1024;
 
-type Progress = (stage: 'prepare' | 'download' | 'convert' | 'transcribe' | 'merge', percent: number, message: string) => void;
+type Progress = (
+  stage: 'prepare' | 'download' | 'convert' | 'transcribe' | 'merge',
+  percent: number,
+  message: string
+) => void;
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
@@ -35,7 +39,8 @@ function activeAsr(settings: AppSettings): AsrPlatform {
   if (!platform) throw new Error('没有可用的语音识别平台');
   if (!platform.baseUrl.trim()) throw new Error('语音识别平台缺少 Base URL');
   if (!platform.model.trim()) throw new Error('语音识别平台缺少模型名');
-  if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('语音识别平台还没填 API Key');
+  if (needsApiKey(platform) && !platform.apiKey.trim())
+    throw new Error('语音识别平台还没填 API Key');
   return platform;
 }
 
@@ -262,11 +267,7 @@ async function convertToChunks(
         args,
         sliceDuration,
         (stage, percent, message) =>
-          onProgress(
-            'convert',
-            Math.min(99, ((index + percent / 100) / count) * 100),
-            message
-          ),
+          onProgress('convert', Math.min(99, ((index + percent / 100) / count) * 100), message),
         signal,
         `切片 ${index + 1}/${count}`
       );
@@ -316,19 +317,35 @@ class TransportError extends Error {
   }
 }
 
-function parseSegments(json: any): Array<{ start: number; end: number; text: string }> {
+interface AsrSegmentRow {
+  start?: number;
+  start_time?: number;
+  end?: number;
+  end_time?: number;
+  text?: string;
+  content?: string;
+}
+
+interface AsrPayload {
+  segments?: AsrSegmentRow[];
+  text?: string;
+  result?: { segments?: AsrSegmentRow[]; text?: string };
+  choices?: Array<{ message?: { content?: string } }>;
+}
+
+function parseSegments(json: AsrPayload): Array<{ start: number; end: number; text: string }> {
   const rows = Array.isArray(json?.segments)
     ? json.segments
     : Array.isArray(json?.result?.segments)
       ? json.result.segments
       : [];
   return rows
-    .map((item: any) => ({
+    .map((item) => ({
       start: Number(item.start ?? item.start_time ?? 0) || 0,
       end: Number(item.end ?? item.end_time ?? 0) || 0,
       text: String(item.text || item.content || '').trim()
     }))
-    .filter((item: any) => item.text);
+    .filter((item) => item.text);
 }
 
 async function transcribeChunk(
@@ -350,9 +367,7 @@ async function transcribeChunk(
         ? true
         : !/siliconflow/i.test(base);
   const preferred =
-    platform.transport && platform.transport !== 'auto'
-      ? platform.transport
-      : settings.transport;
+    platform.transport && platform.transport !== 'auto' ? platform.transport : settings.transport;
   const transports: Array<'multipart' | 'base64-json' | 'chat-audio'> =
     preferred === 'auto'
       ? ['multipart', 'base64-json', 'chat-audio']
@@ -420,7 +435,7 @@ async function transcribeChunk(
         const text = await response.text().catch(() => '');
         throw new TransportError(`HTTP ${response.status}：${text.slice(0, 160)}`, response.status);
       }
-      const json: any = await response.json();
+      const json = (await response.json()) as AsrPayload;
       const text = String(
         json?.text ?? json?.result?.text ?? json?.choices?.[0]?.message?.content ?? ''
       ).trim();
@@ -438,7 +453,9 @@ async function transcribeChunk(
 }
 
 function splitText(text: string, max = 60): string[] {
-  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  const clean = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!clean) return [];
   const pieces = clean.split(/(?<=[。！？!?；;])/);
   const lines: string[] = [];
@@ -563,18 +580,11 @@ export async function transcribeFile(
       const buffer = fs.readFileSync(chunks[index]);
       results[index] = await transcribeChunk(platform, buffer, format, settings.asr, signal);
       done += 1;
-      onProgress(
-        'transcribe',
-        (done / chunks.length) * 100,
-        `识别音频 ${done} / ${chunks.length}`
-      );
+      onProgress('transcribe', (done / chunks.length) * 100, `识别音频 ${done} / ${chunks.length}`);
     }
   };
 
-  const workers = Math.min(
-    Math.max(1, settings.asr.concurrency),
-    chunks.length
-  );
+  const workers = Math.min(Math.max(1, settings.asr.concurrency), chunks.length);
   await Promise.all(Array.from({ length: workers }, () => worker()));
 
   onProgress('merge', 0, '合并转写结果…');

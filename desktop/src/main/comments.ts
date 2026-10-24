@@ -25,11 +25,10 @@ export async function fetchHotComments(info: PageInfo, limit = 12): Promise<HotC
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('评论请求超时')), 15000);
   try {
-    const url =
-      `https://api.bilibili.com/x/v2/reply?type=1&oid=${aid}&sort=2&ps=${Math.max(
-        1,
-        Math.min(20, limit)
-      )}&pn=1`;
+    const url = `https://api.bilibili.com/x/v2/reply?type=1&oid=${aid}&sort=2&ps=${Math.max(
+      1,
+      Math.min(20, limit)
+    )}&pn=1`;
     const response = await session.defaultSession.fetch(url, {
       headers: {
         Referer: 'https://www.bilibili.com/',
@@ -39,11 +38,21 @@ export async function fetchHotComments(info: PageInfo, limit = 12): Promise<HotC
       signal: controller.signal
     });
     if (!response.ok) throw new Error(`评论接口 HTTP ${response.status}`);
-    const data: any = await response.json();
+    const data = (await response.json()) as {
+      code?: number;
+      message?: string;
+      data?: {
+        replies?: Array<{
+          member?: { uname?: string };
+          content?: { message?: string };
+          like?: number;
+        }>;
+      };
+    };
     if (Number(data?.code) !== 0) throw new Error(data?.message || '评论接口返回错误');
     const replies = Array.isArray(data?.data?.replies) ? data.data.replies : [];
     return replies
-      .map((reply: any) => ({
+      .map((reply) => ({
         author: stripHtml(reply?.member?.uname || '匿名'),
         content: stripHtml(reply?.content?.message || ''),
         like: Number(reply?.like || 0)

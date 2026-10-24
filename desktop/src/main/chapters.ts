@@ -18,14 +18,16 @@ function parseTime(value: unknown): number {
 }
 
 function parseChapters(raw: string, duration: number): Chapter[] {
-  const text = String(raw || '').replace(/```(?:json)?/gi, '').trim();
+  const text = String(raw || '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
   const start = text.indexOf('[');
   const end = text.lastIndexOf(']');
-  let rows: any[] = [];
+  let rows: Array<Record<string, unknown>> = [];
   if (start >= 0 && end > start) {
     try {
-      const parsed = JSON.parse(text.slice(start, end + 1));
-      if (Array.isArray(parsed)) rows = parsed;
+      const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+      if (Array.isArray(parsed)) rows = parsed as Array<Record<string, unknown>>;
     } catch {
       // 尝试对象形状
     }
@@ -35,8 +37,9 @@ function parseChapters(raw: string, duration: number): Chapter[] {
     const objectEnd = text.lastIndexOf('}');
     if (objectStart >= 0 && objectEnd > objectStart) {
       try {
-        const parsed = JSON.parse(text.slice(objectStart, objectEnd + 1));
-        if (Array.isArray(parsed?.chapters)) rows = parsed.chapters;
+        const parsed = JSON.parse(text.slice(objectStart, objectEnd + 1)) as { chapters?: unknown };
+        if (Array.isArray(parsed?.chapters))
+          rows = parsed.chapters as Array<Record<string, unknown>>;
       } catch {
         // ignore
       }

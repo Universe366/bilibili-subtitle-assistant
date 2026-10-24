@@ -1,9 +1,4 @@
-import type {
-  AppSettings,
-  OptimizeSuggestion,
-  SubtitleLine,
-  WebReference
-} from '../shared/types';
+import type { AppSettings, OptimizeSuggestion, SubtitleLine, WebReference } from '../shared/types';
 import { activePlatform, loadSettings } from './settings';
 import { needsApiKey } from './platformKey';
 import { chatOnce } from './aiClient';
@@ -35,7 +30,9 @@ function batchesOf(lines: SubtitleLine[]): SubtitleLine[][] {
 }
 
 function parseSuggestions(raw: string, batch: SubtitleLine[]): string[] {
-  const text = String(raw || '').replace(/```(?:json)?/gi, '').trim();
+  const text = String(raw || '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start >= 0 && end > start) {
@@ -143,7 +140,7 @@ async function verifySuggestions(
     const start = content.indexOf('[');
     const end = content.lastIndexOf(']');
     const parsed = start >= 0 && end > start ? JSON.parse(content.slice(start, end + 1)) : [];
-    const byIndex = new Map<number, any>();
+    const byIndex = new Map<number, Record<string, unknown>>();
     if (Array.isArray(parsed)) {
       for (const row of parsed) {
         const index = Number(row?.index);
@@ -153,19 +150,17 @@ async function verifySuggestions(
 
     for (const row of rows) {
       const verdict = byIndex.get(row.item.index);
-      if (!verdict || !['support', 'refute', 'unknown'].includes(verdict.verdict)) {
+      if (!verdict || !['support', 'refute', 'unknown'].includes(String(verdict.verdict))) {
         row.item.verdict = 'unknown';
         continue;
       }
       const quote = String(verdict.quote || '').trim();
-      const evidenceText = row.refs
-        .map((ref) => `${ref.title}\n${ref.snippet}`)
-        .join('\n');
+      const evidenceText = row.refs.map((ref) => `${ref.title}\n${ref.snippet}`).join('\n');
       if (verdict.verdict !== 'unknown' && (!quote || !evidenceText.includes(quote))) {
         row.item.verdict = 'unknown';
         continue;
       }
-      row.item.verdict = verdict.verdict;
+      row.item.verdict = verdict.verdict as typeof row.item.verdict;
       row.item.evidence = quote.slice(0, 80);
       const sources = row.item.sources || 0;
       const support = Math.max(0, Math.min(sources, Number(verdict.support) || 0));
@@ -262,6 +257,9 @@ export async function optimizeLines(
     await verifySuggestions(settings, platform, suggestions, signal);
   }
 
-  onProgress(100, suggestions.length ? `发现 ${suggestions.length} 处改动` : '没有发现需要修改的地方');
+  onProgress(
+    100,
+    suggestions.length ? `发现 ${suggestions.length} 处改动` : '没有发现需要修改的地方'
+  );
   return suggestions;
 }

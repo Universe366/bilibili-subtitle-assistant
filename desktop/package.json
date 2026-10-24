@@ -14,7 +14,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 90",
+    "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" package.json",
     "test": "vitest run",
     "test:watch": "vitest",

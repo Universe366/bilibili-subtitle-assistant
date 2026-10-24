@@ -23,7 +23,27 @@ export async function resolveBilibiliCollection(input: string): Promise<Collecti
     }
   );
   if (!response.ok) throw new Error(`B 站接口返回 HTTP ${response.status}`);
-  const json: any = await response.json().catch(() => null);
+  interface BiliEpisode {
+    bvid?: string;
+    title?: string;
+    cid?: number | null;
+    arc?: { title?: string };
+  }
+  interface BiliSeason {
+    title?: string;
+    sections?: Array<{ episodes?: BiliEpisode[] }>;
+  }
+  interface BiliPage {
+    page?: number;
+    part?: string;
+    cid?: number | null;
+  }
+  interface BiliViewResponse {
+    code?: number;
+    message?: string;
+    data?: { title?: string; cid?: number | null; ugc_season?: BiliSeason; pages?: BiliPage[] };
+  }
+  const json = (await response.json().catch(() => null)) as BiliViewResponse | null;
   if (!json || json.code !== 0 || !json.data) {
     throw new Error(json?.message || '读取视频信息失败（可能需要登录或视频不存在）');
   }
@@ -32,12 +52,12 @@ export async function resolveBilibiliCollection(input: string): Promise<Collecti
 
   const season = data.ugc_season;
   const sections = Array.isArray(season?.sections) ? season.sections : [];
-  const episodes = sections.flatMap((section: any) =>
+  const episodes = sections.flatMap((section) =>
     Array.isArray(section?.episodes) ? section.episodes : []
   );
   if (episodes.length > 1) {
     const items: CollectionResolveItem[] = episodes
-      .map((episode: any) => {
+      .map((episode): CollectionResolveItem | null => {
         const episodeBvid = String(episode?.bvid || '');
         if (!episodeBvid) return null;
         return {
@@ -48,7 +68,7 @@ export async function resolveBilibiliCollection(input: string): Promise<Collecti
           page: null
         } satisfies CollectionResolveItem;
       })
-      .filter((item: CollectionResolveItem | null): item is CollectionResolveItem => Boolean(item));
+      .filter((item): item is CollectionResolveItem => Boolean(item));
     if (items.length > 1) {
       return {
         kind: 'season',
@@ -62,7 +82,7 @@ export async function resolveBilibiliCollection(input: string): Promise<Collecti
 
   const pages = Array.isArray(data.pages) ? data.pages : [];
   if (pages.length > 1) {
-    const items: CollectionResolveItem[] = pages.map((page: any, index: number) => {
+    const items: CollectionResolveItem[] = pages.map((page, index: number) => {
       const pageNumber = Number(page?.page) || index + 1;
       return {
         url: `https://www.bilibili.com/video/${bvid}?p=${pageNumber}`,

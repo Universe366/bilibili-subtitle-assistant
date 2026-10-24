@@ -134,7 +134,7 @@ node panel-test.js
 
 一次改动至少满足：
 
-- `npm run check` 通过（0 error，warning 不超过 90）；
+- `npm run check` 通过（0 error，0 warning；阈值已收紧为 `--max-warnings 0`）；
 - 改主进程/数据层时 `npm run smoke` 通过；
 - 改插件时 `panel-test.js` 520 项通过；
 - 没有新增未使用导入/死代码；

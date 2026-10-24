@@ -6,8 +6,9 @@ import { listAiModels } from './aiClient';
 import { needsApiKey } from './platformKey';
 
 type Kind = 'ai' | 'asr' | 'search';
+type AnyPlatform = AiPlatform | AsrPlatform | SearchPlatform;
 
-function savedPlatform(kind: Kind, platform: any): any {
+function savedPlatform(kind: Kind, platform: AnyPlatform): AnyPlatform | undefined {
   const settings = loadSettings();
   if (kind === 'ai') {
     return settings.ai.platforms.find((item) => item.id === platform.id);
@@ -18,13 +19,11 @@ function savedPlatform(kind: Kind, platform: any): any {
   return settings.search.platforms.find((item) => item.id === platform.id);
 }
 
-function resolved(kind: Kind, platform: any): any {
+function resolved(kind: Kind, platform: AnyPlatform): AnyPlatform {
   const saved = savedPlatform(kind, platform);
   const apiKey =
-    !platform.apiKey || isMaskedSecret(platform.apiKey)
-      ? saved?.apiKey || ''
-      : platform.apiKey;
-  return { ...platform, apiKey };
+    !platform.apiKey || isMaskedSecret(platform.apiKey) ? saved?.apiKey || '' : platform.apiKey;
+  return { ...platform, apiKey } as AnyPlatform;
 }
 
 export async function probePlatformModels(
@@ -50,13 +49,13 @@ export async function probePlatformModels(
   if (!response.ok) {
     throw new Error(`模型列表 HTTP ${response.status}：${text.slice(0, 160)}`);
   }
-  let json: any = null;
+  let json: { data?: unknown[]; models?: unknown[]; result?: unknown[] } | null = null;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text) as { data?: unknown[]; models?: unknown[]; result?: unknown[] };
   } catch {
     throw new Error('模型列表不是 JSON');
   }
-  const rows = Array.isArray(json?.data)
+  const rows: unknown[] = Array.isArray(json?.data)
     ? json.data
     : Array.isArray(json?.models)
       ? json.models
@@ -64,7 +63,10 @@ export async function probePlatformModels(
         ? json.result
         : [];
   const models = rows
-    .map((item: any) => String(item?.id || item?.name || item))
+    .map((item) => {
+      const row = item as { id?: string; name?: string };
+      return String(row?.id || row?.name || item);
+    })
     .filter(Boolean);
   return { models, url };
 }

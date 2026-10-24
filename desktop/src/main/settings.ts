@@ -648,8 +648,8 @@ function normalize(input: unknown): AppSettings {
       if (glossary && typeof glossary === 'object') {
         base.correction.glossary.enabled = glossary.enabled !== false;
         base.correction.glossary.terms = (Array.isArray(glossary.terms) ? glossary.terms : [])
-          .filter((term: any) => term && typeof term === 'object' && String(term.id || '').trim())
-          .map((term: any) => ({
+          .filter((term) => term && typeof term === 'object' && String(term.id || '').trim())
+          .map((term) => ({
             id: String(term.id),
             from: String(term.from || ''),
             to: String(term.to || ''),

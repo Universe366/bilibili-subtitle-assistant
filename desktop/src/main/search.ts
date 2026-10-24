@@ -1,10 +1,5 @@
 import { session } from 'electron';
-import type {
-  AppSettings,
-  SearchPlatform,
-  SearchTimeRange,
-  WebReference
-} from '../shared/types';
+import type { AppSettings, SearchPlatform, SearchTimeRange, WebReference } from '../shared/types';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -63,7 +58,9 @@ function normalize(rows: WebReference[], max: number): WebReference[] {
     out.push({
       title: String(row.title || url).trim(),
       url,
-      snippet: String(row.snippet || '').replace(/\s+/g, ' ').trim()
+      snippet: String(row.snippet || '')
+        .replace(/\s+/g, ' ')
+        .trim()
     });
     if (out.length >= max) break;
   }
@@ -90,11 +87,40 @@ function keyOf(settings: AppSettings, platform: SearchPlatform): string {
   return '';
 }
 
+interface SearchRow {
+  title?: string;
+  url?: string;
+  link?: string;
+  snippet?: string;
+  content?: string;
+  description?: string;
+  name?: string;
+  body?: string;
+  summary?: string;
+  raw_content?: string;
+  [key: string]: unknown;
+}
+
+interface SearchPayload {
+  results?: unknown[];
+  data?:
+    | (unknown[] & { results?: unknown[]; webPages?: { value?: unknown[] }; webpages?: unknown[] })
+    | undefined;
+  webPages?: { value?: unknown[] };
+  organic?: unknown[];
+  search_result?: unknown[];
+  references?: unknown[];
+  search_results?: unknown[];
+  webpages?: unknown[];
+  web?: { results?: unknown[] };
+  items?: unknown[];
+}
+
 function parseRows(
-  data: any,
-  pick: (item: any) => { title?: string; url?: string; snippet?: string }
+  data: SearchPayload,
+  pick: (item: SearchRow) => { title?: string; url?: string; snippet?: string }
 ): WebReference[] {
-  const candidates: any[] = [];
+  const candidates: unknown[] = [];
   if (Array.isArray(data?.results)) candidates.push(...data.results);
   if (Array.isArray(data?.data?.results)) candidates.push(...data.data.results);
   if (Array.isArray(data?.data?.webPages?.value)) candidates.push(...data.data.webPages.value);
@@ -106,21 +132,27 @@ function parseRows(
   if (Array.isArray(data?.data?.webpages)) candidates.push(...data.data.webpages);
   if (Array.isArray(data?.webpages)) candidates.push(...data.webpages);
   if (Array.isArray(data?.web?.results)) candidates.push(...data.web.results);
-  if (Array.isArray(data?.data) && data.data.some((item: any) => item?.url || item?.link)) {
+  if (
+    Array.isArray(data?.data) &&
+    data.data.some((item) => {
+      const row = item as SearchRow;
+      return Boolean(row?.url || row?.link);
+    })
+  ) {
     candidates.push(...data.data);
   }
   if (Array.isArray(data?.items)) candidates.push(...data.items);
   return candidates
-    .map((item) => pick(item || {}))
+    .map((item) => pick((item || {}) as SearchRow))
     .filter((item): item is WebReference => Boolean(item && item.url)) as WebReference[];
 }
 
-async function jsonOf(res: Response, label: string): Promise<any> {
+async function jsonOf(res: Response, label: string): Promise<SearchPayload> {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`${label} HTTP ${res.status}：${text.slice(0, 160)}`);
   }
-  return res.json();
+  return (await res.json()) as SearchPayload;
 }
 
 async function searchDeepSeek(
@@ -204,17 +236,14 @@ async function searchBocha(
           ? 'oneMonth'
           : 'oneWeek';
   }
-  const res = await timeoutFetch(
-    platform.baseUrl || 'https://api.bochaai.com/v1/web-search',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${key}`
-      },
-      body: JSON.stringify(body)
-    }
-  );
+  const res = await timeoutFetch(platform.baseUrl || 'https://api.bochaai.com/v1/web-search', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`
+    },
+    body: JSON.stringify(body)
+  });
   const data = await jsonOf(res, 'Bocha');
   return parseRows(data, (item) => ({
     title: item.name || item.title,
@@ -388,11 +417,16 @@ async function searchBrave(
   }));
 }
 
-function parseRpcPayload(raw: string): any {
+interface RpcPayload {
+  result?: { content?: Array<{ text?: string }> };
+  error?: unknown;
+}
+
+function parseRpcPayload(raw: string): RpcPayload | null {
   const text = String(raw || '').trim();
   if (text.startsWith('{')) {
     try {
-      return JSON.parse(text);
+      return JSON.parse(text) as RpcPayload;
     } catch {
       // 继续按 SSE 解析
     }
@@ -402,7 +436,7 @@ function parseRpcPayload(raw: string): any {
     const payload = line.slice(5).trim();
     if (!payload || payload === '[DONE]') continue;
     try {
-      const json = JSON.parse(payload);
+      const json = JSON.parse(payload) as RpcPayload;
       if (json && (json.result || json.error)) return json;
     } catch {
       // ignore
@@ -423,7 +457,11 @@ function parseExaText(text: string): WebReference[] {
     rows.push({
       title: title[1].trim(),
       url: url[1].trim(),
-      snippet: body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2000)
+      snippet: body
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 2000)
     });
   }
   return rows;
@@ -483,7 +521,10 @@ async function searchExa(query: string, settings: AppSettings): Promise<WebRefer
   const json = parseRpcPayload(await call.text());
   const content = json?.result?.content;
   const text = Array.isArray(content)
-    ? content.map((item: any) => item?.text || '').filter(Boolean).join('\n')
+    ? content
+        .map((item) => item?.text || '')
+        .filter(Boolean)
+        .join('\n')
     : '';
   const rows = parseExaText(text);
   if (!rows.length) throw new Error('Exa 未返回可解析结果');
@@ -647,8 +688,10 @@ export async function searchWeb(settings: AppSettings, query: string): Promise<W
         try {
           let rows: WebReference[] = [];
           if (id === 'exa') rows = await searchExa(query, settings);
-          else if (id === 'anysearch') rows = await searchAnySearch(settings, freePlatform('anysearch'), query);
-          else if (id === 'searxng') rows = await searchSearxng(settings, freePlatform('searxng'), query);
+          else if (id === 'anysearch')
+            rows = await searchAnySearch(settings, freePlatform('anysearch'), query);
+          else if (id === 'searxng')
+            rows = await searchSearxng(settings, freePlatform('searxng'), query);
           const fallback = normalize(rows, max);
           if (fallback.length) {
             if (ttl > 0) searchCache.set(cacheKey, { at: Date.now(), refs: fallback });
@@ -698,10 +741,7 @@ export function rankReferences(query: string, references: WebReference[]): WebRe
     .map((item) => item.reference);
 }
 
-export async function testSearch(
-  settings: AppSettings,
-  query: string
-): Promise<WebReference[]> {
+export async function testSearch(settings: AppSettings, query: string): Promise<WebReference[]> {
   const enabled = { ...settings, search: { ...settings.search, enabled: true } };
   return searchWeb(enabled, query);
 }

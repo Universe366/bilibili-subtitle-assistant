@@ -25,13 +25,42 @@ function headersFor(server: McpServer): Record<string, string> {
   return headers;
 }
 
-function parseRpc(text: string, expectId: number | null): any {
+interface JsonRpcError {
+  code?: number;
+  message?: string;
+}
+
+interface JsonRpcResponse {
+  id?: number | null;
+  result?: unknown;
+  error?: JsonRpcError;
+}
+
+interface McpToolRow {
+  name?: string;
+  description?: string;
+  inputSchema?: unknown;
+  input_schema?: unknown;
+}
+
+interface McpContentItem {
+  type?: string;
+  text?: string;
+}
+
+type JsonRpcResult = {
+  tools?: McpToolRow[];
+  content?: McpContentItem[];
+  [key: string]: unknown;
+};
+
+function parseRpc(text: string, expectId: number | null): JsonRpcResponse | null {
   const trimmed = String(text || '').trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
-      const parsed = JSON.parse(trimmed);
-      if (expectId == null) return parsed;
+      const parsed = JSON.parse(trimmed) as JsonRpcResponse | JsonRpcResponse[];
+      if (expectId == null) return Array.isArray(parsed) ? (parsed[0] ?? null) : parsed;
       if (Array.isArray(parsed)) {
         return parsed.find((item) => item && item.id === expectId) || parsed[0];
       }
@@ -44,8 +73,11 @@ function parseRpc(text: string, expectId: number | null): any {
     const match = /^data:\s*(.*)$/.exec(line);
     if (!match || !match[1]) continue;
     try {
-      const parsed = JSON.parse(match[1]);
-      if (expectId == null || (parsed && (parsed.id === expectId || parsed.result || parsed.error))) {
+      const parsed = JSON.parse(match[1]) as JsonRpcResponse;
+      if (
+        expectId == null ||
+        (parsed && (parsed.id === expectId || parsed.result || parsed.error))
+      ) {
         return parsed;
       }
     } catch {
@@ -74,7 +106,7 @@ async function rpcHttp(
   params: unknown,
   id: number,
   timeoutMs = 40000
-): Promise<any> {
+): Promise<JsonRpcResult | null> {
   const response = await postHttp(
     server,
     {
@@ -94,7 +126,7 @@ async function rpcHttp(
   if (message.error) {
     throw new Error(`MCP 调用出错（${message.error.code ?? '?'}）：${message.error.message || ''}`);
   }
-  return message.result;
+  return (message.result as JsonRpcResult | undefined) ?? null;
 }
 
 interface SseEvent {
@@ -107,7 +139,7 @@ async function rpcSse(
   body: { jsonrpc: string; id?: number; method: string; params?: unknown },
   expectId: number | null,
   timeoutMs = 40000
-): Promise<any> {
+): Promise<JsonRpcResult | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -178,9 +210,11 @@ async function rpcSse(
     }
     if (!message) throw new Error('MCP SSE 响应无法解析');
     if (message.error) {
-      throw new Error(`MCP 调用出错（${message.error.code ?? '?'}）：${message.error.message || ''}`);
+      throw new Error(
+        `MCP 调用出错（${message.error.code ?? '?'}）：${message.error.message || ''}`
+      );
     }
-    return message.result;
+    return (message.result as JsonRpcResult | undefined) ?? null;
   } finally {
     clearTimeout(timer);
     controller.abort();
@@ -193,7 +227,7 @@ async function rpc(
   params: unknown,
   id: number,
   timeoutMs = 40000
-): Promise<any> {
+): Promise<JsonRpcResult | null> {
   if (server.transport === 'sse') {
     return rpcSse(server, { jsonrpc: '2.0', id, method, params }, id, timeoutMs);
   }
@@ -214,11 +248,16 @@ async function notifyInitialized(server: McpServer): Promise<void> {
 
 async function ensureSession(server: McpServer): Promise<void> {
   if (sessionIds.has(serverKey(server))) return;
-  await rpc(server, 'initialize', {
-    protocolVersion: PROTOCOL_VERSION,
-    capabilities: {},
-    clientInfo: { name: 'shizi', version: '1.0.0' }
-  }, nextId());
+  await rpc(
+    server,
+    'initialize',
+    {
+      protocolVersion: PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: 'shizi', version: '1.0.0' }
+    },
+    nextId()
+  );
   await notifyInitialized(server);
 }
 
@@ -227,8 +266,8 @@ export async function listMcpTools(server: McpServer): Promise<McpTool[]> {
   const result = await rpc(server, 'tools/list', {}, nextId());
   const rows = Array.isArray(result?.tools) ? result.tools : [];
   return rows
-    .filter((item: any) => item && item.name)
-    .map((item: any) => ({
+    .filter((item) => item && item.name)
+    .map((item) => ({
       name: String(item.name),
       description: String(item.description || ''),
       inputSchema: item.inputSchema || item.input_schema
@@ -242,16 +281,10 @@ export async function callMcpTool(
   timeoutMs = 40000
 ): Promise<string> {
   await ensureSession(server);
-  const result = await rpc(
-    server,
-    'tools/call',
-    { name, arguments: args },
-    nextId(),
-    timeoutMs
-  );
+  const result = await rpc(server, 'tools/call', { name, arguments: args }, nextId(), timeoutMs);
   const content = Array.isArray(result?.content) ? result.content : [];
   const text = content
-    .map((item: any) => {
+    .map((item) => {
       if (item?.type === 'text') return String(item.text || '');
       try {
         return JSON.stringify(item);
