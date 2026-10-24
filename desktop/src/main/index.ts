@@ -5,7 +5,6 @@ import { TabManager } from './tabs';
 import { registerIpc } from './ipc';
 import type { SubtitleLine } from '../shared/types';
 import {
-  addDownload,
   closeLibrary,
   getSummaryFor,
   ingestVideo,
@@ -14,8 +13,7 @@ import {
   listLibrary,
   recordHistory,
   saveSummary,
-  searchLibrary,
-  updateDownload
+  searchLibrary
 } from './library';
 import {
   fetchAudioRange,
@@ -53,7 +51,7 @@ import { migrateLegacyUserData } from './userDataMigration';
 import { loadSession } from './session';
 import { createSessionPersister, createTray as createTrayShell } from './shell';
 import { APP_NAME } from '../shared/brand';
-import { registerDownloadItem, unregisterDownloadItem } from './downloads';
+import { installDownloadHook } from './downloadsHook';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -2353,73 +2351,7 @@ app
     nativeTheme.themeSource = loadSettings().general.theme;
     if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
     session.defaultSession.setUserAgent(UA);
-    session.defaultSession.on('will-download', (_event, item) => {
-      const autoDir = String(process.env.BSUB_DOWNLOAD_DIR || '').trim();
-      if (autoDir) {
-        // 自动化测试用：跳过保存对话框，直接落到指定目录。
-        try {
-          fs.mkdirSync(autoDir, { recursive: true });
-          item.setSavePath(path.join(autoDir, item.getFilename()));
-        } catch (error) {
-          console.warn('[download] 自动保存路径不可用:', (error as Error).message);
-        }
-      } else {
-        item.setSaveDialogOptions({
-          title: '保存文件',
-          defaultPath: path.join(app.getPath('downloads'), item.getFilename())
-        });
-      }
-
-      let downloadId = 0;
-      try {
-        downloadId = addDownload({
-          url: item.getURL(),
-          filename: item.getFilename(),
-          total: item.getTotalBytes()
-        });
-        if (downloadId) registerDownloadItem(downloadId, item);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('downloads:changed');
-        }
-      } catch (error) {
-        console.warn('[download] 登记失败:', (error as Error).message);
-      }
-
-      let lastWrite = 0;
-      const sync = (
-        state: 'progressing' | 'completed' | 'cancelled' | 'interrupted',
-        done = false
-      ) => {
-        if (!downloadId) return;
-        const now = Date.now();
-        if (!done && now - lastWrite < 500) return;
-        lastWrite = now;
-        try {
-          updateDownload(downloadId, {
-            state,
-            total: item.getTotalBytes(),
-            received: item.getReceivedBytes(),
-            path: item.getSavePath(),
-            finished: done
-          });
-        } catch (error) {
-          console.warn('[download] 更新失败:', (error as Error).message);
-        }
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('downloads:changed');
-        }
-      };
-
-      item.on('updated', (_event, state) => {
-        sync(state === 'interrupted' ? 'interrupted' : 'progressing');
-      });
-      item.on('done', (_event, state) => {
-        if (state === 'completed') sync('completed', true);
-        else if (state === 'cancelled') sync('cancelled', true);
-        else sync('interrupted', true);
-        unregisterDownloadItem(downloadId);
-      });
-    });
+    installDownloadHook(() => mainWindow);
     initLibrary();
     writeLog('startup.log', 'library ready');
     scheduleOldDataCleanup();
