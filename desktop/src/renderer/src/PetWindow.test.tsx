@@ -17,6 +17,9 @@ function installBsub() {
     chat: vi.fn(async () => ({ ok: true as const, data: { requestId: 'pet-1' } })),
     focusMain: vi.fn(async () => undefined),
     setPetEnabled: vi.fn(async () => undefined),
+    isMediaPlaying: vi.fn(async () => ({ ok: true as const, data: false })),
+    petPosition: vi.fn(async () => ({ x: 100, y: 100 })),
+    movePet: vi.fn(async () => undefined),
     onChatDelta: vi.fn((cb: (event: unknown) => void) => {
       handlers.delta = cb;
       return () => {};
@@ -69,6 +72,17 @@ describe('PetWindow', () => {
     const requestId = ((api.chat.mock.calls[0] as unknown[])[0] as { requestId: string }).requestId;
     handlers.done?.({ requestId, text: '它讲了三个要点', model: 'test' });
     expect(await screen.findByText('它讲了三个要点')).toBeTruthy();
+  });
+
+  it('挂件显示时钟并可加待办', () => {
+    installBsub();
+    render(<PetWindow />);
+    fireEvent.click(screen.getByTitle(/点击聊天/));
+    fireEvent.click(screen.getByTitle(/桌面小挂件/));
+    const input = screen.getByPlaceholderText(/加一条待办/);
+    fireEvent.change(input, { target: { value: '写周报' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByText('写周报')).toBeTruthy();
   });
 
   it('双击桌宠打开主窗口', () => {

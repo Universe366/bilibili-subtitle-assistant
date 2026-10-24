@@ -5777,3 +5777,95 @@ button:disabled {
   right: 2px;
   font-size: 12px;
 }
+
+/* 恢复圆润桌宠本体（不再使用图片） */
+.pet-body {
+  width: 104px;
+  height: 96px;
+  border-radius: 50% 50% 46% 46%;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  background: linear-gradient(165deg, #ffd3e2, #ff9dc0);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.pet-fish {
+  display: none;
+}
+
+.pet-music {
+  position: absolute;
+  top: 2px;
+  left: -10px;
+  font-size: 13px;
+  color: var(--accent);
+  animation: pet-music 1.2s ease-in-out infinite;
+}
+
+@keyframes pet-music {
+  0%, 100% { transform: translateY(0) rotate(-8deg); }
+  50% { transform: translateY(-5px) rotate(8deg); }
+}
+
+/* 桌面小挂件：时钟 / 待办 */
+.pet-widget {
+  width: 210px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  color: var(--text);
+  -webkit-app-region: no-drag;
+}
+
+.pet-widget-clock {
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+
+.pet-widget-date {
+  margin-bottom: 6px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.pet-widget-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+}
+
+.pet-widget-list {
+  margin-top: 5px;
+  max-height: 92px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pet-widget-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.pet-widget-item .is-done {
+  text-decoration: line-through;
+  color: var(--faint);
+}
+
+.pet-widget-empty {
+  color: var(--faint);
+  font-size: 10.5px;
+}

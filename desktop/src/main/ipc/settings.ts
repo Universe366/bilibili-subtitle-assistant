@@ -38,10 +38,14 @@ import { probePlatformModels, testPlatformConnection } from '../platform';
 
 import { listLibrary } from '../library';
 import { failure, type IpcContext } from './shared';
-import { setPetEnabled } from '../petWindow';
+import { movePet, petPosition, setPetEnabled } from '../petWindow';
 
 /** 设置 / 更新 / 桥 / 权限 / 数据目录 / 诊断 相关 IPC。 */
 export function registerSettingsIpc(ctx: IpcContext): void {
+  ipcMain.handle('pet:get-position', () => petPosition());
+  ipcMain.handle('pet:move', (_event, x: number, y: number) => {
+    movePet(Number(x), Number(y));
+  });
   ipcMain.handle('app:focus-main', () => {
     ctx.win.show();
     ctx.win.focus();

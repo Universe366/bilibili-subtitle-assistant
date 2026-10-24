@@ -84,3 +84,14 @@ export function initPetWindow(): void {
     setTimeout(() => openPetWindow(), 1200);
   }
 }
+
+export function petPosition(): { x: number; y: number } | null {
+  if (!petWindow || petWindow.isDestroyed()) return null;
+  const [x, y] = petWindow.getPosition();
+  return { x, y };
+}
+
+export function movePet(x: number, y: number): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  petWindow.setPosition(Math.round(x), Math.round(y));
+}

@@ -44,6 +44,18 @@ export function registerBrowserIpc(ctx: IpcContext): void {
     }
     return result;
   });
+  ipcMain.handle('media:playing', async () => {
+    const wc = ctx.tabs.activeWebContents();
+    if (!wc) return { ok: true as const, data: false };
+    try {
+      const playing = await wc.executeJavaScript(
+        '(() => { const v = document.querySelector("video, audio"); return Boolean(v && !v.paused && !v.ended && v.readyState > 2); })()'
+      );
+      return { ok: true as const, data: playing === true };
+    } catch {
+      return { ok: true as const, data: false };
+    }
+  });
   ipcMain.handle('media:set-rate', async (_event, rate: number) => {
     return { ok: true as const, data: await ctx.tabs.setPlaybackRate(rate) };
   });
