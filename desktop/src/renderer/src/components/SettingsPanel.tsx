@@ -8,7 +8,11 @@ import { AsrSection } from './settings/AsrSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { PromptSection } from './settings/PromptSection';
 import { SearchSection } from './settings/SearchSection';
-import { GeneralSection } from './settings/GeneralSection';
+import { AddressSearchGroup } from './settings/AddressSearchGroup';
+import { AppearanceGroup } from './settings/AppearanceGroup';
+import { EfficiencyGroup } from './settings/EfficiencyGroup';
+import { ReadingGroup } from './settings/ReadingGroup';
+import { SessionsGroup } from './settings/SessionsGroup';
 import { McpSection } from './settings/McpSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
@@ -56,7 +60,10 @@ function updateText(status: UpdateStatus | null): string {
   }
 }
 
-export function SettingsPanel() {
+export function SettingsPanel({ group = 'all' }: { group?: string } = {}) {
+  const show = (key: string) =>
+    !group || group === 'all' || group === key || Boolean(settingsQuery.trim());
+
   const [draft, setDraft] = useState<AppSettings | null>(null);
   const [dataDir, setDataDir] = useState('');
   const [migrating, setMigrating] = useState(false);
@@ -1051,9 +1058,24 @@ export function SettingsPanel() {
         )}
       </div>
 
-      <GeneralSection value={draft.general} onChange={(patch) => updateGeneral(patch)} />
+      {show('appearance') && (
+        <AppearanceGroup value={draft.general} onChange={(patch) => updateGeneral(patch)} />
+      )}
+      {show('sessions') && (
+        <SessionsGroup value={draft.general} onChange={(patch) => updateGeneral(patch)} />
+      )}
+      {show('address') && (
+        <AddressSearchGroup value={draft.general} onChange={(patch) => updateGeneral(patch)} />
+      )}
+      {show('reading') && (
+        <ReadingGroup value={draft.general} onChange={(patch) => updateGeneral(patch)} />
+      )}
+      {show('efficiency') && (
+        <EfficiencyGroup value={draft.general} onChange={(patch) => updateGeneral(patch)} />
+      )}
 
 
+      {show('ai') && (
       <AiSection
         draft={draft}
         active={active}
@@ -1072,7 +1094,9 @@ export function SettingsPanel() {
         testing={testing}
         onTest={() => void test()}
       />
+      )}
 
+      {show('ai') && (
       <AsrSection
         draft={draft}
         activeAsr={activeAsr}
@@ -1089,7 +1113,9 @@ export function SettingsPanel() {
         setEditingAsrId={setEditingAsrId}
         platformStatus={platformStatusNode}
       />
+      )}
 
+      {show('ai') && (
       <PromptSection
         value={draft.prompt}
         onPatch={(patch) => setDraft({ ...draft, prompt: { ...draft.prompt, ...patch } })}
@@ -1097,8 +1123,10 @@ export function SettingsPanel() {
         onRemoveTemplate={removeTemplate}
         onUpdateTemplate={(patch) => updateTemplate(patch)}
       />
+      )}
 
 
+      {show('search') && (
       <SearchSection
         draft={draft}
         activeSearch={activeSearch}
@@ -1118,7 +1146,9 @@ export function SettingsPanel() {
         searchResults={searchResults}
         onTestSearch={() => void testSearch()}
       />
+      )}
 
+      {show('ai') && (
       <CorrectionSection
         value={draft.correction}
         testText={correctionTest}
@@ -1140,8 +1170,10 @@ export function SettingsPanel() {
         onTestText={setCorrectionTest}
         onPreview={() => void previewCorrection()}
       />
+      )}
 
 
+      {show('plugins') && (
       <BridgeSection
         value={draft.bridge}
         status={bridge}
@@ -1149,14 +1181,18 @@ export function SettingsPanel() {
         onChange={(next) => setDraft({ ...draft, bridge: next })}
         onInstall={installExtension}
       />
+      )}
 
 
+      {show('data') && (
       <ExportDefaultsSection
         value={draft.export}
         onChange={(next) => setDraft({ ...draft, export: next })}
       />
+      )}
 
 
+      {show('data') && (
       <UpdateSection
         version={version}
         status={updateState}
@@ -1169,8 +1205,10 @@ export function SettingsPanel() {
         onInstall={() => void window.bsub.installUpdate()}
         onOpenReleases={() => void window.bsub.openReleasesPage()}
       />
+      )}
 
 
+      {show('plugins') && (
       <McpSection
         value={draft.mcp}
         testing={mcpTesting}
@@ -1185,8 +1223,10 @@ export function SettingsPanel() {
         onTest={(server) => void testMcp(server)}
         onCall={(server, tool) => void callMcp(server, tool)}
       />
+      )}
 
 
+      {show('plugins') && (
       <SkillsSection
         value={draft.skills}
         onToggle={(enabled) => updateSkills({ enabled })}
@@ -1195,8 +1235,10 @@ export function SettingsPanel() {
         onUpdate={(id, patch) => updateSkill(id, patch)}
         onRemove={removeSkill}
       />
+      )}
 
 
+      {show('data') && (
       <DiagnosticsSection
         diagnostics={diagnostics}
         fallbackVersion={version}
@@ -1205,16 +1247,20 @@ export function SettingsPanel() {
         onCopy={() => void copyDiagnostics()}
         onExport={() => void exportDiag()}
       />
+      )}
 
 
+      {show('data') && (
       <SitePermissionsSection
         items={sitePermissions}
         onRevoke={(origin, permission) => void revokePermission(origin, permission)}
         onRefresh={() => void refreshSitePermissions()}
         onClear={() => void clearPermissions()}
       />
+      )}
 
 
+      {show('data') && (
       <DataBackupSection
         dataDir={dataDir}
         migrating={migrating}
@@ -1226,6 +1272,7 @@ export function SettingsPanel() {
         onCompact={() => void compactDatabase()}
         onClearBrowsingData={() => void clearBrowsingData()}
       />
+      )}
 
 
       {(message || error) && (

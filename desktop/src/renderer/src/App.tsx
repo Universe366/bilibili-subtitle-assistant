@@ -10,7 +10,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { BrowserHub, type HubSection } from './components/BrowserHub';
 import { ReaderMode } from './components/ReaderMode';
 import { StartPage } from './components/StartPage';
-import { SettingsPanel } from './components/SettingsPanel';
+import { SettingsPage } from './SettingsPage';
 import { nextTabId, tabIdByNumber } from './lib/tabs';
 import { useDropImport } from './lib/dropImport';
 import { CommandPalette, type CommandItem } from './components/CommandPalette';
@@ -499,15 +499,7 @@ export default function App() {
       {(startOpen || settingsOpen || tabs.length === 0) && (
         <div className="page-host">
           {settingsOpen ? (
-            <div className="settings-page">
-              <div className="settings-page-head">
-                <span>设置</span>
-                <button className="mini-btn" onClick={() => setSettingsOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <SettingsPanel />
-            </div>
+            <SettingsPage onClose={() => setSettingsOpen(false)} />
           ) : (
             <StartPage
               onNavigate={(input) => {
