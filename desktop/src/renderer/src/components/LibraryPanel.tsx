@@ -27,6 +27,7 @@ import { LibraryCollectionSummaryDialog } from './LibraryCollectionSummaryDialog
 import { LibraryImportDialog } from './LibraryImportDialog';
 import { LibraryManageDialog } from './LibraryManageDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
+import { LibraryEmptyState } from './LibraryEmptyState';
 import { LibraryFilters } from './LibraryFilters';
 import { LibraryNoteTab } from './LibraryNoteTab';
 import { LibrarySubtitlesTab } from './LibrarySubtitlesTab';
@@ -1198,46 +1199,17 @@ export function LibraryPanel() {
           ))}
 
           {!list.videos.length && (
-            <div className="panel-empty">
-              还没有入库的视频
-              <div className="panel-hint">粘贴一个视频链接，导入字幕后可以直接生成总结。</div>
-              <div className="quick-import">
-                <input
-                  value={quickLink}
-                  placeholder="粘贴视频链接或 BV 号…"
-                  spellCheck={false}
-                  onChange={(event) => setQuickLink(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' || !quickLink.trim()) return;
-                    setImportText(quickLink.trim());
-                    setImportSummary(true);
-                    setImportOpen(true);
-                  }}
-                />
-                <button
-                  className="mini-btn primary"
-                  disabled={!quickLink.trim()}
-                  onClick={() => {
-                    setImportText(quickLink.trim());
-                    setImportSummary(true);
-                    setImportOpen(true);
-                  }}
-                >
-                  导入并总结
-                </button>
-              </div>
-              <div className="panel-empty-actions">
-                <button
-                  className="mini-btn"
-                  onClick={() => void window.bsub.newTab('https://www.bilibili.com/')}
-                >
-                  打开 B 站
-                </button>
-                <button className="mini-btn" onClick={() => setImportOpen(true)}>
-                  导入链接
-                </button>
-              </div>
-            </div>
+            <LibraryEmptyState
+              quickLink={quickLink}
+              onQuickLink={setQuickLink}
+              onQuickImport={(text) => {
+                setImportText(text);
+                setImportSummary(true);
+                setImportOpen(true);
+              }}
+              onOpenImport={() => setImportOpen(true)}
+              onOpenBilibili={() => void window.bsub.newTab('https://www.bilibili.com/')}
+            />
           )}
 
           {list.videos.length > 0 && !visibleVideos.length && (
