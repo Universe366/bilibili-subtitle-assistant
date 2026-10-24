@@ -74,11 +74,7 @@ export function closePetWindow(): void {
 
 /** 设置里切换开关时调用：创建/销毁窗口并写回设置。 */
 export function setPetEnabled(enabled: boolean): void {
-  const settings = loadSettings();
-  if (settings.general.petEnabled !== enabled) {
-    settings.general.petEnabled = enabled;
-    saveSettings(settings);
-  }
+  // 只负责窗口生命周期；开关值由 settings:set 统一保存，避免两处写设置互相覆盖。
   if (enabled) openPetWindow();
   else closePetWindow();
 }

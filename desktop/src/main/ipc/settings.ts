@@ -62,6 +62,7 @@ export function registerSettingsIpc(ctx: IpcContext): void {
         const saved = saveSettings(next);
         nativeTheme.themeSource = saved.general.theme;
         ctx.tabs.setSuspendMinutes(saved.general.suspendMinutes);
+        setPetEnabled(saved.general.petEnabled === true);
         await restartBridge(ctx.win);
         const snapshot = settingsSnapshot();
         ctx.send('settings:changed', snapshot);

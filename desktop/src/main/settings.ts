@@ -280,6 +280,18 @@ function normalize(input: unknown): AppSettings {
       base.general.sidebarPosition = raw.general.sidebarPosition === 'right' ? 'right' : 'left';
       base.general.sidebarCollapsed = raw.general.sidebarCollapsed === true;
       base.general.verticalTabs = raw.general.verticalTabs === true;
+      base.general.petEnabled = raw.general.petEnabled === true;
+      base.general.assistantEnabled = raw.general.assistantEnabled === true;
+      base.general.petX = Number(raw.general.petX) || 0;
+      base.general.petY = Number(raw.general.petY) || 0;
+      const engine = raw.general.searchEngine;
+      base.general.searchEngine = ['bilibili', 'bing', 'google', 'custom'].includes(engine as string)
+        ? (engine as 'bilibili' | 'bing' | 'google' | 'custom')
+        : 'bilibili';
+      base.general.searchEngineCustom =
+        typeof raw.general.searchEngineCustom === 'string'
+          ? raw.general.searchEngineCustom.slice(0, 300)
+          : '';
       base.general.autoFollow = raw.general.autoFollow !== false;
       base.general.wizardDone = raw.general.wizardDone === true;
       base.general.restoreSession = raw.general.restoreSession !== false;

@@ -37,7 +37,6 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [verticalTabs, setVerticalTabs] = useState(false);
   const [assistantEnabled, setAssistantEnabled] = useState(false);
-  const [petEnabled, setPetEnabled] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
@@ -73,7 +72,6 @@ export default function App() {
     setSidebarCollapsed(snapshot.settings.general.sidebarCollapsed);
     setVerticalTabs(snapshot.settings.general.verticalTabs === true);
     setAssistantEnabled(snapshot.settings.general.assistantEnabled === true);
-    setPetEnabled(snapshot.settings.general.petEnabled === true);
   };
 
   useEffect(() => {
@@ -354,10 +352,6 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
-
-  useEffect(() => {
-    void window.bsub.setPetEnabled(petEnabled);
-  }, [petEnabled]);
 
   useEffect(() => {
     const pageOpen = startOpen || settingsOpen || tabs.length === 0;
