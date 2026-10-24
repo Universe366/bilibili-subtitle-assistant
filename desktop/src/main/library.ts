@@ -2,19 +2,23 @@ import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  bindLibraryDatabase,
+  hasLibraryDatabase,
+  libraryFilePath,
+  releaseLibraryDatabase,
+  requireDb,
+  setLibraryInitializer,
+  toNumber
+} from './library/db';
+import { markStaleJobs } from './library/jobs';
 import { migrateSchema, schemaVersion } from './migrations';
 import type {
   CollectionSearchHit,
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
-  ExportRecord,
   GlobalSearchResult,
-  JobItem,
-  JobItemStatus,
-  JobRecord,
-  JobStatus,
-  JobType,
   LibraryBundle,
   LibraryCollection,
   LibraryDetail,
@@ -40,8 +44,6 @@ import type {
   SummaryVersionMeta,
   TrashItem,
   Bookmark,
-  DownloadRecord,
-  DownloadState,
   HistoryEntry
 } from '../shared/types';
 
@@ -219,8 +221,6 @@ CREATE INDEX IF NOT EXISTS idx_tracks_video ON tracks(video_id);
 CREATE INDEX IF NOT EXISTS idx_videos_updated ON videos(updated_at DESC);
 `;
 
-let db: DatabaseSync | null = null;
-let dbFile = '';
 let ftsEnabled = true;
 let staleChecked = false;
 let schemaState = { from: 0, to: 0 };
@@ -229,19 +229,26 @@ const TRASH_KEEP_DAYS = 30;
 const TRASH_LIMIT = 200;
 
 export function initLibrary(): void {
-  if (db) return;
-  dbFile = path.join(app.getPath('userData'), 'library.db');
-  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  db = new DatabaseSync(dbFile);
-  db.exec('PRAGMA journal_mode = WAL;');
-  db.exec('PRAGMA foreign_keys = ON;');
-  db.exec(SCHEMA);
+  if (hasLibraryDatabase()) return;
+  const file = path.join(app.getPath('userData'), 'library.db');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const database = new DatabaseSync(file);
+  bindLibraryDatabase(database, file);
+  database.exec('PRAGMA journal_mode = WAL;');
+  database.exec('PRAGMA foreign_keys = ON;');
+  database.exec(SCHEMA);
 
   try {
-    const result = migrateSchema(db);
+    const result = migrateSchema(database);
     schemaState = { from: result.from, to: result.to };
     if (result.applied.length) {
-      console.log('[library] schema migrated', result.from, '→', result.to, result.applied.join(','));
+      console.log(
+        '[library] schema migrated',
+        result.from,
+        '→',
+        result.to,
+        result.applied.join(',')
+      );
     }
   } catch (error) {
     console.warn('[library] schema 迁移失败:', (error as Error).message);
@@ -258,7 +265,7 @@ export function initLibrary(): void {
 
   // 老库只有最新一份总结：升级时补一条版本记录，之后每次生成都会追加。
   try {
-    db.exec(
+    database.exec(
       `INSERT INTO summary_versions (video_id, uid, content_md, model, created_at)
        SELECT s.video_id, s.uid, s.content_md, s.model, s.updated_at
        FROM summaries s
@@ -270,7 +277,7 @@ export function initLibrary(): void {
 
   // 老库的合集对比也只有最新一份，同样补一条版本记录。
   try {
-    db.exec(
+    database.exec(
       `INSERT INTO collection_summary_versions
          (collection_id, content_md, model, item_count, created_at)
        SELECT cs.collection_id, cs.content_md, cs.model, cs.item_count, cs.updated_at
@@ -283,7 +290,9 @@ export function initLibrary(): void {
   }
 
   try {
-    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(text, tokenize='trigram');");
+    database.exec(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(text, tokenize='trigram');"
+    );
   } catch (error) {
     ftsEnabled = false;
     console.warn('[library] FTS5 不可用，退化为 LIKE 搜索:', (error as Error).message);
@@ -293,8 +302,10 @@ export function initLibrary(): void {
     const interrupted = markStaleJobs();
     if (interrupted) console.warn('[library] 标记中断任务', interrupted);
   }
-  console.log('[library] ready', dbFile, `fts=${ftsEnabled}`);
+  console.log('[library] ready', file, `fts=${ftsEnabled}`);
 }
+
+setLibraryInitializer(initLibrary);
 
 export function checkpointLibrary(): void {
   const database = requireDb();
@@ -307,25 +318,26 @@ export function checkpointLibrary(): void {
 
 export function closeLibrary(): void {
   try {
-    db?.close();
+    if (hasLibraryDatabase()) requireDb().close();
   } catch {
     // ignore
   }
-  db = null;
+  releaseLibraryDatabase();
 }
 
 export function libraryPath(): string {
-  return dbFile;
+  return libraryFilePath();
 }
 
 export function librarySchemaVersion(): number {
-  return db ? schemaVersion(db) : schemaState.to;
+  return hasLibraryDatabase() ? schemaVersion(requireDb()) : schemaState.to;
 }
 
 /** 压缩数据库：删除大条目后回收磁盘空间，并刷新查询计划统计。 */
 export function vacuumLibrary(): { before: number; after: number } {
   const database = requireDb();
-  const before = fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0;
+  const file = libraryFilePath();
+  const before = fs.existsSync(file) ? fs.statSync(file).size : 0;
   try {
     database.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     database.exec('PRAGMA optimize;');
@@ -333,14 +345,8 @@ export function vacuumLibrary(): { before: number; after: number } {
   } catch (error) {
     throw new Error(`压缩数据库失败：${(error as Error).message}`, { cause: error });
   }
-  const after = fs.existsSync(dbFile) ? fs.statSync(dbFile).size : 0;
+  const after = fs.existsSync(file) ? fs.statSync(file).size : 0;
   return { before, after };
-}
-
-function requireDb(): DatabaseSync {
-  if (!db) initLibrary();
-  if (!db) throw new Error('数据库未初始化');
-  return db;
 }
 
 function uidOf(info: PageInfo): string {
@@ -376,7 +382,8 @@ function canonicalUrl(input: string): string {
 }
 
 function kindOf(info: PageInfo): string {
-  if (info.kind === 'youtube' || info.bvid || info.epId) return info.kind === 'youtube' ? 'youtube' : 'video';
+  if (info.kind === 'youtube' || info.bvid || info.epId)
+    return info.kind === 'youtube' ? 'youtube' : 'video';
   if (info.kind === 'local' || /^file:\/\//i.test(info.url || '')) return 'local';
   if (info.kind === 'podcast') return 'podcast';
   if (info.kind === 'page') return 'page';
@@ -395,11 +402,6 @@ function sourceOf(info: PageInfo): string {
   }
 }
 
-function toNumber(value: unknown): number {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
 function ensureVideo(
   database: DatabaseSync,
   info: PageInfo,
@@ -407,8 +409,7 @@ function ensureVideo(
 ): { videoId: number; created: boolean } {
   const uid = uidOf(info);
   const existing = database.prepare('SELECT id FROM videos WHERE uid = ?').get(uid) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
 
   database
     .prepare(
@@ -505,7 +506,9 @@ export function ingestVideo(payload: LibraryIngestPayload): LibraryIngestResult 
 
     if (ftsEnabled) {
       database
-        .prepare('DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE track_id = ?)')
+        .prepare(
+          'DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE track_id = ?)'
+        )
         .run(trackId);
     }
     database.prepare('DELETE FROM segments WHERE track_id = ?').run(trackId);
@@ -591,9 +594,9 @@ const LIBRARY_ORDER: Record<LibrarySort, string> = {
 export function listLibrary(sort: LibrarySort = 'updated'): LibraryList {
   const database = requireDb();
   const order = LIBRARY_ORDER[sort] || LIBRARY_ORDER.updated;
-  const rows = database
-    .prepare(`${VIDEO_COLUMNS} ORDER BY ${order} LIMIT 500`)
-    .all() as Array<Record<string, unknown>>;
+  const rows = database.prepare(`${VIDEO_COLUMNS} ORDER BY ${order} LIMIT 500`).all() as Array<
+    Record<string, unknown>
+  >;
 
   const statsRow = database
     .prepare(
@@ -604,6 +607,7 @@ export function listLibrary(sort: LibrarySort = 'updated'): LibraryList {
     .get() as Record<string, unknown>;
 
   let bytes = 0;
+  const dbFile = libraryFilePath();
   for (const file of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
     try {
       bytes += fs.statSync(file).size;
@@ -646,7 +650,9 @@ export function setVideoTags(videoId: number, names: string[]): string[] {
 
   const clean: string[] = [];
   for (const raw of Array.isArray(names) ? names : []) {
-    const name = String(raw || '').trim().slice(0, 24);
+    const name = String(raw || '')
+      .trim()
+      .slice(0, 24);
     if (!name) continue;
     if (clean.some((item) => item.toLowerCase() === name.toLowerCase())) continue;
     clean.push(name);
@@ -684,18 +690,18 @@ export function setVideoTags(videoId: number, names: string[]): string[] {
 export function renameTag(oldName: string, newName: string): void {
   const database = requireDb();
   const from = String(oldName || '').trim();
-  const to = String(newName || '').trim().slice(0, 24);
+  const to = String(newName || '')
+    .trim()
+    .slice(0, 24);
   if (!to) throw new Error('标签名称不能为空');
   if (!from || from === to) return;
 
   const source = database.prepare('SELECT id FROM tags WHERE name = ?').get(from) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
   if (!source) throw new Error('标签不存在');
   const sourceId = Number(source.id);
   const target = database.prepare('SELECT id FROM tags WHERE name = ?').get(to) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
 
   database.exec('BEGIN');
   try {
@@ -727,8 +733,7 @@ export function deleteTag(name: string): boolean {
   const database = requireDb();
   const clean = String(name || '').trim();
   const row = database.prepare('SELECT id FROM tags WHERE name = ?').get(clean) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
   if (!row) return false;
   const id = Number(row.id);
   database.prepare('DELETE FROM video_tags WHERE tag_id = ?').run(id);
@@ -738,7 +743,9 @@ export function deleteTag(name: string): boolean {
 
 export function addTagToVideos(videoIds: number[], name: string): number {
   const database = requireDb();
-  const clean = String(name || '').trim().slice(0, 24);
+  const clean = String(name || '')
+    .trim()
+    .slice(0, 24);
   if (!clean) throw new Error('标签名称不能为空');
   const ids = [...new Set(videoIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (!ids.length) return 0;
@@ -747,8 +754,7 @@ export function addTagToVideos(videoIds: number[], name: string): number {
   try {
     database.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(clean);
     const tag = database.prepare('SELECT id FROM tags WHERE name = ?').get(clean) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (!tag) throw new Error('标签创建失败');
     const link = database.prepare(
       'INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)'
@@ -773,21 +779,24 @@ export function addTagToVideos(videoIds: number[], name: string): number {
 
 export function createCollection(name: string): LibraryCollection {
   const database = requireDb();
-  const clean = String(name || '').trim().slice(0, 40);
+  const clean = String(name || '')
+    .trim()
+    .slice(0, 40);
   if (!clean) throw new Error('合集名称不能为空');
   database
     .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
     .run(clean, Date.now());
   const row = database.prepare('SELECT id, name FROM collections WHERE name = ?').get(clean) as
-    | { id: number; name: string }
-    | undefined;
+    { id: number; name: string } | undefined;
   if (!row) throw new Error('合集创建失败');
   return { id: Number(row.id), name: String(row.name || clean), count: 0 };
 }
 
 export function addCollectionToVideos(videoIds: number[], name: string): number {
   const database = requireDb();
-  const clean = String(name || '').trim().slice(0, 40);
+  const clean = String(name || '')
+    .trim()
+    .slice(0, 40);
   if (!clean) throw new Error('合集名称不能为空');
   const ids = [...new Set(videoIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (!ids.length) return 0;
@@ -799,8 +808,7 @@ export function addCollectionToVideos(videoIds: number[], name: string): number 
       .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
       .run(clean, now);
     const collection = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (!collection) throw new Error('合集创建失败');
     const link = database.prepare(
       'INSERT OR IGNORE INTO collection_items (collection_id, video_id, added_at) VALUES (?, ?, ?)'
@@ -836,8 +844,7 @@ interface TrashPayload {
 
 function snapshotVideo(database: DatabaseSync, videoId: number): TrashPayload | null {
   const video = database.prepare('SELECT * FROM videos WHERE id = ?').get(videoId) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   if (!video) return null;
 
   const tracks = (
@@ -854,16 +861,15 @@ function snapshotVideo(database: DatabaseSync, videoId: number): TrashPayload | 
   return {
     video,
     tracks,
-    summaries: database
-      .prepare('SELECT * FROM summaries WHERE video_id = ?')
-      .all(videoId) as Array<Record<string, unknown>>,
+    summaries: database.prepare('SELECT * FROM summaries WHERE video_id = ?').all(videoId) as Array<
+      Record<string, unknown>
+    >,
     summaryVersions: database
       .prepare('SELECT * FROM summary_versions WHERE video_id = ? ORDER BY id')
       .all(videoId) as Array<Record<string, unknown>>,
     note:
       (database.prepare('SELECT * FROM notes WHERE video_id = ?').get(videoId) as
-        | Record<string, unknown>
-        | undefined) || null,
+        Record<string, unknown> | undefined) || null,
     noteVersions: database
       .prepare('SELECT * FROM note_versions WHERE video_id = ? ORDER BY id')
       .all(videoId) as Array<Record<string, unknown>>,
@@ -982,9 +988,8 @@ export function listTrash(limit = 200): TrashItem[] {
 
 export function restoreTrash(id: number): { videoId: number } {
   const database = requireDb();
-  const row = database
-    .prepare('SELECT id, payload FROM trash WHERE id = ?')
-    .get(Number(id)) as { id: number; payload: string } | undefined;
+  const row = database.prepare('SELECT id, payload FROM trash WHERE id = ?').get(Number(id)) as
+    { id: number; payload: string } | undefined;
   if (!row) throw new Error('回收站记录不存在');
 
   let payload: TrashPayload;
@@ -1116,8 +1121,7 @@ export function restoreTrash(id: number): { videoId: number } {
       if (!clean) continue;
       database.prepare('INSERT OR IGNORE INTO tags (name) VALUES (?)').run(clean);
       const tag = database.prepare('SELECT id FROM tags WHERE name = ?').get(clean) as
-        | { id: number }
-        | undefined;
+        { id: number } | undefined;
       if (tag) {
         database
           .prepare('INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?, ?)')
@@ -1130,9 +1134,9 @@ export function restoreTrash(id: number): { videoId: number } {
       database
         .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
         .run(clean, now);
-      const collection = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
-        | { id: number }
-        | undefined;
+      const collection = database
+        .prepare('SELECT id FROM collections WHERE name = ?')
+        .get(clean) as { id: number } | undefined;
       if (collection) {
         database
           .prepare(
@@ -1197,7 +1201,9 @@ export function getVideoCollections(videoId: number): string[] {
 export function addVideoToCollection(videoId: number, name: string): string[] {
   const database = requireDb();
   const id = Number(videoId);
-  const clean = String(name || '').trim().slice(0, 40);
+  const clean = String(name || '')
+    .trim()
+    .slice(0, 40);
   if (!clean) throw new Error('合集名称不能为空');
   if (!database.prepare('SELECT id FROM videos WHERE id = ?').get(id)) {
     throw new Error('视频不存在');
@@ -1210,11 +1216,12 @@ export function addVideoToCollection(videoId: number, name: string): string[] {
       .prepare('INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)')
       .run(clean, now);
     const row = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (row) {
       database
-        .prepare('INSERT OR IGNORE INTO collection_items (collection_id, video_id, added_at) VALUES (?, ?, ?)')
+        .prepare(
+          'INSERT OR IGNORE INTO collection_items (collection_id, video_id, added_at) VALUES (?, ?, ?)'
+        )
         .run(Number(row.id), id, now);
     }
     database.exec('COMMIT');
@@ -1234,8 +1241,7 @@ export function removeVideoFromCollection(videoId: number, name: string): string
   const id = Number(videoId);
   const clean = String(name || '').trim();
   const row = database.prepare('SELECT id FROM collections WHERE name = ?').get(clean) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
   if (row) {
     const collectionId = Number(row.id);
     database
@@ -1254,7 +1260,9 @@ export function removeVideoFromCollection(videoId: number, name: string): string
 
 export function renameCollection(id: number, name: string): void {
   const database = requireDb();
-  const clean = String(name || '').trim().slice(0, 40);
+  const clean = String(name || '')
+    .trim()
+    .slice(0, 40);
   if (!clean) throw new Error('合集名称不能为空');
   const exists = database.prepare('SELECT id FROM collections WHERE id = ?').get(Number(id));
   if (!exists) throw new Error('合集不存在');
@@ -1295,8 +1303,7 @@ export function getCollectionMaterial(collectionId: number): CollectionMaterial 
   const database = requireDb();
   const id = Number(collectionId);
   const collection = database.prepare('SELECT id, name FROM collections WHERE id = ?').get(id) as
-    | { id: number; name: string }
-    | undefined;
+    { id: number; name: string } | undefined;
   if (!collection) throw new Error('合集不存在');
 
   const rows = database
@@ -1334,7 +1341,10 @@ export function getCollectionMaterial(collectionId: number): CollectionMaterial 
            ORDER BY sg.start_ms ASC`
         )
         .all(videoId) as Array<{ text: string }>;
-      text = lines.map((line) => String(line.text || '')).join('\n').trim();
+      text = lines
+        .map((line) => String(line.text || ''))
+        .join('\n')
+        .trim();
     }
     if (!text) continue;
     const budget = Math.min(TRANSCRIPT_BUDGET, remaining);
@@ -1484,8 +1494,7 @@ export function restoreCollectionSummaryVersion(id: number): CollectionSummary {
        FROM collection_summary_versions WHERE id = ?`
     )
     .get(Number(id)) as
-    | { collection_id: number; content_md: string; model: string; item_count: number }
-    | undefined;
+    { collection_id: number; content_md: string; model: string; item_count: number } | undefined;
   if (!row) throw new Error('对比版本不存在');
   return saveCollectionSummary(
     Number(row.collection_id),
@@ -1549,9 +1558,7 @@ export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
   // trigram 分词对 <3 字的词不生效；任何一个词过短就退回 LIKE。
   const useFts = ftsEnabled && terms.every((term) => term.length >= 3);
   const likeParams = terms.map((term) => `%${term}%`);
-  const where = useFts
-    ? 'segments_fts MATCH ?'
-    : terms.map(() => 's.text LIKE ?').join(' AND ');
+  const where = useFts ? 'segments_fts MATCH ?' : terms.map(() => 's.text LIKE ?').join(' AND ');
   const params = useFts ? [ftsExpression(terms)] : likeParams;
 
   const selectSql = useFts
@@ -1614,7 +1621,9 @@ export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
 }
 
 function snippetAround(content: string, term: string, radius = 70): string {
-  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  const text = String(content || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const index = text.toLowerCase().indexOf(term.toLowerCase());
   if (index < 0) return text.slice(0, radius * 2);
   const start = Math.max(0, index - radius);
@@ -1637,9 +1646,7 @@ export function searchSummaries(input: string, limit = 12): SummarySearchHit[] {
        ORDER BY s.updated_at DESC
        LIMIT ?`
     )
-    .all(...params, Math.min(50, Math.max(1, Math.round(limit)))) as Array<
-    Record<string, unknown>
-  >;
+    .all(...params, Math.min(50, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
 
   return rows.map((row) => ({
     videoId: toNumber(row.video_id),
@@ -1683,9 +1690,7 @@ export function searchCollectionSummaries(input: string, limit = 8): CollectionS
        ORDER BY cs.updated_at DESC
        LIMIT ?`
     )
-    .all(...params, Math.min(30, Math.max(1, Math.round(limit)))) as Array<
-    Record<string, unknown>
-  >;
+    .all(...params, Math.min(30, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     collectionId: toNumber(row.collection_id),
     name: String(row.name || ''),
@@ -1719,8 +1724,7 @@ export function saveSummary(
   const now = Date.now();
   const uid = uidOf(info);
   const existing = database.prepare('SELECT id FROM summaries WHERE uid = ?').get(uid) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
 
   database.exec('BEGIN');
   try {
@@ -1753,7 +1757,9 @@ export function saveSummary(
       .run(videoId, videoId);
 
     database.exec('COMMIT');
-    const row = database.prepare('SELECT id FROM summaries WHERE uid = ?').get(uid) as { id: number };
+    const row = database.prepare('SELECT id FROM summaries WHERE uid = ?').get(uid) as {
+      id: number;
+    };
     return { id: Number(row.id), updated: Boolean(existing), videoId };
   } catch (error) {
     try {
@@ -1785,8 +1791,7 @@ export function getSummaryFor(ref: SummaryRef): StoredSummary | null {
         'SELECT content_md, model, updated_at FROM summaries WHERE uid LIKE ? ORDER BY updated_at DESC LIMIT 1'
       )
       .get(`v:${ref.bvid}:%`) as
-      | { content_md: string; model: string; updated_at: number }
-      | undefined;
+      { content_md: string; model: string; updated_at: number } | undefined;
   }
 
   if (!row) return null;
@@ -1839,8 +1844,7 @@ export function restoreSummaryVersion(id: number): StoredSummary {
   const row = database
     .prepare('SELECT uid, video_id, content_md, model FROM summary_versions WHERE id = ?')
     .get(Number(id)) as
-    | { uid: string; video_id: number; content_md: string; model: string }
-    | undefined;
+    { uid: string; video_id: number; content_md: string; model: string } | undefined;
   if (!row) throw new Error('总结版本不存在');
 
   const now = Date.now();
@@ -1872,9 +1876,8 @@ export function restoreSummaryVersion(id: number): StoredSummary {
 
 export function libraryVideoBundle(videoId: number): LibraryBundle {
   const database = requireDb();
-  const video = database
-    .prepare('SELECT * FROM videos WHERE id = ?')
-    .get(videoId) as Record<string, unknown> | undefined;
+  const video = database.prepare('SELECT * FROM videos WHERE id = ?').get(videoId) as
+    Record<string, unknown> | undefined;
   if (!video) throw new Error('视频不存在');
   const trackRow = database
     .prepare(
@@ -1924,9 +1927,8 @@ export function libraryVideoBundle(videoId: number): LibraryBundle {
 
 export function getLibraryDetail(videoId: number): LibraryDetail {
   const database = requireDb();
-  const row = database
-    .prepare(`${VIDEO_COLUMNS} WHERE v.id = ?`)
-    .get(Number(videoId)) as Record<string, unknown> | undefined;
+  const row = database.prepare(`${VIDEO_COLUMNS} WHERE v.id = ?`).get(Number(videoId)) as
+    Record<string, unknown> | undefined;
   if (!row) throw new Error('视频不存在');
 
   let bundle: LibraryBundle | null = null;
@@ -1942,9 +1944,7 @@ export function getLibraryDetail(videoId: number): LibraryDetail {
       `SELECT content_md, model, updated_at FROM summaries
        WHERE video_id = ? ORDER BY updated_at DESC LIMIT 1`
     )
-    .get(Number(videoId)) as
-    | { content_md: string; model: string; updated_at: number }
-    | undefined;
+    .get(Number(videoId)) as { content_md: string; model: string; updated_at: number } | undefined;
 
   return {
     video: mapVideoRow(row),
@@ -2076,13 +2076,10 @@ export function listHistory(limit = 100): LibraryHistoryItem[] {
 export function deleteHistoryItem(id: number): boolean {
   const database = requireDb();
   const row = database.prepare('SELECT video_id FROM summaries WHERE id = ?').get(Number(id)) as
-    | { video_id: number }
-    | undefined;
+    { video_id: number } | undefined;
   if (row) {
     // 删除总结时把版本一起清掉，否则「历史版本」还能把已删内容恢复回来。
-    database
-      .prepare('DELETE FROM summary_versions WHERE video_id = ?')
-      .run(Number(row.video_id));
+    database.prepare('DELETE FROM summary_versions WHERE video_id = ?').run(Number(row.video_id));
   }
   const result = database.prepare('DELETE FROM summaries WHERE id = ?').run(Number(id));
   return Number(result.changes) > 0;
@@ -2094,7 +2091,6 @@ export function clearHistory(): number {
   const result = database.prepare('DELETE FROM summaries').run();
   return Number(result.changes) || 0;
 }
-
 
 export function listTranscriptions(limit = 200): LibraryTranscriptionItem[] {
   const database = requireDb();
@@ -2125,11 +2121,6 @@ export function listTranscriptions(limit = 200): LibraryTranscriptionItem[] {
 
 /* ---------- 后台任务（任务中心） ---------- */
 
-type JobsListener = () => void;
-
-let jobsListener: JobsListener | null = null;
-let jobsNotifyTimer: NodeJS.Timeout | null = null;
-
 const HISTORY_LIMIT = 5000;
 
 /** 记录一次网页访问；60 秒内同一 URL 只更新标题/时间，避免 SPA 刷出几十条。 */
@@ -2145,12 +2136,16 @@ export function recordHistory(input: {
   const title = String(input.title || '').slice(0, 300);
   const favicon = input.favicon ? String(input.favicon) : null;
   const recent = database
-    .prepare('SELECT id, title, visited_at FROM history WHERE url = ? ORDER BY visited_at DESC LIMIT 1')
+    .prepare(
+      'SELECT id, title, visited_at FROM history WHERE url = ? ORDER BY visited_at DESC LIMIT 1'
+    )
     .get(url) as { id: number; title: string; visited_at: number } | undefined;
 
   if (recent && now - Number(recent.visited_at) < 60_000) {
     database
-      .prepare('UPDATE history SET visited_at = ?, title = ?, favicon = COALESCE(?, favicon) WHERE id = ?')
+      .prepare(
+        'UPDATE history SET visited_at = ?, title = ?, favicon = COALESCE(?, favicon) WHERE id = ?'
+      )
       .run(now, title || recent.title || '', favicon, recent.id);
   } else {
     database
@@ -2216,17 +2211,14 @@ export function isBookmarked(url: string): boolean {
   return Boolean(database.prepare('SELECT id FROM bookmarks WHERE url = ?').get(String(url || '')));
 }
 
-export function toggleBookmark(input: {
-  url: string;
-  title?: string;
-  favicon?: string | null;
-}): { bookmarked: boolean } {
+export function toggleBookmark(input: { url: string; title?: string; favicon?: string | null }): {
+  bookmarked: boolean;
+} {
   const database = requireDb();
   const url = String(input?.url || '').trim();
   if (!/^https?:\/\//i.test(url)) throw new Error('只能收藏网页地址');
   const existing = database.prepare('SELECT id FROM bookmarks WHERE url = ?').get(url) as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
   if (existing) {
     database.prepare('DELETE FROM bookmarks WHERE id = ?').run(existing.id);
     return { bookmarked: false };
@@ -2239,445 +2231,30 @@ export function toggleBookmark(input: {
 
 export function removeBookmark(url: string): boolean {
   const database = requireDb();
-  return toNumber(database.prepare('DELETE FROM bookmarks WHERE url = ?').run(String(url)).changes) > 0;
+  return (
+    toNumber(database.prepare('DELETE FROM bookmarks WHERE url = ?').run(String(url)).changes) > 0
+  );
 }
 
-export function addDownload(input: {
-  url: string;
-  filename: string;
-  path?: string;
-  total?: number;
-}): number {
-  const database = requireDb();
-  const result = database
-    .prepare(
-      `INSERT INTO downloads (url, filename, path, state, total, received, started_at)
-       VALUES (?, ?, ?, 'progressing', ?, 0, ?)`
-    )
-    .run(
-      String(input.url || ''),
-      String(input.filename || ''),
-      String(input.path || ''),
-      toNumber(input.total),
-      Date.now()
-    );
-  return toNumber(result.lastInsertRowid);
-}
-
-export function updateDownload(
-  id: number,
-  patch: {
-    state?: DownloadState;
-    path?: string;
-    total?: number;
-    received?: number;
-    finished?: boolean;
-  }
-): void {
-  const database = requireDb();
-  const fields: string[] = [];
-  const values: Array<string | number | null> = [];
-  if (patch.state) {
-    fields.push('state = ?');
-    values.push(patch.state);
-  }
-  if (patch.path !== undefined) {
-    fields.push('path = ?');
-    values.push(String(patch.path || ''));
-  }
-  if (patch.total !== undefined) {
-    fields.push('total = ?');
-    values.push(toNumber(patch.total));
-  }
-  if (patch.received !== undefined) {
-    fields.push('received = ?');
-    values.push(toNumber(patch.received));
-  }
-  if (patch.finished) {
-    fields.push('finished_at = ?');
-    values.push(Date.now());
-  }
-  if (!fields.length) return;
-  values.push(Number(id));
-  database.prepare(`UPDATE downloads SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-}
-
-export function listDownloads(limit = 100): DownloadRecord[] {
-  const database = requireDb();
-  const rows = database
-    .prepare(
-      `SELECT id, url, filename, path, state, total, received, started_at, finished_at
-       FROM downloads ORDER BY started_at DESC LIMIT ?`
-    )
-    .all(Math.min(300, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    id: toNumber(row.id),
-    url: String(row.url || ''),
-    filename: String(row.filename || ''),
-    path: String(row.path || ''),
-    state: String(row.state || 'progressing') as DownloadState,
-    total: toNumber(row.total),
-    received: toNumber(row.received),
-    startedAt: toNumber(row.started_at),
-    finishedAt: row.finished_at == null ? null : toNumber(row.finished_at)
-  }));
-}
-
-export function deleteDownload(id: number): boolean {
-  const database = requireDb();
-  return toNumber(database.prepare('DELETE FROM downloads WHERE id = ?').run(Number(id)).changes) > 0;
-}
-
-export function clearDownloads(): number {
-  const database = requireDb();
-  return toNumber(database.prepare('DELETE FROM downloads').run().changes);
-}
-
-export function setJobsListener(listener: JobsListener | null): void {
-  jobsListener = listener;
-}
-
-function notifyJobs(): void {
-  if (!jobsListener || jobsNotifyTimer) return;
-  jobsNotifyTimer = setTimeout(() => {
-    jobsNotifyTimer = null;
-    try {
-      jobsListener?.();
-    } catch {
-      // 监听方异常不应影响任务本身
-    }
-  }, 150);
-  jobsNotifyTimer.unref?.();
-}
-
-function mapJobItem(row: Record<string, unknown>): JobItem {
-  return {
-    targetId: String(row.target_id || ''),
-    title: String(row.title || ''),
-    status: String(row.status || 'pending') as JobItemStatus,
-    progress: toNumber(row.progress),
-    message: String(row.message || ''),
-    error: row.error == null ? null : String(row.error),
-    updatedAt: toNumber(row.updated_at)
-  };
-}
-
-function mapJob(row: Record<string, unknown>, items: JobItem[]): JobRecord {
-  return {
-    id: String(row.id || ''),
-    type: String(row.type || 'summary') as JobType,
-    title: String(row.title || ''),
-    status: String(row.status || 'running') as JobStatus,
-    progress: toNumber(row.progress),
-    message: String(row.message || ''),
-    error: row.error == null ? null : String(row.error),
-    metaJson: row.meta_json == null ? null : String(row.meta_json),
-    createdAt: toNumber(row.created_at),
-    updatedAt: toNumber(row.updated_at),
-    finishedAt: row.finished_at == null ? null : toNumber(row.finished_at),
-    items
-  };
-}
-
-export function createJob(input: {
-  id: string;
-  type: JobType;
-  title: string;
-  meta?: unknown;
-}): void {
-  const database = requireDb();
-  const now = Date.now();
-  database
-    .prepare(
-      `INSERT INTO jobs (id, type, title, status, progress, message, meta_json, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', 0, '', ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         type = excluded.type,
-         title = excluded.title,
-         status = 'running',
-         progress = 0,
-         message = '',
-         error = NULL,
-         meta_json = excluded.meta_json,
-         updated_at = excluded.updated_at,
-         finished_at = NULL`
-    )
-    .run(
-      input.id,
-      input.type,
-      input.title,
-      input.meta === undefined ? null : JSON.stringify(input.meta),
-      now,
-      now
-    );
-
-  // 只保留最近 50 个已结束任务，运行中的永远保留。
-  database
-    .prepare(
-      `DELETE FROM jobs WHERE status IN ('done','failed','cancelled') AND id NOT IN (
-         SELECT id FROM jobs ORDER BY created_at DESC LIMIT 50)`
-    )
-    .run();
-  notifyJobs();
-}
-
-export function createJobItem(jobId: string, targetId: string, title: string): void {
-  const database = requireDb();
-  const now = Date.now();
-  database
-    .prepare(
-      `INSERT INTO job_items (job_id, target_id, title, status, progress, message, updated_at)
-       VALUES (?, ?, ?, 'pending', 0, '', ?)
-       ON CONFLICT(job_id, target_id) DO UPDATE SET
-         title = excluded.title,
-         status = 'pending',
-         progress = 0,
-         message = '',
-         error = NULL,
-         updated_at = excluded.updated_at`
-    )
-    .run(jobId, targetId, title, now);
-  notifyJobs();
-}
-
-export function updateJob(
-  id: string,
-  patch: {
-    title?: string;
-    progress?: number;
-    message?: string;
-    status?: JobStatus;
-    error?: string | null;
-  }
-): void {
-  const database = requireDb();
-  const fields: string[] = [];
-  const values: unknown[] = [];
-  if (patch.title != null) {
-    fields.push('title = ?');
-    values.push(String(patch.title));
-  }
-  if (patch.progress != null) {
-    fields.push('progress = ?');
-    values.push(Math.min(100, Math.max(0, Number(patch.progress) || 0)));
-  }
-  if (patch.message != null) {
-    fields.push('message = ?');
-    values.push(String(patch.message));
-  }
-  if (patch.status != null) {
-    fields.push('status = ?');
-    values.push(patch.status);
-  }
-  if (patch.error !== undefined) {
-    fields.push('error = ?');
-    values.push(patch.error == null ? null : String(patch.error));
-  }
-  if (!fields.length) return;
-  fields.push('updated_at = ?');
-  values.push(Date.now(), id);
-  database
-    .prepare(`UPDATE jobs SET ${fields.join(', ')} WHERE id = ?`)
-    .run(...(values as Array<string | number | null>));
-  notifyJobs();
-}
-
-export function updateJobItem(
-  jobId: string,
-  targetId: string,
-  patch: {
-    title?: string;
-    status?: JobItemStatus;
-    progress?: number;
-    message?: string;
-    error?: string | null;
-  }
-): void {
-  const database = requireDb();
-  const fields = ['updated_at = ?'];
-  const values: unknown[] = [Date.now()];
-  if (patch.title != null) {
-    fields.push('title = ?');
-    values.push(String(patch.title));
-  }
-  if (patch.status != null) {
-    fields.push('status = ?');
-    values.push(patch.status);
-  }
-  if (patch.progress != null) {
-    fields.push('progress = ?');
-    values.push(Math.min(100, Math.max(0, Number(patch.progress) || 0)));
-  }
-  if (patch.message != null) {
-    fields.push('message = ?');
-    values.push(String(patch.message));
-  }
-  if (patch.error !== undefined) {
-    fields.push('error = ?');
-    values.push(patch.error == null ? null : String(patch.error));
-  }
-  values.push(jobId, targetId);
-  const result = database
-    .prepare(
-      `UPDATE job_items SET ${fields.join(', ')} WHERE job_id = ? AND target_id = ?`
-    )
-    .run(...(values as Array<string | number | null>));
-  if (!toNumber(result.changes)) {
-    database
-      .prepare(
-        `INSERT INTO job_items (job_id, target_id, title, status, progress, message, error, updated_at)
-         VALUES (?, ?, '', ?, ?, ?, ?, ?)`
-      )
-      .run(
-        jobId,
-        targetId,
-        patch.status || 'pending',
-        Math.min(100, Math.max(0, Number(patch.progress) || 0)),
-        patch.message || '',
-        patch.error == null ? null : patch.error,
-        Date.now()
-      );
-  }
-  notifyJobs();
-}
-
-export function finishJob(
-  id: string,
-  status: JobStatus,
-  error?: string | null,
-  message?: string
-): void {
-  const database = requireDb();
-  const now = Date.now();
-  database
-    .prepare(
-      `UPDATE jobs SET
-         status = ?,
-         progress = CASE WHEN ? = 'done' THEN 100 ELSE progress END,
-         message = ?,
-         error = ?,
-         finished_at = ?,
-         updated_at = ?
-       WHERE id = ?`
-    )
-    .run(
-      status,
-      status,
-      message == null
-        ? status === 'done'
-          ? '完成'
-          : status === 'cancelled'
-            ? '已取消'
-            : '失败'
-        : message,
-      error == null ? null : error,
-      now,
-      now,
-      id
-    );
-  notifyJobs();
-}
-
-function itemsForJobs(database: DatabaseSync, ids: string[]): Map<string, JobItem[]> {
-  const map = new Map<string, JobItem[]>();
-  if (!ids.length) return map;
-  const rows = database
-    .prepare(
-      `SELECT * FROM job_items WHERE job_id IN (${ids.map(() => '?').join(',')}) ORDER BY id ASC`
-    )
-    .all(...ids) as Array<Record<string, unknown>>;
-  for (const row of rows) {
-    const jobId = String(row.job_id || '');
-    if (!map.has(jobId)) map.set(jobId, []);
-    map.get(jobId)?.push(mapJobItem(row));
-  }
-  return map;
-}
-
-export function listJobs(limit = 40): JobRecord[] {
-  const database = requireDb();
-  const safeLimit = Math.min(100, Math.max(1, Math.round(limit)));
-  const rows = database
-    .prepare(
-      `SELECT * FROM jobs
-       ORDER BY CASE WHEN status IN ('running','paused') THEN 0 ELSE 1 END, updated_at DESC
-       LIMIT ?`
-    )
-    .all(safeLimit) as Array<Record<string, unknown>>;
-  const items = itemsForJobs(database, rows.map((row) => String(row.id || '')));
-  return rows.map((row) => mapJob(row, items.get(String(row.id || '')) || []));
-}
-
-export function getJob(id: string): JobRecord | null {
-  const database = requireDb();
-  const row = database.prepare('SELECT * FROM jobs WHERE id = ?').get(String(id)) as
-    | Record<string, unknown>
-    | undefined;
-  if (!row) return null;
-  const items = itemsForJobs(database, [String(row.id || '')]);
-  return mapJob(row, items.get(String(row.id || '')) || []);
-}
-
-export function clearFinishedJobs(): number {
-  const database = requireDb();
-  const result = database
-    .prepare("DELETE FROM jobs WHERE status IN ('done','failed','cancelled')")
-    .run();
-  notifyJobs();
-  return toNumber(result.changes);
-}
-
-export function markStaleJobs(): number {
-  const database = requireDb();
-  const now = Date.now();
-  const result = database
-    .prepare(
-      `UPDATE jobs SET status = 'failed', error = '应用退出，任务中断', message = '已中断',
-         finished_at = ?, updated_at = ?
-       WHERE status IN ('running','paused')`
-    )
-    .run(now, now);
-  return toNumber(result.changes);
-}
-
-export function addExportRecord(filePath: string, kind: string, title: string): void {
-  const database = requireDb();
-  database
-    .prepare('INSERT INTO exports (path, kind, title, created_at) VALUES (?, ?, ?, ?)')
-    .run(String(filePath || ''), String(kind || ''), String(title || ''), Date.now());
-  database
-    .prepare(
-      `DELETE FROM exports WHERE id NOT IN (
-         SELECT id FROM exports ORDER BY created_at DESC, id DESC LIMIT 100)`
-    )
-    .run();
-}
-
-export function listExports(limit = 50): ExportRecord[] {
-  const database = requireDb();
-  const rows = database
-    .prepare(
-      `SELECT id, path, kind, title, created_at FROM exports
-       ORDER BY created_at DESC, id DESC LIMIT ?`
-    )
-    .all(Math.min(100, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    id: toNumber(row.id),
-    path: String(row.path || ''),
-    kind: String(row.kind || ''),
-    title: String(row.title || ''),
-    createdAt: toNumber(row.created_at)
-  }));
-}
-
-export function clearExports(): number {
-  const database = requireDb();
-  const result = database.prepare('DELETE FROM exports').run();
-  return toNumber(result.changes);
-}
-
-export function deleteExport(id: number): boolean {
-  const database = requireDb();
-  const result = database.prepare('DELETE FROM exports WHERE id = ?').run(Number(id));
-  return toNumber(result.changes) > 0;
-}
+// 兼容旧 import：下载/任务/导出记录拆出后仍按原路径导出。
+export {
+  addDownload,
+  clearDownloads,
+  deleteDownload,
+  listDownloads,
+  updateDownload
+} from './library/downloads';
+export {
+  clearFinishedJobs,
+  createJob,
+  createJobItem,
+  finishJob,
+  getJob,
+  listJobs,
+  markStaleJobs,
+  setJobsListener,
+  updateJob,
+  updateJobItem
+} from './library/jobs';
+export { addExportRecord, clearExports, deleteExport, listExports } from './library/exports';
+export type { JobsListener } from './library/jobs';
