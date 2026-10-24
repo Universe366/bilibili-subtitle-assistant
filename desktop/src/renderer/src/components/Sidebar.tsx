@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import {
   Captions,
@@ -13,9 +13,14 @@ import {
 import type { BridgeStatus, JobRecord, Section, TabInfo } from '../../../shared/types';
 import { SubtitlesPanel } from './SubtitlesPanel';
 import { ChatPanel } from './ChatPanel';
-import { LibraryPanel } from './LibraryPanel';
+// 库与设置面板体积大、且只在首次切到对应 tab 时才需要，按需加载以缩短首屏。
+const LibraryPanel = lazy(() =>
+  import('./LibraryPanel').then((module) => ({ default: module.LibraryPanel }))
+);
 import { SummaryPanel } from './SummaryPanel';
-import { SettingsPanel } from './SettingsPanel';
+const SettingsPanel = lazy(() =>
+  import('./SettingsPanel').then((module) => ({ default: module.SettingsPanel }))
+);
 import { TaskCenter } from './TaskCenter';
 
 type IconComponent = ComponentType<{ size?: number | string; className?: string }>;
@@ -315,11 +320,19 @@ export function Sidebar({
         </div>
 
         <div className={`side-panel${section === 'library' ? ' is-active' : ''}`}>
-          {visited.has('library') && <LibraryPanel />}
+          {visited.has('library') && (
+            <Suspense fallback={null}>
+              <LibraryPanel />
+            </Suspense>
+          )}
         </div>
 
         <div className={`side-panel${section === 'settings' ? ' is-active' : ''}`}>
-          {visited.has('settings') && <SettingsPanel />}
+          {visited.has('settings') && (
+            <Suspense fallback={null}>
+              <SettingsPanel />
+            </Suspense>
+          )}
         </div>
       </div>
 
