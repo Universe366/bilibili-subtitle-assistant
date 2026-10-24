@@ -7,44 +7,37 @@ import {
   hasLibraryDatabase,
   libraryFilePath,
   releaseLibraryDatabase,
+  isFtsEnabled,
   requireDb,
+  setFtsEnabled,
   setLibraryInitializer,
   toNumber
 } from './library/db';
+import { VIDEO_COLUMNS, kindOf, mapVideoRow, pruneOrphans, sourceOf, uidOf } from './library/core';
 import { markStaleJobs } from './library/jobs';
 import { migrateSchema, schemaVersion } from './migrations';
 import type {
-  CollectionSearchHit,
   CollectionSummary,
   CollectionSummaryVersion,
   CollectionSummaryVersionMeta,
-  GlobalSearchResult,
   LibraryBundle,
   LibraryCollection,
   LibraryDetail,
-  LibraryHistoryItem,
   LibrarySort,
   LibraryTag,
-  LibraryTranscriptionItem,
   LibraryIngestPayload,
   LibraryIngestResult,
   LibraryList,
   LibraryNote,
   NoteVersion,
   NoteVersionMeta,
-  LibrarySearchMatch,
-  LibrarySearchResult,
   LibraryStats,
-  LibraryVideo,
   PageInfo,
   StoredSummary,
   SummaryRef,
-  SummarySearchHit,
   SummaryVersion,
   SummaryVersionMeta,
-  TrashItem,
-  Bookmark,
-  HistoryEntry
+  TrashItem
 } from '../shared/types';
 
 const SCHEMA = `
@@ -221,7 +214,6 @@ CREATE INDEX IF NOT EXISTS idx_tracks_video ON tracks(video_id);
 CREATE INDEX IF NOT EXISTS idx_videos_updated ON videos(updated_at DESC);
 `;
 
-let ftsEnabled = true;
 let staleChecked = false;
 let schemaState = { from: 0, to: 0 };
 
@@ -294,7 +286,7 @@ export function initLibrary(): void {
       "CREATE VIRTUAL TABLE IF NOT EXISTS segments_fts USING fts5(text, tokenize='trigram');"
     );
   } catch (error) {
-    ftsEnabled = false;
+    setFtsEnabled(false);
     console.warn('[library] FTS5 不可用，退化为 LIKE 搜索:', (error as Error).message);
   }
   if (!staleChecked) {
@@ -302,7 +294,7 @@ export function initLibrary(): void {
     const interrupted = markStaleJobs();
     if (interrupted) console.warn('[library] 标记中断任务', interrupted);
   }
-  console.log('[library] ready', file, `fts=${ftsEnabled}`);
+  console.log('[library] ready', file, `fts=${isFtsEnabled()}`);
 }
 
 setLibraryInitializer(initLibrary);
@@ -347,59 +339,6 @@ export function vacuumLibrary(): { before: number; after: number } {
   }
   const after = fs.existsSync(file) ? fs.statSync(file).size : 0;
   return { before, after };
-}
-
-function uidOf(info: PageInfo): string {
-  if (info.bvid) return `v:${info.bvid}:${info.cid ?? 0}`;
-  if (info.epId) return `e:${info.epId}:${info.cid ?? 0}`;
-  return `u:${canonicalUrl(info.url) || info.title || Date.now()}`;
-}
-
-function canonicalUrl(input: string): string {
-  const raw = String(input || '').trim();
-  if (!raw) return '';
-  try {
-    const url = new URL(raw);
-    if (!/^https?:$/.test(url.protocol)) return raw;
-    const host = url.hostname.toLowerCase().replace(/^www\./, '');
-    if (host === 'youtu.be' || host === 'youtube.com' || host === 'm.youtube.com') {
-      const id =
-        host === 'youtu.be'
-          ? url.pathname.split('/').filter(Boolean)[0]
-          : url.searchParams.get('v') || url.pathname.split('/').filter(Boolean).pop();
-      if (id) return `https://www.youtube.com/watch?v=${id}`;
-    }
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^(utm_|spm_id_from|vd_source|share_source|share_medium|from_source)/i.test(key)) {
-        url.searchParams.delete(key);
-      }
-    }
-    url.hash = '';
-    return url.toString();
-  } catch {
-    return raw;
-  }
-}
-
-function kindOf(info: PageInfo): string {
-  if (info.kind === 'youtube' || info.bvid || info.epId)
-    return info.kind === 'youtube' ? 'youtube' : 'video';
-  if (info.kind === 'local' || /^file:\/\//i.test(info.url || '')) return 'local';
-  if (info.kind === 'podcast') return 'podcast';
-  if (info.kind === 'page') return 'page';
-  return info.kind || 'page';
-}
-
-function sourceOf(info: PageInfo): string {
-  if (info.bvid || info.epId) return 'bilibili';
-  if (info.kind === 'youtube') return 'youtube';
-  if (info.kind === 'local' || /^file:\/\//i.test(info.url || '')) return 'local';
-  if (info.kind === 'podcast') return 'podcast';
-  try {
-    return new URL(info.url).hostname.replace(/^www\./, '') || 'web';
-  } catch {
-    return 'web';
-  }
 }
 
 function ensureVideo(
@@ -504,7 +443,7 @@ export function ingestVideo(payload: LibraryIngestPayload): LibraryIngestResult 
       .get(videoId, track.lan || '', track.source || '') as { id: number };
     const trackId = Number(trackRow.id);
 
-    if (ftsEnabled) {
+    if (isFtsEnabled()) {
       database
         .prepare(
           'DELETE FROM segments_fts WHERE rowid IN (SELECT id FROM segments WHERE track_id = ?)'
@@ -516,7 +455,7 @@ export function ingestVideo(payload: LibraryIngestPayload): LibraryIngestResult 
     const insert = database.prepare(
       'INSERT INTO segments (track_id, start_ms, end_ms, text) VALUES (?, ?, ?, ?)'
     );
-    const insertFts = ftsEnabled
+    const insertFts = isFtsEnabled()
       ? database.prepare('INSERT INTO segments_fts (rowid, text) VALUES (?, ?)')
       : null;
 
@@ -539,49 +478,6 @@ export function ingestVideo(payload: LibraryIngestPayload): LibraryIngestResult 
     }
     throw error;
   }
-}
-
-const VIDEO_COLUMNS = `
-  SELECT v.id, v.bvid, v.cid, v.title, v.owner, v.duration, v.cover, v.url,
-         v.kind, v.source, v.created_at, v.updated_at,
-         (SELECT COUNT(*) FROM tracks t WHERE t.video_id = v.id) AS track_count,
-         (SELECT COALESCE(SUM(t.line_count), 0) FROM tracks t WHERE t.video_id = v.id) AS line_count,
-         (SELECT MAX(s.updated_at) FROM summaries s WHERE s.video_id = v.id) AS summary_at,
-         (SELECT s.model FROM summaries s WHERE s.video_id = v.id
-            ORDER BY s.updated_at DESC LIMIT 1) AS summary_model,
-         (SELECT group_concat(tg.name, char(31)) FROM video_tags vt
-            JOIN tags tg ON tg.id = vt.tag_id WHERE vt.video_id = v.id) AS tags,
-         (SELECT group_concat(cl.name, char(30)) FROM collection_items ci
-            JOIN collections cl ON cl.id = ci.collection_id
-            WHERE ci.video_id = v.id) AS collections,
-         (SELECT COALESCE(SUM(length(sg.text)), 0) FROM segments sg
-            JOIN tracks t2 ON t2.id = sg.track_id WHERE t2.video_id = v.id) AS char_count
-  FROM videos v`;
-
-function mapVideoRow(row: Record<string, unknown>): LibraryVideo {
-  const summaryAt = row.summary_at == null ? null : toNumber(row.summary_at);
-  return {
-    id: toNumber(row.id),
-    bvid: row.bvid == null ? null : String(row.bvid),
-    cid: row.cid == null ? null : toNumber(row.cid),
-    title: String(row.title || ''),
-    owner: String(row.owner || ''),
-    duration: toNumber(row.duration),
-    cover: row.cover == null ? null : String(row.cover),
-    url: String(row.url || ''),
-    kind: String(row.kind || ''),
-    source: String(row.source || ''),
-    createdAt: toNumber(row.created_at),
-    updatedAt: toNumber(row.updated_at),
-    summaryUpdatedAt: summaryAt && summaryAt > 0 ? summaryAt : null,
-    summaryModel: row.summary_model == null ? undefined : String(row.summary_model),
-    tags: row.tags == null ? [] : String(row.tags).split('\u001f').filter(Boolean),
-    collections:
-      row.collections == null ? [] : String(row.collections).split('\u001e').filter(Boolean),
-    trackCount: toNumber(row.track_count),
-    lineCount: toNumber(row.line_count),
-    chars: toNumber(row.char_count)
-  };
 }
 
 const LIBRARY_ORDER: Record<LibrarySort, string> = {
@@ -943,7 +839,7 @@ export function removeVideos(ids: number[], options: { trash?: boolean } = {}): 
     let removed = 0;
     for (const id of clean) {
       if (options.trash !== false) addTrashEntry(database, id);
-      if (ftsEnabled) {
+      if (isFtsEnabled()) {
         database
           .prepare(
             'DELETE FROM segments_fts WHERE rowid IN (SELECT s.id FROM segments s JOIN tracks t ON t.id = s.track_id WHERE t.video_id = ?)'
@@ -1054,7 +950,7 @@ export function restoreTrash(id: number): { videoId: number } {
       const insertSegment = database.prepare(
         'INSERT INTO segments (track_id, start_ms, end_ms, text) VALUES (?, ?, ?, ?)'
       );
-      const insertFts = ftsEnabled
+      const insertFts = isFtsEnabled()
         ? database.prepare('INSERT INTO segments_fts (rowid, text) VALUES (?, ?)')
         : null;
       for (const segment of track.segments || []) {
@@ -1504,212 +1400,6 @@ export function restoreCollectionSummaryVersion(id: number): CollectionSummary {
   );
 }
 
-function sanitizeQuery(input: string): string {
-  return String(input || '')
-    .replace(/[\u0000-\u001f]/g, ' ')
-    .trim()
-    .slice(0, 100);
-}
-
-function searchTerms(input: string): string[] {
-  return sanitizeQuery(input)
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function ftsExpression(terms: string[]): string {
-  return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' AND ');
-}
-
-/** 标题 / UP / 标签 / 合集 / 笔记命中：和字幕命中分开返回，避免搜标题时得到「没有匹配的字幕」。 */
-function searchVideoRows(database: DatabaseSync, terms: string[]): LibraryVideo[] {
-  if (!terms.length) return [];
-  const where = terms
-    .map(
-      () =>
-        `(v.title LIKE ? OR v.owner LIKE ?
-          OR v.id IN (SELECT vt.video_id FROM video_tags vt
-                      JOIN tags tg ON tg.id = vt.tag_id WHERE tg.name LIKE ?)
-          OR v.id IN (SELECT ci.video_id FROM collection_items ci
-                      JOIN collections cl ON cl.id = ci.collection_id WHERE cl.name LIKE ?)
-          OR v.id IN (SELECT nt.video_id FROM notes nt WHERE nt.content_md LIKE ?))`
-    )
-    .join(' AND ');
-  const params = terms.flatMap((term) => {
-    const pattern = `%${term}%`;
-    return [pattern, pattern, pattern, pattern, pattern];
-  });
-  const rows = database
-    .prepare(`${VIDEO_COLUMNS} WHERE ${where} ORDER BY v.updated_at DESC LIMIT 20`)
-    .all(...params) as Array<Record<string, unknown>>;
-  return rows.map(mapVideoRow);
-}
-
-export function searchLibrary(input: string, limit = 60): LibrarySearchResult {
-  const database = requireDb();
-  const terms = searchTerms(input);
-  if (!terms.length) {
-    return { query: '', total: 0, matches: [], videos: [], mode: 'like' };
-  }
-
-  const videos = searchVideoRows(database, terms);
-  // trigram 分词对 <3 字的词不生效；任何一个词过短就退回 LIKE。
-  const useFts = ftsEnabled && terms.every((term) => term.length >= 3);
-  const likeParams = terms.map((term) => `%${term}%`);
-  const where = useFts ? 'segments_fts MATCH ?' : terms.map(() => 's.text LIKE ?').join(' AND ');
-  const params = useFts ? [ftsExpression(terms)] : likeParams;
-
-  const selectSql = useFts
-    ? `SELECT s.start_ms, s.end_ms, s.text, v.id AS video_id, v.bvid, v.title, v.owner, v.cover, v.url, t.lan_doc
-       FROM segments_fts
-       JOIN segments s ON s.id = segments_fts.rowid
-       JOIN tracks t ON t.id = s.track_id
-       JOIN videos v ON v.id = t.video_id
-       WHERE segments_fts MATCH ?
-       ORDER BY rank
-       LIMIT ?`
-    : `SELECT s.start_ms, s.end_ms, s.text, v.id AS video_id, v.bvid, v.title, v.owner, v.cover, v.url, t.lan_doc
-       FROM segments s
-       JOIN tracks t ON t.id = s.track_id
-       JOIN videos v ON v.id = t.video_id
-       WHERE ${where}
-       ORDER BY v.updated_at DESC, s.start_ms ASC
-       LIMIT ?`;
-
-  const countSql = useFts
-    ? 'SELECT COUNT(*) AS total FROM segments_fts WHERE segments_fts MATCH ?'
-    : `SELECT COUNT(*) AS total FROM segments s WHERE ${where}`;
-
-  let rows: Array<Record<string, unknown>> = [];
-  let total = 0;
-  try {
-    rows = database.prepare(selectSql).all(...params, limit) as Array<Record<string, unknown>>;
-    total = toNumber((database.prepare(countSql).get(...params) as { total?: unknown })?.total);
-  } catch (error) {
-    console.warn('[library] 搜索失败:', (error as Error).message);
-    return {
-      query: sanitizeQuery(input),
-      total: 0,
-      matches: [],
-      videos,
-      mode: useFts ? 'fts' : 'like'
-    };
-  }
-
-  const matches: LibrarySearchMatch[] = rows.map((row) => ({
-    videoId: toNumber(row.video_id),
-    bvid: row.bvid == null ? null : String(row.bvid),
-    title: String(row.title || ''),
-    owner: String(row.owner || ''),
-    cover: row.cover == null ? null : String(row.cover),
-    url: String(row.url || ''),
-    start: toNumber(row.start_ms) / 1000,
-    end: toNumber(row.end_ms) / 1000,
-    text: String(row.text || ''),
-    lanDoc: String(row.lan_doc || '')
-  }));
-
-  return {
-    query: sanitizeQuery(input),
-    total,
-    matches,
-    videos,
-    mode: useFts ? 'fts' : 'like'
-  };
-}
-
-function snippetAround(content: string, term: string, radius = 70): string {
-  const text = String(content || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const index = text.toLowerCase().indexOf(term.toLowerCase());
-  if (index < 0) return text.slice(0, radius * 2);
-  const start = Math.max(0, index - radius);
-  const end = Math.min(text.length, index + term.length + radius);
-  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
-}
-
-export function searchSummaries(input: string, limit = 12): SummarySearchHit[] {
-  const database = requireDb();
-  const terms = searchTerms(input);
-  if (!terms.length) return [];
-  const where = terms.map(() => 's.content_md LIKE ?').join(' AND ');
-  const params = terms.map((term) => `%${term}%`);
-  const rows = database
-    .prepare(
-      `SELECT s.video_id, s.content_md, s.updated_at,
-              v.title, v.owner, v.url, v.bvid, v.cid
-       FROM summaries s JOIN videos v ON v.id = s.video_id
-       WHERE ${where}
-       ORDER BY s.updated_at DESC
-       LIMIT ?`
-    )
-    .all(...params, Math.min(50, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
-
-  return rows.map((row) => ({
-    videoId: toNumber(row.video_id),
-    title: String(row.title || ''),
-    owner: String(row.owner || ''),
-    url: String(row.url || ''),
-    bvid: row.bvid == null ? null : String(row.bvid),
-    cid: row.cid == null ? null : toNumber(row.cid),
-    updatedAt: toNumber(row.updated_at),
-    snippet: snippetAround(String(row.content_md || ''), terms[0])
-  }));
-}
-
-export function globalSearch(input: string): GlobalSearchResult {
-  const library = searchLibrary(input, 40);
-  const summaries = searchSummaries(input, 12);
-  const collections = searchCollectionSummaries(input, 8);
-  const items = library.videos.slice(0, 8);
-  const lines = library.matches.slice(0, 30);
-  return {
-    query: library.query,
-    items,
-    lines,
-    summaries,
-    collections,
-    total: library.total + library.videos.length + summaries.length + collections.length
-  };
-}
-
-export function searchCollectionSummaries(input: string, limit = 8): CollectionSearchHit[] {
-  const database = requireDb();
-  const terms = searchTerms(input);
-  if (!terms.length) return [];
-  const where = terms.map(() => 'cs.content_md LIKE ?').join(' AND ');
-  const params = terms.map((term) => `%${term}%`);
-  const rows = database
-    .prepare(
-      `SELECT cs.collection_id, cs.content_md, cs.updated_at, cl.name
-       FROM collection_summaries cs JOIN collections cl ON cl.id = cs.collection_id
-       WHERE ${where}
-       ORDER BY cs.updated_at DESC
-       LIMIT ?`
-    )
-    .all(...params, Math.min(30, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    collectionId: toNumber(row.collection_id),
-    name: String(row.name || ''),
-    snippet: snippetAround(String(row.content_md || ''), terms[0]),
-    updatedAt: toNumber(row.updated_at)
-  }));
-}
-
-function pruneOrphans(database: DatabaseSync): void {
-  database
-    .prepare('DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM video_tags)')
-    .run();
-  database
-    .prepare(
-      'DELETE FROM collections WHERE id NOT IN (SELECT DISTINCT collection_id FROM collection_items)'
-    )
-    .run();
-}
-
 export function removeVideo(id: number): boolean {
   return removeVideos([Number(id)]) > 0;
 }
@@ -2049,193 +1739,6 @@ export function getNoteVersion(id: number): NoteVersion | null {
   };
 }
 
-export function listHistory(limit = 100): LibraryHistoryItem[] {
-  const database = requireDb();
-  const rows = database
-    .prepare(
-      `SELECT s.id, s.video_id, v.bvid, v.cid, v.title, v.owner, v.url, s.model, s.content_md, s.updated_at
-       FROM summaries s JOIN videos v ON v.id = s.video_id
-       ORDER BY s.updated_at DESC
-       LIMIT ?`
-    )
-    .all(Math.min(500, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    id: Number(row.id),
-    videoId: Number(row.video_id),
-    bvid: row.bvid ? String(row.bvid) : null,
-    cid: row.cid == null ? null : Number(row.cid),
-    title: String(row.title || ''),
-    owner: String(row.owner || ''),
-    url: String(row.url || ''),
-    model: String(row.model || ''),
-    content: String(row.content_md || ''),
-    updatedAt: toNumber(row.updated_at)
-  }));
-}
-
-export function deleteHistoryItem(id: number): boolean {
-  const database = requireDb();
-  const row = database.prepare('SELECT video_id FROM summaries WHERE id = ?').get(Number(id)) as
-    { video_id: number } | undefined;
-  if (row) {
-    // 删除总结时把版本一起清掉，否则「历史版本」还能把已删内容恢复回来。
-    database.prepare('DELETE FROM summary_versions WHERE video_id = ?').run(Number(row.video_id));
-  }
-  const result = database.prepare('DELETE FROM summaries WHERE id = ?').run(Number(id));
-  return Number(result.changes) > 0;
-}
-
-export function clearHistory(): number {
-  const database = requireDb();
-  database.prepare('DELETE FROM summary_versions').run();
-  const result = database.prepare('DELETE FROM summaries').run();
-  return Number(result.changes) || 0;
-}
-
-export function listTranscriptions(limit = 200): LibraryTranscriptionItem[] {
-  const database = requireDb();
-  const rows = database
-    .prepare(
-      `SELECT v.id, v.bvid, v.title, v.owner, v.url, v.updated_at,
-              COUNT(t.id) AS track_count,
-              COALESCE(SUM(t.line_count), 0) AS line_count,
-              COALESCE(MAX(t.lan_doc), '') AS lan_doc
-       FROM videos v JOIN tracks t ON t.video_id = v.id
-       GROUP BY v.id
-       ORDER BY v.updated_at DESC
-       LIMIT ?`
-    )
-    .all(Math.min(500, Math.max(1, Math.round(limit)))) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    videoId: Number(row.id),
-    bvid: row.bvid ? String(row.bvid) : null,
-    title: String(row.title || ''),
-    owner: String(row.owner || ''),
-    url: String(row.url || ''),
-    trackCount: Number(row.track_count) || 0,
-    lineCount: Number(row.line_count) || 0,
-    updatedAt: toNumber(row.updated_at),
-    lanDoc: String(row.lan_doc || '')
-  }));
-}
-
-/* ---------- 后台任务（任务中心） ---------- */
-
-const HISTORY_LIMIT = 5000;
-
-/** 记录一次网页访问；60 秒内同一 URL 只更新标题/时间，避免 SPA 刷出几十条。 */
-export function recordHistory(input: {
-  url: string;
-  title?: string;
-  favicon?: string | null;
-}): void {
-  const url = String(input?.url || '').trim();
-  if (!/^https?:\/\//i.test(url)) return;
-  const database = requireDb();
-  const now = Date.now();
-  const title = String(input.title || '').slice(0, 300);
-  const favicon = input.favicon ? String(input.favicon) : null;
-  const recent = database
-    .prepare(
-      'SELECT id, title, visited_at FROM history WHERE url = ? ORDER BY visited_at DESC LIMIT 1'
-    )
-    .get(url) as { id: number; title: string; visited_at: number } | undefined;
-
-  if (recent && now - Number(recent.visited_at) < 60_000) {
-    database
-      .prepare(
-        'UPDATE history SET visited_at = ?, title = ?, favicon = COALESCE(?, favicon) WHERE id = ?'
-      )
-      .run(now, title || recent.title || '', favicon, recent.id);
-  } else {
-    database
-      .prepare('INSERT INTO history (url, title, favicon, visited_at) VALUES (?, ?, ?, ?)')
-      .run(url, title, favicon, now);
-    database
-      .prepare(
-        'DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY visited_at DESC LIMIT ?)'
-      )
-      .run(HISTORY_LIMIT);
-  }
-}
-
-export function listBrowseHistory(query = '', limit = 100): HistoryEntry[] {
-  const database = requireDb();
-  const text = String(query || '').trim();
-  const capped = Math.min(500, Math.max(1, Math.round(limit)));
-  const rows = (
-    text
-      ? database
-          .prepare(
-            `SELECT id, url, title, favicon, visited_at FROM history
-             WHERE url LIKE ? OR title LIKE ?
-             ORDER BY visited_at DESC LIMIT ?`
-          )
-          .all(`%${text}%`, `%${text}%`, capped)
-      : database
-          .prepare(
-            'SELECT id, url, title, favicon, visited_at FROM history ORDER BY visited_at DESC LIMIT ?'
-          )
-          .all(capped)
-  ) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    id: toNumber(row.id),
-    url: String(row.url || ''),
-    title: String(row.title || ''),
-    favicon: row.favicon == null ? null : String(row.favicon),
-    visitedAt: toNumber(row.visited_at)
-  }));
-}
-
-export function clearBrowseHistory(): number {
-  const database = requireDb();
-  return toNumber(database.prepare('DELETE FROM history').run().changes);
-}
-
-export function listBookmarks(): Bookmark[] {
-  const database = requireDb();
-  const rows = database
-    .prepare('SELECT id, url, title, favicon, created_at FROM bookmarks ORDER BY created_at DESC')
-    .all() as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    id: toNumber(row.id),
-    url: String(row.url || ''),
-    title: String(row.title || ''),
-    favicon: row.favicon == null ? null : String(row.favicon),
-    createdAt: toNumber(row.created_at)
-  }));
-}
-
-export function isBookmarked(url: string): boolean {
-  const database = requireDb();
-  return Boolean(database.prepare('SELECT id FROM bookmarks WHERE url = ?').get(String(url || '')));
-}
-
-export function toggleBookmark(input: { url: string; title?: string; favicon?: string | null }): {
-  bookmarked: boolean;
-} {
-  const database = requireDb();
-  const url = String(input?.url || '').trim();
-  if (!/^https?:\/\//i.test(url)) throw new Error('只能收藏网页地址');
-  const existing = database.prepare('SELECT id FROM bookmarks WHERE url = ?').get(url) as
-    { id: number } | undefined;
-  if (existing) {
-    database.prepare('DELETE FROM bookmarks WHERE id = ?').run(existing.id);
-    return { bookmarked: false };
-  }
-  database
-    .prepare('INSERT INTO bookmarks (url, title, favicon, created_at) VALUES (?, ?, ?, ?)')
-    .run(url, String(input.title || url).slice(0, 300), input.favicon || null, Date.now());
-  return { bookmarked: true };
-}
-
-export function removeBookmark(url: string): boolean {
-  const database = requireDb();
-  return (
-    toNumber(database.prepare('DELETE FROM bookmarks WHERE url = ?').run(String(url)).changes) > 0
-  );
-}
-
 // 兼容旧 import：下载/任务/导出记录拆出后仍按原路径导出。
 export {
   addDownload,
@@ -2258,3 +1761,24 @@ export {
 } from './library/jobs';
 export { addExportRecord, clearExports, deleteExport, listExports } from './library/exports';
 export type { JobsListener } from './library/jobs';
+
+// 兼容旧 import：检索与历史域拆出后仍按原路径导出。
+export {
+  globalSearch,
+  searchCollectionSummaries,
+  searchLibrary,
+  searchSummaries
+} from './library/search';
+export {
+  clearBrowseHistory,
+  clearHistory,
+  deleteHistoryItem,
+  isBookmarked,
+  listBookmarks,
+  listBrowseHistory,
+  listHistory,
+  listTranscriptions,
+  recordHistory,
+  removeBookmark,
+  toggleBookmark
+} from './library/history';

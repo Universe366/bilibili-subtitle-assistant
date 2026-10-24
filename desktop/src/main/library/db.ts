@@ -39,6 +39,16 @@ export function requireDb(): DatabaseSync {
   return instance;
 }
 
+let ftsEnabled = true;
+
+export function setFtsEnabled(value: boolean): void {
+  ftsEnabled = value;
+}
+
+export function isFtsEnabled(): boolean {
+  return ftsEnabled;
+}
+
 export function toNumber(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
