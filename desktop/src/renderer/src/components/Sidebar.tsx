@@ -12,12 +12,16 @@ import {
 } from 'lucide-react';
 import type { BridgeStatus, JobRecord, Section, TabInfo } from '../../../shared/types';
 import { SubtitlesPanel } from './SubtitlesPanel';
-import { ChatPanel } from './ChatPanel';
+const ChatPanel = lazy(() =>
+  import('./ChatPanel').then((module) => ({ default: module.ChatPanel }))
+);
 // 库与设置面板体积大、且只在首次切到对应 tab 时才需要，按需加载以缩短首屏。
 const LibraryPanel = lazy(() =>
   import('./LibraryPanel').then((module) => ({ default: module.LibraryPanel }))
 );
-import { SummaryPanel } from './SummaryPanel';
+const SummaryPanel = lazy(() =>
+  import('./SummaryPanel').then((module) => ({ default: module.SummaryPanel }))
+);
 const SettingsPanel = lazy(() =>
   import('./SettingsPanel').then((module) => ({ default: module.SettingsPanel }))
 );
@@ -309,13 +313,17 @@ export function Sidebar({
 
         <div className={`side-panel${section === 'chat' ? ' is-active' : ''}`}>
           {visited.has('chat') && (
-            <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+            <Suspense fallback={null}>
+              <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+            </Suspense>
           )}
         </div>
 
         <div className={`side-panel${section === 'summary' ? ' is-active' : ''}`}>
           {visited.has('summary') && (
-            <SummaryPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+            <Suspense fallback={null}>
+              <SummaryPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+            </Suspense>
           )}
         </div>
 

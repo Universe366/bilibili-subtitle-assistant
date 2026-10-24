@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 58 个文件 / 239 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings/Summary/BrowserHub/VerifyCard 组件测试） |
+| 桌面单测 | 61 个文件 / 249 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings/Summary/BrowserHub/TabStrip/FindBar/ExportMenu 组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
