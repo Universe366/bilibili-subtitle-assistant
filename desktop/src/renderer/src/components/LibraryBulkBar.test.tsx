@@ -14,6 +14,9 @@ function props(overrides: Record<string, unknown> = {}) {
     onConcurrency: vi.fn(),
     onSelectAll: vi.fn(),
     onSummarize: vi.fn(),
+    onExportSubtitles: vi.fn(),
+    onExportSummary: vi.fn(),
+    exporting: false,
     onAddTag: vi.fn(),
     onAddCollection: vi.fn(),
     onDelete: vi.fn(),
@@ -49,6 +52,21 @@ describe('LibraryBulkBar', () => {
     expect(p.onAddTag).toHaveBeenCalled();
     expect(p.onAddCollection).toHaveBeenCalled();
     expect(p.onConcurrency).toHaveBeenCalledWith(4);
+  });
+
+  it('导出字幕与导出总结分别回调', () => {
+    const p = props();
+    render(<LibraryBulkBar {...p} />);
+    fireEvent.click(screen.getByText('导出字幕'));
+    fireEvent.click(screen.getByText('导出总结'));
+    expect(p.onExportSubtitles).toHaveBeenCalled();
+    expect(p.onExportSummary).toHaveBeenCalled();
+  });
+
+  it('导出中两个按钮禁用且提示导出中', () => {
+    render(<LibraryBulkBar {...props({ exporting: true })} />);
+    expect((screen.getByText('导出中…') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('导出总结') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('输入行打开时按类型给占位符，回车应用', () => {

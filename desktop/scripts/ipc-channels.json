@@ -41,6 +41,7 @@
   "downloads:list",
   "downloads:open",
   "downloads:reveal",
+  "export:batch",
   "export:save",
   "exports:clear",
   "exports:delete",

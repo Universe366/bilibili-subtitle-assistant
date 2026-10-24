@@ -525,6 +525,10 @@ const api: BsubApi = {
   importSkill: () =>
     ipcRenderer.invoke('skills:import') as Promise<Result<SkillItem | null>>,
 
+  exportBatch: (payload: { ids: number[]; kind: 'subtitles' | 'summary' }) =>
+    ipcRenderer.invoke('export:batch', payload) as Promise<
+      Result<{ canceled: true } | { dir: string; exported: number; skipped: string[] }>
+    >,
   exportVideo: (payload: ExportPayload) =>
     ipcRenderer.invoke('export:save', payload) as Promise<
       Result<{ path: string } | { canceled: true }>

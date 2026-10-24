@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 72 个文件 / 308 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 73 个文件 / 316 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -57,13 +57,14 @@
 
 ### Phase 0（2026-10-24，可维护性）
 - `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **11 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复、任务中心、AI 参数校验、历史与导出记录、诊断/权限/更新/桥状态只读通道、启动落盘（library.db/settings.json）；
-- 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（156 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
+- 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（157 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
 - `ipc.ts` 按域拆分：**library / browser / page / settings / media / jobs / tools / records** 八个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam`/`abortControllers` 在 `shared.ts`；`ipc.ts` 2.8k → **43 行**，只剩注册入口；
-- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终与代码同步（现 156 条）；
+- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终与代码同步（现 157 条）；
 - `library.ts` 按模块拆到 `library/`：schema / videos / db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 2683 → **102 行桶文件**；
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
 ### 0.37.2 之后的界面调整（未发版）
+- 批量条新增「导出字幕 / 导出总结」：选目录后逐个写文件，重名自动加序号，无内容的条目跳过并计数（`export:batch`）。
 - 标签页：支持 Ctrl+Tab / Ctrl+Shift+Tab 切换、Ctrl+1..9 定位、中键关闭、拖拽排序、右键菜单（关闭/关闭其他/关闭右侧/复制链接），新增 `tab:move` 通道。
 - 库列表：支持 Shift 连选、↑/↓ 移动光标、Enter 打开详情、空格进入选择。
 - 桌面端的「本次联网核对」改为**总是逐条展示证据**：语义判定不可用时不再整块隐藏，而是标注「未判定」并提示「证据只按词面与域名粗标」，与插件端行为一致（`components/VerifyCard.tsx`，补 5 条组件测试）。
@@ -108,7 +109,7 @@
 
 ### 如果任务是“提升可维护性”
 
-`docs/QUALITY.md` 的 **Phase 0 已完成**：11 条桌面 E2E、156 条 IPC channel 清单与漂移测试、`ipc.ts` 全量按域拆分（入口 43 行）。
+`docs/QUALITY.md` 的 **Phase 0 已完成**：11 条桌面 E2E、157 条 IPC channel 清单与漂移测试、`ipc.ts` 全量按域拆分（入口 43 行）。
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 

@@ -20,6 +20,8 @@ import {
 } from '../library';
 import { buildExport, exportFilters } from '../exporters';
 import { loadSettings } from '../settings';
+import { getLibraryDetail } from '../library';
+import { safeFileBase, uniqueFileName } from '../exportNames';
 import { failure, type IpcContext } from './shared';
 
 /** 历史记录 / 导出记录 / 文件保存 相关 IPC。 */
@@ -139,6 +141,84 @@ export function registerRecordsIpc(ctx: IpcContext): void {
         return { ok: true, data: { path: target } };
       } catch (error) {
         return failure<{ path: string } | { canceled: true }>(error);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'export:batch',
+    async (
+      _event,
+      payload: { ids: number[]; kind: 'subtitles' | 'summary' }
+    ): Promise<
+      Result<{ canceled: true } | { dir: string; exported: number; skipped: string[] }>
+    > => {
+      try {
+        const ids = Array.isArray(payload?.ids)
+          ? payload.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+          : [];
+        if (!ids.length) throw new Error('没有选择视频');
+        const kind = payload?.kind === 'summary' ? 'summary' : 'subtitles';
+        const picked = await dialog.showOpenDialog(ctx.win, {
+          title: kind === 'summary' ? '选择总结导出目录' : '选择字幕导出目录',
+          properties: ['openDirectory', 'createDirectory']
+        });
+        if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: { canceled: true } };
+
+        const dir = picked.filePaths[0];
+        const settings = loadSettings();
+        const used = new Set(fs.readdirSync(dir).map((name) => name.toLowerCase()));
+        const skipped: string[] = [];
+        let exported = 0;
+
+        for (const id of ids) {
+          const detail = getLibraryDetail(id);
+          const title = detail?.video?.title || '未命名视频';
+          try {
+            if (kind === 'summary') {
+              const content = detail?.summary?.content || '';
+              if (!content.trim()) {
+                skipped.push(title);
+                continue;
+              }
+              const name = uniqueFileName(used, safeFileBase(title), 'md');
+              const target = path.join(dir, name);
+              fs.writeFileSync(target, content, 'utf8');
+              addExportRecord(target, '总结', `${title} · summary`);
+              exported += 1;
+              continue;
+            }
+
+            if (!detail?.bundle || !detail.bundle.lines.length) {
+              skipped.push(title);
+              continue;
+            }
+            const format = settings.export.format === 'md' ? 'srt' : settings.export.format;
+            const built = buildExport({
+              format,
+              info: detail.bundle.info,
+              track: detail.bundle.track,
+              lines: detail.bundle.lines,
+              includeTimestamps: settings.export.includeTimestamps,
+              filenamePattern: settings.export.filenamePattern,
+              assFontSize: settings.export.assFontSize,
+              estimateTimestamps: settings.export.estimateTimestamps
+            });
+            const name = uniqueFileName(used, safeFileBase(built.filename), built.ext);
+            const target = path.join(dir, name);
+            fs.writeFileSync(target, built.content, 'utf8');
+            addExportRecord(target, '字幕', `${title} · ${format}`);
+            exported += 1;
+          } catch (error) {
+            console.warn('[export] 单条失败', title, (error as Error).message);
+            skipped.push(title);
+          }
+        }
+
+        console.log('[export] batch', kind, `dir=${dir}`, `exported=${exported}`, `skipped=${skipped.length}`);
+        return { ok: true, data: { dir, exported, skipped } };
+      } catch (error) {
+        return failure<{ dir: string; exported: number; skipped: string[] }>(error);
       }
     }
   );

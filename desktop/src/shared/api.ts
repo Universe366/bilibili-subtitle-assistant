@@ -333,6 +333,9 @@ export interface BsubApi {
   callMcp(server: McpServer, name: string, args: Record<string, unknown>): Promise<Result<string>>;
   importSkill(): Promise<Result<SkillItem | null>>;
 
+  exportBatch(payload: { ids: number[]; kind: 'subtitles' | 'summary' }): Promise<
+    Result<{ canceled: true } | { dir: string; exported: number; skipped: string[] }>
+  >;
   exportVideo(payload: ExportPayload): Promise<Result<{ path: string } | { canceled: true }>>;
   saveTextFile(payload: SaveTextPayload): Promise<Result<SaveTextResult>>;
 

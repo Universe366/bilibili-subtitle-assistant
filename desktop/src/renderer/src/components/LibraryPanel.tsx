@@ -91,6 +91,8 @@ export function LibraryPanel() {
   // 列表窗口化：库最多展示 500 条，一次全渲染会拖慢滚动，先渲染 80 条再按需追加。
   const [renderCount, setRenderCount] = useState(80);
   const [cursorId, setCursorId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState('');
   const lastSelectedRef = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [bulkKind, setBulkKind] = useState<'tag' | 'collection'>('tag');
@@ -902,6 +904,27 @@ export function LibraryPanel() {
     setRenderCount(80);
   }, [list, query, tagFilter, collectionFilter, sort]);
 
+  const exportSelected = async (kind: 'subtitles' | 'summary') => {
+    if (!selectedIds.size || exporting) return;
+    setExporting(true);
+    try {
+      const response = await window.bsub.exportBatch({ ids: [...selectedIds], kind });
+      if (!response.ok) setError(response.error);
+      else if ('canceled' in response.data) return;
+      else {
+        const done = response.data.exported;
+        const skipped = response.data.skipped.length;
+        const label = kind === 'subtitles' ? '字幕' : '总结';
+        setExportNotice(
+          '已导出 ' + done + ' 个' + label + (skipped ? '，跳过 ' + skipped + ' 个（无内容）' : '')
+        );
+        window.setTimeout(() => setExportNotice(''), 5000);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const stats = list?.stats;
   const activeVideo = detail?.video ?? list?.videos.find((video) => video.id === selectedId) ?? null;
   const visibleVideos = list
@@ -1006,6 +1029,7 @@ export function LibraryPanel() {
         onManage={() => setManageOpen(true)}
       />
 
+      {exportNotice && <div className="save-status">{exportNotice}</div>}
       {selectMode && (
         <LibraryBulkBar
           count={selectedIds.size}
@@ -1017,6 +1041,9 @@ export function LibraryPanel() {
           onConcurrency={setBulkConcurrency}
           onSelectAll={() => setSelectedIds(new Set(visibleVideos.map((video) => video.id)))}
           onSummarize={() => void startBulkSummary()}
+          onExportSubtitles={() => void exportSelected('subtitles')}
+          onExportSummary={() => void exportSelected('summary')}
+          exporting={exporting}
           onAddTag={() => openBulkInput('tag')}
           onAddCollection={() => setBulkCollectionOpen(true)}
           onDelete={() => setBulkDeleteOpen(true)}

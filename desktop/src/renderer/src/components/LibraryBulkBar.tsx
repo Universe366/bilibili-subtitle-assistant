@@ -8,6 +8,9 @@ interface LibraryBulkBarProps {
   onConcurrency: (value: number) => void;
   onSelectAll: () => void;
   onSummarize: () => void;
+  onExportSubtitles: () => void;
+  onExportSummary: () => void;
+  exporting: boolean;
   onAddTag: () => void;
   onAddCollection: () => void;
   onDelete: () => void;
@@ -17,7 +20,7 @@ interface LibraryBulkBarProps {
   onCloseInput: () => void;
 }
 
-/** 批量选择模式的操作条：全选、批量总结、并发、加标签/合集、删除、取消。 */
+/** 批量选择模式的操作条：全选、批量总结、导出字幕/总结、并发、加标签/合集、删除、取消。 */
 export function LibraryBulkBar({
   count,
   visibleCount,
@@ -28,6 +31,9 @@ export function LibraryBulkBar({
   onConcurrency,
   onSelectAll,
   onSummarize,
+  onExportSubtitles,
+  onExportSummary,
+  exporting,
   onAddTag,
   onAddCollection,
   onDelete,
@@ -44,6 +50,12 @@ export function LibraryBulkBar({
       </button>
       <button className="mini-btn primary" disabled={!count} onClick={onSummarize}>
         批量总结
+      </button>
+      <button className="mini-btn" disabled={!count || exporting} onClick={onExportSubtitles}>
+        {exporting ? '导出中…' : '导出字幕'}
+      </button>
+      <button className="mini-btn" disabled={!count || exporting} onClick={onExportSummary}>
+        导出总结
       </button>
       <select
         className="mini-select"
