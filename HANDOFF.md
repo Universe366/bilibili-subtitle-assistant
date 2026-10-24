@@ -1,9 +1,9 @@
 # HANDOFF —— 当前状态与交接说明
 
 > 更新时间：2026-10-24  
-> 适用版本：桌面 **0.37.7** / 插件 **2.18.6**  
-> 当前发布基线：`230ef79`（0.37.7）  
-> 最新 Release：`v0.37.7`  
+> 适用版本：桌面 **0.37.8** / 插件 **2.18.6**  
+> 当前发布基线：`4e8145c`（0.37.8）  
+> 最新 Release：`v0.37.8`  
 > 验收清单：[验收清单.md](验收清单.md)  
 > 工作区：clean
 
@@ -26,9 +26,9 @@
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
 | 插件 CI | `master`/PR 通过 |
-| 发布 CI | `v0.37.7` 通过 |
+| 发布 CI | `v0.37.8` 通过 |
 | 安装包 | 未签名；SmartScreen 会提示 |
-| 自动更新 | `latest.yml` 指向 0.37.7，`/releases/latest` 已确认 |
+| 自动更新 | `latest.yml` 指向 0.37.8，`/releases/latest` 已确认 |
 
 仓库体积：约 36MB（FFmpeg.wasm 31MB）；本地工作区约 1.7GB（含 `node_modules`、`release/win-unpacked`）。
 
