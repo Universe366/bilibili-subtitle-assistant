@@ -9,6 +9,8 @@ export interface TabInfo {
   favicon?: string;
   suspended: boolean;
   zoom: number;
+  /** 固定后排在普通标签之前 */
+  pinned?: boolean;
 }
 
 export interface FindResult {

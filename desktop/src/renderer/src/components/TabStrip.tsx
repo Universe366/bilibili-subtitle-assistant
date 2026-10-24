@@ -11,12 +11,22 @@ interface TabMenuState {
 
 export function TabStrip({
   tabs,
-  onSearch
+  vertical = false,
+  onSearch,
+  onNewTab
 }: {
   tabs: TabInfo[];
+  vertical?: boolean;
   onSearch?: () => void;
+  onNewTab?: () => void;
 }) {
   const [menu, setMenu] = useState<TabMenuState | null>(null);
+  const [filter, setFilter] = useState('');
+  const visibleTabs = filter.trim()
+    ? tabs.filter((tab) =>
+        `${tab.title} ${tab.url}`.toLowerCase().includes(filter.trim().toLowerCase())
+      )
+    : tabs;
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -48,9 +58,20 @@ export function TabStrip({
   };
 
   return (
-    <div className="tab-strip">
+    <div className={`tab-strip${vertical ? ' is-vertical' : ''}`}>
+      {vertical && (
+        <div className="tab-filter">
+          <Search size={12} />
+          <input
+            value={filter}
+            placeholder="搜索标签…"
+            spellCheck={false}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+        </div>
+      )}
       <div className="tab-strip-list">
-        {tabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <div
             key={tab.id}
             className={`tab${tab.active ? ' is-active' : ''}${tab.suspended ? ' is-suspended' : ''}`}
@@ -86,6 +107,11 @@ export function TabStrip({
                 <Globe size={13} />
               )}
             </span>
+            {tab.pinned && (
+              <span className="tab-pin" title="已固定">
+                ★
+              </span>
+            )}
             <span className="tab-title">{tab.title || '新标签页'}</span>
             <button
               className="tab-close"
@@ -107,7 +133,11 @@ export function TabStrip({
       >
         <Search size={14} />
       </button>
-      <button className="tab-new" title="新建标签页" onClick={() => void window.bsub.newTab()}>
+      <button
+        className="tab-new"
+        title="新建标签页（起始页）"
+        onClick={() => (onNewTab ? onNewTab() : void window.bsub.newTab())}
+      >
         <Plus size={15} />
       </button>
 
@@ -126,6 +156,15 @@ export function TabStrip({
             }}
           >
             关闭
+          </button>
+          <button
+            className="tab-menu-item"
+            onClick={() => {
+              void window.bsub.pinTab(menu.tab.id, !menu.tab.pinned);
+              setMenu(null);
+            }}
+          >
+            {menu.tab.pinned ? '取消固定' : '固定标签'}
           </button>
           <button
             className="tab-menu-item"

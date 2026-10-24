@@ -44,6 +44,12 @@ export function registerBrowserIpc(ctx: IpcContext): void {
     }
     return result;
   });
+  ipcMain.handle('tab:set-visible', (_event, visible: boolean) => {
+    ctx.tabs.setActiveViewVisible(visible !== false);
+  });
+  ipcMain.handle('tab:pin', (_event, id: string, pinned: boolean) => {
+    ctx.tabs.pin(id, pinned === true);
+  });
   ipcMain.handle('tab:move', (_event, id: string, index: number) => {
     ctx.tabs.move(id, index);
   });

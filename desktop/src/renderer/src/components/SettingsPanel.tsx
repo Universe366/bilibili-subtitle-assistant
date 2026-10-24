@@ -1006,9 +1006,6 @@ export function SettingsPanel() {
             ) : (
               <span className="settings-saved">已保存</span>
             )}
-            <button className="mini-btn" onClick={() => void window.bsub.openSettings()}>
-              独立窗口
-            </button>
             <button className="mini-btn primary" disabled={saving} onClick={() => void save()}>
               {saving ? <Loader2 size={12} className="spin" /> : <Save size={12} />} 保存
             </button>

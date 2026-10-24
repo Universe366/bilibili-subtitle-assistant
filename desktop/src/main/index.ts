@@ -21,7 +21,6 @@ import { installPermissionGate } from './permissions';
 import { installCsp } from './csp';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
-import { openSettingsWindow } from './settingsWindow';
 import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
 import { migrateLegacyUserData } from './userDataMigration';
 import { loadSession } from './session';
@@ -166,11 +165,6 @@ function createWindow(): void {
     if (input.control && (input.key === '-' || input.key === '_')) {
       event.preventDefault();
       tabManager?.zoomOut();
-      return;
-    }
-    if (input.control && input.key === ',') {
-      event.preventDefault();
-      openSettingsWindow();
       return;
     }
     if (input.control && input.key === '0') {

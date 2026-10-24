@@ -46,7 +46,8 @@ function installBsub() {
     closeTab: vi.fn(async () => undefined),
     moveTab: vi.fn(async () => undefined),
     newTab: vi.fn(),
-    writeClipboard: vi.fn(async () => ({ ok: true }))
+    writeClipboard: vi.fn(async () => ({ ok: true })),
+    pinTab: vi.fn(async () => undefined)
   };
   Object.defineProperty(window, 'bsub', { configurable: true, value: api });
   return api;
@@ -106,12 +107,38 @@ describe('TabStrip', () => {
     expect(api.moveTab).toHaveBeenCalledWith('t1', 2);
   });
 
+  it('纵向模式可以搜索过滤标签', () => {
+    render(<TabStrip tabs={tabs} vertical />);
+    const input = screen.getByPlaceholderText('搜索标签…');
+    fireEvent.change(input, { target: { value: '第三个' } });
+    expect(screen.queryByText('B 站首页')).toBeNull();
+    expect(screen.getByText('第三个')).toBeTruthy();
+  });
+
+  it('右键菜单可固定标签', () => {
+    const api = installBsub();
+    render(<TabStrip tabs={tabs} />);
+    fireEvent.contextMenu(screen.getByText('B 站首页'));
+    fireEvent.click(screen.getByText('固定标签'));
+    expect(api.pinTab).toHaveBeenCalledWith('t1', true);
+  });
+
+  it('已固定标签显示图钉并在菜单里可取消', () => {
+    const api = installBsub();
+    const pinned = [{ ...tabs[0], pinned: true }, ...tabs.slice(1)];
+    render(<TabStrip tabs={pinned} />);
+    expect(screen.getByTitle('已固定')).toBeTruthy();
+    fireEvent.contextMenu(screen.getByText('B 站首页'));
+    fireEvent.click(screen.getByText('取消固定'));
+    expect(api.pinTab).toHaveBeenCalledWith('t1', false);
+  });
+
   it('休眠标签带提示，新建与搜索按钮可用', () => {
     const api = installBsub();
     const onSearch = vi.fn();
     render(<TabStrip tabs={tabs} onSearch={onSearch} />);
     expect(screen.getByTitle(/已休眠/)).toBeTruthy();
-    fireEvent.click(screen.getByTitle('新建标签页'));
+    fireEvent.click(screen.getByTitle(/新建标签页/));
     expect(api.newTab).toHaveBeenCalled();
     fireEvent.click(screen.getByTitle(/全局搜索/));
     expect(onSearch).toHaveBeenCalled();

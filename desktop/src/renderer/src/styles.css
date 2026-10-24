@@ -5013,3 +5013,187 @@ button:disabled {
   flex: 1;
   min-height: 0;
 }
+
+/* ---------- 起始页 / 设置页 ---------- */
+.start-page,
+.settings-page {
+  position: absolute;
+  inset: 54px 0 0 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+.start-page {
+  align-items: center;
+  padding-top: 12vh;
+  gap: 22px;
+}
+
+.start-close {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.start-hero {
+  width: min(680px, 86vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.start-brand {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+}
+
+.start-search {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.start-search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.start-hint {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.start-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.start-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.start-action:hover {
+  background: var(--surface-2);
+}
+
+.start-recent {
+  width: min(680px, 86vw);
+}
+
+.start-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.start-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.start-recent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.start-recent-card:hover {
+  background: var(--surface-2);
+}
+
+.start-recent-title {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.start-recent-meta {
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.settings-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.settings-page .settings-panel {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 2px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--faint);
+}
+
+.tab-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+}
+
+.tab-pin {
+  color: var(--accent);
+  font-size: 8px;
+  margin-right: 1px;
+}

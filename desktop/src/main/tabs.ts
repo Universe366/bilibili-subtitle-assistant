@@ -7,7 +7,6 @@ import type { FindResult, LayoutRect, TabInfo } from '../shared/types';
 import { normalizeUrl } from './url';
 import { SELECTION_TOOLBAR_SCRIPT } from './selectionToolbar';
 import { loadSettings } from './settings';
-import { openSettingsWindow } from './settingsWindow';
 
 // 后台标签闲置多久后释放渲染进程。环境变量用于测试覆盖。
 const ENV_SUSPEND_MS = Number(process.env.BSUB_SUSPEND_MS) || 0;
@@ -23,6 +22,7 @@ interface TabRecord {
   suspended: boolean;
   lastActiveAt: number;
   zoom: number;
+  pinned?: boolean;
   loadPromise?: Promise<void>;
 }
 
@@ -268,11 +268,6 @@ export class TabManager {
       if (input.key === 'F11') {
         event.preventDefault();
         win?.setFullScreen(!win.isFullScreen());
-        return;
-      }
-      if (input.control && input.key === ',') {
-        event.preventDefault();
-        openSettingsWindow();
         return;
       }
       if (input.control && (input.key === '=' || input.key === '+')) {
@@ -542,6 +537,18 @@ export class TabManager {
   }
 
   /** 拖拽排序：把标签移动到最后一次落点，Map 的插入顺序就是展示顺序。 */
+  pin(id: string, pinned: boolean): void {
+    const record = this.tabs.get(id);
+    if (!record) return;
+    record.pinned = pinned === true;
+    // 固定区在前：重建 Map 顺序，保证 list() 与 Ctrl+Tab 顺序一致。
+    const entries = [...this.tabs.entries()];
+    entries.sort((a, b) => Number(b[1].pinned === true) - Number(a[1].pinned === true));
+    this.tabs.clear();
+    for (const [key, value] of entries) this.tabs.set(key, value);
+    this.emit();
+  }
+
   move(id: string, toIndex: number): void {
     if (!this.tabs.has(id)) return;
     const entries = [...this.tabs.entries()];
@@ -745,7 +752,9 @@ export class TabManager {
   }
 
   list(): TabInfo[] {
-    return [...this.tabs.values()].map((record) => {
+    return [...this.tabs.values()]
+      .sort((a, b) => Number(b.pinned === true) - Number(a.pinned === true))
+      .map((record) => {
       const wc = record.view?.webContents;
       let canGoBack = false;
       let canGoForward = false;
@@ -767,7 +776,8 @@ export class TabManager {
         canGoForward,
         favicon: record.favicon,
         suspended: record.suspended,
-        zoom: record.zoom || 1
+        zoom: record.zoom || 1,
+        pinned: record.pinned === true
       };
     });
   }

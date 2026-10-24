@@ -9,6 +9,8 @@ import { FirstRunWizard } from './components/FirstRunWizard';
 import { GlobalSearch } from './components/GlobalSearch';
 import { BrowserHub, type HubSection } from './components/BrowserHub';
 import { ReaderMode } from './components/ReaderMode';
+import { StartPage } from './components/StartPage';
+import { SettingsPanel } from './components/SettingsPanel';
 import { nextTabId, tabIdByNumber } from './lib/tabs';
 import { useDropImport } from './lib/dropImport';
 import { CommandPalette, type CommandItem } from './components/CommandPalette';
@@ -41,6 +43,8 @@ export default function App() {
   const [hub, setHub] = useState<HubSection | null>(null);
   const [readerOpen, setReaderOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
 
   // 内置浏览器是原生 WebContentsView，永远盖在 renderer 上面。
@@ -345,6 +349,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
 
+  useEffect(() => {
+    void window.bsub.setActiveViewVisible(!(startOpen || settingsOpen));
+  }, [startOpen, settingsOpen]);
+
   const handleSectionSelect = (next: Section) => {
     setSection(next);
     if (sidebarCollapsed) {
@@ -383,6 +391,8 @@ export default function App() {
     { id: 'section-chat', label: '打开面板：对话', run: () => setSection('chat') },
     { id: 'section-library', label: '打开面板：库', run: () => setSection('library') },
     { id: 'section-settings', label: '打开面板：设置', run: () => setSection('settings') },
+    { id: 'start-page', label: '打开起始页', hint: 'Ctrl+T', run: () => setStartOpen(true) },
+    { id: 'settings-page', label: '打开设置页', hint: 'Ctrl+,', run: () => setSettingsOpen(true) },
     { id: 'hub-tabs', label: '打开面板：标签页', hint: 'Ctrl+Shift+A', run: () => setHub('tabs') },
     { id: 'hub-history', label: '打开面板：历史 / 书签 / 下载', run: () => setHub('history') },
     { id: 'reader', label: '打开阅读模式', hint: 'Alt+R', run: () => setReaderOpen(true) },
@@ -426,7 +436,7 @@ export default function App() {
       className={`app-shell${verticalTabs ? ' vertical-tabs' : ''}`}
       {...drop.handlers}
     >
-      <TabStrip tabs={tabs} onSearch={() => setSearchOpen(true)} />
+      <TabStrip tabs={tabs} vertical={verticalTabs} onSearch={() => setSearchOpen(true)} onNewTab={() => setStartOpen(true)} />
       <div className="app-main">
       <AddressBar
         tab={active}
@@ -533,6 +543,41 @@ export default function App() {
       {drop.dragging && (
         <div className="drop-overlay">
           <div className="drop-card">松手打开链接或 BV 号</div>
+        </div>
+      )}
+
+      {startOpen && (
+        <StartPage
+          onNavigate={(input) => void window.bsub.newTab(input)}
+          onOpenLibrary={() => {
+            setStartOpen(false);
+            handleSectionSelect('library');
+          }}
+          onOpenHistory={() => {
+            setStartOpen(false);
+            setHub('history');
+          }}
+          onOpenTasks={() => {
+            setStartOpen(false);
+            setHub('tabs');
+          }}
+          onOpenSettings={() => {
+            setStartOpen(false);
+            setSettingsOpen(true);
+          }}
+          onClose={() => setStartOpen(false)}
+        />
+      )}
+
+      {settingsOpen && (
+        <div className="settings-page">
+          <div className="settings-page-head">
+            <span>设置</span>
+            <button className="mini-btn" onClick={() => setSettingsOpen(false)}>
+              关闭
+            </button>
+          </div>
+          <SettingsPanel />
         </div>
       )}
 
