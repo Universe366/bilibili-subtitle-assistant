@@ -107,23 +107,25 @@ async function run(ws, body) {
   return value === undefined ? undefined : JSON.parse(value);
 }
 
-async function waitForPetTarget(timeoutMs = 15000) {
+async function waitForWindowTarget(kind, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json`);
       const targets = await response.json();
-      const pet = targets.find(
-        (target) => target.type === 'page' && String(target.url).includes('window=pet')
+      const found = targets.find(
+        (target) => target.type === 'page' && String(target.url).includes(`window=${kind}`)
       );
-      if (pet) return pet;
+      if (found) return found;
     } catch {
       // not ready
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
-  throw new Error('等待桌宠窗口超时');
+  throw new Error(`等待 window=${kind} 窗口超时`);
 }
+
+const waitForPetTarget = () => waitForWindowTarget('pet');
 
 async function connectTarget(target) {
   const socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -510,6 +512,119 @@ try {
       `
     );
     return `compact=${compact.w}x${compact.h} bubble=${bubble.w}x${bubble.h} pos=${position.x},${position.y} shot=${shot.prefix.length}`;
+  });
+
+  // 13. 框选截图：覆盖窗拖出区域后选「对话」，应回传裁剪图
+  await step('框选截图', async () => {
+    await run(
+      ws,
+      `
+      const snap = await window.bsub.getSettings();
+      const next = snap.data.settings;
+      next.general.petEnabled = true;
+      next.general.petSize = 120;
+      await window.bsub.saveSettings(next);
+      return JSON.stringify({ ok: true });
+      `
+    );
+    const petTarget = await waitForPetTarget();
+    const pet = await connectTarget(petTarget);
+
+    // 不 await：截图会一直挂起，直到覆盖窗回传结果。
+    await evaluate(
+      pet,
+      `(() => {
+        window.__shotResult = undefined;
+        window.bsub.captureRegion().then((result) => {
+          window.__shotResult = result
+            ? { action: result.action, prefix: String(result.dataUrl).slice(0, 22), width: result.width, height: result.height }
+            : null;
+        }).catch((error) => { window.__shotResult = { error: String(error && error.message) }; });
+        return 'started';
+      })()`
+    );
+
+    const shotTarget = await waitForWindowTarget('shot');
+    const shot = await connectTarget(shotTarget);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const rootReady = await evaluate(shot, 'Boolean(document.querySelector(".shot-root"))');
+    if (!rootReady) throw new Error('覆盖窗未渲染');
+
+    await evaluate(
+      shot,
+      `(() => {
+        const root = document.querySelector('.shot-root');
+        root.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 120, clientY: 120, button: 0 }));
+        return 'down';
+      })()`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await evaluate(
+      shot,
+      `(() => {
+        const root = document.querySelector('.shot-root');
+        root.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 420, clientY: 300 }));
+        return 'move';
+      })()`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await evaluate(
+      shot,
+      `(() => {
+        const root = document.querySelector('.shot-root');
+        root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 420, clientY: 300, button: 0 }));
+        return 'up';
+      })()`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const toolbar = await evaluate(
+      shot,
+      `JSON.stringify(Array.from(document.querySelectorAll('.shot-toolbar button')).map((b) => b.textContent))`
+    );
+    const buttons = JSON.parse(toolbar || '[]');
+    if (!buttons.includes('识别图片') || !buttons.includes('对话') || !buttons.includes('提取文字')) {
+      throw new Error(`动作条异常：${toolbar}`);
+    }
+
+    await evaluate(
+      shot,
+      `(() => {
+        const target = Array.from(document.querySelectorAll('.shot-toolbar button')).find((b) => b.textContent === '对话');
+        if (!target) return 'missing';
+        target.click();
+        return 'clicked';
+      })()`
+    );
+
+    const deadline = Date.now() + 8000;
+    let result = null;
+    while (Date.now() < deadline) {
+      result = JSON.parse((await evaluate(pet, 'JSON.stringify(window.__shotResult ?? null)')) || 'null');
+      if (result) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    shot.close();
+    pet.close();
+
+    await run(
+      ws,
+      `
+      const snap = await window.bsub.getSettings();
+      const next = snap.data.settings;
+      next.general.petEnabled = false;
+      await window.bsub.saveSettings(next);
+      return JSON.stringify({ ok: true });
+      `
+    );
+    if (!result) throw new Error('框选截图没有回传结果');
+    if (result.error) throw new Error(`框选失败：${result.error}`);
+    if (result.action !== 'chat') throw new Error(`动作异常：${result.action}`);
+    if (!String(result.prefix).startsWith('data:image/png;base64,')) {
+      throw new Error(`裁剪图异常：${result.prefix}`);
+    }
+    return `${result.width}x${result.height} ${result.action}`;
   });
 
   ws.close();

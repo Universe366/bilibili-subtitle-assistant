@@ -10,6 +10,7 @@ import { registerPageIpc } from './ipc/page';
 import { registerJobsIpc } from './ipc/jobs';
 import { registerLibraryIpc } from './ipc/library';
 import { registerMediaIpc } from './ipc/media';
+import { registerShotIpc } from './ipc/shot';
 import { abortControllers } from './ipc/shared';
 import type { IpcContext } from './ipc/shared';
 
@@ -31,6 +32,8 @@ export function registerIpc(win: BrowserWindow, tabs: TabManager): void {
   registerSettingsIpc(ctx);
 
   registerMediaIpc(ctx);
+
+  registerShotIpc();
 
   registerToolsIpc(ctx);
 

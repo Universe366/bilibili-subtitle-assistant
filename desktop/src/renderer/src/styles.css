@@ -5957,3 +5957,120 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- 框选截图覆盖窗 ---------- */
+.is-shot-window,
+.is-shot-window body,
+.is-shot-window #root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.shot-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.shot-root.is-chosen {
+  cursor: default;
+}
+
+.shot-image {
+  position: absolute;
+  inset: 0;
+  width: var(--shot-width, 100vw);
+  height: var(--shot-height, 100vh);
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.shot-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.shot-selection {
+  position: absolute;
+  border: 1px solid #7cc4ff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  cursor: default;
+}
+
+.shot-root.is-dragging .shot-selection {
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.32);
+}
+
+.shot-size {
+  position: absolute;
+  left: 0;
+  top: -22px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(20, 20, 24, 0.85);
+  color: #e8f3ff;
+  font: 11px/1.6 system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.shot-hint {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(20, 20, 24, 0.82);
+  color: #fff;
+  font: 12px/1.6 system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.shot-toolbar {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(24, 24, 28, 0.95);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+}
+
+.shot-toolbar button {
+  flex: 1;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #3a3a44;
+  color: #fff;
+  font: 12px/1.4 system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.shot-toolbar button:hover {
+  background: #4a4a56;
+}
+
+.shot-toolbar button:first-child {
+  background: #ff6aa6;
+}
+
+.shot-toolbar button:first-child:hover {
+  background: #ff7fb3;
+}
+
+.shot-toolbar .shot-toolbar-cancel {
+  flex: 0 0 auto;
+  background: transparent;
+  color: #b9b9c4;
+}

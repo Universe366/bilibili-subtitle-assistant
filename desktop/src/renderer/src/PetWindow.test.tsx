@@ -46,6 +46,7 @@ function installBsub() {
     movePet: vi.fn(async () => undefined),
     dropPet: vi.fn(async () => ({ x: 10, y: 10 })),
     capturePage: vi.fn(async () => ({ ok: true as const, data: { dataUrl: SHOT } })),
+    captureRegion: vi.fn(async () => ({ action: 'chat' as const, dataUrl: SHOT, width: 200, height: 120 })),
     readSelection: vi.fn(async () => ({
       ok: true as const,
       data: { title: '测试页', url: 'https://example.com', selection: '这段是被选中的文字' }
@@ -121,19 +122,73 @@ describe('PetWindow', () => {
     expect(second.api.setPetLayout).toHaveBeenLastCalledWith('widget');
   });
 
-  it('看屏幕：截图后带图提问，且不把整页正文塞进去', async () => {
+  it('框选截图选「对话」：带裁剪图提问，且不把整页正文塞进去', async () => {
     const { api } = installBsub();
     render(<PetWindow />);
     openBubble();
-    fireEvent.click(screen.getByTitle('截取当前页面并提问（识图）'));
+    fireEvent.click(screen.getByTitle('框选屏幕区域，再选识别图片 / 对话 / 提取文字'));
 
-    await vi.waitFor(() => expect(api.capturePage).toHaveBeenCalled(), { timeout: 5000 });
+    await vi.waitFor(() => expect(api.captureRegion).toHaveBeenCalled(), { timeout: 5000 });
     await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
     const payload = lastChatPayload(api);
     expect(payload.includePage).toBe(false);
     expect(payload.web).toBe(false);
     expect(payload.messages[0].images).toEqual([SHOT]);
     expect(payload.messages[0].content).toContain('截图');
+  });
+
+  it('框选截图选「提取文字」用 OCR 提示词', async () => {
+    const { api } = installBsub();
+    api.captureRegion.mockResolvedValueOnce({
+      action: 'ocr',
+      dataUrl: SHOT,
+      width: 200,
+      height: 120
+    } as never);
+    render(<PetWindow />);
+    openBubble();
+    fireEvent.click(screen.getByTitle('框选屏幕区域，再选识别图片 / 对话 / 提取文字'));
+    await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
+    const payload = lastChatPayload(api);
+    expect(payload.messages[0].content).toContain('提取');
+    expect(payload.messages[0].images).toEqual([SHOT]);
+  });
+
+  it('框选截图选「识别图片」只挂附件，等用户继续输入', async () => {
+    const { api } = installBsub();
+    api.captureRegion.mockResolvedValueOnce({
+      action: 'image',
+      dataUrl: SHOT,
+      width: 200,
+      height: 120
+    } as never);
+    render(<PetWindow />);
+    openBubble();
+    fireEvent.click(screen.getByTitle('框选屏幕区域，再选识别图片 / 对话 / 提取文字'));
+    await vi.waitFor(() => expect(screen.getByAltText('当前页面截图')).toBeTruthy());
+    expect(api.chat).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle('移除截图'));
+    expect(screen.queryByAltText('当前页面截图')).toBeNull();
+  });
+
+  it('取消框选不发请求', async () => {
+    const { api } = installBsub();
+    api.captureRegion.mockResolvedValueOnce(null as never);
+    render(<PetWindow />);
+    openBubble();
+    fireEvent.click(screen.getByTitle('框选屏幕区域，再选识别图片 / 对话 / 提取文字'));
+    await vi.waitFor(() => expect(api.captureRegion).toHaveBeenCalled());
+    expect(api.chat).not.toHaveBeenCalled();
+  });
+
+  it('右键菜单「整页截图」走 capturePage', async () => {
+    const { api } = installBsub();
+    render(<PetWindow />);
+    fireEvent.contextMenu(screen.getByTitle(/点击聊天/));
+    fireEvent.click(screen.getByText('整页截图'));
+    await vi.waitFor(() => expect(api.capturePage).toHaveBeenCalled(), { timeout: 5000 });
+    await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
   });
 
   it('联网开关会带 web:true，并记住状态', async () => {
@@ -180,7 +235,7 @@ describe('PetWindow', () => {
     api.chat.mockResolvedValueOnce({ ok: true, data: { requestId: 'pet-shot' } } as never);
     render(<PetWindow />);
     openBubble();
-    fireEvent.click(screen.getByTitle('截取当前页面并提问（识图）'));
+    fireEvent.click(screen.getByTitle('框选屏幕区域，再选识别图片 / 对话 / 提取文字'));
     await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
     const first = (api.chat.mock.calls as unknown as Array<[{ requestId: string }]>)[0][0];
     handlers.error?.({ requestId: first.requestId, error: 'invalid content type for image' });
@@ -240,7 +295,7 @@ describe('PetWindow', () => {
     const { api } = installBsub();
     render(<PetWindow />);
     fireEvent.contextMenu(screen.getByTitle(/点击聊天/));
-    expect(screen.getByText('看屏幕（识图）')).toBeTruthy();
+    expect(screen.getByText('截图（框选）')).toBeTruthy();
     expect(screen.getByText('继续播放')).toBeTruthy();
 
     fireEvent.click(screen.getByText('取消置顶'));
@@ -267,9 +322,9 @@ describe('PetWindow', () => {
     installBsub();
     render(<PetWindow />);
     fireEvent.contextMenu(screen.getByTitle(/点击聊天/));
-    expect(screen.getByText('看屏幕（识图）')).toBeTruthy();
+    expect(screen.getByText('截图（框选）')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.queryByText('看屏幕（识图）')).toBeNull();
+    expect(screen.queryByText('截图（框选）')).toBeNull();
 
     openBubble();
     expect(screen.getByPlaceholderText(/问点什么/)).toBeTruthy();

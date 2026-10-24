@@ -145,6 +145,22 @@ export interface BsubApi {
   readSelection(): Promise<Result<{ title: string; url: string; selection: string }>>;
   /** 截当前标签页，返回 data URL（桌宠「看屏幕」/识图）。 */
   capturePage(): Promise<Result<{ dataUrl: string }>>;
+  /** 框选截图：全屏覆盖窗选中区域后，按「识别图片 / 对话 / 提取文字」返回裁剪图。 */
+  captureRegion(): Promise<{
+    action: 'image' | 'chat' | 'ocr';
+    dataUrl: string;
+    width: number;
+    height: number;
+  } | null>;
+  /** 覆盖窗：取背景截图与尺寸。 */
+  shotInit(): Promise<{ dataUrl: string; width: number; height: number } | null>;
+  /** 覆盖窗：回传选中区域（null = 取消）与动作。 */
+  shotDone(
+    payload: {
+      selection: { x: number; y: number; width: number; height: number } | null;
+      action: 'image' | 'chat' | 'ocr';
+    } | null
+  ): Promise<void>;
   triggerSubtitleMenu(): Promise<Result<boolean>>;
   getTrackBody(url: string): Promise<Result<TrackBody>>;
   getTime(): Promise<Result<{ currentTime: number; duration: number }>>;

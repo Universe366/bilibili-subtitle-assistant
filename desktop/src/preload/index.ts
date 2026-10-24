@@ -190,6 +190,20 @@ const api: BsubApi = {
     >,
   capturePage: () =>
     ipcRenderer.invoke('page:capture') as Promise<Result<{ dataUrl: string }>>,
+  captureRegion: () =>
+    ipcRenderer.invoke('shot:capture-region') as Promise<{
+      action: 'image' | 'chat' | 'ocr';
+      dataUrl: string;
+      width: number;
+      height: number;
+    } | null>,
+  shotInit: () =>
+    ipcRenderer.invoke('shot:init') as Promise<{
+      dataUrl: string;
+      width: number;
+      height: number;
+    } | null>,
+  shotDone: (payload) => ipcRenderer.invoke('shot:done', payload) as Promise<void>,
   triggerSubtitleMenu: () =>
     ipcRenderer.invoke('page:trigger-subtitle') as Promise<Result<boolean>>,
   getTrackBody: (url: string) => ipcRenderer.invoke('page:track-body', url) as Promise<Result<TrackBody>>,

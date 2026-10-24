@@ -42,6 +42,7 @@ const SELECTION_ACTIONS = [
 ];
 
 const SHOT_PROMPT = '这张截图里是什么？用 3 条说清楚重点；如果有文字、数字或报错，原样摘出来。';
+const OCR_PROMPT = '提取这张图里的所有文字，尽量保留原有的分行和排版；看不清的字用「□」占位。';
 
 const SELF_TALK = [
   '看视频遇到不懂的，右键「看屏幕」就行。',
@@ -351,7 +352,34 @@ export function PetWindow() {
     }
   };
 
-  const takeShot = async () => {
+  /** 框选截图：动作条里选「识别图片 / 对话 / 提取文字」。 */
+  const takeRegionShot = async () => {
+    if (shotBusy || busy) return;
+    wake();
+    setShotBusy(true);
+    try {
+      const result = await window.bsub.captureRegion();
+      if (!result) return; // 用户取消
+      const { action, dataUrl } = result;
+      setOpen(true);
+      if (action === 'image') {
+        // 只把图挂上去，让用户接着问。
+        setShot(dataUrl);
+        flash('截图已就绪，接着问就行');
+        inputRef.current?.focus();
+        return;
+      }
+      setShot(dataUrl);
+      await ask(action === 'ocr' ? OCR_PROMPT : SHOT_PROMPT, { image: dataUrl });
+    } catch {
+      flash('截图失败，请重试');
+    } finally {
+      setShotBusy(false);
+    }
+  };
+
+  /** 整页截图：不框选，直接截当前标签页。 */
+  const takePageShot = async () => {
     if (shotBusy || busy) return;
     wake();
     setShotBusy(true);
@@ -364,7 +392,6 @@ export function PetWindow() {
       const dataUrl = response.data.dataUrl;
       setShot(dataUrl);
       setOpen(true);
-      // 截完直接问默认问题，少一次点击。
       await ask(SHOT_PROMPT, { image: dataUrl });
     } finally {
       setShotBusy(false);
@@ -493,10 +520,18 @@ export function PetWindow() {
           <button
             onClick={() => {
               setMenuOpen(false);
-              void takeShot();
+              void takeRegionShot();
             }}
           >
-            看屏幕（识图）
+            截图（框选）
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void takePageShot();
+            }}
+          >
+            整页截图
           </button>
           <button
             onClick={() => {
@@ -664,7 +699,7 @@ export function PetWindow() {
             )}
             {!history.length && !busy && !error && (
               <div className="pet-line is-assistant">
-                点「看屏幕」截图问我，或选中文字后点「解释选中」。要查资料先开「联网」。
+                点「截图」框选一块屏幕区域（可识别图片 / 对话 / 提取文字），或在网页里选中文字点「解释选中」。
               </div>
             )}
           </div>
@@ -696,11 +731,11 @@ export function PetWindow() {
           <div className="pet-quick">
             <button
               className="mini-btn"
-              title="截取当前页面并提问（识图）"
+              title="框选屏幕区域，再选识别图片 / 对话 / 提取文字"
               disabled={busy || shotBusy}
-              onClick={() => void takeShot()}
+              onClick={() => void takeRegionShot()}
             >
-              {shotBusy ? '截图中…' : '看屏幕'}
+              {shotBusy ? '截图中…' : '截图'}
             </button>
             {SELECTION_ACTIONS.map((action) => (
               <button
