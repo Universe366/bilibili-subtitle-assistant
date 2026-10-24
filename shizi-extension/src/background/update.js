@@ -9,39 +9,14 @@
 import { CONTENT_VERSION } from '../shared/constants.js';
 import { compareVersions } from '../shared/version.js';
 import { loadSettings, patchSettings } from '../shared/storage.js';
+import { REPO, RELEASES_URL, normalizeRelease } from '../shared/release.js';
 
-const REPO = 'Universe366/shizi-extension';
 const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
-const RELEASES_URL = `https://github.com/${REPO}/releases`;
-const CACHE_KEY = 'bsub.update.v1';
+const CACHE_KEY = 'bsub.update.v2'; // v1 是「tag 即插件版本」时代的缓存，语义变了必须失效
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 function safeString(v, max = 20000) {
   return String(v == null ? '' : v).slice(0, max);
-}
-
-export function normalizeRelease(json) {
-  const tag = safeString(json && json.tag_name, 80).trim();
-  const version = tag.replace(/^v/i, '').trim();
-  if (!version) return null;
-  const assets = Array.isArray(json.assets)
-    ? json.assets
-        .filter((a) => a && a.browser_download_url)
-        .map((a) => ({
-          name: safeString(a.name, 160),
-          url: safeString(a.browser_download_url, 500),
-          size: Number(a.size) || 0
-        }))
-    : [];
-  return {
-    version,
-    tag,
-    name: safeString((json && json.name) || tag, 200),
-    notes: safeString(json && json.body, 20000),
-    publishedAt: safeString(json && json.published_at, 40),
-    htmlUrl: safeString((json && json.html_url) || RELEASES_URL, 500),
-    assets
-  };
 }
 
 async function readCache() {
@@ -131,7 +106,8 @@ export async function checkForUpdate({ manual = false, fetchImpl = fetch } = {})
       const json = await res.json();
       const release = normalizeRelease(json);
       if (!release) {
-        data = errorState('bad-release', 'Release 数据缺少版本号');
+        // 合并发布里只有桌面资产（插件没发）时也会走到这里，提示要能照做。
+        data = errorState('no-plugin-asset', '这个 Release 里没有插件包，可能只发布了桌面端');
       } else {
         data = {
           ok: true,

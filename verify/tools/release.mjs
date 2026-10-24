@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-// 从 CHANGELOG 提取当前版本的发布说明；可选直接创建 GitHub Release。
+// 从 CHANGELOG 提取当前版本的发布说明。
 //
 // 用法：
 //   node tools/release.mjs                 # 只生成 release-notes-v<版本>.md
-//   node tools/release.mjs --create        # 生成并创建 Release + 上传 zip
 //
-// --create 需要环境变量 GITHUB_TOKEN（repo 权限）；脚本不会把 token 写进仓库。
+// 0.35 起桌面端与插件改为**合并发布**：Release 的 tag 是桌面版本号，
+// 由 .github/workflows/desktop-release.yml 在 push tag 时构建并上传插件 zip。
+// 因此这里只保留「生成说明」；`--create` 会直接报错退出，避免打出 v2.x tag
+// 把 GitHub 的 Latest 顶掉（详见 docs/MAINTAINERS.md）。
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 const EXT = path.join(ROOT, 'shizi-extension');
-const REPO = 'Universe366/shizi-extension';
 
 export function extractChangelogSection(text, version) {
   const src = String(text || '').replace(/\r\n/g, '\n');
@@ -47,46 +47,10 @@ export function buildReleaseBody(version, section) {
   ].join('\n');
 }
 
-async function api(url, opts = {}) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error('缺少 GITHUB_TOKEN 环境变量');
-  const res = await fetch(url, {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'shizi-extension-release',
-      ...(opts.headers || {})
-    }
-  });
-  const text = await res.text();
-  let json = null;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch (err) {
-    /* 非 JSON */
-  }
-  if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}: ${(json && json.message) || text.slice(0, 300)}`);
-  }
-  return json;
-}
-
-async function findRelease(version) {
-  try {
-    return await api(`https://api.github.com/repos/${REPO}/releases/tags/v${version}`);
-  } catch (err) {
-    if (/^404\b/.test(err.message)) return null;
-    throw err;
-  }
-}
-
 async function main() {
   if (process.argv.includes('--help')) {
-    console.log('用法：node tools/release.mjs [--create] [--update]');
-    console.log('  默认只生成 release-notes-v<版本>.md');
-    console.log('  --create  创建 Release 并上传 zip（需 GITHUB_TOKEN）');
-    console.log('  --update  版本已存在时更新 body/附件（可与 --create 同用）');
+    console.log('用法：node tools/release.mjs');
+    console.log('  只生成 release-notes-v<版本>.md（合并发布已改由 CI 构建，见 docs/MAINTAINERS.md）');
     return;
   }
   const version = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8')).version;
@@ -94,68 +58,17 @@ async function main() {
   const section = extractChangelogSection(changelog, version);
   const body = buildReleaseBody(version, section);
   const notesPath = path.join(ROOT, `release-notes-v${version}.md`);
-  fs.writeFileSync(notesPath, body + '\n');
+  fs.writeFileSync(notesPath, `${body}\n`);
   console.log(`已生成 ${notesPath}`);
 
-  if (!process.argv.includes('--create')) {
-    console.log('\n' + body);
-    return;
+  if (process.argv.includes('--create') || process.argv.includes('--update') || process.env.GITHUB_TOKEN) {
+    throw new Error(
+      '本脚本不再创建 GitHub Release：0.35 起为合并发布，插件 zip 由 desktop-release.yml ' +
+        '随桌面 tag（v<桌面版本>）一起产出。请按 docs/MAINTAINERS.md 打 tag 并 push；' +
+        '此前用插件版本打 v2.x tag 会顶掉 GitHub 的 Latest。'
+    );
   }
-
-  if (execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' }).trim()) {
-    throw new Error('工作区不干净；先提交，或去掉 --create 只生成说明');
-  }
-
-  const zipPath = path.join(ROOT, `shizi-extension-v${version}.zip`);
-  execFileSync('git', ['-C', ROOT, 'archive', '--format=zip', '--output', zipPath, 'HEAD:shizi-extension']);
-  console.log(`已打包 ${zipPath}`);
-
-  const update = process.argv.includes('--update');
-  let release = await findRelease(version);
-  if (release) {
-    if (!update) {
-      throw new Error(`Release v${version} 已存在；加 --update 覆盖 body/附件`);
-    }
-    release = await api(`https://api.github.com/repos/${REPO}/releases/${release.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: `v${version}`, body })
-    });
-    console.log(`已更新 Release：${release.html_url}`);
-  } else {
-    release = await api(`https://api.github.com/repos/${REPO}/releases`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tag_name: `v${version}`,
-        target_commitish: 'master',
-        name: `v${version}`,
-        body,
-        draft: false,
-        prerelease: false
-      })
-    });
-    console.log(`已创建 Release：${release.html_url}`);
-  }
-
-  const assetName = path.basename(zipPath);
-  const existingAsset = (release.assets || []).find((a) => a.name === assetName);
-  if (existingAsset) {
-    await api(`https://api.github.com/repos/${REPO}/releases/assets/${existingAsset.id}`, {
-      method: 'DELETE'
-    });
-    console.log(`已删除旧附件：${assetName}`);
-  }
-
-  const asset = await api(
-    `https://uploads.github.com/repos/${REPO}/releases/${release.id}/assets?name=${encodeURIComponent(assetName)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/zip' },
-      body: fs.readFileSync(zipPath)
-    }
-  );
-  console.log(`已上传附件：${asset.browser_download_url}`);
+  console.log(`\n${body}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

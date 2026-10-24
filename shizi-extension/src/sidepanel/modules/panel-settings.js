@@ -29,6 +29,7 @@ import { batchAdd, batchRemove, batchCancel, batchPause, batchClearDone, expandC
 import { discoverDesktop } from './desktop-bridge.js';
 import * as SKILLS from '../../shared/skills.js';
 import { TIME_PRESETS, normalizeTimeRange } from '../../shared/time-range.js';
+import { RELEASES_URL } from '../../shared/release.js';
 
 const state = {
   host: null,
@@ -2151,7 +2152,7 @@ function updateSection(d) {
       const url =
         (current && current.release && current.release.htmlUrl) ||
         (current && current.releaseUrl) ||
-        'https://github.com/Universe366/shizi-extension/releases';
+        RELEASES_URL;
       try {
         await call('tab.open', { url });
       } catch (err) {

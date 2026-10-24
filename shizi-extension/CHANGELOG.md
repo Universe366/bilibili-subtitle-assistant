@@ -2,6 +2,14 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
+## 未发布
+
+### 更新检查
+- **修复「检查更新」一直失败**：请求指向已删除的 `Universe366/shizi-extension`，匿名访问恒为 404；改为合并发布仓库 `Universe366/shizi`。
+- 插件版本改从资产名 `shizi-extension-v<版本>.zip` 解析，不再把桌面 tag（如 `v0.38.9`）当插件版本；旧仓库的 `v2.x` tag 仍兼容。
+- 「打开下载页」不再跳到已删除的仓库。
+- 更新缓存 key 升到 `v2`，避免沿用「tag 即版本」时代的旧缓存。
+
 ## 2.18.6（2026-10-23）
 
 ### 品牌
