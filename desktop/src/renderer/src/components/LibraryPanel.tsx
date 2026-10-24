@@ -28,6 +28,7 @@ import { LibraryNoteTab } from './LibraryNoteTab';
 import { LibrarySubtitlesTab } from './LibrarySubtitlesTab';
 import { LibrarySummaryTab } from './LibrarySummaryTab';
 import { LibraryTabBar } from './LibraryTabBar';
+import { LibraryTrashDialog } from './LibraryTrashDialog';
 import { LibraryVideoRow } from './LibraryVideoRow';
 import { Markdown } from './Markdown';
 import { PodcastImport } from './PodcastImport';
@@ -1736,73 +1737,16 @@ export function LibraryPanel() {
         onCancel={() => setBulkDeleteOpen(false)}
       />
 
-      {trashOpen && (
-        <div className="confirm-backdrop" onClick={() => setTrashOpen(false)}>
-          <div
-            className="confirm-card trash-panel"
-            role="dialog"
-            aria-label="回收站"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="confirm-title">回收站</div>
-            <div className="confirm-desc">
-              删除的条目会在这里保留 30 天（最多 200 条），恢复后字幕、总结、笔记和标签都会回来。
-            </div>
-            {trashLoading ? (
-              <div className="status-line">
-                <Loader2 size={13} className="spin" /> 读取中…
-              </div>
-            ) : trashItems.length === 0 ? (
-              <div className="panel-empty">回收站是空的</div>
-            ) : (
-              <div className="trash-list">
-                {trashItems.map((item) => (
-                  <div className="trash-row" key={item.id}>
-                    <div className="trash-main">
-                      <div className="trash-title" title={item.title}>
-                        {item.title || '未命名视频'}
-                      </div>
-                      <div className="trash-meta">
-                        {item.owner || '未知 UP'} · {item.lineCount.toLocaleString('zh-CN')} 行
-                        {item.hasSummary ? ' · 含总结' : ''}
-                        {item.hasNote ? ' · 含笔记' : ''} · {formatDateTime(item.deletedAt)} 删除
-                      </div>
-                    </div>
-                    <div className="trash-actions">
-                      <button
-                        className="mini-btn"
-                        disabled={trashBusy === item.id}
-                        onClick={() => void restoreFromTrash(item)}
-                      >
-                        恢复
-                      </button>
-                      <button
-                        className="mini-btn danger"
-                        disabled={trashBusy === item.id}
-                        onClick={() => void purgeTrashItem(item)}
-                      >
-                        彻底删除
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="confirm-actions">
-              <button className="mini-btn" onClick={() => setTrashOpen(false)}>
-                关闭
-              </button>
-              <button
-                className="mini-btn danger"
-                disabled={!trashItems.length}
-                onClick={() => void clearAllTrash()}
-              >
-                清空回收站
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LibraryTrashDialog
+        open={trashOpen}
+        loading={trashLoading}
+        items={trashItems}
+        busyId={trashBusy}
+        onClose={() => setTrashOpen(false)}
+        onRestore={(item) => void restoreFromTrash(item)}
+        onPurge={(item) => void purgeTrashItem(item)}
+        onClearAll={() => void clearAllTrash()}
+      />
     </div>
   );
 }
