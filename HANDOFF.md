@@ -57,9 +57,9 @@
 
 ### Phase 0（2026-10-24，可维护性）
 - `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **11 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复、任务中心、AI 参数校验、历史与导出记录、诊断/权限/更新/桥状态只读通道、启动落盘（library.db/settings.json）；
-- 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（155 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
+- 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（156 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
 - `ipc.ts` 按域拆分：**library / browser / page / settings / media / jobs / tools / records** 八个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam`/`abortControllers` 在 `shared.ts`；`ipc.ts` 2.8k → **43 行**，只剩注册入口；
-- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终 155 条；
+- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终与代码同步（现 156 条）；
 - `library.ts` 按模块拆到 `library/`：schema / videos / db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 2683 → **102 行桶文件**；
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
@@ -108,7 +108,7 @@
 
 ### 如果任务是“提升可维护性”
 
-`docs/QUALITY.md` 的 **Phase 0 已完成**：9 条桌面 E2E、155 条 IPC channel 清单与漂移测试、`ipc.ts` 全量按域拆分（入口 43 行）。
+`docs/QUALITY.md` 的 **Phase 0 已完成**：11 条桌面 E2E、156 条 IPC channel 清单与漂移测试、`ipc.ts` 全量按域拆分（入口 43 行）。
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
