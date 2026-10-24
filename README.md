@@ -90,7 +90,7 @@ B 站视频的字幕、音轨、评论和简介散在不同接口里，想整理
 - 数据位置迁移：复制到新目录并自动重启，成功后删除旧目录
 - 侧栏可拖拽调宽、折叠成图标栏、左右换边；安装时可输入新父目录，卸载时可选择是否删除本地数据（含自定义位置）
 
-源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.38.4**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
+源码版本见 [`desktop/package.json`](desktop/package.json)（当前 **0.38.5**）。下载前以最新 Release 资产和 [`desktop/CHANGELOG.md`](desktop/CHANGELOG.md) 为准；如果检查更新显示“已是最新”，先确认 Release 里的桌面版本。
 
 安装版直接运行 `shizi-setup-*.exe`，绿色版解压后双击 `拾字.exe`。数据默认在 `%APPDATA%\shizi`（设置、字幕库、登录态、缓存、日志；旧版 `bsub-desktop` 首次启动自动迁移）；可在设置里迁移到其他目录，迁移成功后旧目录会自动删除。卸载页默认保留数据，勾选后才会删除（包括自定义位置）。
 
