@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 71 个文件 / 300 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 72 个文件 / 308 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -64,6 +64,8 @@
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
 ### 0.37.2 之后的界面调整（未发版）
+- 标签页：支持 Ctrl+Tab / Ctrl+Shift+Tab 切换、Ctrl+1..9 定位、中键关闭、拖拽排序、右键菜单（关闭/关闭其他/关闭右侧/复制链接），新增 `tab:move` 通道。
+- 库列表：支持 Shift 连选、↑/↓ 移动光标、Enter 打开详情、空格进入选择。
 - 桌面端的「本次联网核对」改为**总是逐条展示证据**：语义判定不可用时不再整块隐藏，而是标注「未判定」并提示「证据只按词面与域名粗标」，与插件端行为一致（`components/VerifyCard.tsx`，补 5 条组件测试）。
 
 ### 0.37.0 / 0.37.1

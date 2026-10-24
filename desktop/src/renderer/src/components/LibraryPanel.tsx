@@ -90,6 +90,8 @@ export function LibraryPanel() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // 列表窗口化：库最多展示 500 条，一次全渲染会拖慢滚动，先渲染 80 条再按需追加。
   const [renderCount, setRenderCount] = useState(80);
+  const [cursorId, setCursorId] = useState<number | null>(null);
+  const lastSelectedRef = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [bulkKind, setBulkKind] = useState<'tag' | 'collection'>('tag');
   const [bulkName, setBulkName] = useState('');
@@ -669,13 +671,29 @@ export function LibraryPanel() {
     setResolved(null);
   };
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = (id: number, shift = false) => {
+    const last = lastSelectedRef.current;
+    const from = last == null ? -1 : visibleVideos.findIndex((video) => video.id === last);
+    const to = visibleVideos.findIndex((video) => video.id === id);
+    if (shift && from >= 0 && to >= 0 && from !== to) {
+      const [start, end] = from < to ? [from, to] : [to, from];
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+        for (const video of visibleVideos.slice(start, end + 1)) next.add(video.id);
+        return next;
+      });
+      lastSelectedRef.current = id;
+      setCursorId(id);
+      return;
+    }
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    lastSelectedRef.current = id;
+    setCursorId(id);
   };
 
   const applyBulk = async () => {
@@ -1107,6 +1125,25 @@ export function LibraryPanel() {
         <div
           className="lib-videos"
           ref={listRef}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (!visibleVideos.length) return;
+            const index = visibleVideos.findIndex((video) => video.id === cursorId);
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setCursorId(visibleVideos[Math.min(visibleVideos.length - 1, index + 1)].id);
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setCursorId(visibleVideos[Math.max(0, index - 1)].id);
+            } else if (event.key === 'Enter') {
+              const target = visibleVideos.find((video) => video.id === cursorId);
+              if (target) openDetail(target);
+            } else if (event.key === ' ' && cursorId != null) {
+              event.preventDefault();
+              setSelectMode(true);
+              toggleSelect(cursorId, false);
+            }
+          }}
           onScroll={() => {
             const node = listRef.current;
             if (!node) return;
@@ -1121,6 +1158,7 @@ export function LibraryPanel() {
               video={video}
               selectMode={selectMode}
               selected={selectedIds.has(video.id)}
+              cursor={video.id === cursorId}
               onToggleSelect={toggleSelect}
               onOpen={openDetail}
               onDelete={(item) => setPendingDelete(item)}

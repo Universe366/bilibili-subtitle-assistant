@@ -509,6 +509,20 @@ export class TabManager {
     this.emit();
   }
 
+  /** 拖拽排序：把标签移动到最后一次落点，Map 的插入顺序就是展示顺序。 */
+  move(id: string, toIndex: number): void {
+    if (!this.tabs.has(id)) return;
+    const entries = [...this.tabs.entries()];
+    const from = entries.findIndex(([key]) => key === id);
+    if (from < 0) return;
+    const [moved] = entries.splice(from, 1);
+    const target = Math.max(0, Math.min(entries.length, Math.round(toIndex)));
+    entries.splice(target, 0, moved);
+    this.tabs.clear();
+    for (const [key, record] of entries) this.tabs.set(key, record);
+    this.emit();
+  }
+
   async reopenClosed(): Promise<string | null> {
     const last = this.closedStack.pop();
     if (!last) return null;

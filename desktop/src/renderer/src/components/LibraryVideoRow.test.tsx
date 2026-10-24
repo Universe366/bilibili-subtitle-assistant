@@ -75,7 +75,7 @@ describe('LibraryVideoRow', () => {
     const p = props({ selectMode: true });
     render(<LibraryVideoRow {...p} />);
     fireEvent.click(rowOf());
-    expect(p.onToggleSelect).toHaveBeenCalledWith(3);
+    expect(p.onToggleSelect).toHaveBeenCalledWith(3, false);
     expect(p.onOpen).not.toHaveBeenCalled();
   });
 });

@@ -129,6 +129,7 @@
   "tab:close",
   "tab:find",
   "tab:forward",
+  "tab:move",
   "tab:navigate",
   "tab:new",
   "tab:open",

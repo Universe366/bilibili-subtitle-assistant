@@ -89,6 +89,7 @@ export interface BsubApi {
   newTab(url?: string): Promise<string>;
   /** 打开链接：同一视频已打开时复用标签；start 为秒级播放位置。 */
   openUrl(url: string, start?: number): Promise<{ id: string; reused: boolean; ready: boolean }>;
+  moveTab(id: string, index: number): void;
   closeTab(id: string): Promise<void>;
   activateTab(id: string): Promise<void>;
   navigate(url: string): Promise<void>;

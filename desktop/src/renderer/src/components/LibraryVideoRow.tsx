@@ -7,7 +7,8 @@ interface LibraryVideoRowProps {
   video: LibraryVideo;
   selectMode: boolean;
   selected: boolean;
-  onToggleSelect: (id: number) => void;
+  cursor?: boolean;
+  onToggleSelect: (id: number, shift?: boolean) => void;
   onOpen: (video: LibraryVideo) => void;
   onDelete: (video: LibraryVideo) => void;
 }
@@ -18,20 +19,21 @@ export function LibraryVideoRow({
   selectMode,
   selected,
   onToggleSelect,
+  cursor = false,
   onOpen,
   onDelete
 }: LibraryVideoRowProps) {
   const activate = () => {
-    if (selectMode) onToggleSelect(video.id);
+    if (selectMode) onToggleSelect(video.id, false);
     else onOpen(video);
   };
 
   return (
     <div
-      className={`lib-video${selectMode && selected ? ' is-selected' : ''}`}
+      className={`lib-video${selectMode && selected ? ' is-selected' : ''}${cursor ? ' is-cursor' : ''}`}
       role="button"
       tabIndex={0}
-      onClick={activate}
+      onClick={(event) => (selectMode ? onToggleSelect(video.id, event.shiftKey) : activate())}
       onKeyDown={(event) => {
         if (event.key === 'Enter') activate();
       }}
@@ -41,7 +43,9 @@ export function LibraryVideoRow({
           type="checkbox"
           className="bulk-check"
           checked={selected}
-          onChange={() => onToggleSelect(video.id)}
+          onChange={(event) =>
+            onToggleSelect(video.id, (event.nativeEvent as MouseEvent).shiftKey)
+          }
           onClick={(event) => event.stopPropagation()}
         />
       )}

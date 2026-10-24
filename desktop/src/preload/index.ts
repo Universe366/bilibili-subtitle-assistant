@@ -101,6 +101,8 @@ const api: BsubApi = {
       reused: boolean;
       ready: boolean;
     }>,
+  moveTab: (id: string, index: number) =>
+    ipcRenderer.invoke('tab:move', id, index) as Promise<void>,
   closeTab: (id: string) => ipcRenderer.invoke('tab:close', id) as Promise<void>,
   activateTab: (id: string) => ipcRenderer.invoke('tab:activate', id) as Promise<void>,
   navigate: (url: string) => ipcRenderer.invoke('tab:navigate', url) as Promise<void>,

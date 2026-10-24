@@ -9,6 +9,7 @@ import { FirstRunWizard } from './components/FirstRunWizard';
 import { GlobalSearch } from './components/GlobalSearch';
 import { BrowserHub, type HubSection } from './components/BrowserHub';
 import { ReaderMode } from './components/ReaderMode';
+import { nextTabId, tabIdByNumber } from './lib/tabs';
 
 export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
@@ -246,6 +247,18 @@ export default function App() {
         void window.bsub.newTab();
         return;
       }
+      if (mod && event.key === 'Tab') {
+        event.preventDefault();
+        const target = nextTabId(tabs, active?.id, event.shiftKey ? -1 : 1);
+        if (target) void window.bsub.activateTab(target);
+        return;
+      }
+      if (mod && !event.shiftKey && /^[1-9]$/.test(event.key)) {
+        event.preventDefault();
+        const target = tabIdByNumber(tabs, Number(event.key));
+        if (target) void window.bsub.activateTab(target);
+        return;
+      }
       if (mod && key === 'k') {
         event.preventDefault();
         setSearchOpen(true);
@@ -311,7 +324,7 @@ export default function App() {
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, findOpen, findQuery, hub, readerOpen]);
+  }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
 
   const finishWizard = (openSettings: boolean) => {
     setWizard(null);

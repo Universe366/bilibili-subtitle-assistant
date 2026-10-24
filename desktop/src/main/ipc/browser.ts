@@ -44,6 +44,9 @@ export function registerBrowserIpc(ctx: IpcContext): void {
     }
     return result;
   });
+  ipcMain.handle('tab:move', (_event, id: string, index: number) => {
+    ctx.tabs.move(id, index);
+  });
   ipcMain.handle('tab:close', (_event, id: string) => {
     ctx.tabs.close(id);
   });

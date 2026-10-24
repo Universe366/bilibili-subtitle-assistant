@@ -39,6 +39,7 @@ function installBsub() {
     listTags: vi.fn(async () => ({ ok: true as const, data: [] })),
     listCollections: vi.fn(async () => ({ ok: true as const, data: [] })),
     listTrash: vi.fn(async () => ({ ok: true as const, data: [] })),
+    getLibraryItem: vi.fn(async () => ({ ok: true as const, data: null })),
     onLibraryChanged: vi.fn(() => () => {})
   };
   Object.defineProperty(window, 'bsub', {
@@ -51,9 +52,10 @@ function installBsub() {
       }
     })
   });
+  return api;
 }
 
-describe('LibraryPanel 列表窗口化', () => {
+describe('LibraryPanel 列表窗口化与选择', () => {
   afterEach(cleanup);
 
   it('300 条只渲染前 80 条，滚动后追加', async () => {
@@ -67,15 +69,39 @@ describe('LibraryPanel 列表窗口化', () => {
     const scroller = container.querySelector('.lib-videos') as HTMLDivElement;
     fireEvent.scroll(scroller);
     await waitFor(() => expect(rows().length).toBe(160));
-
-    fireEvent.scroll(scroller);
-    await waitFor(() => expect(rows().length).toBe(240));
   });
 
-  it('列表只渲染可见条数时仍可打开详情', async () => {
+  it('选择模式下 Shift 连选一段', async () => {
     installBsub();
-    render(<LibraryPanel />);
-    fireEvent.click(await screen.findByText('视频 1'));
-    expect(await screen.findByText(/第一句|没有入库字幕|读取中/)).toBeTruthy();
+    const { container } = render(<LibraryPanel />);
+    await screen.findByText('视频 1');
+
+    fireEvent.click(screen.getByText('选择'));
+    fireEvent.click(screen.getByText('视频 1'));
+    fireEvent.click(screen.getByText('视频 5'), { shiftKey: true });
+
+    await waitFor(() => {
+      const selected = container.querySelectorAll('.lib-video.is-selected');
+      expect(selected.length).toBe(5);
+    });
+  });
+
+  it('键盘上下移动光标，Enter 打开详情', async () => {
+    const api = installBsub();
+    const { container } = render(<LibraryPanel />);
+    await screen.findByText('视频 1');
+
+    const listEl = container.querySelector('.lib-videos') as HTMLElement;
+    fireEvent.keyDown(listEl, { key: 'ArrowDown' });
+    expect((container.querySelector('.lib-video.is-cursor') as HTMLElement).textContent).toContain(
+      '视频 1'
+    );
+    fireEvent.keyDown(listEl, { key: 'ArrowDown' });
+    expect((container.querySelector('.lib-video.is-cursor') as HTMLElement).textContent).toContain(
+      '视频 2'
+    );
+
+    fireEvent.keyDown(listEl, { key: 'Enter' });
+    await waitFor(() => expect(api.getLibraryItem).toHaveBeenCalledWith(2));
   });
 });

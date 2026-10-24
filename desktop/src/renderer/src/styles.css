@@ -101,6 +101,33 @@ button:disabled {
   border-bottom: 1px solid var(--border);
 }
 
+.tab-menu {
+  z-index: 40;
+  min-width: 132px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-menu-item {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tab-menu-item:hover {
+  background: var(--surface-2);
+}
+
 .tab-strip-list {
   display: flex;
   align-items: flex-end;
@@ -4182,6 +4209,11 @@ button:disabled {
 /* ---------- 库多选 ---------- */
 .lib-video.is-selected {
   background: var(--accent-soft);
+}
+
+.lib-video.is-cursor {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .bulk-check {

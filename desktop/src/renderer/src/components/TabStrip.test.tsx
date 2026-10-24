@@ -26,11 +26,28 @@ const tabs: TabInfo[] = [
     canGoForward: false,
     suspended: true,
     zoom: 1
+  },
+  {
+    id: 't3',
+    title: '第三个',
+    url: 'https://example.org',
+    loading: false,
+    active: false,
+    canGoBack: false,
+    canGoForward: false,
+    suspended: false,
+    zoom: 1
   }
 ];
 
 function installBsub() {
-  const api = { activateTab: vi.fn(async () => ({ ok: true })), closeTab: vi.fn(), newTab: vi.fn() };
+  const api = {
+    activateTab: vi.fn(async () => ({ ok: true })),
+    closeTab: vi.fn(async () => undefined),
+    moveTab: vi.fn(async () => undefined),
+    newTab: vi.fn(),
+    writeClipboard: vi.fn(async () => ({ ok: true }))
+  };
   Object.defineProperty(window, 'bsub', { configurable: true, value: api });
   return api;
 }
@@ -55,6 +72,38 @@ describe('TabStrip', () => {
     fireEvent.click(closeButtons[1]);
     expect(api.closeTab).toHaveBeenCalledWith('t2');
     expect(api.activateTab).toHaveBeenCalledTimes(1);
+  });
+
+  it('中键关闭标签', () => {
+    const api = installBsub();
+    render(<TabStrip tabs={tabs} />);
+    fireEvent(screen.getByText('B 站首页'), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(api.closeTab).toHaveBeenCalledWith('t1');
+  });
+
+  it('右键菜单可关闭其他与复制链接', () => {
+    const api = installBsub();
+    render(<TabStrip tabs={tabs} />);
+    fireEvent.contextMenu(screen.getByText('B 站首页'));
+    fireEvent.click(screen.getByText('关闭其他'));
+    expect(api.closeTab).toHaveBeenCalledWith('t2');
+    expect(api.closeTab).toHaveBeenCalledWith('t3');
+    expect(api.closeTab).not.toHaveBeenCalledWith('t1');
+
+    fireEvent.contextMenu(screen.getByText('第三个'));
+    fireEvent.click(screen.getByText('复制链接'));
+    expect(api.writeClipboard).toHaveBeenCalledWith('https://example.org');
+  });
+
+  it('拖拽调整顺序调用 moveTab', () => {
+    const api = installBsub();
+    render(<TabStrip tabs={tabs} />);
+    const first = screen.getByText('B 站首页').closest('.tab') as HTMLElement;
+    const third = screen.getByText('第三个').closest('.tab') as HTMLElement;
+    fireEvent.dragStart(first);
+    fireEvent.dragOver(third);
+    fireEvent.drop(third);
+    expect(api.moveTab).toHaveBeenCalledWith('t1', 2);
   });
 
   it('休眠标签带提示，新建与搜索按钮可用', () => {
