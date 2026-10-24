@@ -22,7 +22,6 @@ export default function App() {
     return value === 'chat' ||
       value === 'summary' ||
       value === 'library' ||
-      value === 'settings' ||
       value === 'subtitles'
       ? value
       : 'subtitles';
@@ -386,7 +385,7 @@ export default function App() {
 
   const finishWizard = (openSettings: boolean) => {
     setWizard(null);
-    if (openSettings) setSection('settings');
+    if (openSettings) setSettingsOpen(true);
     void window.bsub.finishWizard();
   };
 
@@ -395,7 +394,7 @@ export default function App() {
     { id: 'section-summary', label: '打开面板：总结', run: () => setSection('summary') },
     { id: 'section-chat', label: '打开面板：对话', run: () => setSection('chat') },
     { id: 'section-library', label: '打开面板：库', run: () => setSection('library') },
-    { id: 'section-settings', label: '打开面板：设置', run: () => setSection('settings') },
+    { id: 'section-settings', label: '打开设置', hint: 'Ctrl+,', run: () => setSettingsOpen(true) },
     { id: 'start-page', label: '打开起始页', hint: 'Ctrl+T', run: () => setStartOpen(true) },
     { id: 'settings-page', label: '打开设置页', hint: 'Ctrl+,', run: () => setSettingsOpen(true) },
     { id: 'hub-tabs', label: '打开面板：标签页', hint: 'Ctrl+Shift+A', run: () => setHub('tabs') },
@@ -452,6 +451,7 @@ export default function App() {
         onOpenReader={() => setReaderOpen(true)}
         onOpenStart={() => setStartOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        hasUpdate={hasUpdate}
       />
       {findOpen && (
         <FindBar
@@ -467,6 +467,7 @@ export default function App() {
         <Sidebar
           section={section}
           onSelect={handleSectionSelect}
+          onOpenSettings={() => setSettingsOpen(true)}
           activeTab={active}
           tabCount={tabs.length}
           fontScale={fontScale}
@@ -478,7 +479,6 @@ export default function App() {
           onDockChange={commitSidebarPosition}
           onToggleCollapse={commitSidebarToggle}
           onDragSnapshot={setDragSnapshot}
-          hasUpdate={hasUpdate}
           onOpenSummary={() => {
             setSection('summary');
             window.setTimeout(() => window.dispatchEvent(new Event('bsub:summary-request')), 200);

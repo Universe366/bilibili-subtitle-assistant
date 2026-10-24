@@ -7,7 +7,6 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
-  Settings,
   Sparkles
 } from 'lucide-react';
 import type { BridgeStatus, JobRecord, Section, TabInfo } from '../../../shared/types';
@@ -22,9 +21,6 @@ const LibraryPanel = lazy(() =>
 const SummaryPanel = lazy(() =>
   import('./SummaryPanel').then((module) => ({ default: module.SummaryPanel }))
 );
-const SettingsPanel = lazy(() =>
-  import('./SettingsPanel').then((module) => ({ default: module.SettingsPanel }))
-);
 import { TaskCenter } from './TaskCenter';
 
 type IconComponent = ComponentType<{ size?: number | string; className?: string }>;
@@ -34,12 +30,12 @@ const items: Array<{ id: Section; label: string; icon: IconComponent; hint: stri
   { id: 'summary', label: '总结', icon: Sparkles, hint: 'AI 总结、章节与问答' },
   { id: 'chat', label: '对话', icon: MessageSquare, hint: '基于字幕向 AI 提问' },
   { id: 'library', label: '库', icon: Library, hint: '已入库的视频、总结与笔记' },
-  { id: 'settings', label: '设置', icon: Settings, hint: '平台、Key、提示词' }
 ];
 
 export function Sidebar({
   section,
   onSelect,
+  onOpenSettings,
   activeTab,
   tabCount,
   fontScale = 1,
@@ -53,8 +49,8 @@ export function Sidebar({
   onDragSnapshot,
   onOpenSummary,
   onOpenChapters,
-  hasUpdate = false
 }: {
+  onOpenSettings: () => void;
   section: Section;
   onSelect: (section: Section) => void;
   activeTab: TabInfo | null;
@@ -70,7 +66,6 @@ export function Sidebar({
   onDragSnapshot?: (snapshot: string | null) => void;
   onOpenSummary?: () => void;
   onOpenChapters?: () => void;
-  hasUpdate?: boolean;
 }) {
   const [version, setVersion] = useState('');
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
@@ -286,7 +281,6 @@ export function Sidebar({
           >
             <Icon size={16} />
             <span>{label}</span>
-            {id === 'settings' && hasUpdate && <span className="side-update-dot" />}
           </button>
         ))}
       </nav>
@@ -314,7 +308,7 @@ export function Sidebar({
         <div className={`side-panel${section === 'chat' ? ' is-active' : ''}`}>
           {visited.has('chat') && (
             <Suspense fallback={null}>
-              <ChatPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+              <ChatPanel activeTab={activeTab} onOpenSettings={onOpenSettings} />
             </Suspense>
           )}
         </div>
@@ -322,7 +316,7 @@ export function Sidebar({
         <div className={`side-panel${section === 'summary' ? ' is-active' : ''}`}>
           {visited.has('summary') && (
             <Suspense fallback={null}>
-              <SummaryPanel activeTab={activeTab} onOpenSettings={() => onSelect('settings')} />
+              <SummaryPanel activeTab={activeTab} onOpenSettings={onOpenSettings} />
             </Suspense>
           )}
         </div>
@@ -335,13 +329,6 @@ export function Sidebar({
           )}
         </div>
 
-        <div className={`side-panel${section === 'settings' ? ' is-active' : ''}`}>
-          {visited.has('settings') && (
-            <Suspense fallback={null}>
-              <SettingsPanel />
-            </Suspense>
-          )}
-        </div>
       </div>
 
       <div className="side-footer" title={bridge?.error || bridgeLabel}>

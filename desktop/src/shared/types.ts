@@ -31,8 +31,7 @@ export type Section =
   | 'subtitles'
   | 'summary'
   | 'chat'
-  | 'library'
-  | 'settings';
+  | 'library';
 
 export interface VideoPart {
   index: number;

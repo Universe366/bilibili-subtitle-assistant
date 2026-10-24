@@ -11,7 +11,8 @@ export function AddressBar({
   onOpenHub,
   onOpenReader,
   onOpenStart,
-  onOpenSettings
+  onOpenSettings,
+  hasUpdate = false
 }: {
   tab: TabInfo | null;
   focusSignal?: number;
@@ -21,6 +22,7 @@ export function AddressBar({
   onOpenReader: () => void;
   onOpenStart: () => void;
   onOpenSettings: () => void;
+  hasUpdate?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
@@ -200,8 +202,9 @@ export function AddressBar({
         <Home size={15} />
       </button>
 
-      <button className="nav-btn" title="设置" onClick={onOpenSettings}>
+      <button className="nav-btn settings-entry" title="设置" onClick={onOpenSettings}>
         <Settings size={15} />
+        {hasUpdate && <span className="settings-update-dot" />}
       </button>
 
       <div className="address-menu-wrap" ref={menuRef}>
