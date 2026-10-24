@@ -113,7 +113,7 @@ electron-builder 会给应用 exe、安装包、卸载器签名。
 ## 4. 验证
 
 ```powershell
-signtool verify /pa /v release\shizi-setup-0.38.10.exe
+signtool verify /pa /v release\shizi-setup-0.38.11.exe
 signtool verify /pa /v release\win-unpacked\拾字.exe
 ```
 

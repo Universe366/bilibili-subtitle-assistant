@@ -35,7 +35,7 @@ shizi-extension/manifest.json                     2.18.7
 shizi-extension/src/shared/constants.js          VERSION
 shizi-extension/src/content/content.js            CONTENT_VERSION
 shizi-extension/src/content/page-bridge.js        bridge version
-desktop/package.json                                          0.38.10
+desktop/package.json                                          0.38.11
 desktop/package-lock.json                                     顶层与 packages[""].version
 desktop/README.md / CHANGELOG.md                              产物名与版本说明
 verify/package.json                                           测试包版本（按需同步）
@@ -111,22 +111,22 @@ npm run dist                      # NSIS + 绿色包 + latest.yml
 
 - 桌面版本在 `desktop/package.json`，同步更新 `desktop/CHANGELOG.md`、`desktop/README.md` 的产物名和版本说明。
 - 发布仍用**合并 Release**：一个 `v0.38.x` tag 同时带插件 zip 与桌面 setup/green/latest.yml。
-- **tag 用桌面版本号**（如 `v0.38.10`），不要再用 `v2.18.x`；GitHub 会按 semver 把高版本旧 release 当作 Latest，自动更新会读错。发布后确认 `/releases/latest` 指向当前桌面版本。
+- **tag 用桌面版本号**（如 `v0.38.11`），不要再用 `v2.18.x`；GitHub 会按 semver 把高版本旧 release 当作 Latest，自动更新会读错。发布后确认 `/releases/latest` 指向当前桌面版本。
 - CI 是 `.github/workflows/desktop-release.yml`；构建必须带 `--publish never`，由 workflow 自己创建 Release，否则 electron-builder 会抢先自动发布。
 - 自动更新读取最新 Release 里 `latest.yml` 指向的 **ASCII 文件名**；`artifactName` 和 `latest.yml` 必须一致（当前 `shizi-setup-${version}.exe`）。
 - 当前最新 Release 的桌面资产可能落后于源码；发布前先确认 `desktop/package.json` 版本高于 Release 资产，否则客户端会显示“已是最新”。
-- **以 0.38.10 / 插件 2.18.7 为例**：桌面端（需要时连同插件）版本号一起 bump，提交后打 tag 并 push：
+- **以 0.38.11 / 插件 2.18.7 为例**：桌面端（需要时连同插件）版本号一起 bump，提交后打 tag 并 push：
 
   ```bash
-  git tag -a v0.38.10 -m "桌面端 0.38.10 + 插件 2.18.7"
-  git push origin master v0.38.10
+  git tag -a v0.38.11 -m "桌面端 0.38.11 + 插件 2.18.7"
+  git push origin master v0.38.11
   ```
 
   push tag 后 `.github/workflows/desktop-release.yml` 会自动构建安装包/绿色包/插件 zip，
   并用 `desktop/scripts/release.mjs` 从两个 CHANGELOG 提取发布说明。本机不需要跑 `dist`
   （除非要提前验证 NSIS）。
 - 本地只验证发布说明：
-  `cd desktop && npm run release:notes`，必须能提取 `0.38.10` 与 `2.18.7` 两段。
+  `cd desktop && npm run release:notes`，必须能提取 `0.38.11` 与 `2.18.7` 两段。
 
 #### 自动更新
 
