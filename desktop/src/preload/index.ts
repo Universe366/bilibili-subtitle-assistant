@@ -103,6 +103,8 @@ const api: BsubApi = {
     }>,
   moveTab: (id: string, index: number) =>
     ipcRenderer.invoke('tab:move', id, index) as Promise<void>,
+  setPetEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke('pet:set-enabled', enabled) as Promise<void>,
   setPlaybackRate: (rate: number) =>
     ipcRenderer.invoke('media:set-rate', rate) as Promise<{ ok: true; data: number }>,
   setActiveViewVisible: (visible: boolean) =>

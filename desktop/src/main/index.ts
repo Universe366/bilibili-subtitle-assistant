@@ -21,6 +21,7 @@ import { installPermissionGate } from './permissions';
 import { installCsp } from './csp';
 import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
+import { initPetWindow } from './petWindow';
 import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
 import { migrateLegacyUserData } from './userDataMigration';
 import { loadSession } from './session';
@@ -360,6 +361,7 @@ app
     createWindow();
     writeLog('startup.log', 'window created');
     createTray();
+    initPetWindow();
     if (mainWindow) {
       void startBridge(mainWindow);
       initUpdater(mainWindow);

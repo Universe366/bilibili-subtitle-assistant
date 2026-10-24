@@ -95,6 +95,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     wizardDone: false,
     restoreSession: true,
     selectionToolbar: true,
+    petEnabled: false,
+    assistantEnabled: false,
+    petX: 0,
+    petY: 0,
     searchEngine: 'bilibili',
     searchEngineCustom: ''
   },

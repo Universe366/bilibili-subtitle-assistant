@@ -36,6 +36,8 @@ export default function App() {
   const [sidebarPosition, setSidebarPosition] = useState<'left' | 'right'>('left');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [verticalTabs, setVerticalTabs] = useState(false);
+  const [assistantEnabled, setAssistantEnabled] = useState(false);
+  const [petEnabled, setPetEnabled] = useState(false);
   const [dragSnapshot, setDragSnapshot] = useState<string | null>(null);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [wizard, setWizard] = useState<SettingsSnapshot | null>(null);
@@ -61,6 +63,8 @@ export default function App() {
         sidebarPosition: 'left' | 'right';
         sidebarCollapsed: boolean;
         verticalTabs?: boolean;
+        assistantEnabled?: boolean;
+        petEnabled?: boolean;
       };
     };
   }) => {
@@ -68,6 +72,8 @@ export default function App() {
     setSidebarPosition(snapshot.settings.general.sidebarPosition);
     setSidebarCollapsed(snapshot.settings.general.sidebarCollapsed);
     setVerticalTabs(snapshot.settings.general.verticalTabs === true);
+    setAssistantEnabled(snapshot.settings.general.assistantEnabled === true);
+    setPetEnabled(snapshot.settings.general.petEnabled === true);
   };
 
   useEffect(() => {
@@ -350,6 +356,10 @@ export default function App() {
   }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
 
   useEffect(() => {
+    void window.bsub.setPetEnabled(petEnabled);
+  }, [petEnabled]);
+
+  useEffect(() => {
     const pageOpen = startOpen || settingsOpen || tabs.length === 0;
     void window.bsub.setActiveViewVisible(!pageOpen);
   }, [startOpen, settingsOpen, tabs.length]);
@@ -587,6 +597,20 @@ export default function App() {
         <div className="drop-overlay">
           <div className="drop-card">松手打开链接或 BV 号</div>
         </div>
+      )}
+
+      {assistantEnabled && (
+        <button
+          className="assistant-ball"
+          title="拾字 AI 助手"
+          onClick={() => {
+            setSettingsOpen(false);
+            setStartOpen(false);
+            handleSectionSelect('chat');
+          }}
+        >
+          AI
+        </button>
       )}
 
       <CommandPalette

@@ -53,6 +53,24 @@ export function GeneralSection({ value, onChange }: GeneralSectionProps) {
       <label className="settings-check">
         <input
           type="checkbox"
+          checked={value.assistantEnabled === true}
+          onChange={(event) => onChange({ assistantEnabled: event.target.checked })}
+        />
+        显示 AI 悬浮球（右下角）
+      </label>
+
+      <label className="settings-check">
+        <input
+          type="checkbox"
+          checked={value.petEnabled === true}
+          onChange={(event) => onChange({ petEnabled: event.target.checked })}
+        />
+        启用桌面宠物（独立小窗口，可拖动）
+      </label>
+
+      <label className="settings-check">
+        <input
+          type="checkbox"
           checked={value.verticalTabs === true}
           onChange={(event) => onChange({ verticalTabs: event.target.checked })}
         />

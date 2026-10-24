@@ -721,6 +721,13 @@ export interface AppSettings {
     restoreSession: boolean;
     /** 网页内选中文字时显示解释/翻译/总结工具条 */
     selectionToolbar: boolean;
+    /** 桌面宠物悬浮窗 */
+    petEnabled: boolean;
+    /** 主窗口右下角的 AI 悬浮球 */
+    assistantEnabled: boolean;
+    /** 宠物窗口位置（0 表示自动放在右下角） */
+    petX: number;
+    petY: number;
     /** 地址栏输入非网址时用哪个搜索引擎 */
     searchEngine: 'bilibili' | 'bing' | 'google' | 'custom';
     /** searchEngine=custom 时的 URL 模板，必须包含 {q} */

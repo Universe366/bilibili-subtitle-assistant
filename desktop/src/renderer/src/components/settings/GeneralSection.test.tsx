@@ -20,7 +20,11 @@ const value = {
   selectionToolbar: true,
   searchEngine: 'bilibili',
   searchEngineCustom: '',
-  verticalTabs: false
+  verticalTabs: false,
+  petEnabled: false,
+  assistantEnabled: false,
+  petX: 0,
+  petY: 0
 } as AppSettings['general'];
 
 function props(overrides: Record<string, unknown> = {}) {
@@ -44,6 +48,15 @@ describe('GeneralSection', () => {
     expect(p.onChange).toHaveBeenCalledWith({ theme: 'dark' });
     fireEvent.click(screen.getByLabelText('关闭窗口时缩到托盘'));
     expect(p.onChange).toHaveBeenCalledWith({ closeToTray: false });
+  });
+
+  it('桌宠与悬浮球开关回传补丁', () => {
+    const p = props();
+    render(<GeneralSection {...p} />);
+    fireEvent.click(screen.getByLabelText(/AI 悬浮球/));
+    expect(p.onChange).toHaveBeenCalledWith({ assistantEnabled: true });
+    fireEvent.click(screen.getByLabelText(/桌面宠物/));
+    expect(p.onChange).toHaveBeenCalledWith({ petEnabled: true });
   });
 
   it('垂直标签栏开关回传补丁', () => {
