@@ -20,6 +20,7 @@ import type {
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
 import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LibraryBulkBar } from './LibraryBulkBar';
 import { LibraryCollectionRow } from './LibraryCollectionRow';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryFilters } from './LibraryFilters';
@@ -1064,79 +1065,24 @@ export function LibraryPanel() {
       />
 
       {selectMode && (
-        <div className="bulk-bar">
-          <span className="bulk-count">已选 {selectedIds.size}</span>
-          <button
-            className="mini-btn"
-            disabled={!visibleVideos.length}
-            onClick={() => setSelectedIds(new Set(visibleVideos.map((video) => video.id)))}
-          >
-            全选
-          </button>
-          <button
-            className="mini-btn primary"
-            disabled={!selectedIds.size}
-            onClick={() => void startBulkSummary()}
-          >
-            批量总结
-          </button>
-          <select
-            className="mini-select"
-            title="批量并发"
-            value={bulkConcurrency}
-            onChange={(event) => setBulkConcurrency(Number(event.target.value))}
-          >
-            {[1, 2, 3, 4].map((value) => (
-              <option key={value} value={value}>
-                并发 {value}
-              </option>
-            ))}
-          </select>
-          <button className="mini-btn" onClick={() => openBulkInput('tag')}>
-            加标签
-          </button>
-          <button className="mini-btn" onClick={() => setBulkCollectionOpen(true)}>
-            加合集
-          </button>
-          <button
-            className="mini-btn danger"
-            disabled={!selectedIds.size}
-            onClick={() => setBulkDeleteOpen(true)}
-          >
-            删除
-          </button>
-          <button className="mini-btn" onClick={exitSelect}>
-            取消
-          </button>
-
-          {bulkInputOpen && (
-            <div className="bulk-input-row">
-              <input
-                className="tag-input bulk-name"
-                autoFocus
-                value={bulkName}
-                placeholder={bulkKind === 'tag' ? '标签名称' : '合集名称'}
-                onChange={(event) => setBulkName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void applyBulk();
-                  }
-                }}
-              />
-              <button
-                className="mini-btn primary"
-                disabled={!bulkName.trim()}
-                onClick={() => void applyBulk()}
-              >
-                应用
-              </button>
-              <button className="mini-btn" onClick={() => setBulkInputOpen(false)}>
-                取消
-              </button>
-            </div>
-          )}
-        </div>
+        <LibraryBulkBar
+          count={selectedIds.size}
+          visibleCount={visibleVideos.length}
+          concurrency={bulkConcurrency}
+          inputOpen={bulkInputOpen}
+          inputValue={bulkName}
+          inputKind={bulkKind}
+          onConcurrency={setBulkConcurrency}
+          onSelectAll={() => setSelectedIds(new Set(visibleVideos.map((video) => video.id)))}
+          onSummarize={() => void startBulkSummary()}
+          onAddTag={() => openBulkInput('tag')}
+          onAddCollection={() => setBulkCollectionOpen(true)}
+          onDelete={() => setBulkDeleteOpen(true)}
+          onCancel={exitSelect}
+          onInput={setBulkName}
+          onApply={() => void applyBulk()}
+          onCloseInput={() => setBulkInputOpen(false)}
+        />
       )}
 
       {notice && <div className="status-line">{notice}</div>}
