@@ -334,6 +334,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
 
+  const handleSectionSelect = (next: Section) => {
+    setSection(next);
+    if (sidebarCollapsed) {
+      setSidebarCollapsed(false);
+      void persistGeneral({ sidebarCollapsed: false });
+    }
+  };
+
   const persistGeneral = async (patch: Record<string, unknown>) => {
     const response = await window.bsub.getSettings();
     if (!response.ok) return;
@@ -429,7 +437,7 @@ export default function App() {
       <div className={`app-body sidebar-${sidebarPosition}${sidebarCollapsed ? ' is-collapsed' : ''}`}>
         <Sidebar
           section={section}
-          onSelect={setSection}
+          onSelect={handleSectionSelect}
           activeTab={active}
           tabCount={tabs.length}
           fontScale={fontScale}

@@ -66,6 +66,7 @@ let mainWindow: BrowserWindow | null = null;
 let tabManager: TabManager | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let trayHintShown = false;
 
 // 双开会共用 library.db 和桥端口，第二个实例启动时还会把第一个实例的
 // running 任务标成「应用退出」——必须只允许一个实例。
@@ -155,6 +156,21 @@ function createWindow(): void {
       mainWindow.setFullScreen(false);
       return;
     }
+    if (input.control && (input.key === '=' || input.key === '+')) {
+      event.preventDefault();
+      tabManager?.zoomIn();
+      return;
+    }
+    if (input.control && (input.key === '-' || input.key === '_')) {
+      event.preventDefault();
+      tabManager?.zoomOut();
+      return;
+    }
+    if (input.control && input.key === '0') {
+      event.preventDefault();
+      tabManager?.zoomReset();
+      return;
+    }
     if (input.key === 'F11') {
       event.preventDefault();
       mainWindow?.setFullScreen(!mainWindow.isFullScreen());
@@ -197,6 +213,11 @@ function createWindow(): void {
   );
   registerIpc(mainWindow, tabManager);
   tabManager.setSuspendMinutes(loadSettings().general.suspendMinutes);
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) void tabManager?.create(url);
+    return { action: 'deny' };
+  });
 
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[m0] userData', app.getPath('userData'));
@@ -273,6 +294,18 @@ function createWindow(): void {
     if (loadSettings().general.closeToTray === false) return;
     event.preventDefault();
     mainWindow?.hide();
+    if (!trayHintShown && tray) {
+      trayHintShown = true;
+      try {
+        tray.displayBalloon({
+          title: APP_NAME,
+          content: '窗口已最小化到托盘，双击托盘图标或右键菜单可恢复。',
+          iconType: 'info'
+        });
+      } catch {
+        // 某些系统不支持气泡提示，忽略。
+      }
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -290,7 +323,7 @@ app
     writeLog('startup.log', 'ready');
     migrateSettingsSecrets();
     nativeTheme.themeSource = loadSettings().general.theme;
-    if (process.platform === 'win32') app.setAppUserModelId('com.bsub.desktop');
+    if (process.platform === 'win32') app.setAppUserModelId('com.shizi.desktop');
     session.defaultSession.setUserAgent(UA);
     installDownloadHook(() => mainWindow);
     initLibrary();

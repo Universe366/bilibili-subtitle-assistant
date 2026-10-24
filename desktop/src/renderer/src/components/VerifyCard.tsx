@@ -42,7 +42,7 @@ export function VerifyCard({ verification }: VerifyCardProps) {
                 key={reference.url}
                 className="verify-ref"
                 title={reference.url}
-                onClick={() => void window.bsub.openExternal(reference.url)}
+                onClick={() => void window.bsub.newTab(reference.url)}
               >
                 <span className={`verify-verdict ${reference.verdict || 'unknown'}`}>
                   {reference.verdict === 'support'

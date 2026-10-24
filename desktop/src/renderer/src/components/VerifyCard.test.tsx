@@ -67,12 +67,12 @@ describe('VerifyCard', () => {
     expect(screen.getByText(/外部补充一句/)).toBeTruthy();
   });
 
-  it('点击证据用外部浏览器打开', () => {
-    const openExternal = vi.fn(async () => undefined);
-    Object.defineProperty(window, 'bsub', { configurable: true, value: { openExternal } });
+  it('点击证据在应用内新标签打开', () => {
+    const newTab = vi.fn(async () => undefined);
+    Object.defineProperty(window, 'bsub', { configurable: true, value: { newTab } });
     render(<VerifyCard verification={summary()} />);
     fireEvent.click(screen.getByText('证据标题').closest('button') as HTMLButtonElement);
-    expect(openExternal).toHaveBeenCalledWith('https://example.com/a');
+    expect(newTab).toHaveBeenCalledWith('https://example.com/a');
   });
 
   it('核对失败时展示错误', () => {
