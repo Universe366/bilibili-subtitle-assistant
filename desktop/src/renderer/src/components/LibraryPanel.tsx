@@ -22,6 +22,7 @@ import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryFilters } from './LibraryFilters';
+import { LibraryNoteTab } from './LibraryNoteTab';
 import { LibrarySubtitlesTab } from './LibrarySubtitlesTab';
 import { LibrarySummaryTab } from './LibrarySummaryTab';
 import { LibraryTabBar } from './LibraryTabBar';
@@ -986,90 +987,26 @@ export function LibraryPanel() {
 
 
         {detailTab === 'note' && detail && (
-          <div className="note-panel">
-            {notePreview ? (
-              <div className="note-preview">
-                <Markdown content={noteDraft.trim() || '*还没有内容*'} />
-              </div>
-            ) : (
-              <textarea
-                className="note-textarea"
-                value={noteDraft}
-                placeholder="写点笔记…（Ctrl+S 保存）"
-                spellCheck={false}
-                onChange={(event) => {
-                  setNoteDraft(event.target.value);
-                  setNoteDirty(true);
-                }}
-                onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-                    event.preventDefault();
-                    void saveNoteDraft();
-                  }
-                }}
-              />
-            )}
-            <div className="note-foot">
-              <span>
-                {noteDraft.length} 字
-                {noteDirty
-                  ? ' · 未保存'
-                  : detail.note
-                    ? ` · 保存于 ${formatDateTime(detail.note.updatedAt)}`
-                    : ' · 空笔记不会保存'}
-              </span>
-              <div className="note-actions">
-                <button className="mini-btn" onClick={() => setNotePreview((value) => !value)}>
-                  {notePreview ? '编辑' : '预览'}
-                </button>
-                <button
-                  className="mini-btn"
-                  disabled={!noteDraft.trim()}
-                  onClick={() => void exportNote()}
-                >
-                  导出
-                </button>
-                <button
-                  className="mini-btn primary"
-                  disabled={!noteDirty || noteSaving}
-                  onClick={() => void saveNoteDraft()}
-                >
-                  {noteSaving ? '保存中…' : '保存'}
-                </button>
-              </div>
-            </div>
-            {noteNotice && <div className="status-line">{noteNotice}</div>}
-            {(autoSaving || noteDirty) && (
-              <div className="panel-hint">{autoSaving ? '正在自动保存…' : '停止输入后会自动保存'}</div>
-            )}
-
-            {noteVersions.length > 0 && (
-              <div className="version-block">
-                <button
-                  className="version-toggle"
-                  onClick={() => setNoteVersionsOpen((value) => !value)}
-                >
-                  历史版本 {noteVersions.length} · {noteVersionsOpen ? '收起' : '展开'}
-                </button>
-                {noteVersionsOpen && (
-                  <div className="version-list">
-                    {noteVersions.map((version) => (
-                      <div key={version.id} className="version-row">
-                        <span className="version-time">{formatDateTime(version.createdAt)}</span>
-                        <span className="version-chars">{version.chars} 字</span>
-                        <button
-                          className="mini-btn"
-                          onClick={() => void loadNoteVersion(version)}
-                        >
-                          载入
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <LibraryNoteTab
+            draft={noteDraft}
+            dirty={noteDirty}
+            saving={noteSaving}
+            preview={notePreview}
+            notice={noteNotice}
+            autoSaving={autoSaving}
+            versions={noteVersions}
+            versionsOpen={noteVersionsOpen}
+            savedAt={detail.note?.updatedAt ?? null}
+            onChange={(value) => {
+              setNoteDraft(value);
+              setNoteDirty(true);
+            }}
+            onTogglePreview={() => setNotePreview((value) => !value)}
+            onExport={() => void exportNote()}
+            onSave={() => void saveNoteDraft()}
+            onLoadVersion={(version) => void loadNoteVersion(version)}
+            onToggleVersions={() => setNoteVersionsOpen((value) => !value)}
+          />
         )}
 
         <ConfirmDialog
