@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
-import { AlertTriangle, Copy, Eye, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Copy, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
   OptimizeSuggestion,
   PageInfo,
@@ -19,31 +18,11 @@ import {
   setTranslationResult
 } from '../lib/translationStore';
 import { ExportMenu } from './ExportMenu';
+import { SubtitleVideoHeader } from './SubtitleVideoHeader';
+import { SubtitleOptimizeProgress, SubtitleTranslateBar } from './SubtitleTranslateBar';
+import { SubtitleOptimizePanel, SubtitleQualityCard } from './SubtitleOptimizePanel';
+import { SubtitleLineRow } from './SubtitleLineRow';
 import { formatDuration } from '../lib/format';
-
-function fmtCount(value: number): string {
-  if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
-  return String(value);
-}
-
-function highlightMatch(text: string, query: string) {
-  const q = query.trim();
-  if (!q) return text;
-  const lower = text.toLowerCase();
-  const target = q.toLowerCase();
-  const parts: ReactNode[] = [];
-  let cursor = 0;
-  while (cursor < text.length) {
-    const index = lower.indexOf(target, cursor);
-    if (index < 0) break;
-    if (index > cursor) parts.push(text.slice(cursor, index));
-    parts.push(<mark key={`${index}-${parts.length}`}>{text.slice(index, index + q.length)}</mark>);
-    cursor = index + q.length;
-  }
-  if (!parts.length) return text;
-  if (cursor < text.length) parts.push(text.slice(cursor));
-  return parts;
-}
 
 function minCoverageOf(duration: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
@@ -1300,175 +1279,59 @@ export function SubtitlesPanel({
 
       {saveMessage && <div className="save-status">{saveMessage}</div>}
 
-      {translateOpen && (
-        <div className="translate-bar">
-          <select
-            className="mini-select"
-            value={targetLang}
-            onChange={(event) => setTargetLang(event.target.value)}
-          >
-            <option value="中文（简体）">中文（简体）</option>
-            <option value="中文（繁體）">中文（繁體）</option>
-            <option value="English">English</option>
-            <option value="日本語">日本語</option>
-            <option value="한국어">한국어</option>
-            <option value="__custom">自定义…</option>
-          </select>
-          {targetLang === '__custom' && (
-            <input
-              className="settings-input"
-              style={{ maxWidth: 110 }}
-              value={customTarget}
-              placeholder="目标语言"
-              spellCheck={false}
-              onChange={(event) => setCustomTarget(event.target.value)}
-            />
-          )}
-          <button
-            className="mini-btn primary"
-            disabled={translating || !lines.length || !effectiveTarget}
-            onClick={() => void startTranslate()}
-          >
-            开始翻译
-          </button>
-          {translating && (
-            <button className="mini-btn" onClick={stopTranslate}>
-              停止
-            </button>
-          )}
-          <button className="mini-btn" onClick={() => setTranslateOpen(false)}>
-            关闭
-          </button>
-        </div>
-      )}
+      <SubtitleTranslateBar
+        open={translateOpen}
+        targetLang={targetLang}
+        customTarget={customTarget}
+        effectiveTarget={effectiveTarget}
+        hasLines={lines.length > 0}
+        translating={translating}
+        progress={translateProgress}
+        message={translateMessage}
+        onTargetLang={setTargetLang}
+        onCustomTarget={setCustomTarget}
+        onStart={() => void startTranslate()}
+        onStop={stopTranslate}
+        onClose={() => setTranslateOpen(false)}
+      />
 
-      {translating && (
-        <div className="translate-progress">
-          <span>{translateMessage || '翻译中…'}</span>
-          <span>{Math.round(translateProgress)}%</span>
-        </div>
-      )}
+      <SubtitleOptimizeProgress
+        running={optimizing}
+        progress={optimizeProgress}
+        message={optimizeMessage}
+        onStop={stopOptimize}
+      />
 
-      {optimizing && (
-        <div className="translate-progress">
-          <span>{optimizeMessage || '校对中…'}</span>
-          <span>
-            {Math.round(optimizeProgress)}%
-            <button className="mini-btn" onClick={stopOptimize} style={{ marginLeft: 6 }}>
-              停止
-            </button>
-          </span>
-        </div>
-      )}
+      <SubtitleQualityCard
+        quality={quality}
+        onClose={() => setQuality(null)}
+        onJumpIssue={(issue) => {
+          if (typeof issue.lineIndex === 'number') {
+            const line = lines[issue.lineIndex];
+            if (line) jump(line);
+          } else if (typeof issue.start === 'number') {
+            setCurrent(issue.start);
+            void window.bsub.seek(issue.start + 0.05);
+          }
+        }}
+      />
 
-      {!optimizing && optimizeMessage && <div className="save-status">{optimizeMessage}</div>}
-
-      {quality && (
-        <div className="quality-card">
-          <div className="quality-head">
-            <span>质检结果</span>
-            <button className="mini-btn" onClick={() => setQuality(null)}>
-              关闭
-            </button>
-          </div>
-          <div className="quality-stats">
-            {quality.stats.lines} 行 · 覆盖 {(quality.stats.coverage * 100).toFixed(0)}% ·{' '}
-            {quality.stats.charsPerSecond.toFixed(1)} 字/秒
-          </div>
-          {quality.issues.length === 0 ? (
-            <div className="settings-hint">未发现明显问题</div>
-          ) : (
-            <div className="quality-list">
-              {quality.issues.map((issue, index) => (
-                <button
-                  key={`${issue.code}-${issue.lineIndex ?? index}`}
-                  className={`quality-issue ${issue.severity}`}
-                  onClick={() => {
-                    if (typeof issue.lineIndex === 'number') {
-                      const line = lines[issue.lineIndex];
-                      if (line) jump(line);
-                    } else if (typeof issue.start === 'number') {
-                      setCurrent(issue.start);
-                      void window.bsub.seek(issue.start + 0.05);
-                    }
-                  }}
-                >
-                  {issue.message}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {suggestions && suggestions.length > 0 && (
-        <div className="opt-panel">
-          <div className="opt-head">
-            <span>AI 优化建议 · {suggestions.length} 处</span>
-            <div className="toolbar-actions">
-              <button className="mini-btn" onClick={() => applySuggestions(true)}>
-                全部应用
-              </button>
-              <button
-                className="mini-btn"
-                onClick={() => {
-                  setSuggestions(null);
-                  setSelectedSuggestions(new Set());
-                }}
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-          <div className="opt-list">
-            {suggestions.map((item) => (
-              <label key={item.index} className="opt-row">
-                <input
-                  type="checkbox"
-                  checked={selectedSuggestions.has(item.index)}
-                  onChange={(event) => {
-                    const next = new Set(selectedSuggestions);
-                    if (event.target.checked) next.add(item.index);
-                    else next.delete(item.index);
-                    setSelectedSuggestions(next);
-                  }}
-                />
-                <div className="opt-text">
-                  <div className="opt-original">{item.original}</div>
-                  <div className="opt-suggestion">
-                    {item.suggestion}
-                    {item.verdict && (
-                      <span className={`opt-verdict ${item.verdict}`}>
-                        {item.verdict === 'support'
-                          ? '证据支持'
-                          : item.verdict === 'refute'
-                            ? '证据反对'
-                            : '未核实'}
-                        {item.sources ? ` · ${item.sources} 源` : ''}
-                        {item.consistency === 'conflict'
-                          ? ' · 有冲突'
-                          : item.consistency === 'multi'
-                            ? ' · 多源'
-                            : item.consistency === 'single'
-                              ? ' · 单源'
-                              : ''}
-                      </span>
-                    )}
-                  </div>
-                  {item.evidence && <div className="opt-evidence">证据：{item.evidence}</div>}
-                </div>
-              </label>
-            ))}
-          </div>
-          <button
-            className="mini-btn primary"
-            disabled={!selectedSuggestions.size}
-            onClick={() => applySuggestions(false)}
-          >
-            应用选中（{selectedSuggestions.size}）
-          </button>
-        </div>
-      )}
+      <SubtitleOptimizePanel
+        suggestions={suggestions}
+        selected={selectedSuggestions}
+        onToggle={(index) => {
+          const next = new Set(selectedSuggestions);
+          if (next.has(index)) next.delete(index);
+          else next.add(index);
+          setSelectedSuggestions(next);
+        }}
+        onApplyAll={() => applySuggestions(true)}
+        onApplySelected={() => applySuggestions(false)}
+        onClose={() => {
+          setSuggestions(null);
+          setSelectedSuggestions(new Set());
+        }}
+      />
 
       {!translating && translateMessage && <div className="save-status">{translateMessage}</div>}
 
@@ -1501,49 +1364,7 @@ export function SubtitlesPanel({
         </div>
       )}
 
-      {info && (
-        <div className="video-card">
-          {info.cover ? (
-            <img className="video-cover" src={info.cover} alt="" />
-          ) : (
-            <div className="video-cover video-cover-fallback">{info.title.slice(0, 1) || 'B'}</div>
-          )}
-          <div className="video-meta">
-            <div className="video-title" title={info.title}>
-              {info.title || '未识别到视频'}
-            </div>
-            <div className="video-sub">
-              {info.owner || (info.kind === 'youtube' ? '未知频道' : '未知 UP')}
-              {info.duration ? ` · ${formatDuration(info.duration)}` : ''}
-            </div>
-            <div className="video-tags">
-              {info.bvid && <span className="mini-tag">{info.bvid}</span>}
-              {info.kind !== 'youtube' && info.page > 0 && (
-                <span className="mini-tag">P{info.page}</span>
-              )}
-              {info.stat && info.stat.view > 0 && (
-                <span className="mini-tag">
-                  <Eye size={11} />
-                  {fmtCount(info.stat.view)}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="warn-card">
-          <AlertTriangle size={15} />
-          <div className="warn-body">
-            <div className="warn-title">读取失败</div>
-            <div className="warn-desc">{error}</div>
-            <button className="warn-btn" onClick={refresh}>
-              重试
-            </button>
-          </div>
-        </div>
-      )}
+      <SubtitleVideoHeader info={info} error={error} onRetry={refresh} />
 
       {bundle && (
         <details className="sub-diagnostics">
@@ -1722,81 +1543,29 @@ export function SubtitlesPanel({
       {lines.length > 0 && (
         <div className="sub-list">
           {lines.map((line, index) => (
-            <div
+            <SubtitleLineRow
               key={`${line.start}-${index}`}
-              ref={index === currentIndex ? activeLineRef : undefined}
-              className={`sub-line${index === currentIndex ? ' is-active' : ''}`}
-              onClick={() => jump(line)}
-            >
-              <span className="sub-time">{formatDuration(line.start)}</span>
-              {editingIndex === index ? (
-                <input
-                  className="sub-edit"
-                  autoFocus
-                  value={editingText}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => setEditingText(event.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      commitEdit();
-                    } else if (event.key === 'Escape') {
-                      setEditingIndex(null);
-                      setEditingText('');
-                    }
-                  }}
-                />
-              ) : (
-                <span
-                  className="sub-text"
-                  title={`${formatDuration(line.start)} – ${formatDuration(line.end)} · ${line.text.length} 字 · 约 ${Math.max(
-                    1,
-                    Math.round(line.text.length / 4)
-                  )} 秒${translated?.[index]?.text ? `\n译文：${translated[index].text}` : ''}`}
-                >
-                  {viewMode !== 'translated' && (
-                    <span className="sub-text-row">
-                      {subtitleQuery.trim()
-                        ? highlightMatch(line.text, subtitleQuery)
-                        : line.text}
-                    </span>
-                  )}
-                  {viewMode !== 'original' && (
-                    <span className={`sub-text-row${viewMode === 'bilingual' ? ' sub-text-translated' : ''}`}>
-                      {subtitleQuery.trim()
-                        ? highlightMatch(
-                            translated?.[index]?.text || (viewMode === 'translated' ? line.text : ''),
-                            subtitleQuery
-                          )
-                        : translated?.[index]?.text ||
-                          (viewMode === 'translated' ? line.text : '')}
-                    </span>
-                  )}
-                </span>
-              )}
-              <button
-                className="sub-edit-btn"
-                title="编辑此行"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setEditingIndex(index);
-                  setEditingText(line.text);
-                }}
-              >
-                <Pencil size={10} />
-              </button>
-              <button
-                className="sub-copy"
-                title="复制此行"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  copyLine(displayText(line, index));
-                }}
-              >
-                <Copy size={10} />
-              </button>
-            </div>
+              line={line}
+              index={index}
+              active={index === currentIndex}
+              editing={editingIndex === index}
+              editingText={editingText}
+              viewMode={viewMode}
+              translatedText={translated?.[index]?.text || ''}
+              query={subtitleQuery}
+              onJump={jump}
+              onEditStart={(rowIndex, text) => {
+                setEditingIndex(rowIndex);
+                setEditingText(text);
+              }}
+              onEditText={setEditingText}
+              onEditCommit={commitEdit}
+              onEditCancel={() => {
+                setEditingIndex(null);
+                setEditingText('');
+              }}
+              onCopy={copyLine}
+            />
           ))}
         </div>
       )}

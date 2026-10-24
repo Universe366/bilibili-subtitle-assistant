@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 63 个文件 / 258 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat 域的主要组件测试） |
+| 桌面单测 | 67 个文件 / 280 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles 域的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
