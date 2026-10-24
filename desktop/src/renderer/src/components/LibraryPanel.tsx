@@ -20,6 +20,7 @@ import type {
 import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
 import { LINE_PAGE, SORTS, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LibraryVideoRow } from './LibraryVideoRow';
 import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
 import { PodcastImport } from './PodcastImport';
@@ -1574,64 +1575,15 @@ export function LibraryPanel() {
       {!result && list && (
         <div className="lib-videos">
           {visibleVideos.map((video) => (
-            <div
+            <LibraryVideoRow
               key={video.id}
-              className={`lib-video${selectMode && selectedIds.has(video.id) ? ' is-selected' : ''}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => (selectMode ? toggleSelect(video.id) : openDetail(video))}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  if (selectMode) toggleSelect(video.id);
-                  else openDetail(video);
-                }
-              }}
-            >
-              {selectMode && (
-                <input
-                  type="checkbox"
-                  className="bulk-check"
-                  checked={selectedIds.has(video.id)}
-                  onChange={() => toggleSelect(video.id)}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              )}
-              {video.cover ? (
-                <img className="lib-cover" src={video.cover} alt="" />
-              ) : (
-                <div className="lib-cover lib-cover-fallback">
-                  {video.title.slice(0, 1) || 'B'}
-                </div>
-              )}
-              <div className="lib-meta">
-                <div className="lib-title-row">
-                  <span className="lib-title" title={video.title}>
-                    {video.title}
-                  </span>
-                  {video.summaryUpdatedAt != null && <span className="lib-badge">已总结</span>}
-                </div>
-                <div className="lib-sub">{metaLine(video)}</div>
-                <div className="lib-sub faint">
-                  {video.tags.length > 0
-                    ? video.tags.slice(0, 3).join(' · ')
-                    : video.summaryUpdatedAt != null
-                      ? `总结于 ${formatDate(video.summaryUpdatedAt)}`
-                      : `入库于 ${formatDate(video.createdAt)}`}
-                </div>
-              </div>
-              {!selectMode && (
-                <button
-                  className="lib-delete"
-                  title="从库中删除"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setPendingDelete(video);
-                  }}
-                >
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
+              video={video}
+              selectMode={selectMode}
+              selected={selectedIds.has(video.id)}
+              onToggleSelect={toggleSelect}
+              onOpen={openDetail}
+              onDelete={(item) => setPendingDelete(item)}
+            />
           ))}
 
           {!list.videos.length && (
