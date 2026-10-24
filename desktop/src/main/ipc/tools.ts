@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { dialog, ipcMain } from 'electron';
 import type {
+  AppSettings,
   Chapter,
   CorrectionRuleGroup,
   McpServer,
@@ -18,6 +19,7 @@ import { checkSubtitles } from '../quality';
 import { generateChapters } from '../chapters';
 import { testSearch } from '../search';
 import { loadSettings } from '../settings';
+import { applyCorrectionToText } from '../correction';
 
 import { failure, type IpcContext } from './shared';
 
@@ -157,4 +159,18 @@ export function registerToolsIpc(ctx: IpcContext): void {
       return failure(error);
     }
   });
+
+  ipcMain.handle(
+    'correction:preview',
+    (_event, text: string, settings?: AppSettings): Result<string> => {
+      try {
+        return {
+          ok: true,
+          data: applyCorrectionToText(String(text || ''), settings || loadSettings())
+        };
+      } catch (error) {
+        return failure(error);
+      }
+    }
+  );
 }

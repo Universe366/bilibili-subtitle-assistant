@@ -37,3 +37,30 @@ export function withStartParam(url: string, seconds: number): string {
     return url;
   }
 }
+
+/**
+ * 长任务取消句柄。集中放这里，是因为 jobs:cancel 需要跨域查找句柄，
+ * 而各域（ai / asr / 批量…）自己持有注册与清理逻辑。
+ */
+export const abortControllers = {
+  ai: new Map<string, AbortController>(),
+  chat: new Map<string, AbortController>(),
+  asr: new Map<string, AbortController>(),
+  translate: new Map<string, AbortController>(),
+  optimize: new Map<string, AbortController>(),
+  batch: new Map<string, AbortController>(),
+  urlBatch: new Map<string, AbortController>()
+};
+
+/** 按 requestId 找任意域上的取消句柄。 */
+export function findAbortController(id: string): AbortController | undefined {
+  return (
+    abortControllers.ai.get(id) ||
+    abortControllers.chat.get(id) ||
+    abortControllers.asr.get(id) ||
+    abortControllers.translate.get(id) ||
+    abortControllers.optimize.get(id) ||
+    abortControllers.batch.get(id) ||
+    abortControllers.urlBatch.get(id)
+  );
+}
