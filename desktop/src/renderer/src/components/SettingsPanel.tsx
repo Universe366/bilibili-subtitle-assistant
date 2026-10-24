@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticsInfo } from '../../../shared/types';
-import { Markdown } from './Markdown';
 import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
+import { UpdateSection } from './settings/UpdateSection';
 import {
   Download,
   FolderOpen,
@@ -2365,115 +2365,19 @@ export function SettingsPanel() {
       />
 
 
-      <SettingsSection title="版本更新" defaultOpen={false}>
-        <div className="settings-row">
-          <span>当前版本</span>
-          <code>v{version}</code>
-        </div>
-        <div className={`update-card${updateState ? ` is-${updateState.state}` : ''}`}>
-          <div className="update-head">
-            <span>{updateText(updateState)}</span>
-            <span className="muted">当前 v{version}</span>
-          </div>
-          {updateState?.checkedAt && (
-            <div className="settings-hint">
-              上次检查：{new Date(updateState.checkedAt).toLocaleString('zh-CN')}
-            </div>
-          )}
-          {updateState?.state === 'downloading' && (
-            <div className="update-progress">
-              <span style={{ width: `${updateState.progress || 0}%` }} />
-            </div>
-          )}
-          {updateState?.state === 'error' && updateState.error && (
-            <div className="update-error">{updateState.error}</div>
-          )}
-          {(updateState?.state === 'available' || updateState?.state === 'downloaded') &&
-            updateState?.notes && (
-              <div className="update-notes">
-                <Markdown content={updateState.notes} />
-              </div>
-            )}
-        </div>
+      <UpdateSection
+        version={version}
+        status={updateState}
+        statusText={updateText(updateState)}
+        value={draft.update}
+        onChange={(next) => setDraft({ ...draft, update: next })}
+        onCheck={() => void window.bsub.checkForUpdates()}
+        onDownload={() => void window.bsub.downloadUpdate()}
+        onSkip={() => void skipCurrentUpdate()}
+        onInstall={() => void window.bsub.installUpdate()}
+        onOpenReleases={() => void window.bsub.openReleasesPage()}
+      />
 
-        <div className="toolbar-actions">
-          <button
-            className="mini-btn"
-            disabled={
-              !updateState ||
-              updateState.state === 'checking' ||
-              updateState.state === 'downloading' ||
-              updateState.state === 'disabled'
-            }
-            onClick={() => void window.bsub.checkForUpdates()}
-          >
-            <RefreshCw size={12} /> {updateState?.state === 'error' ? '重试' : '检查'}
-          </button>
-          {updateState?.state === 'available' && (
-            <>
-              <button className="mini-btn primary" onClick={() => void window.bsub.downloadUpdate()}>
-                <Download size={12} /> 下载
-              </button>
-              <button className="mini-btn" onClick={() => void skipCurrentUpdate()}>
-                跳过此版本
-              </button>
-            </>
-          )}
-          {updateState?.state === 'downloaded' && (
-            <button className="mini-btn primary" onClick={() => void window.bsub.installUpdate()}>
-              重启安装
-            </button>
-          )}
-          <button className="mini-btn" onClick={() => void window.bsub.openReleasesPage()}>
-            打开发布页
-          </button>
-        </div>
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.update.autoCheck !== false}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                update: { ...draft.update, autoCheck: event.target.checked }
-              })
-            }
-          />
-          启动后自动检查
-        </label>
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.update.autoDownload === true}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                update: { ...draft.update, autoDownload: event.target.checked }
-              })
-            }
-          />
-          发现新版本后自动下载（安装仍需重启）
-        </label>
-
-        <div className="settings-label">自定义更新源（可选）</div>
-        <input
-          className="settings-input"
-          value={draft.update.feedUrl || ''}
-          spellCheck={false}
-          placeholder="留空使用内置 GitHub Releases"
-          onChange={(event) =>
-            setDraft({
-              ...draft,
-              update: { ...draft.update, feedUrl: event.target.value }
-            })
-          }
-        />
-        <div className="settings-hint">
-          自动检查与更新源修改后下次启动生效；未签名时 SmartScreen 仍会提示。
-        </div>
-      </SettingsSection>
 
       <SettingsSection title="MCP 服务" defaultOpen={false}>
         <label className="settings-check">
