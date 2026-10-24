@@ -12,7 +12,7 @@
 | 桌面单测 | 18 个文件 / 70 个用例 |
 | 插件测试 | 520 项 |
 | ESLint | 0 error / 88 warning（全部是 API JSON 的 `any`） |
-| 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，6 条 E2E） |
+| 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，9 条 E2E） |
 | CI | 桌面（master/PR）+ 插件（master/PR）+ tag 发布 |
 
 本次已经做掉的：
@@ -27,7 +27,7 @@
 - 本地工作区从 6.4GB 清到约 1.7GB，临时测试目录清零；
 - 桌面冒烟扩展为 6 条 E2E（设置读写、字幕入库/检索、笔记、回收站删除恢复）；
 - 新增 IPC channel 清单与漂移测试（`scripts/ipc-channels.json` + `src/main/ipcChannels.test.ts`）；
-- `ipc.ts` 按域拆到 `src/main/ipc/`：library / browser / page / settings / tools / records，`ipc.ts` 从 2.8k 降到 1.1k（-60%）。
+- `ipc.ts` 按域拆到 `src/main/ipc/`：library / browser / page / settings / media / jobs / tools / records，`ipc.ts` 从 2.8k 降到 43 行（只保留注册入口）。
 
 ## 仍然值得做的（按优先级）
 
@@ -35,13 +35,13 @@
 
 | 文件 | 行数 | 建议 |
 |---|---:|---|
-| `src/main/ipc.ts` | ~1.1k | 剩余 AI / 媒体 / 批量 / 任务域；library/browser/page/settings/tools/records 已拆到 `ipc/*.ts` |
 | `src/main/library.ts` | ~2.6k | 拆 schema、videos、summaries、trash、search |
 | `src/renderer/.../SettingsPanel.tsx` | ~3.0k | 拆 AI / ASR / 检索 / 数据 / 插件桥 section |
 | `src/renderer/.../LibraryPanel.tsx` | ~2.3k | 拆列表、详情、标签/合集、批量操作 |
 
-为什么现在没动：这些文件没有组件级/E2E 测试兜底，直接拆容易“编译通过、交互坏掉”。
-建议先补 3–5 条桌面 E2E（打开库、详情、总结、删除/恢复、设置保存），再拆。
+为什么现在没动：`library.ts` 与两个 React 组件没有组件级测试兜底，直接拆容易“编译通过、交互坏掉”。
+`ipc` 域现在有 9 条 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出）兜底，可以照着同样的节奏来；
+`library.ts` 建议先拆出 schema 与 search（有单测覆盖），再动数据写入部分。
 
 ### P1：收敛 JSON 边界的 `any`
 

@@ -99,7 +99,7 @@ node panel-test.js
 
 | 文件 | 行数 | 问题 |
 |---|---:|---|
-| `desktop/src/main/ipc.ts` | ~1.1k | 剩余 AI/媒体/批量/任务域；library/browser/page/settings/tools/records 已拆到 `ipc/*.ts` |
+| `desktop/src/main/ipc/` | ~2.9k | 已按域拆分（library/browser/page/settings/media/jobs/tools/records）；`ipc.ts` 只剩 43 行注册入口 |
 | `desktop/src/main/library.ts` | ~2.7k | schema/SQL/业务/回收站/搜索混在一起 |
 | `desktop/src/renderer/.../SettingsPanel.tsx` | ~3.1k | 14 个 section，254 个 useState 的一部分 |
 | `desktop/src/renderer/.../LibraryPanel.tsx` | ~2.3k | 列表/详情/标签/合集/批量混在一起 |
