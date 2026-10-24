@@ -93,7 +93,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoFollow: true,
     wizardDone: false,
     restoreSession: true,
-    selectionToolbar: true
+    selectionToolbar: true,
+    searchEngine: 'bilibili',
+    searchEngineCustom: ''
   },
   ai: {
     activeId: 'deepseek',

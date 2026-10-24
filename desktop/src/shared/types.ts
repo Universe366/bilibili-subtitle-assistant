@@ -717,6 +717,10 @@ export interface AppSettings {
     restoreSession: boolean;
     /** 网页内选中文字时显示解释/翻译/总结工具条 */
     selectionToolbar: boolean;
+    /** 地址栏输入非网址时用哪个搜索引擎 */
+    searchEngine: 'bilibili' | 'bing' | 'google' | 'custom';
+    /** searchEngine=custom 时的 URL 模板，必须包含 {q} */
+    searchEngineCustom: string;
   };
   ai: {
     activeId: string;

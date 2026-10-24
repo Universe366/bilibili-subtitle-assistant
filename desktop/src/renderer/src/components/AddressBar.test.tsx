@@ -24,6 +24,13 @@ function installBsub() {
     reload: vi.fn(),
     stop: vi.fn(),
     zoomReset: vi.fn(),
+    listBrowseHistory: vi.fn(async () => ({
+      ok: true as const,
+      data: [
+        { id: 1, url: 'https://www.bilibili.com/video/BV1', title: '历史里的视频', visitedAt: 1 },
+        { id: 2, url: 'https://example.com/post', title: '历史文章', visitedAt: 2 }
+      ]
+    })),
     newTab: vi.fn()
   };
   Object.defineProperty(window, 'bsub', { configurable: true, value: api });
@@ -96,4 +103,31 @@ describe('AddressBar', () => {
     expect((screen.getByTitle(/阅读模式/) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTitle(/收藏此页/) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('聚焦后给出历史建议，方向键与回车打开', async () => {
+    const api = installBsub();
+    render(<AddressBar {...props()} />);
+    const input = screen.getByDisplayValue(tab.url);
+    fireEvent.focus(input);
+
+    const first = await screen.findByText('历史里的视频', undefined, { timeout: 2000 });
+    expect(api.listBrowseHistory).toHaveBeenCalled();
+    expect(screen.getByText('历史文章')).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(api.navigate).toHaveBeenCalledWith('https://www.bilibili.com/video/BV1' === tab.url ? tab.url : 'https://www.bilibili.com/video/BV1');
+    expect(first).toBeTruthy();
+  });
+
+  it('没有建议时回车仍然按地址导航', () => {
+    const api = installBsub();
+    render(<AddressBar {...props()} />);
+    const input = screen.getByDisplayValue(tab.url);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'example.org' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(api.navigate).toHaveBeenCalledWith('example.org');
+  });
 });
+

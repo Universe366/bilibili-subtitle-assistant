@@ -59,6 +59,11 @@ function bridgeSource(): string {
   throw new Error('找不到 page-bridge.js，请先运行 npm run sync:bridge');
 }
 
+function searchPref(): { engine: 'bilibili' | 'bing' | 'google' | 'custom'; customUrl: string } {
+  const general = loadSettings().general;
+  return { engine: general.searchEngine || 'bilibili', customUrl: general.searchEngineCustom || '' };
+}
+
 export class TabManager {
   private readonly tabs = new Map<string, TabRecord>();
   private readonly creating = new Map<string, Promise<void>>();
@@ -97,7 +102,7 @@ export class TabManager {
     options: { activate?: boolean; wait?: boolean } = {}
   ): Promise<string> {
     const id = randomUUID();
-    const url = normalizeUrl(input);
+    const url = normalizeUrl(input, searchPref());
     const record: TabRecord = {
       id,
       view: null,
@@ -461,7 +466,7 @@ export class TabManager {
   async openOrActivate(
     input: string
   ): Promise<{ id: string; reused: boolean; ready: boolean }> {
-    const url = normalizeUrl(input);
+    const url = normalizeUrl(input, searchPref());
     const key = tabKey(url);
     for (const [id, record] of this.tabs) {
       if (!record.url || tabKey(record.url) !== key) continue;
@@ -592,7 +597,7 @@ export class TabManager {
   navigate(input: string): void {
     const record = this.activeRecord();
     if (!record || !record.view) return;
-    const url = normalizeUrl(input);
+    const url = normalizeUrl(input, searchPref());
     void record.view.webContents.loadURL(url).catch((err: Error) => {
       console.warn('[tab] navigate 失败', url, err.message);
     });
