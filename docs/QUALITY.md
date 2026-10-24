@@ -37,7 +37,7 @@
 |---|---:|---|
 | `src/main/library.ts` | 102 行 | 纯桶文件；14 个域模块在 `library/*.ts` |
 | `src/renderer/.../SettingsPanel.tsx` | ~1.25k | 15 个 section 已完成拆出，主文件只剩状态与组装 |
-| `src/renderer/.../LibraryPanel.tsx` | ~1.44k | 13 个 section/弹窗已拆；剩详情容器骨架 |
+| `src/renderer/.../LibraryPanel.tsx` | ~1.38k | 14 个 section/弹窗已拆；剩详情容器骨架 |
 
 为什么现在没动：`library.ts` 与两个 React 组件没有组件级测试兜底，直接拆容易“编译通过、交互坏掉”。
 `ipc` 域现在有 10 条 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）兜底，可以照着同样的节奏来；
