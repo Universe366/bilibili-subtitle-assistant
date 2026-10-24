@@ -100,7 +100,7 @@ node panel-test.js
 | 文件 | 行数 | 问题 |
 |---|---:|---|
 | `desktop/src/main/ipc/` | ~2.9k | 已按域拆分（library/browser/page/settings/media/jobs/tools/records）；`ipc.ts` 只剩 43 行注册入口 |
-| `desktop/src/main/library.ts` | ~0.6k | 保留 schema/初始化/入库/列表/详情；其余域在 `library/*.ts`（db/core/jobs/downloads/exports/history/search/tags/trash/collections/summaries/notes） |
+| `desktop/src/main/library.ts` | **102 行** | 纯兼容桶文件；schema/videos/db/core/jobs/downloads/exports/history/search/tags/trash/collections/summaries/notes 全在 `library/*.ts` |
 | `desktop/src/renderer/.../SettingsPanel.tsx` | ~3.1k | 14 个 section，254 个 useState 的一部分 |
 | `desktop/src/renderer/.../LibraryPanel.tsx` | ~2.3k | 列表/详情/标签/合集/批量混在一起 |
 | `desktop/src/main/index.ts` | ~2.4k | 启动、窗口、下载、会话、更新混在一起 |

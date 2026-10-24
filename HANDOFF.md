@@ -60,7 +60,7 @@
 - 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（155 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
 - `ipc.ts` 按域拆分：**library / browser / page / settings / media / jobs / tools / records** 八个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam`/`abortControllers` 在 `shared.ts`；`ipc.ts` 2.8k → **43 行**，只剩注册入口；
 - 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终 155 条；
-- `library.ts` 按模块拆到 `library/`：db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 仍是兼容桶文件，2683 → 631 行；
+- `library.ts` 按模块拆到 `library/`：schema / videos / db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 2683 → **102 行桶文件**；
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
 ### 0.37.0 / 0.37.1
@@ -77,7 +77,7 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 43 行（入口）/ `library.ts` 0.6k（其余在 `library/`）/ `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
+| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（均为入口/桶文件）/ `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
 | 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
@@ -107,7 +107,7 @@
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
-1. 继续拆 `library.ts` 剩余部分（schema/初始化、入库、列表、详情）；
+1. UI 层：`SettingsPanel` / `LibraryPanel` 需要先补组件级测试再拆（引入 jsdom/@testing-library 属新依赖，需确认）；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. 最后才动 `SettingsPanel.tsx` / `LibraryPanel.tsx` / `index.ts`。
 
