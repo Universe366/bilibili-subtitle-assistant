@@ -24,6 +24,7 @@ import { LibraryBulkBar } from './LibraryBulkBar';
 import { LibraryBulkCollectionDialog } from './LibraryBulkCollectionDialog';
 import { LibraryCollectionRow } from './LibraryCollectionRow';
 import { LibraryImportDialog } from './LibraryImportDialog';
+import { LibraryManageDialog } from './LibraryManageDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryFilters } from './LibraryFilters';
 import { LibraryNoteTab } from './LibraryNoteTab';
@@ -1326,140 +1327,33 @@ export function LibraryPanel() {
         onClose={() => setBulkCollectionOpen(false)}
       />
 
-      {manageOpen && (
-        <div
-          className="confirm-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setManageOpen(false);
-          }}
-        >
-          <div className="confirm-card collection-manage" role="dialog" aria-label="管理标签与合集">
-            <div className="confirm-title">管理标签与合集</div>
-            <div className="collection-manage-list">
-              {allTags.length > 0 && <div className="manage-section-label">标签</div>}
-              {allTags.map((tag) => (
-                <div key={`tag-${tag.name}`} className="collection-manage-row">
-                  {tagRenameName === tag.name ? (
-                    <>
-                      <input
-                        className="tag-input"
-                        autoFocus
-                        value={tagRenameDraft}
-                        onChange={(event) => setTagRenameDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            void saveTagRename(tag);
-                          } else if (event.key === 'Escape') {
-                            event.preventDefault();
-                            setTagRenameName('');
-                          }
-                        }}
-                      />
-                      <button className="mini-btn primary" onClick={() => void saveTagRename(tag)}>
-                        保存
-                      </button>
-                      <button className="mini-btn" onClick={() => setTagRenameName('')}>
-                        取消
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="collection-manage-name" title={tag.name}>
-                        {tag.name}
-                        <span className="collection-manage-count"> · {tag.count}</span>
-                      </span>
-                      <button
-                        className="mini-btn"
-                        onClick={() => {
-                          setTagRenameName(tag.name);
-                          setTagRenameDraft(tag.name);
-                        }}
-                      >
-                        重命名
-                      </button>
-                      <button
-                        className="mini-btn danger"
-                        onClick={() => setPendingTagDelete(tag)}
-                      >
-                        删除
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
-
-              {allCollections.length > 0 && <div className="manage-section-label">合集</div>}
-              {allCollections.map((item) => (
-                <div key={item.id} className="collection-manage-row">
-                  {renameId === item.id ? (
-                    <>
-                      <input
-                        className="tag-input"
-                        autoFocus
-                        value={renameDraft}
-                        onChange={(event) => setRenameDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            void saveRename(item);
-                          } else if (event.key === 'Escape') {
-                            event.preventDefault();
-                            setRenameId(0);
-                          }
-                        }}
-                      />
-                      <button className="mini-btn primary" onClick={() => void saveRename(item)}>
-                        保存
-                      </button>
-                      <button className="mini-btn" onClick={() => setRenameId(0)}>
-                        取消
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="collection-manage-name" title={item.name}>
-                        {item.name}
-                        <span className="collection-manage-count"> · {item.count}</span>
-                      </span>
-                      <button
-                        className="mini-btn"
-                        disabled={item.count === 0}
-                        onClick={() => void openCollectionSummary(item)}
-                      >
-                        对比
-                      </button>
-                      <button
-                        className="mini-btn"
-                        onClick={() => {
-                          setRenameId(item.id);
-                          setRenameDraft(item.name);
-                        }}
-                      >
-                        重命名
-                      </button>
-                      <button
-                        className="mini-btn danger"
-                        onClick={() => setPendingCollectionDelete(item)}
-                      >
-                        删除
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
-              {!allCollections.length && !allTags.length && (
-                <div className="panel-empty">还没有标签或合集</div>
-              )}
-            </div>
-            <div className="confirm-actions">
-              <button className="mini-btn" onClick={() => setManageOpen(false)}>
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LibraryManageDialog
+        open={manageOpen}
+        tags={allTags}
+        collections={allCollections}
+        tagRenameName={tagRenameName}
+        tagRenameDraft={tagRenameDraft}
+        collectionRenameId={renameId}
+        collectionRenameDraft={renameDraft}
+        onTagRenameStart={(name) => {
+          setTagRenameName(name);
+          setTagRenameDraft(name);
+        }}
+        onTagRenameDraft={setTagRenameDraft}
+        onTagRenameSave={(tag) => void saveTagRename(tag)}
+        onTagRenameCancel={() => setTagRenameName('')}
+        onTagDelete={(tag) => setPendingTagDelete(tag)}
+        onCollectionRenameStart={(item) => {
+          setRenameId(item.id);
+          setRenameDraft(item.name);
+        }}
+        onCollectionRenameDraft={setRenameDraft}
+        onCollectionRenameSave={(item) => void saveRename(item)}
+        onCollectionRenameCancel={() => setRenameId(0)}
+        onCollectionDelete={(item) => setPendingCollectionDelete(item)}
+        onCollectionCompare={(item) => void openCollectionSummary(item)}
+        onClose={() => setManageOpen(false)}
+      />
 
       {summaryCollection && (
         <div

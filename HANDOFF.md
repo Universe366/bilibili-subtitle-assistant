@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 45 个文件 / 183 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings 组件测试） |
+| 桌面单测 | 46 个文件 / 188 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings 组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 9/9` |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -49,7 +49,7 @@
 - 修复对话 `sendOnEnter`/`expandReasoning`、总结 `search.verify` 未生效。
 
 ### 0.37.2 之后的本机复验（2026-10-24，未发版）
-- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/0 warning、45 文件 183 用例、`SMOKE OK version=0.37.2`；
+- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/0 warning、46 文件 188 用例、`SMOKE OK version=0.37.2`；
 - 插件 `npm test` 22 个套件全绿，`panel-test.js` 520 项 0 失败；
 - 修正过期版本号：`docs/REPO-MAP.md`、`docs/MAINTAINERS.md` 里的 0.37.1 → 0.37.2；
 - 修正 `desktop/scripts/release.mjs`：安装说明的数据目录 `bsub-desktop` → `shizi`（旧版自动迁移），发行 tag 从 `v${插件版本}` 改为 `v${桌面版本}`（否则脚本会提示 `v2.18.6`，与 semver Latest 规则冲突）；
