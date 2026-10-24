@@ -113,7 +113,8 @@
 1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 55 文件 / 226 用例；渲染层剩余工作已收口；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
-4. `index.ts` 评估结论：`createWindow()` 约 2.3k 行、直接操作模块级 `mainWindow`，在补出「启动 / 托盘 / 会话恢复 / 下载」回归测试前不建议拆；下一步顺序建议 tray → 会话持久化 → 下载钩子 → 窗口装配。
+4. `SettingsPanel` memo 评估：15 个 section 都接收整份 `draft`，只加 `React.memo` 不会减少重渲染；要收益必须先按 section 切分 `draft`（改动面大、风险中），暂缓。
+5. `index.ts` 评估结论：`createWindow()` 约 2.3k 行、直接操作模块级 `mainWindow`，在补出「启动 / 托盘 / 会话恢复 / 下载」回归测试前不建议拆；下一步顺序建议 tray → 会话持久化 → 下载钩子 → 窗口装配。
 
 不要一次拆多个域；`index.ts` 先补启动回归测试再动。
 
