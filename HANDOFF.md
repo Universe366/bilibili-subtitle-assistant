@@ -77,7 +77,7 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.25k / `LibraryPanel.tsx` 1.38k / `index.ts` 341 行（托盘/会话/下载/日志/开发探针已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts） |
+| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.25k / `LibraryPanel.tsx` 1.32k / `index.ts` 341 行（托盘/会话/下载/日志/开发探针已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts） |
 | 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
@@ -107,7 +107,7 @@
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
-1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 54 文件 / 221 用例；只剩详情容器骨架可再收一层；
+1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 54 文件 / 221 用例；渲染层剩余工作已收口；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
 4. `index.ts` 评估结论：`createWindow()` 约 2.3k 行、直接操作模块级 `mainWindow`，在补出「启动 / 托盘 / 会话恢复 / 下载」回归测试前不建议拆；下一步顺序建议 tray → 会话持久化 → 下载钩子 → 窗口装配。

@@ -22,18 +22,13 @@ import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LibraryBulkBar } from './LibraryBulkBar';
 import { LibraryBulkCollectionDialog } from './LibraryBulkCollectionDialog';
-import { LibraryCollectionRow } from './LibraryCollectionRow';
 import { LibraryCollectionSummaryDialog } from './LibraryCollectionSummaryDialog';
 import { LibraryImportDialog } from './LibraryImportDialog';
 import { LibraryManageDialog } from './LibraryManageDialog';
-import { LibraryDetailHeader } from './LibraryDetailHeader';
+import { LibraryDetailView } from './LibraryDetailView';
 import { LibraryEmptyState } from './LibraryEmptyState';
 import { LibraryListHeader } from './LibraryListHeader';
 import { LibraryFilters } from './LibraryFilters';
-import { LibraryNoteTab } from './LibraryNoteTab';
-import { LibrarySubtitlesTab } from './LibrarySubtitlesTab';
-import { LibrarySummaryTab } from './LibrarySummaryTab';
-import { LibraryTabBar } from './LibraryTabBar';
 import { LibraryTrashDialog } from './LibraryTrashDialog';
 import { LibraryVideoRow } from './LibraryVideoRow';
 import { PodcastImport } from './PodcastImport';
@@ -894,111 +889,58 @@ export function LibraryPanel() {
 
   if (selectedId != null) {
     return (
-      <div className="panel">
-        <LibraryDetailHeader
-          video={activeVideo}
-          detail={detail}
-          tags={allTags}
-          tagDraft={tagDraft}
-          onTagDraft={setTagDraft}
-          onAddTag={addTag}
-          onRemoveTag={removeTag}
-          onBack={backToList}
-          onOpen={openInBrowser}
-          onDelete={setPendingDelete}
-        />
-
-        {detail && (
-          <LibraryCollectionRow
-            collections={detail.video.collections}
-            allCollections={allCollections}
-            draft={collectionDraft}
-            onDraft={setCollectionDraft}
-            onAdd={(name) => void addToCollection(name)}
-            onRemove={(name) => void removeFromCollection(name)}
-          />
-        )}
-
-        <LibraryTabBar detail={detail} active={detailTab} onChange={setDetailTab} />
-
-
-        {error && <div className="status-line error">{error}</div>}
-
-        {detailLoading && !detail && (
-          <div className="status-line">
-            <Loader2 size={13} className="spin" />
-            读取中…
-          </div>
-        )}
-
-        {detailTab === 'subtitles' && (
-          <LibrarySubtitlesTab
-            bundle={detail?.bundle ?? null}
-            hasDetail={Boolean(detail)}
-            lineLimit={lineLimit}
-            onLoadMore={() => setLineLimit((value) => value + LINE_PAGE)}
-            onSeek={(seconds) => detail && openInBrowser(detail.video, seconds)}
-          />
-        )}
-
-
-        {detailTab === 'summary' && (
-          <LibrarySummaryTab
-            summary={detail?.summary ?? null}
-            hasDetail={Boolean(detail)}
-            preview={preview}
-            diff={diff}
-            versions={versions}
-            versionsOpen={versionsOpen}
-            busyVersion={busyVersion}
-            onCompare={compareVersion}
-            onPreview={(version) => void previewVersion(version)}
-            onRestore={(id) => void restoreVersion(id)}
-            onExitPreview={() => {
-              setPreview(null);
-              setDiff(null);
-            }}
-            onToggleVersions={() => setVersionsOpen((value) => !value)}
-          />
-        )}
-
-
-        {detailTab === 'note' && detail && (
-          <LibraryNoteTab
-            draft={noteDraft}
-            dirty={noteDirty}
-            saving={noteSaving}
-            preview={notePreview}
-            notice={noteNotice}
-            autoSaving={autoSaving}
-            versions={noteVersions}
-            versionsOpen={noteVersionsOpen}
-            savedAt={detail.note?.updatedAt ?? null}
-            onChange={(value) => {
-              setNoteDraft(value);
-              setNoteDirty(true);
-            }}
-            onTogglePreview={() => setNotePreview((value) => !value)}
-            onExport={() => void exportNote()}
-            onSave={() => void saveNoteDraft()}
-            onLoadVersion={(version) => void loadNoteVersion(version)}
-            onToggleVersions={() => setNoteVersionsOpen((value) => !value)}
-          />
-        )}
-
-        <ConfirmDialog
-          open={Boolean(pendingDelete)}
-          title="从库中删除？"
-          description={
-            pendingDelete
-              ? `「${pendingDelete.title}」的字幕、总结和搜索索引会一起删除，无法撤销。`
-              : undefined
-          }
-          confirmText="删除"
-          onConfirm={() => void confirmDelete()}
-          onCancel={() => setPendingDelete(null)}
-        />
-      </div>
+      <LibraryDetailView
+        activeVideo={activeVideo}
+        detail={detail}
+        allTags={allTags}
+        allCollections={allCollections}
+        tagDraft={tagDraft}
+        collectionDraft={collectionDraft}
+        detailTab={detailTab}
+        error={error}
+        detailLoading={detailLoading}
+        lineLimit={lineLimit}
+        preview={preview}
+        diff={diff}
+        versions={versions}
+        versionsOpen={versionsOpen}
+        busyVersion={busyVersion}
+        noteDraft={noteDraft}
+        noteDirty={noteDirty}
+        noteSaving={noteSaving}
+        notePreview={notePreview}
+        noteNotice={noteNotice}
+        autoSaving={autoSaving}
+        noteVersions={noteVersions}
+        noteVersionsOpen={noteVersionsOpen}
+        pendingDelete={pendingDelete}
+        linePage={LINE_PAGE}
+        setTagDraft={setTagDraft}
+        setCollectionDraft={setCollectionDraft}
+        setDetailTab={setDetailTab}
+        setLineLimit={setLineLimit}
+        setPreview={setPreview}
+        setDiff={setDiff}
+        setVersionsOpen={setVersionsOpen}
+        setNoteDraft={setNoteDraft}
+        setNoteDirty={setNoteDirty}
+        setNotePreview={setNotePreview}
+        setNoteVersionsOpen={setNoteVersionsOpen}
+        setPendingDelete={setPendingDelete}
+        addTag={addTag}
+        removeTag={removeTag}
+        backToList={backToList}
+        openInBrowser={openInBrowser}
+        addToCollection={addToCollection}
+        removeFromCollection={removeFromCollection}
+        compareVersion={compareVersion}
+        previewVersion={previewVersion}
+        restoreVersion={restoreVersion}
+        exportNote={exportNote}
+        saveNoteDraft={saveNoteDraft}
+        loadNoteVersion={loadNoteVersion}
+        confirmDelete={confirmDelete}
+      />
     );
   }
 

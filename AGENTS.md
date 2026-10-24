@@ -102,7 +102,7 @@ node panel-test.js
 | `desktop/src/main/ipc/` | ~2.9k | 已按域拆分（library/browser/page/settings/media/jobs/tools/records）；`ipc.ts` 只剩 43 行注册入口 |
 | `desktop/src/main/library.ts` | **102 行** | 纯兼容桶文件；schema/videos/db/core/jobs/downloads/exports/history/search/tags/trash/collections/summaries/notes 全在 `library/*.ts` |
 | `desktop/src/renderer/.../SettingsPanel.tsx` | ~1.25k | 15 个 section 已拆到 `components/settings/`，主文件只剩状态与组装 |
-| `desktop/src/renderer/.../LibraryPanel.tsx` | ~1.38k | 14 个 section/弹窗已拆；剩详情容器骨架 |
+| `desktop/src/renderer/.../LibraryPanel.tsx` | ~1.32k | 15 个 section/弹窗已拆，主文件只剩状态与组装 |
 | `desktop/src/main/index.ts` | **341 行** | 启动装配入口；托盘/会话/下载/日志/开发探针已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts |
 
 处理原则：**先补 E2E，再按域搬，不做全项目重写。**  
