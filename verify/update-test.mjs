@@ -61,19 +61,19 @@ const mergedRelease = {
   assets: [
     { name: 'latest.yml', browser_download_url: ZIP('latest.yml'), size: 342 },
     { name: 'shizi-0.38.9-win-x64-green.zip', browser_download_url: ZIP('shizi-0.38.9-win-x64-green.zip'), size: 205077972 },
-    { name: 'shizi-extension-v2.18.6.zip', browser_download_url: ZIP('shizi-extension-v2.18.6.zip'), size: 10983765 },
+    { name: 'shizi-extension-v2.18.7.zip', browser_download_url: ZIP('shizi-extension-v2.18.7.zip'), size: 10983765 },
     { name: 'shizi-setup-0.38.9.exe', browser_download_url: ZIP('shizi-setup-0.38.9.exe'), size: 142522740 }
   ]
 };
 
 const merged = normalizeRelease(mergedRelease);
-check('合并发布：插件版本取自资产名而不是 tag', merged && merged.version === '2.18.6', merged && merged.version);
+check('合并发布：插件版本取自资产名而不是 tag', merged && merged.version === '2.18.7', merged && merged.version);
 check('合并发布：不会把桌面 tag v0.38.9 当插件版本', merged && merged.version !== '0.38.9', '');
-check('合并发布：已是最新不误报更新', merged && isNewerVersion(merged.version, '2.18.6') === false, '');
-check('合并发布：能识别更新的插件版本', merged && isNewerVersion('2.18.7', merged.version) === true, '');
+check('合并发布：已是最新不误报更新', merged && isNewerVersion(merged.version, '2.18.7') === false, '');
+check('合并发布：能识别更新的插件版本', merged && isNewerVersion('2.18.8', merged.version) === true, '');
 check(
   '合并发布：下载地址指向插件 zip',
-  merged && /\/shizi-extension-v2\.18\.6\.zip$/.test(merged.downloadUrl),
+  merged && /\/shizi-extension-v2\.18\.7\.zip$/.test(merged.downloadUrl),
   merged && merged.downloadUrl
 );
 check('合并发布：绿色包不会被当成插件包', merged && !/green\.zip$/.test(merged.downloadUrl), '');
@@ -99,7 +99,7 @@ const bareAsset = normalizeRelease({
   assets: [{ name: 'shizi-extension-2.19.0.zip', browser_download_url: ZIP('shizi-extension-2.19.0.zip', 'v0.40.0') }]
 });
 check('资产名允许不带 v 前缀', bareAsset && bareAsset.version === '2.19.0', bareAsset && bareAsset.version);
-check('findPluginAsset 直接可用', findPluginAsset(mergedRelease.assets).version === '2.18.6', '');
+check('findPluginAsset 直接可用', findPluginAsset(mergedRelease.assets).version === '2.18.7', '');
 check('findPluginAsset 对空资产返回 null', findPluginAsset([]) === null && findPluginAsset(undefined) === null, '');
 
 check('发布仓库是 Universe366/shizi', REPO === 'Universe366/shizi', REPO);

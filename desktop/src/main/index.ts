@@ -30,14 +30,11 @@ import { APP_NAME } from '../shared/brand';
 import { installDownloadHook } from './downloadsHook';
 import {
   buildUserAgent,
-  closeAction,
-  closeChoiceFromDialog,
   resolveStartUrl,
   shortcutAction,
-  shouldRestoreSession,
   windowFrameOptions
 } from './windowPolicy';
-import { restoreSession } from './sessionRestore';
+import { bootstrapRenderer, handleCloseRequest } from './windowLifecycle';
 
 const UA = buildUserAgent(process.versions.chrome);
 const START_URL = resolveStartUrl();
@@ -207,20 +204,20 @@ function createWindow(): void {
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
-    const saved = shouldRestoreSession(loadSettings()) ? loadSession() : null;
-    if (tabManager) {
-      const manager = tabManager;
-      void restoreSession({ manager, saved, startUrl: START_URL }).then((result) => {
-        if (!result.usedStartUrl) console.log('[session] restored', result.restored, 'tabs');
-      });
-    }
-
-    // 开发探针不进生产包：按需动态加载，只有未打包或显式开启时才拉取。
-    if (mainWindow && tabManager && (!app.isPackaged || process.env.BSUB_ENABLE_DEV_HOOKS === '1')) {
-      const devWindow = mainWindow;
-      const devTabs = tabManager;
-      void import('./devHooks').then(({ runDevHooks }) => runDevHooks(devWindow, devTabs));
-    }
+    void bootstrapRenderer({
+      loadSettings: () => loadSettings(),
+      loadSession,
+      manager: tabManager,
+      startUrl: START_URL,
+      packaged: app.isPackaged,
+      enableDevHooks: process.env.BSUB_ENABLE_DEV_HOOKS === '1',
+      // 开发探针不进生产包：按需动态加载。
+      runDevHooks: async () => {
+        if (!mainWindow || !tabManager) return;
+        const { runDevHooks } = await import('./devHooks');
+        runDevHooks(mainWindow, tabManager);
+      }
+    });
   });
 
   if (!app.isPackaged) {
@@ -257,47 +254,25 @@ function createWindow(): void {
   }
 
   mainWindow.on('close', (event) => {
-    const action = closeAction({
-      isQuitting,
-      closeToTray: loadSettings().general.closeToTray,
-      choicePending: closingChoicePending
-    });
-    if (action === 'allow') return;
-    event.preventDefault();
-
-    closingChoicePending = true;
-    void dialog
-      .showMessageBox(mainWindow as BrowserWindow, {
-        type: 'question',
-        title: APP_NAME,
-        message: '要最小化到托盘，还是退出应用？',
-        detail: '最小化后可以从托盘图标恢复；选择「记住」下次不再询问。',
-        buttons: ['最小化到托盘', '退出应用', '取消'],
-        defaultId: 0,
-        cancelId: 2,
-        checkboxLabel: '记住我的选择',
-        checkboxChecked: false,
-        noLink: true
-      })
-      .then((result) => {
-        closingChoicePending = false;
-        const choice = closeChoiceFromDialog(result);
-        if (choice === 'cancel') return;
-        if (result.checkboxChecked) {
-          const settings = loadSettings();
-          settings.general.closeToTray = choice === 'tray';
-          saveSettings(settings);
+    handleCloseRequest(
+      event,
+      { isQuitting, choicePending: closingChoicePending },
+      {
+        settings: loadSettings(),
+        windowTitle: APP_NAME,
+        hideWindow: () => mainWindow?.hide(),
+        quit: () => app.quit(),
+        showMessageBox: (options) => dialog.showMessageBox(mainWindow as BrowserWindow, options),
+        loadSettings: () => loadSettings(),
+        saveSettings: (settings) => saveSettings(settings),
+        setChoicePending: (pending) => {
+          closingChoicePending = pending;
+        },
+        setQuitting: (value) => {
+          isQuitting = value;
         }
-        if (choice === 'tray') {
-          mainWindow?.hide();
-        } else {
-          isQuitting = true;
-          app.quit();
-        }
-      })
-      .catch(() => {
-        closingChoicePending = false;
-      });
+      }
+    );
   });
 
   mainWindow.on('closed', () => {

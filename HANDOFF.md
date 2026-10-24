@@ -1,9 +1,9 @@
 # HANDOFF —— 当前状态与交接说明
 
 > 更新时间：2026-10-24  
-> 适用版本：桌面 **0.38.9** / 插件 **2.18.6**  
-> 当前发布基线：`2d319cc`（0.38.9）；HEAD 为 `a109b8c`（其后的 2 个文档/清理提交）  
-> 最新 Release：`v0.38.9`  
+> 适用版本：桌面 **0.38.10** / 插件 **2.18.7**  
+> 当前发布基线：tag `v0.38.10`（本提交）  
+> 最新 Release：`v0.38.10`  
 > 验收清单：[验收清单.md](验收清单.md)（0.37.7 那一轮的记录，仅作历史参考）  
 > 工作区：clean
 
@@ -21,14 +21,14 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 83 个文件 / 382 个用例（主进程与 shared 25 文件 / 113 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器、启动/窗口策略、会话恢复、托盘、下载钩子，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 84 个文件 / 394 个用例（主进程与 shared 26 文件 / 125 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器、启动/窗口策略、会话恢复、关闭流程、托盘、下载钩子，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
 | 插件 CI | `master`/PR 通过 |
-| 发布 CI | `v0.38.9` 通过 |
+| 发布 CI | `v0.38.10`（本次） |
 | 安装包 | 未签名；SmartScreen 会提示 |
-| 自动更新 | `latest.yml` 指向 0.38.9，`/releases/latest` 已确认 |
+| 自动更新 | `latest.yml` 指向 0.38.10（本次发布后确认） |
 
 仓库体积：约 36MB（FFmpeg.wasm 31MB）；本地工作区约 1.7GB（含 `node_modules`、`release/win-unpacked`）。
 
@@ -73,7 +73,7 @@
 
 ### 未发布（2026-10-24，本机）
 
-- **修插件更新检查**：`update.js` 原来请求已删除的 `Universe366/shizi-extension`（匿名恒 404，等于永远检查不到更新）；改为合并发布仓库 `Universe366/shizi`，插件版本从资产名 `shizi-extension-v<版本>.zip` 解析（桌面 tag `v0.38.9` 不能当插件版本，否则会算成比 2.18.6 更旧），旧仓库 `v2.x` tag 保留兼容；缓存 key 升到 `v2`。`verify/update-test.mjs` 43 项覆盖。
+- **修插件更新检查**：`update.js` 原来请求已删除的 `Universe366/shizi-extension`（匿名恒 404，等于永远检查不到更新）；改为合并发布仓库 `Universe366/shizi`，插件版本从资产名 `shizi-extension-v<版本>.zip` 解析（桌面 tag `v0.38.x` 不能当插件版本，否则会算成比 2.18.6 更旧），旧仓库 `v2.x` tag 保留兼容；缓存 key 升到 `v2`。`verify/update-test.mjs` 43 项覆盖。
 - `verify/tools/release.mjs` 不再本地建 Release（会打出 `v2.x` tag 顶掉 Latest），`--create` 直接报错指向 CI。
 - **补启动回归测试**：`windowPolicy.ts`（窗口尺寸/安全设置、快捷键、关闭到托盘、起始页、UA）与 `sessionRestore.ts`（逐条容错、激活回退、起始页兜底）从 `index.ts` 抽出；`index.ts` 403 → 371 行。新增 32 条测试，覆盖启动参数、关闭策略、会话恢复、托盘菜单、下载钩子（落盘/节流/状态映射）。
 
@@ -100,7 +100,7 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.30k / `LibraryPanel.tsx` 1.41k / `index.ts` 371 行（托盘/会话/下载/日志/开发探针/窗口策略已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts、windowPolicy.ts、sessionRestore.ts） |
+| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.30k / `LibraryPanel.tsx` 1.41k / `index.ts` 346 行（托盘/会话/下载/日志/开发探针/窗口策略/关闭流程已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts、windowPolicy.ts、sessionRestore.ts、windowLifecycle.ts） |
 | 桌面 E2E 覆盖窄 | 11 条主流程 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）；渲染层 58 文件 / 269 用例组件测试；启动/托盘/会话恢复/下载钩子已有 32 条单测回归，但 `createWindow()` 的窗口装配本身仍无测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
@@ -134,7 +134,7 @@
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
 4. `SettingsPanel` memo 评估：15 个 section 都接收整份 `draft`，只加 `React.memo` 不会减少重渲染；要收益必须先按 section 切分 `draft`（改动面大、风险中），暂缓。
-5. `index.ts` 进展：托盘（`shell.ts`）、下载钩子（`downloadsHook.ts`）、会话保存/恢复（`shell.ts` + `sessionRestore.ts`）、窗口策略（`windowPolicy.ts`）已抽出，入口 403 → 371 行；这四块现有 32 条单测兜底。**下一步只剩 `createWindow()` 本体**（约 165 行：创建 BrowserWindow、TabManager、IPC、关闭对话框），拆它之前建议先给窗口装配补一个可注入的工厂测试，再按「创建 → 事件接线 → 关闭」三段搬。
+5. `index.ts` 进展：托盘（`shell.ts`）、下载钩子（`downloadsHook.ts`）、会话保存/恢复（`shell.ts` + `sessionRestore.ts`）、窗口策略（`windowPolicy.ts`）已抽出，入口 403 → 346 行；这四块现有 44 条单测兜底（含关闭流程与首帧引导）。**下一步只剩 `createWindow()` 的 BrowserWindow 创建与事件接线**（TabManager/IPC 注册必须在窗口就绪后调用），拆它之前建议先给窗口工厂补注入点。
 
 不要一次拆多个域；`index.ts` 先补启动回归测试再动。
 
@@ -194,9 +194,9 @@
 
 - [x] `git status` clean
 - [x] HEAD 与 `master` 一致
-- [x] 0.38.9 测试/冒烟通过
+- [x] 0.38.10 测试/冒烟通过
 - [x] 插件 520 项通过
-- [x] 最新 Release 指向 `v0.38.9`
+- [x] 最新 Release 指向 `v0.38.10`
 - [x] 工作区无遗留应用进程
 - [x] 临时测试目录已清理
 - [x] 文档索引/仓库地图已更新

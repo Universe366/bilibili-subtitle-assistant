@@ -364,9 +364,9 @@ node panel-test.js     # 至少跑这个
 ## 11. 发布与版本
 
 - 一次合并发布包含桌面端与插件两个版本号：
-  - 桌面端 `desktop/package.json`（例如 0.38.9）；
-  - 插件 `shizi-extension/manifest.json` 及 constants/content/page-bridge（例如 2.18.6）；
-  - **tag 用桌面版本号**（例如 `v0.38.9`），CI 会同时打包桌面安装包、绿色包、插件 zip 和 `latest.yml`；不要再打 `v2.x`，否则 GitHub 按 semver 会把旧插件版本当成 Latest；
+  - 桌面端 `desktop/package.json`（例如 0.38.10）；
+  - 插件 `shizi-extension/manifest.json` 及 constants/content/page-bridge（例如 2.18.7）；
+  - **tag 用桌面版本号**（例如 `v0.38.10`），CI 会同时打包桌面安装包、绿色包、插件 zip 和 `latest.yml`；不要再打 `v2.x`，否则 GitHub 按 semver 会把旧插件版本当成 Latest；
 - 发布前：`npm run typecheck`、`npm run build`、`npm run release:notes` 检查发布说明能提取；
 - 本机 `release/` 不入库；CI 用 `desktop-release.yml`，push tag 即触发；
 - 桌面端自动更新只对安装版生效，依赖 Release 里的 `latest.yml` 与 setup exe；

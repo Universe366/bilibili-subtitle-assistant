@@ -14,8 +14,8 @@
 
 插件可以独立运行；桌面端复用插件的 `page-bridge.js`，但面板层是两套实现。
 
-当前版本：**桌面 0.38.9 / 插件 2.18.6**  
-最新 Release：`v0.38.9`  
+当前版本：**桌面 0.38.10 / 插件 2.18.7**  
+最新 Release：`v0.38.10`  
 `appId`：`com.shizi.desktop`  
 仓库：`Universe366/shizi`
 
@@ -103,7 +103,7 @@ node panel-test.js
 | `desktop/src/main/library.ts` | **102 行** | 纯兼容桶文件；schema/videos/db/core/jobs/downloads/exports/history/search/tags/trash/collections/summaries/notes 全在 `library/*.ts` |
 | `desktop/src/renderer/.../SettingsPanel.tsx` | ~1.30k | 15 个 section 已拆到 `components/settings/`，主文件只剩状态与组装 |
 | `desktop/src/renderer/.../LibraryPanel.tsx` | ~1.41k | 15 个 section/弹窗已拆，主文件只剩状态与组装 |
-| `desktop/src/main/index.ts` | **371 行** | 启动装配入口；托盘/会话/下载/日志/开发探针/窗口策略已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts、windowPolicy.ts、sessionRestore.ts |
+| `desktop/src/main/index.ts` | **346 行** | 启动装配入口；托盘/会话/下载/日志/开发探针/窗口策略/关闭流程已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts、windowPolicy.ts、sessionRestore.ts、windowLifecycle.ts |
 
 处理原则：**先补 E2E，再按域搬，不做全项目重写。**  
 详细顺序见 [`docs/QUALITY.md`](docs/QUALITY.md)。

@@ -70,7 +70,7 @@ npm run pack                     # build + 同步插件 + NSIS，不发布
 
 - `src/main/ipc/*.ts`（~2.9k，按域拆分；`ipc.ts` 只剩 43 行注册入口）
 - `src/main/library.ts`（102 行桶文件；其余域在 `src/main/library/`）
-- `src/main/index.ts`（371 行装配入口；开发探针在 `devHooks.ts`，窗口/快捷键策略在 `windowPolicy.ts`，会话恢复在 `sessionRestore.ts`）
+- `src/main/index.ts`（346 行装配入口；开发探针在 `devHooks.ts`，窗口/快捷键策略在 `windowPolicy.ts`，会话恢复在 `sessionRestore.ts`，关闭流程与首帧引导在 `windowLifecycle.ts`）
 - `src/renderer/.../SettingsPanel.tsx`（~1.30k，15 个 section 已在 `components/settings/`）
 - `src/renderer/.../LibraryPanel.tsx`（~1.41k，15 个 section 已拆）
 - `src/renderer/.../SubtitlesPanel.tsx`（~1.57k，翻译/校对/质检/视频头/字幕行/轨道选择已拆）

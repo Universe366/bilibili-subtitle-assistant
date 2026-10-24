@@ -2,7 +2,7 @@
 
 > 完整逐轮复盘（含「当时为什么想错」）见 [`docs/history/DEVELOPMENT-LOG.md`](docs/history/DEVELOPMENT-LOG.md)。
 
-## 未发布
+## 2.18.7（2026-10-25）
 
 ### 更新检查
 - **修复「检查更新」一直失败**：请求指向已删除的 `Universe366/shizi-extension`，匿名访问恒为 404；改为合并发布仓库 `Universe366/shizi`。
