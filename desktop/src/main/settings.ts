@@ -236,7 +236,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
     estimateTimestamps: true
   },
   bridge: { enabled: true, port: 47821, token: '' },
-  update: { autoCheck: true, autoDownload: false, feedUrl: '', skippedVersion: '' },
+  update: {
+    autoCheck: true,
+    autoDownload: false,
+    feedUrl: '',
+    mirrorUrl: '',
+    autoFallback: true,
+    skippedVersion: ''
+  },
   dataDir: ''
 };
 
@@ -673,6 +680,9 @@ function normalize(input: unknown): AppSettings {
       base.update.autoDownload = raw.update.autoDownload === true;
       base.update.skippedVersion = String(raw.update.skippedVersion || '').trim();
       base.update.feedUrl = typeof raw.update.feedUrl === 'string' ? raw.update.feedUrl.trim() : '';
+      base.update.mirrorUrl =
+        typeof raw.update.mirrorUrl === 'string' ? raw.update.mirrorUrl.trim() : '';
+      base.update.autoFallback = raw.update.autoFallback !== false;
     }
   }
 

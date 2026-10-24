@@ -4,7 +4,14 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { AppSettings, UpdateStatus } from '../../../../shared/types';
 import { UpdateSection } from './UpdateSection';
 
-const value = { autoCheck: true, autoDownload: false, feedUrl: '' } as AppSettings['update'];
+const value = {
+  autoCheck: true,
+  autoDownload: false,
+  feedUrl: '',
+  mirrorUrl: '',
+  autoFallback: true,
+  skippedVersion: ''
+} as AppSettings['update'];
 
 function props(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +37,31 @@ describe('UpdateSection', () => {
     render(<UpdateSection {...props()} />);
     expect(screen.getByText('v0.37.2')).toBeTruthy();
     expect(screen.getByText('尚未检查')).toBeTruthy();
+  });
+
+  it('可以填写镜像地址并切换自动测速', () => {
+    const p = props();
+    render(<UpdateSection {...p} />);
+    fireEvent.change(screen.getByPlaceholderText(/gitee\.com/), {
+      target: { value: 'https://gitee.com/u/r/releases/download/v1' }
+    });
+    expect(p.onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ mirrorUrl: 'https://gitee.com/u/r/releases/download/v1' })
+    );
+    fireEvent.click(screen.getByLabelText(/自动测速/));
+    expect(p.onChange).toHaveBeenCalledWith(expect.objectContaining({ autoFallback: false }));
+  });
+
+  it('显示本次实际使用的更新源', () => {
+    render(
+      <UpdateSection
+        {...props({
+          status: { state: 'checking', source: 'mirror' } as UpdateStatus,
+          statusText: '检查中'
+        })}
+      />
+    );
+    expect(screen.getByText(/源：镜像/)).toBeTruthy();
   });
 
   it('有新版本时可下载与跳过', () => {
