@@ -4,6 +4,7 @@ import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
 import { DataBackupSection } from './settings/DataBackupSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
+import { GeneralSection } from './settings/GeneralSection';
 import { McpSection } from './settings/McpSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
@@ -34,7 +35,6 @@ import type {
   PromptTemplate,
   SearchPlatform,
   SearchTimeRange,
-  ThemeMode,
   UpdateStatus,
   WebReference
 } from '../../../shared/types';
@@ -1058,140 +1058,8 @@ export function SettingsPanel() {
         )}
       </div>
 
-      <SettingsSection title="通用" defaultOpen={true}>
-        <div className="settings-label">主题</div>
-        <select
-          className="settings-input"
-          value={draft.general.theme}
-          onChange={(event) => updateGeneral({ theme: event.target.value as ThemeMode })}
-        >
-          <option value="system">跟随系统</option>
-          <option value="light">浅色</option>
-          <option value="dark">深色</option>
-        </select>
+      <GeneralSection value={draft.general} onChange={(patch) => updateGeneral(patch)} />
 
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.general.closeToTray !== false}
-            onChange={(event) => updateGeneral({ closeToTray: event.target.checked })}
-          />
-          关闭窗口时缩到托盘
-        </label>
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.general.restoreSession !== false}
-            onChange={(event) => updateGeneral({ restoreSession: event.target.checked })}
-          />
-          启动时恢复上次打开的标签页
-        </label>
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.general.selectionToolbar !== false}
-            onChange={(event) => updateGeneral({ selectionToolbar: event.target.checked })}
-          />
-          选中网页文字时显示「解释 / 翻译 / 总结」工具条
-        </label>
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.general.cacheSubtitles !== false}
-            onChange={(event) => updateGeneral({ cacheSubtitles: event.target.checked })}
-          />
-          缓存字幕正文（最多 100 条）
-        </label>
-        {draft.general.cacheSubtitles !== false && (
-          <div className="settings-field">
-            <div className="settings-label">字幕缓存天数（0 = 不缓存）</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={0}
-              max={365}
-              value={draft.general.subtitleCacheDays ?? 30}
-              onChange={(event) =>
-                updateGeneral({ subtitleCacheDays: Number(event.target.value) || 0 })
-              }
-            />
-          </div>
-        )}
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.general.autoFollow !== false}
-            onChange={(event) => updateGeneral({ autoFollow: event.target.checked })}
-          />
-          字幕默认跟随播放高亮
-        </label>
-
-        <div className="settings-label">
-          界面字号（{Math.round((draft.general.fontScale || 1) * 100)}%）
-        </div>
-        <input
-          className="settings-range"
-          type="range"
-          min={0.8}
-          max={1.6}
-          step={0.05}
-          value={draft.general.fontScale || 1}
-          onChange={(event) => updateGeneral({ fontScale: Number(event.target.value) })}
-        />
-
-        <div className="settings-label">侧栏宽度（px，也可直接拖动侧栏边缘）</div>
-        <input
-          className="settings-input"
-          type="number"
-          min={260}
-          max={560}
-          step={10}
-          value={draft.general.sidebarWidth || 320}
-          onChange={(event) =>
-            updateGeneral({
-              sidebarWidth: Math.min(560, Math.max(260, Number(event.target.value) || 320))
-            })
-          }
-        />
-
-        <div className="settings-label">侧栏位置</div>
-        <select
-          className="settings-input"
-          value={draft.general.sidebarPosition || 'left'}
-          onChange={(event) =>
-            updateGeneral({ sidebarPosition: event.target.value as 'left' | 'right' })
-          }
-        >
-          <option value="left">左侧</option>
-          <option value="right">右侧</option>
-        </select>
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.general.sidebarCollapsed === true}
-            onChange={(event) => updateGeneral({ sidebarCollapsed: event.target.checked })}
-          />
-          折叠侧栏（只保留图标）
-        </label>
-
-        <div className="settings-label">后台标签休眠（分钟）</div>
-        <input
-          className="settings-input"
-          type="number"
-          min={1}
-          max={120}
-          value={draft.general.suspendMinutes}
-          onChange={(event) =>
-            updateGeneral({ suspendMinutes: Number(event.target.value) || 5 })
-          }
-        />
-        <div className="settings-hint">1–120 分钟；正在出声的标签不会被回收。</div>
-      </SettingsSection>
 
       <SettingsSection title="AI 平台" defaultOpen={true}>
         <div className="settings-inline">
