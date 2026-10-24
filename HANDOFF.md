@@ -107,11 +107,12 @@
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
-1. UI 层：已装 jsdom + @testing-library，`LibraryPanel` 有了组件测试与 `lib/libraryView.ts`；下一步继续拆 `LibraryPanel` 的列表/详情/合集 section，再按同样方式处理 `SettingsPanel`；
+1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 50 文件 / 205 用例；只剩详情容器骨架可再收一层；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
-3. 最后才动 `SettingsPanel.tsx` / `LibraryPanel.tsx` / `index.ts`。
+3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
+4. `index.ts` 评估结论：`createWindow()` 约 2.3k 行、直接操作模块级 `mainWindow`，在补出「启动 / 托盘 / 会话恢复 / 下载」回归测试前不建议拆；下一步顺序建议 tray → 会话持久化 → 下载钩子 → 窗口装配。
 
-不要一次拆多个域，不要先动 `index.ts`，不要先拆 `SettingsPanel`。
+不要一次拆多个域；`index.ts` 先补启动回归测试再动。
 
 ### 如果任务是“加功能”
 
