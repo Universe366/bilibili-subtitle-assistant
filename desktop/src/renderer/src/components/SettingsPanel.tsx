@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticsInfo } from '../../../shared/types';
-import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
 import { DataBackupSection } from './settings/DataBackupSection';
 import { CorrectionSection } from './settings/CorrectionSection';
 import { AiSection } from './settings/AiSection';
+import { AsrSection } from './settings/AsrSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { PromptSection } from './settings/PromptSection';
 import { SearchSection } from './settings/SearchSection';
@@ -14,15 +14,7 @@ import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
 import { SkillsSection } from './settings/SkillsSection';
 import { UpdateSection } from './settings/UpdateSection';
-import {
-  Loader2,
-  Plus,
-  RefreshCw,
-  Save,
-  Search,
-  Trash2,
-  Wifi
-} from 'lucide-react';
+import { Loader2, Save, Search } from 'lucide-react';
 import type {
   AiPlatform,
   AsrPlatform,
@@ -1081,300 +1073,22 @@ export function SettingsPanel() {
         onTest={() => void test()}
       />
 
-      <SettingsSection title="语音识别（ASR）" defaultOpen={false}>
-        <div className="settings-inline">
-          <select
-            className="settings-input"
-            value={activeAsr?.id || ''}
-            onChange={(event) => setEditingAsrId(event.target.value)}
-          >
-            {draft.asr.platforms.map((platform) => (
-              <option key={platform.id} value={platform.id}>
-                {platform.name}
-                {platform.id === draft.asr.activeId ? '（使用中）' : ''}
-                {!platform.apiKey ? ' · 未配 Key' : ''}
-              </option>
-            ))}
-          </select>
-          {activeAsr && activeAsr.id !== draft.asr.activeId && (
-            <button
-              className="mini-btn primary"
-              onClick={() => updateAsr({ activeId: activeAsr.id })}
-            >
-              设为使用中
-            </button>
-          )}
-          <button className="mini-btn" title="新增平台" onClick={addAsrPlatform}>
-            <Plus size={12} />
-          </button>
-          <button
-            className="mini-btn"
-            title="删除当前平台"
-            disabled={draft.asr.platforms.length <= 1}
-            onClick={removeAsrPlatform}
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
-
-        <div className="settings-label">名称</div>
-        <input
-          className="settings-input"
-          value={activeAsr.name}
-          onChange={(event) => updateAsrPlatform({ name: event.target.value })}
-        />
-
-        <div className="settings-label">Base URL</div>
-        <input
-          className="settings-input"
-          value={activeAsr.baseUrl}
-          spellCheck={false}
-          onChange={(event) => updateAsrPlatform({ baseUrl: event.target.value })}
-        />
-
-        <div className="settings-label">模型</div>
-        <input
-          className="settings-input"
-          list={`asr-models-${activeAsr.id}`}
-          value={activeAsr.model}
-          spellCheck={false}
-          onChange={(event) => updateAsrPlatform({ model: event.target.value })}
-        />
-        <datalist id={`asr-models-${activeAsr.id}`}>
-          {(modelCache[activeAsr.id] || activeAsr.models || []).map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
-
-        <div className="settings-inline">
-          <button
-            className="mini-btn"
-            disabled={platformBusy === 'asr:test'}
-            onClick={() => void testConnection('asr')}
-          >
-            {platformBusy === 'asr:test' ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />}
-            测试连接
-          </button>
-          <button
-            className="mini-btn"
-            disabled={platformBusy === 'asr:probe'}
-            onClick={() => void probeModels('asr')}
-          >
-            {platformBusy === 'asr:probe' ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
-            探测模型
-          </button>
-        </div>
-        {platformStatusNode('asr')}
-        <ModelChips
-          key={activeAsr.id}
-          models={modelCache[activeAsr.id] || activeAsr.models || []}
-          current={activeAsr.model}
-          probed={Boolean(modelCache[activeAsr.id])}
-          onPick={(model) => updateAsrPlatform({ model })}
-        />
-        {(activeAsr.homepage || activeAsr.keyUrl) && (
-          <div className="settings-inline">
-            {activeAsr.homepage && (
-              <button
-                className="mini-btn"
-                onClick={() => void window.bsub.newTab(activeAsr.homepage!)}
-              >
-                官网
-              </button>
-            )}
-            {activeAsr.keyUrl && (
-              <button
-                className="mini-btn"
-                onClick={() => void window.bsub.newTab(activeAsr.keyUrl!)}
-              >
-                获取 Key
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="settings-label">API Key</div>
-        <div className="settings-inline">
-          <input
-            className="settings-input"
-            type={showKey[activeAsr.id] ? 'text' : 'password'}
-            value={activeAsr.apiKey === '__CLEAR__' ? '' : activeAsr.apiKey}
-            placeholder="留空保存不改动"
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(event) => updateAsrPlatform({ apiKey: event.target.value })}
-          />
-          <button
-            className="mini-btn"
-            onClick={() =>
-              setShowKey((previous) => ({ ...previous, [activeAsr.id]: !previous[activeAsr.id] }))
-            }
-          >
-            {showKey[activeAsr.id] ? '隐藏' : '显示'}
-          </button>
-          <button
-            className="mini-btn"
-            onClick={() => updateAsrPlatform({ apiKey: '__CLEAR__' })}
-          >
-            清除
-          </button>
-        </div>
-
-        <details className="settings-advanced">
-          <summary>高级设置</summary>
-          <div className="settings-label">请求方式</div>
-          <select
-            className="settings-input"
-            value={activeAsr.transport || 'multipart'}
-            onChange={(event) =>
-              updateAsrPlatform({ transport: event.target.value as AsrPlatform['transport'] })
-            }
-          >
-            <option value="multipart">multipart/form-data</option>
-            <option value="base64-json">base64 JSON</option>
-            <option value="chat-audio">chat/audio（input_audio）</option>
-            <option value="auto">自动</option>
-          </select>
-          <div className="settings-label">音频字段名</div>
-          <input
-            className="settings-input"
-            value={activeAsr.keyField || 'file'}
-            onChange={(event) => updateAsrPlatform({ keyField: event.target.value })}
-          />
-          <div className="settings-label">上传音频格式</div>
-          <select
-            className="settings-input"
-            value={activeAsr.audioFormat || 'auto'}
-            onChange={(event) =>
-              updateAsrPlatform({ audioFormat: event.target.value as AsrPlatform['audioFormat'] })
-            }
-          >
-            <option value="auto">自动</option>
-            <option value="wav">WAV</option>
-            <option value="m4a">M4A</option>
-          </select>
-          <div className="settings-label">参数风格</div>
-          <select
-            className="settings-input"
-            value={activeAsr.paramStyle || 'auto'}
-            onChange={(event) =>
-              updateAsrPlatform({ paramStyle: event.target.value as AsrPlatform['paramStyle'] })
-            }
-          >
-            <option value="auto">自动</option>
-            <option value="minimal">最小（file + model）</option>
-            <option value="full">完整（response_format 等）</option>
-          </select>
-        </details>
-
-        <div className="settings-inline">
-          <div className="settings-field">
-            <div className="settings-label">语言</div>
-            <select
-              className="settings-input"
-              value={draft.asr.language}
-              onChange={(event) => updateAsr({ language: event.target.value })}
-            >
-              <option value="auto">自动</option>
-              <option value="zh">中文</option>
-              <option value="en">英文</option>
-              <option value="ja">日文</option>
-            </select>
-          </div>
-          <div className="settings-field">
-            <div className="settings-label">切片（秒）</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={30}
-              max={300}
-              value={draft.asr.chunkSeconds}
-              onChange={(event) => updateAsr({ chunkSeconds: Number(event.target.value) || 120 })}
-            />
-          </div>
-        </div>
-
-        <div className="settings-inline">
-          <div className="settings-field">
-            <div className="settings-label">音频格式</div>
-            <select
-              className="settings-input"
-              value={draft.asr.audioFormat}
-              onChange={(event) =>
-                updateAsr({ audioFormat: event.target.value as AppSettings['asr']['audioFormat'] })
-              }
-            >
-              <option value="auto">自动</option>
-              <option value="m4a">M4A</option>
-              <option value="wav">WAV</option>
-            </select>
-          </div>
-          <div className="settings-field">
-            <div className="settings-label">并发</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={1}
-              max={8}
-              value={draft.asr.concurrency}
-              onChange={(event) => updateAsr({ concurrency: Number(event.target.value) || 1 })}
-            />
-          </div>
-        </div>
-
-        <div className="settings-inline">
-          <div className="settings-field">
-            <div className="settings-label">单请求超时（秒）</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={30}
-              max={1800}
-              value={draft.asr.timeoutSeconds}
-              onChange={(event) => updateAsr({ timeoutSeconds: Number(event.target.value) || 120 })}
-            />
-          </div>
-          <div className="settings-field">
-            <div className="settings-label">单段上限（MB）</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={1}
-              max={100}
-              value={draft.asr.maxFileMb}
-              onChange={(event) => updateAsr({ maxFileMb: Number(event.target.value) || 20 })}
-            />
-          </div>
-          <div className="settings-field">
-            <div className="settings-label">重叠切片（秒）</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={0}
-              max={30}
-              value={draft.asr.overlapSeconds}
-              onChange={(event) => updateAsr({ overlapSeconds: Number(event.target.value) || 0 })}
-            />
-          </div>
-        </div>
-
-        <div className="settings-label">传输方式</div>
-        <select
-          className="settings-input"
-          value={draft.asr.transport}
-          onChange={(event) =>
-            updateAsr({ transport: event.target.value as AppSettings['asr']['transport'] })
-          }
-        >
-          <option value="auto">自动（失败自动换一种）</option>
-          <option value="multipart">multipart /audio/transcriptions</option>
-          <option value="base64-json">base64 JSON</option>
-          <option value="chat-audio">chat + input_audio</option>
-        </select>
-        <div className="settings-hint">
-          SenseVoice 只吃 M4A；带时间戳的中文模型通常只吃 WAV。格式选「自动」会按模型判断。
-        </div>
-      </SettingsSection>
+      <AsrSection
+        draft={draft}
+        activeAsr={activeAsr}
+        updateAsr={(patch) => updateAsr(patch)}
+        updateAsrPlatform={(patch) => updateAsrPlatform(patch)}
+        addAsrPlatform={addAsrPlatform}
+        removeAsrPlatform={removeAsrPlatform}
+        testConnection={(kind) => void testConnection(kind)}
+        probeModels={(kind) => void probeModels(kind)}
+        platformBusy={platformBusy}
+        modelCache={modelCache}
+        showKey={showKey}
+        setShowKey={setShowKey}
+        setEditingAsrId={setEditingAsrId}
+        platformStatus={platformStatusNode}
+      />
 
       <PromptSection
         value={draft.prompt}
