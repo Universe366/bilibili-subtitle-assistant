@@ -18,53 +18,12 @@ import type {
   TrashItem
 } from '../../../shared/types';
 import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
+import { LINE_PAGE, SORTS, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
 import { PodcastImport } from './PodcastImport';
 import { diffLines, type DiffOp } from '../lib/diff';
-
-const SORTS: Array<{ id: LibrarySort; label: string }> = [
-  { id: 'updated', label: '最近更新' },
-  { id: 'created', label: '最近入库' },
-  { id: 'title', label: '按标题' },
-  { id: 'duration', label: '按时长' }
-];
-
-const LINE_PAGE = 400;
-
-const KIND_LABELS: Record<string, string> = {
-  video: '视频',
-  youtube: 'YouTube',
-  page: '网页',
-  podcast: '播客',
-  local: '本地'
-};
-
-function kindLabel(video: LibraryVideo): string {
-  return KIND_LABELS[String(video.kind || '')] || '';
-}
-
-function metaLine(video: LibraryVideo): string {
-  return [
-    kindLabel(video),
-    video.owner || (video.kind === 'page' ? '网页' : '未知 UP'),
-    video.duration ? formatDuration(video.duration) : '',
-    video.lineCount ? `${video.lineCount.toLocaleString('zh-CN')} 行` : ''
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-function safeFilename(title: string): string {
-  return (
-    String(title || '笔记')
-      .replace(/[\\/:*?"<>|]/g, '_')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 60) || '笔记'
-  );
-}
 
 export function LibraryPanel() {
   const [list, setList] = useState<LibraryList | null>(null);
