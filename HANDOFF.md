@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 73 个文件 / 316 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 75 个文件 / 330 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -64,6 +64,9 @@
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
 ### 0.37.2 之后的界面调整（未发版）
+- 地址栏：输入历史建议（↑/↓ 选择）、搜索引擎可配（B 站/必应/Google/自定义模板）。
+- 新增 Ctrl+Shift+P 命令面板（跳转面板、打开历史/标签页、阅读模式、新建/恢复标签、折叠与左右切换侧栏）。
+- 拖入链接或 BV 号即可在新标签打开，拖入文件时切到库并提示。
 - 批量条新增「导出字幕 / 导出总结」：选目录后逐个写文件，重名自动加序号，无内容的条目跳过并计数（`export:batch`）。
 - 标签页：支持 Ctrl+Tab / Ctrl+Shift+Tab 切换、Ctrl+1..9 定位、中键关闭、拖拽排序、右键菜单（关闭/关闭其他/关闭右侧/复制链接），新增 `tab:move` 通道。
 - 库列表：支持 Shift 连选、↑/↓ 移动光标、Enter 打开详情、空格进入选择。

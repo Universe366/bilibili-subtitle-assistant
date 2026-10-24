@@ -10,6 +10,8 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { BrowserHub, type HubSection } from './components/BrowserHub';
 import { ReaderMode } from './components/ReaderMode';
 import { nextTabId, tabIdByNumber } from './lib/tabs';
+import { useDropImport } from './lib/dropImport';
+import { CommandPalette, type CommandItem } from './components/CommandPalette';
 
 export default function App() {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
@@ -37,6 +39,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [hub, setHub] = useState<HubSection | null>(null);
   const [readerOpen, setReaderOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
 
   // 内置浏览器是原生 WebContentsView，永远盖在 renderer 上面。
@@ -247,6 +250,11 @@ export default function App() {
         void window.bsub.newTab();
         return;
       }
+      if (mod && event.shiftKey && key === 'p') {
+        event.preventDefault();
+        setPaletteOpen((value) => !value);
+        return;
+      }
       if (mod && event.key === 'Tab') {
         event.preventDefault();
         const target = nextTabId(tabs, active?.id, event.shiftKey ? -1 : 1);
@@ -326,14 +334,79 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [active, findOpen, findQuery, hub, readerOpen, tabs]);
 
+  const persistGeneral = async (patch: Record<string, unknown>) => {
+    const response = await window.bsub.getSettings();
+    if (!response.ok) return;
+    const settings = {
+      ...response.data.settings,
+      general: { ...response.data.settings.general, ...patch }
+    };
+    await window.bsub.saveSettings(settings);
+  };
+
+  const drop = useDropImport((payload) => {
+    if (payload.kind === 'files') {
+      setSection('library');
+      return;
+    }
+    void window.bsub.newTab(payload.value);
+  });
+
   const finishWizard = (openSettings: boolean) => {
     setWizard(null);
     if (openSettings) setSection('settings');
     void window.bsub.finishWizard();
   };
 
+  const commands: CommandItem[] = [
+    { id: 'section-subtitles', label: '打开面板：字幕', hint: 'Ctrl+Shift+1', run: () => setSection('subtitles') },
+    { id: 'section-summary', label: '打开面板：总结', run: () => setSection('summary') },
+    { id: 'section-chat', label: '打开面板：对话', run: () => setSection('chat') },
+    { id: 'section-library', label: '打开面板：库', run: () => setSection('library') },
+    { id: 'section-settings', label: '打开面板：设置', run: () => setSection('settings') },
+    { id: 'hub-tabs', label: '打开面板：标签页', hint: 'Ctrl+Shift+A', run: () => setHub('tabs') },
+    { id: 'hub-history', label: '打开面板：历史 / 书签 / 下载', run: () => setHub('history') },
+    { id: 'reader', label: '打开阅读模式', hint: 'Alt+R', run: () => setReaderOpen(true) },
+    { id: 'search', label: '全局搜索', hint: 'Ctrl+K', run: () => setSearchOpen(true) },
+    { id: 'new-tab', label: '新建标签页', hint: 'Ctrl+T', run: () => void window.bsub.newTab() },
+    {
+      id: 'reopen-tab',
+      label: '重新打开关闭的标签页',
+      hint: 'Ctrl+Shift+T',
+      run: () => void window.bsub.reopenClosedTab()
+    },
+    {
+      id: 'toggle-sidebar',
+      label: '折叠 / 展开侧栏',
+      run: () => {
+        setSidebarCollapsed((value) => !value);
+        void persistGeneral({ sidebarCollapsed: !sidebarCollapsed });
+      }
+    },
+    {
+      id: 'swap-sidebar',
+      label: '左右切换侧栏位置',
+      run: () => {
+        const next = sidebarPosition === 'left' ? 'right' : 'left';
+        setSidebarPosition(next);
+        void persistGeneral({ sidebarPosition: next });
+      }
+    }
+  ];
+
+  const wrappedCommands: CommandItem[] = commands.map((command) => ({
+    ...command,
+    run: () => {
+      setPaletteOpen(false);
+      command.run();
+    }
+  }));
+
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      {...drop.handlers}
+    >
       <TabStrip tabs={tabs} onSearch={() => setSearchOpen(true)} />
       <AddressBar
         tab={active}
@@ -435,6 +508,18 @@ export default function App() {
             220
           );
         }}
+      />
+
+      {drop.dragging && (
+        <div className="drop-overlay">
+          <div className="drop-card">松手打开链接或 BV 号</div>
+        </div>
+      )}
+
+      <CommandPalette
+        open={paletteOpen}
+        commands={wrappedCommands}
+        onClose={() => setPaletteOpen(false)}
       />
     </div>
   );

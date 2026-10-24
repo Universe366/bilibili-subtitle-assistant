@@ -9,7 +9,7 @@
 |---|---|
 | Git 跟踪文件 | 278 |
 | 当前树体积 | 约 36 MB（FFmpeg.wasm 占 31 MB） |
-| 桌面单测 | 73 个文件 / 316 个用例 |
+| 桌面单测 | 75 个文件 / 330 个用例 |
 | 插件测试 | 520 项 |
 | ESLint | **0 error / 0 warning** |
 | 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，11 条 E2E） |
