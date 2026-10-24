@@ -21,7 +21,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 76 个文件 / 340 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 75 个文件 / 330 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -65,7 +65,6 @@
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
 ### 0.37.2 之后的界面调整（未发版）
-- 更新源支持国内镜像与自动测速切换（GitHub ↔ Gitee/对象存储），配置在「设置 → 版本更新」；限制与搭建见 `docs/UPDATE-MIRROR.md`。
 - 地址栏：输入历史建议（↑/↓ 选择）、搜索引擎可配（B 站/必应/Google/自定义模板）。
 - 新增 Ctrl+Shift+P 命令面板（跳转面板、打开历史/标签页、阅读模式、新建/恢复标签、折叠与左右切换侧栏）。
 - 拖入链接或 BV 号即可在新标签打开，拖入文件时切到库并提示。

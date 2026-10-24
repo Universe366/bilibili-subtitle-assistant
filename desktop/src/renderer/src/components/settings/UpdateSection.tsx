@@ -42,10 +42,7 @@ export function UpdateSection({
       <div className={`update-card${status ? ` is-${status.state}` : ''}`}>
         <div className="update-head">
           <span>{statusText}</span>
-          <span className="muted">
-            当前 v{version}
-            {status?.source ? ` · 源：${status.source === 'github' ? 'GitHub' : status.source === 'mirror' ? '镜像' : '自定义'}` : ''}
-          </span>
+          <span className="muted">当前 v{version}</span>
         </div>
         {status?.checkedAt && (
           <div className="settings-hint">
@@ -117,26 +114,6 @@ export function UpdateSection({
         placeholder="留空使用内置 GitHub Releases"
         onChange={(event) => onChange({ ...value, feedUrl: event.target.value })}
       />
-      <div className="settings-label">国内镜像源（可选）</div>
-      <input
-        className="settings-input"
-        value={value.mirrorUrl || ''}
-        spellCheck={false}
-        placeholder="https://gitee.com/<owner>/<repo>/releases/download/<tag>"
-        onChange={(event) => onChange({ ...value, mirrorUrl: event.target.value })}
-      />
-      <label className="settings-check">
-        <input
-          type="checkbox"
-          checked={value.autoFallback !== false}
-          onChange={(event) => onChange({ ...value, autoFallback: event.target.checked })}
-        />
-        自动测速：GitHub 明显更慢或连不上时切到镜像
-      </label>
-      <div className="settings-hint">
-        镜像目录里要同时放 `latest.yml` 和安装包。Gitee 免费版单个附件上限 100MB，
-        安装包更大时可以让镜像里的 `latest.yml` 用绝对地址指向对象存储上的安装包。
-      </div>
       <div className="settings-hint">
         自动检查与更新源修改后下次启动生效；未签名时 SmartScreen 仍会提示。
       </div>

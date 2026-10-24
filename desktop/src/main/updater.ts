@@ -1,10 +1,9 @@
-import { app, net } from 'electron';
+import { app } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import type { UpdateInfo } from 'electron-updater';
 import type { UpdateStatus } from '../shared/types';
 import { loadSettings, saveSettings } from './settings';
-import { githubFeedUrl, normalizeFeedBase, resolveFeed, type ProbeResult } from './updateFeed';
 
 let win: BrowserWindow | null = null;
 let status: UpdateStatus = {
@@ -35,82 +34,6 @@ function notesOf(info: UpdateInfo): string {
   return '';
 }
 
-const REPO = 'Universe366/shizi';
-
-let currentSource: 'github' | 'mirror' | 'custom' = 'github';
-
-/** 用 HEAD 请求给更新源测速；超时或非 2xx 视为不可用。 */
-async function probeFeed(base: string, timeoutMs = 2500): Promise<ProbeResult> {
-  const started = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await net.fetch(`${normalizeFeedBase(base)}/latest.yml`, {
-      method: 'HEAD',
-      signal: controller.signal
-    });
-    return { ok: response.ok, ms: Date.now() - started };
-  } catch {
-    return { ok: false, ms: Date.now() - started };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function useFeed(source: 'github' | 'mirror' | 'custom', url: string | null): void {
-  currentSource = source;
-  if (source === 'custom' && url) {
-    autoUpdater.setFeedURL({ provider: 'generic', url });
-    console.log('[update] 使用自定义更新源', url);
-    return;
-  }
-  if (source === 'mirror' && url) {
-    autoUpdater.setFeedURL({ provider: 'generic', url });
-    console.log('[update] 使用镜像更新源', url);
-    return;
-  }
-  autoUpdater.setFeedURL({ provider: 'github', owner: 'Universe366', repo: 'shizi' });
-}
-
-/** 每次检查前决定用哪个源：显式配置 > 自动测速 > GitHub。 */
-async function applyFeed(): Promise<void> {
-  const settings = loadSettings();
-  const envUrl = String(process.env.BSUB_UPDATE_URL || '').trim();
-  const customUrl = String(settings.update.feedUrl || '').trim();
-  const mirrorUrl = String(settings.update.mirrorUrl || '').trim();
-
-  if (envUrl || customUrl) {
-    useFeed('custom', normalizeFeedBase(envUrl || customUrl));
-    return;
-  }
-  if (!mirrorUrl) {
-    useFeed('github', null);
-    return;
-  }
-  if (settings.update.autoFallback !== true) {
-    useFeed('mirror', normalizeFeedBase(mirrorUrl));
-    return;
-  }
-
-  const [github, mirror] = await Promise.all([
-    probeFeed(githubFeedUrl(REPO)),
-    probeFeed(mirrorUrl)
-  ]);
-  const choice = resolveFeed({
-    mirrorUrl,
-    autoFallback: true,
-    github,
-    mirror
-  });
-  useFeed(choice.source, choice.url);
-  console.log(
-    '[update] source',
-    choice.source,
-    `github=${github.ok ? github.ms + 'ms' : 'fail'}`,
-    `mirror=${mirror.ok ? mirror.ms + 'ms' : 'fail'}`
-  );
-}
-
 export function initUpdater(window: BrowserWindow): void {
   if (initialized) return;
   initialized = true;
@@ -128,7 +51,15 @@ export function initUpdater(window: BrowserWindow): void {
   autoUpdater.logger = console;
   if (!app.isPackaged) autoUpdater.forceDevUpdateConfig = true;
 
-
+  const feedUrl = String(process.env.BSUB_UPDATE_URL || settings.update.feedUrl || '').trim();
+  if (feedUrl) {
+    try {
+      autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl });
+      console.log('[update] 使用自定义更新源', feedUrl);
+    } catch (error) {
+      console.warn('[update] 设置更新源失败:', (error as Error).message);
+    }
+  }
 
   autoUpdater.on('checking-for-update', () => setStatus({ state: 'checking', error: undefined }));
   autoUpdater.on('update-available', (info) => {
@@ -193,29 +124,14 @@ export function initUpdater(window: BrowserWindow): void {
 export async function checkForUpdates(manual = true): Promise<UpdateStatus> {
   if (status.state === 'disabled') return status;
   try {
-    await applyFeed();
-    setStatus({ state: 'checking', manual, error: undefined, source: currentSource });
-    try {
-      await autoUpdater.checkForUpdates();
-    } catch (error) {
-      const settings = loadSettings();
-      const mirror = normalizeFeedBase(settings.update.mirrorUrl || '');
-      const explicit = Boolean(process.env.BSUB_UPDATE_URL || settings.update.feedUrl);
-      if (!mirror || explicit || currentSource === 'custom') throw error;
-
-      const alternate = currentSource === 'mirror' ? 'github' : 'mirror';
-      console.warn('[update] 当前源失败，切换重试:', (error as Error).message);
-      useFeed(alternate, alternate === 'mirror' ? mirror : null);
-      setStatus({ source: currentSource });
-      await autoUpdater.checkForUpdates();
-    }
+    setStatus({ state: 'checking', manual, error: undefined });
+    await autoUpdater.checkForUpdates();
   } catch (error) {
     setStatus({
       state: 'error',
       error: (error as Error).message,
       manual,
-      checkedAt: Date.now(),
-      source: currentSource
+      checkedAt: Date.now()
     });
   }
   return status;

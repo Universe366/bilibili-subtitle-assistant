@@ -781,10 +781,6 @@ export interface AppSettings {
     autoCheck: boolean;
     autoDownload: boolean;
     feedUrl: string;
-    /** 国内镜像源（generic feed 基址，例如 Gitee Release 的 download 目录） */
-    mirrorUrl: string;
-    /** 自动测速：GitHub 慢或不可达时切到镜像 */
-    autoFallback: boolean;
     skippedVersion: string;
   };
   dataDir: string;
@@ -809,8 +805,6 @@ export interface UpdateStatus {
   notes?: string;
   manual?: boolean;
   checkedAt?: number;
-  /** 本次检查实际使用的更新源 */
-  source?: 'github' | 'mirror' | 'custom';
 }
 
 export interface BridgeStatus {
