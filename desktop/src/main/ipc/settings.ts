@@ -38,7 +38,17 @@ import { probePlatformModels, testPlatformConnection } from '../platform';
 
 import { listLibrary } from '../library';
 import { failure, type IpcContext } from './shared';
-import { applyPetSettings, movePet, petPosition, resetPetPosition, setPetEnabled } from '../petWindow';
+import {
+  applyPetSettings,
+  dropPet,
+  movePet,
+  petPosition,
+  resetPetPosition,
+  setPetAlwaysOnTop,
+  setPetEnabled,
+  setPetLayout
+} from '../petWindow';
+import type { PetLayoutMode } from '../petGeometry';
 
 /** 设置 / 更新 / 桥 / 权限 / 数据目录 / 诊断 相关 IPC。 */
 export function registerSettingsIpc(ctx: IpcContext): void {
@@ -47,6 +57,13 @@ export function registerSettingsIpc(ctx: IpcContext): void {
   ipcMain.handle('pet:move', (_event, x: number, y: number) => {
     movePet(Number(x), Number(y));
   });
+  ipcMain.handle('pet:drop', (_event, x: number, y: number) => dropPet(Number(x), Number(y)));
+  ipcMain.handle('pet:set-layout', (_event, mode: PetLayoutMode) => {
+    setPetLayout(mode);
+  });
+  ipcMain.handle('pet:set-always-on-top', (_event, enabled: boolean) =>
+    setPetAlwaysOnTop(enabled === true)
+  );
   ipcMain.handle('app:focus-main', () => {
     ctx.win.show();
     ctx.win.focus();

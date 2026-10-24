@@ -93,7 +93,14 @@ export interface BsubApi {
   petPosition(): Promise<{ x: number; y: number } | null>;
   resetPetPosition(): Promise<void>;
   movePet(x: number, y: number): Promise<void>;
+  /** 拖拽松手：吸附屏幕边缘并保存位置。 */
+  dropPet(x: number, y: number): Promise<{ x: number; y: number } | null>;
+  /** 桌宠窗口随气泡/挂件/菜单伸缩，避免透明区域挡住桌面点击。 */
+  setPetLayout(mode: 'compact' | 'bubble' | 'widget' | 'menu'): Promise<void>;
+  setPetAlwaysOnTop(enabled: boolean): Promise<boolean>;
   isMediaPlaying(): Promise<{ ok: true; data: boolean }>;
+  /** 播放/暂停当前标签页的媒体。 */
+  toggleMedia(): Promise<{ ok: true; data: { playing: boolean } }>;
   setPetEnabled(enabled: boolean): Promise<void>;
   focusMain(): Promise<void>;
   setPlaybackRate(rate: number): Promise<{ ok: true; data: number }>;

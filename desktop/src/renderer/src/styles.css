@@ -5319,12 +5319,13 @@ button:disabled {
 
 /* ---------- 桌宠与 AI 悬浮球 ---------- */
 .pet-root {
+  position: relative;
   height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   padding: 6px;
   box-sizing: border-box;
   background: transparent;
@@ -5333,7 +5334,6 @@ button:disabled {
 .pet-grip {
   width: 100%;
   height: 16px;
-  -webkit-app-region: drag;
   cursor: grab;
 }
 
@@ -5389,7 +5389,8 @@ button:disabled {
 .pet-bubble {
   -webkit-app-region: no-drag;
   width: 236px;
-  max-height: 190px;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -5409,9 +5410,9 @@ button:disabled {
 }
 
 .pet-bubble-body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 34px;
-  max-height: 110px;
+  max-height: none;
   overflow-y: auto;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -5707,16 +5708,6 @@ button:disabled {
   font-size: 12px;
 }
 
-/* 圆润桌宠本体 */
-.pet-body {
-  width: 104px;
-  height: 96px;
-  border-radius: 50% 50% 46% 46%;
-  border: 2px solid rgba(0, 0, 0, 0.08);
-  background: linear-gradient(165deg, #ffd3e2, #ff9dc0);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
 .pet-music {
   position: absolute;
   top: 2px;
@@ -5843,4 +5834,63 @@ button:disabled {
 
 .pet-menu button:hover {
   background: var(--surface-2);
+}
+
+/* ---------- 桌宠操作细节 ---------- */
+.pet-menu {
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+.pet-bubble-tools .mini-btn,
+.pet-quick .mini-btn {
+  white-space: nowrap;
+}
+
+.pet-stop {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9.5px;
+}
+
+.pet-widget-remove {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pet-widget-remove:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.pet-widget-item {
+  padding: 1px 0;
+}
+
+.pet-widget-item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 桌宠本体在拖动时给一点视觉反馈 */
+.pet-body:active {
+  cursor: grabbing;
+}
+
+.pet-hint {
+  max-width: 100%;
+  text-align: center;
+  word-break: break-word;
 }

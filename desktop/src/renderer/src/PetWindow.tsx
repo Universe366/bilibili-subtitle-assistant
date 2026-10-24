@@ -22,6 +22,7 @@ function fallbackInfo(): PageInfo {
 }
 
 type Emotion = 'idle' | 'thinking' | 'speaking' | 'happy' | 'sleeping';
+type PetLayout = 'compact' | 'bubble' | 'widget' | 'menu';
 
 const QUICK_ACTIONS = [
   { id: 'summary', label: '总结这个页面', prompt: '用 5 条要点总结当前页面，先给结论。' },
@@ -40,10 +41,27 @@ const SELF_TALK = [
 
 const CLICK_PHRASES = ['摸摸头～', '我在呢！', '需要我总结点什么吗？', '别戳啦，会变瘦的'];
 
+/** 与主进程 petGeometry.petLayoutForState 保持一致：气泡 > 菜单 > 挂件 > 紧凑。 */
+function layoutForState(open: boolean, widgetOpen: boolean, menuOpen: boolean): PetLayout {
+  if (open) return 'bubble';
+  if (menuOpen) return 'menu';
+  if (widgetOpen) return 'widget';
+  return 'compact';
+}
+
 interface PetTodo {
   id: number;
   text: string;
   done: boolean;
+}
+
+function readTodos(): PetTodo[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('pet-todos') || '[]') as PetTodo[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.text === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function beep(): void {
@@ -81,15 +99,10 @@ export function PetWindow() {
   const [hint, setHint] = useState('');
   const [history, setHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [playing, setPlaying] = useState(false);
-  const [widgetOpen, setWidgetOpen] = useState(false);
+  const [widgetOpen, setWidgetOpen] = useState(() => localStorage.getItem('pet-widget') === '1');
   const [now, setNow] = useState(() => new Date());
-  const [todos, setTodos] = useState<PetTodo[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('pet-todos') || '[]') as PetTodo[];
-    } catch {
-      return [];
-    }
-  });
+  const [todos, setTodos] = useState<PetTodo[]>(readTodos);
+  const [copied, setCopied] = useState(false);
   const requestRef = useRef('');
   const happyTimer = useRef<number | null>(null);
   const lastActive = useRef(Date.now());
@@ -97,10 +110,14 @@ export function PetWindow() {
     null
   );
   const dragStarted = useRef(false);
+  const dragFrame = useRef<number | null>(null);
+  const dragTarget = useRef<{ x: number; y: number } | null>(null);
   const [petSize, setPetSize] = useState(96);
   const [soundOn, setSoundOn] = useState(true);
   const [idleTalkOn, setIdleTalkOn] = useState(true);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const bubbleBody = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
@@ -109,8 +126,18 @@ export function PetWindow() {
       setPetSize(Math.min(180, Math.max(64, general.petSize || 96)));
       setSoundOn(general.petSound !== false);
       setIdleTalkOn(general.petIdleTalk !== false);
+      setAlwaysOnTop(general.petAlwaysOnTop !== false);
     });
   }, []);
+
+  // 窗口跟着内容伸缩：关闭气泡后只占桌宠大小，不再用透明区域挡住桌面。
+  useEffect(() => {
+    void window.bsub.setPetLayout(layoutForState(open, widgetOpen, menuOpen));
+  }, [open, widgetOpen, menuOpen]);
+
+  useEffect(() => {
+    localStorage.setItem('pet-widget', widgetOpen ? '1' : '0');
+  }, [widgetOpen]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
@@ -135,6 +162,23 @@ export function PetWindow() {
       window.clearInterval(timer);
     };
   }, []);
+
+  // Esc：先关菜单，再关气泡
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (menuOpen) setMenuOpen(false);
+      else setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
+  // 回答更新后滚到底部
+  useEffect(() => {
+    const node = bubbleBody.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [history, answer, error]);
 
   // 说话/回答事件
   useEffect(() => {
@@ -192,6 +236,11 @@ export function PetWindow() {
     return () => window.clearInterval(timer);
   }, [busy, idleTalkOn]);
 
+  const wake = () => {
+    lastActive.current = Date.now();
+    if (emotion === 'sleeping') setEmotion('idle');
+  };
+
   const toggleSpeak = () => {
     const next = !speak;
     setSpeak(next);
@@ -200,7 +249,7 @@ export function PetWindow() {
   };
 
   const toggleOpen = () => {
-    lastActive.current = Date.now();
+    wake();
     setEmotion('happy');
     if (happyTimer.current) window.clearTimeout(happyTimer.current);
     happyTimer.current = window.setTimeout(() => setEmotion('idle'), 1200);
@@ -214,7 +263,7 @@ export function PetWindow() {
   const ask = async (text: string) => {
     const value = text.trim();
     if (!value || busy) return;
-    lastActive.current = Date.now();
+    wake();
     setBusy(true);
     setError('');
     setAnswer('');
@@ -243,6 +292,15 @@ export function PetWindow() {
     }
   };
 
+  const stop = () => {
+    if (!requestRef.current) return;
+    void window.bsub.cancelChat(requestRef.current);
+    setBusy(false);
+    setEmotion('idle');
+    setHint('已停止');
+    window.setTimeout(() => setHint(''), 2000);
+  };
+
   const glance = async () => {
     const page = await window.bsub.getPageInfo();
     if (!page.ok) {
@@ -254,10 +312,42 @@ export function PetWindow() {
     window.setTimeout(() => setHint(''), 5000);
   };
 
+  const togglePlay = async () => {
+    const result = await window.bsub.toggleMedia();
+    if (result.ok) {
+      setPlaying(result.data.playing);
+      setHint(result.data.playing ? '继续播放' : '已暂停');
+      window.setTimeout(() => setHint(''), 2000);
+    }
+  };
+
+  const copyAnswer = async () => {
+    const text = answer || [...history].reverse().find((item) => item.role === 'assistant')?.text;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setHint('复制失败');
+      window.setTimeout(() => setHint(''), 2000);
+    }
+  };
+
+  const toggleAlwaysOnTop = async () => {
+    const next = await window.bsub.setPetAlwaysOnTop(!alwaysOnTop);
+    setAlwaysOnTop(next !== false);
+    setHint(next !== false ? '已置顶' : '已取消置顶');
+    window.setTimeout(() => setHint(''), 2000);
+  };
+
   const startDrag = (event: React.MouseEvent) => {
+    // 只响应左键；气泡里的输入框等元素不要触发拖动。
     if (event.button !== 0) return;
-    event.preventDefault();
+    const target = event.target as HTMLElement;
+    if (target.closest('input,textarea,button,.pet-bubble,.pet-widget,.pet-menu')) return;
     dragStarted.current = false;
+    dragTarget.current = null;
     void window.bsub.petPosition().then((position) => {
       if (!position) return;
       dragRef.current = {
@@ -268,6 +358,12 @@ export function PetWindow() {
         moved: false
       };
     });
+    const flush = () => {
+      dragFrame.current = null;
+      const point = dragTarget.current;
+      if (!point) return;
+      void window.bsub.movePet(point.x, point.y);
+    };
     const move = (moveEvent: MouseEvent) => {
       const state = dragRef.current;
       if (!state) return;
@@ -277,14 +373,24 @@ export function PetWindow() {
         state.moved = true;
         dragStarted.current = true;
       }
-      if (state.moved) {
-        void window.bsub.movePet(state.wx + dx, state.wy + dy);
-      }
+      if (!state.moved) return;
+      dragTarget.current = { x: state.wx + dx, y: state.wy + dy };
+      if (dragFrame.current == null) dragFrame.current = window.requestAnimationFrame(flush);
     };
     const up = () => {
-      dragRef.current = null;
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      if (dragFrame.current != null) {
+        window.cancelAnimationFrame(dragFrame.current);
+        dragFrame.current = null;
+      }
+      const point = dragTarget.current;
+      dragRef.current = null;
+      dragTarget.current = null;
+      // 松手时吸附边缘并落盘，拖动过程中不写设置。
+      if (point && dragStarted.current) {
+        void window.bsub.dropPet(point.x, point.y);
+      }
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -296,8 +402,9 @@ export function PetWindow() {
       style={{ ['--pet-size' as string]: `${petSize}px` }}
       onContextMenu={(event) => {
         event.preventDefault();
-        setMenuOpen(true);
+        setMenuOpen((value) => !value);
       }}
+      onMouseEnter={wake}
     >
       {menuOpen && (
         <div className="pet-menu" onMouseLeave={() => setMenuOpen(false)}>
@@ -312,10 +419,26 @@ export function PetWindow() {
           <button
             onClick={() => {
               setMenuOpen(false);
-              void window.bsub.setPetEnabled(false);
+              void ask(QUICK_ACTIONS[0].prompt);
             }}
           >
-            隐藏桌宠
+            总结当前页面
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void togglePlay();
+            }}
+          >
+            {playing ? '暂停播放' : '继续播放'}
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void toggleAlwaysOnTop();
+            }}
+          >
+            {alwaysOnTop ? '取消置顶' : '窗口置顶'}
           </button>
           <button
             onClick={() => {
@@ -324,6 +447,14 @@ export function PetWindow() {
             }}
           >
             重置位置
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void window.bsub.setPetEnabled(false);
+            }}
+          >
+            隐藏桌宠
           </button>
         </div>
       )}
@@ -365,6 +496,13 @@ export function PetWindow() {
                   }
                 />
                 <span className={todo.done ? 'is-done' : ''}>{todo.text}</span>
+                <button
+                  className="pet-widget-remove"
+                  title="删除这条待办"
+                  onClick={() => setTodos((items) => items.filter((item) => item.id !== todo.id))}
+                >
+                  ×
+                </button>
               </label>
             ))}
             {!todos.length && <div className="pet-widget-empty">今天还没有待办</div>}
@@ -401,13 +539,20 @@ export function PetWindow() {
             </div>
           </div>
 
-          <div className="pet-bubble-body">
+          <div className="pet-bubble-body" ref={bubbleBody}>
             {history.slice(-4).map((item, index) => (
               <div key={index} className={`pet-line is-${item.role}`}>
                 {item.text}
               </div>
             ))}
-            {busy && <div className="pet-line is-assistant pet-stream">{answer || '思考中…'}</div>}
+            {busy && (
+              <div className="pet-line is-assistant pet-stream">
+                {answer || '思考中…'}
+                <button className="mini-btn pet-stop" title="停止生成" onClick={stop}>
+                  停止
+                </button>
+              </div>
+            )}
             {error && (
               <div className="pet-line is-error">
                 {error}
@@ -438,6 +583,9 @@ export function PetWindow() {
             ))}
             <button className="mini-btn" onClick={() => void glance()}>
               看看当前页面
+            </button>
+            <button className="mini-btn" title="把回答复制到剪贴板" onClick={() => void copyAnswer()}>
+              {copied ? '已复制' : '复制'}
             </button>
           </div>
 

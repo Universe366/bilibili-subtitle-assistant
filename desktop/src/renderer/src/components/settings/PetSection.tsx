@@ -31,6 +31,22 @@ export function PetSection({ value, onChange }: PetSectionProps) {
         value={value.petSize || 96}
         onChange={(event) => onChange({ petSize: Number(event.target.value) || 96 })}
       />
+      <div className="toolbar-actions">
+        {[
+          { label: '小', size: 72, hint: '不挡视线' },
+          { label: '中', size: 96, hint: '默认' },
+          { label: '大', size: 140, hint: '看得清表情' }
+        ].map((preset) => (
+          <button
+            key={preset.label}
+            className={`mini-btn${(value.petSize || 96) === preset.size ? ' is-active' : ''}`}
+            title={preset.hint}
+            onClick={() => onChange({ petSize: preset.size })}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
 
       <div className="settings-label">不透明度（{Math.round((value.petOpacity ?? 1) * 100)}%）</div>
       <input
@@ -71,12 +87,23 @@ export function PetSection({ value, onChange }: PetSectionProps) {
       </label>
 
       <div className="toolbar-actions">
+        <button
+          className="mini-btn"
+          onClick={() => {
+            onChange({ petEnabled: true });
+            void window.bsub.setPetEnabled(true);
+          }}
+        >
+          立即显示
+        </button>
         <button className="mini-btn" onClick={() => void window.bsub.resetPetPosition()}>
           重置桌宠位置
         </button>
       </div>
       <div className="settings-hint">
-        拖动桌宠可移动位置；右键桌宠有其他操作。修改后点「保存」生效。
+        拖动桌宠可移动位置（松手会吸附屏幕边缘）；右键桌宠可打开主窗口、总结当前页面、
+        暂停/继续播放、切换置顶、重置位置或隐藏。关闭气泡后窗口会自动缩到桌宠大小，不会挡住桌面点击。
+        修改后点「保存」生效。
       </div>
     </SettingsSection>
   );

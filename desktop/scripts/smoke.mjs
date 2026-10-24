@@ -107,7 +107,35 @@ async function run(ws, body) {
   return value === undefined ? undefined : JSON.parse(value);
 }
 
+async function waitForPetTarget(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/json`);
+      const targets = await response.json();
+      const pet = targets.find(
+        (target) => target.type === 'page' && String(target.url).includes('window=pet')
+      );
+      if (pet) return pet;
+    } catch {
+      // not ready
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throw new Error('等待桌宠窗口超时');
+}
+
+async function connectTarget(target) {
+  const socket = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true });
+    socket.addEventListener('error', reject, { once: true });
+  });
+  return socket;
+}
+
 const passed = [];
+
 const state = { tabCount: 0, videoId: 0 };
 let current = '';
 
@@ -385,6 +413,80 @@ try {
     const missing = files.filter((name) => !fs.existsSync(path.join(userData, name)));
     if (missing.length) throw new Error(`缺少 ${missing.join(', ')}`);
     return files.join(' + ');
+  });
+
+  // 12. 桌宠窗口：设置里启用后应出现独立窗口，并能按内容伸缩
+  await step('桌宠窗口与布局', async () => {
+    await run(
+      ws,
+      `
+      const snap = await window.bsub.getSettings();
+      if (!snap.ok) throw new Error('settings:get ' + snap.error);
+      const next = snap.data.settings;
+      next.general.petEnabled = true;
+      next.general.petSize = 120;
+      const saved = await window.bsub.saveSettings(next);
+      if (!saved.ok) throw new Error('settings:set ' + saved.error);
+      return JSON.stringify({ ok: true });
+      `
+    );
+    const petTarget = await waitForPetTarget();
+    const pet = await connectTarget(petTarget);
+    const read = async () => {
+      const raw = await evaluate(
+        pet,
+        'JSON.stringify({ w: innerWidth, h: innerHeight, body: Boolean(document.querySelector(".pet-body")), api: typeof window.bsub })'
+      );
+      return JSON.parse(raw);
+    };
+
+    let compact = null;
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      const info = await read();
+      if (info.body && info.api === 'object' && info.w > 0) {
+        compact = info;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    if (!compact) throw new Error('桌宠页面未就绪');
+    // 120px 桌宠：compact = 140x158（Windows DPI 取整可能差 1–2px）
+    if (Math.abs(compact.w - 140) > 2 || Math.abs(compact.h - 158) > 2) {
+      throw new Error(`compact 尺寸异常：${compact.w}x${compact.h}`);
+    }
+
+    const position = JSON.parse(
+      await evaluate(pet, '(async () => JSON.stringify(await window.bsub.petPosition()))()')
+    );
+    if (!position || typeof position.x !== 'number') throw new Error('pet:get-position 异常');
+
+    await evaluate(pet, 'window.bsub.setPetLayout("bubble").then(() => null)');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const bubble = await read();
+    if (Math.abs(bubble.w - 284) > 2 || Math.abs(bubble.h - 420) > 2) {
+      throw new Error(`bubble 尺寸异常：${bubble.w}x${bubble.h}`);
+    }
+
+    await evaluate(pet, 'window.bsub.setPetLayout("compact").then(() => null)');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const back = await read();
+    if (Math.abs(back.w - compact.w) > 2 || Math.abs(back.h - compact.h) > 2) {
+      throw new Error(`收回尺寸异常：${back.w}x${back.h}`);
+    }
+    pet.close();
+
+    await run(
+      ws,
+      `
+      const snap = await window.bsub.getSettings();
+      const next = snap.data.settings;
+      next.general.petEnabled = false;
+      await window.bsub.saveSettings(next);
+      return JSON.stringify({ ok: true });
+      `
+    );
+    return `compact=${compact.w}x${compact.h} bubble=${bubble.w}x${bubble.h} pos=${position.x},${position.y}`;
   });
 
   ws.close();

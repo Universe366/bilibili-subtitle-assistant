@@ -56,6 +56,28 @@ export function registerBrowserIpc(ctx: IpcContext): void {
       return { ok: true as const, data: false };
     }
   });
+  ipcMain.handle('media:toggle', async () => {
+    const wc = ctx.tabs.activeWebContents();
+    if (!wc) return { ok: true as const, data: { playing: false } };
+    try {
+      const playing = await wc.executeJavaScript(
+        `(() => {
+          const v = document.querySelector('video, audio');
+          if (!v) return false;
+          if (v.paused || v.ended) {
+            const started = v.play();
+            if (started && typeof started.catch === 'function') started.catch(() => {});
+            return true;
+          }
+          v.pause();
+          return false;
+        })()`
+      );
+      return { ok: true as const, data: { playing: playing === true } };
+    } catch {
+      return { ok: true as const, data: { playing: false } };
+    }
+  });
   ipcMain.handle('media:set-rate', async (_event, rate: number) => {
     return { ok: true as const, data: await ctx.tabs.setPlaybackRate(rate) };
   });

@@ -1,30 +1,87 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
 import { loadSettings, saveSettings } from './settings';
+import {
+  clampRectToArea,
+  defaultPetRect,
+  nearestWorkArea,
+  normalizePetSize,
+  petLayoutSize,
+  snapRectToEdges,
+  type PetLayoutMode,
+  type Rect
+} from './petGeometry';
 
 let petWindow: BrowserWindow | null = null;
 let saveTimer: NodeJS.Timeout | null = null;
+let layoutMode: PetLayoutMode = 'compact';
 
-function initialPosition(): { x: number; y: number } {
-  const settings = loadSettings();
-  if (settings.general.petX && settings.general.petY) {
-    return { x: settings.general.petX, y: settings.general.petY };
-  }
-  const area = screen.getPrimaryDisplay().workArea;
-  return { x: area.x + area.width - 300, y: area.y + area.height - 340 };
+function workAreas(): Rect[] {
+  return screen.getAllDisplays().map((display) => display.workArea);
 }
 
-/** 桌宠窗口：透明、无边框、置顶、不进任务栏。 */
+function areaFor(point: { x: number; y: number } | null): Rect {
+  const primary = screen.getPrimaryDisplay().workArea;
+  return nearestWorkArea(point, workAreas()) || primary;
+}
+
+/** 当前窗口矩形；窗口不存在时用默认右下角位置兜底。 */
+function currentRect(): Rect {
+  const petSize = normalizePetSize(loadSettings().general.petSize);
+  if (!petWindow || petWindow.isDestroyed()) {
+    return defaultPetRect(petSize, screen.getPrimaryDisplay().workArea, layoutMode);
+  }
+  const [x, y] = petWindow.getPosition();
+  const [width, height] = petWindow.getSize();
+  return { x, y, width, height };
+}
+
+/** 保存位置（写设置前先夹到可见区域，避免拔掉副屏后桌宠“消失”）。 */
+function persistPosition(): void {
+  const rect = currentRect();
+  const area = areaFor({ x: rect.x + Math.round(rect.width / 2), y: rect.y + Math.round(rect.height / 2) });
+  const bounded = clampRectToArea(rect, area);
+  if (bounded.x !== rect.x || bounded.y !== rect.y) {
+    petWindow?.setPosition(bounded.x, bounded.y);
+  }
+  const settings = loadSettings();
+  settings.general.petX = bounded.x;
+  settings.general.petY = bounded.y;
+  saveSettings(settings);
+}
+
+function schedulePersist(delay = 400): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistPosition();
+  }, delay);
+}
+
+function initialRect(): Rect {
+  const settings = loadSettings();
+  const petSize = normalizePetSize(settings.general.petSize);
+  const saved =
+    settings.general.petX || settings.general.petY
+      ? { x: settings.general.petX, y: settings.general.petY }
+      : null;
+  const area = areaFor(saved);
+  const size_ = petLayoutSize(layoutMode, petSize);
+  if (saved) {
+    return clampRectToArea({ ...size_, x: saved.x, y: saved.y }, area);
+  }
+  return defaultPetRect(petSize, area, layoutMode);
+}
+
+/** 桌宠窗口：透明、无边框、置顶、不进任务栏；尺寸随内容伸缩。 */
 export function openPetWindow(): void {
   if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.show();
+    petWindow.showInactive();
     return;
   }
-  const position = initialPosition();
+  const rect = initialRect();
   petWindow = new BrowserWindow({
-    ...position,
-    width: 260,
-    height: 320,
+    ...rect,
     transparent: true,
     frame: false,
     resizable: false,
@@ -49,25 +106,31 @@ export function openPetWindow(): void {
     });
   }
   petWindow.once('ready-to-show', () => petWindow?.showInactive());
+  // 用系统拖拽（-webkit-app-region: drag）移动时也要落盘；渲染层主动拖拽会走 pet:drop。
   petWindow.on('moved', () => {
     if (!petWindow || petWindow.isDestroyed()) return;
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      if (!petWindow || petWindow.isDestroyed()) return;
-      const [x, y] = petWindow.getPosition();
-      const settings = loadSettings();
-      settings.general.petX = x;
-      settings.general.petY = y;
-      saveSettings(settings);
-    }, 500);
+    schedulePersist();
   });
   petWindow.on('closed', () => {
     petWindow = null;
   });
-  console.log('[pet] window opened');
+  const onDisplaysChanged = () => layoutPetWindow();
+  screen.on('display-metrics-changed', onDisplaysChanged);
+  screen.on('display-added', onDisplaysChanged);
+  screen.on('display-removed', onDisplaysChanged);
+  petWindow.on('closed', () => {
+    screen.removeListener('display-metrics-changed', onDisplaysChanged);
+    screen.removeListener('display-added', onDisplaysChanged);
+    screen.removeListener('display-removed', onDisplaysChanged);
+  });
+  console.log('[pet] window opened', `${rect.width}x${rect.height}`, layoutMode);
 }
 
 export function closePetWindow(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   if (petWindow && !petWindow.isDestroyed()) petWindow.close();
   petWindow = null;
 }
@@ -85,14 +148,35 @@ export function initPetWindow(): void {
   }
 }
 
+/** 按当前布局模式重排窗口：保持左上角，尺寸随内容变化，并夹在可见区域内。 */
+export function layoutPetWindow(): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const settings = loadSettings();
+  const petSize = normalizePetSize(settings.general.petSize);
+  const size = petLayoutSize(layoutMode, petSize);
+  const [x, y] = petWindow.getPosition();
+  const area = areaFor({ x: x + Math.round(size.width / 2), y: y + Math.round(size.height / 2) });
+  const bounded = clampRectToArea({ x, y, ...size }, area);
+  petWindow.setBounds(bounded);
+}
+
+/** 渲染层切换气泡/挂件/菜单时调用。 */
+export function setPetLayout(mode: PetLayoutMode): void {
+  const allowed: PetLayoutMode[] = ['compact', 'bubble', 'widget', 'menu'];
+  layoutMode = allowed.includes(mode) ? mode : 'compact';
+  layoutPetWindow();
+}
+
+export function petLayout(): PetLayoutMode {
+  return layoutMode;
+}
+
 function applyWindowStyle(): void {
   if (!petWindow || petWindow.isDestroyed()) return;
   const settings = loadSettings();
-  const size = Math.min(180, Math.max(64, Math.round(settings.general.petSize || 96)));
   petWindow.setOpacity(Math.min(1, Math.max(0.4, settings.general.petOpacity ?? 1)));
   petWindow.setAlwaysOnTop(settings.general.petAlwaysOnTop !== false, 'screen-saver');
-  const [x, y] = petWindow.getPosition();
-  petWindow.setBounds({ x, y, width: size + 156, height: size + 220 });
+  layoutPetWindow();
 }
 
 /** 保存设置后同步窗口尺寸、透明度与置顶。 */
@@ -108,11 +192,40 @@ export function petPosition(): { x: number; y: number } | null {
 
 export function resetPetPosition(): void {
   if (!petWindow || petWindow.isDestroyed()) return;
+  const petSize = normalizePetSize(loadSettings().general.petSize);
   const area = screen.getPrimaryDisplay().workArea;
-  petWindow.setPosition(area.x + area.width - 300, area.y + area.height - 340);
+  const rect = defaultPetRect(petSize, area, layoutMode);
+  petWindow.setBounds(rect);
+  persistPosition();
 }
 
+/** 拖拽过程中的实时移动：夹在当前显示器工作区内，防止拖出屏幕。 */
 export function movePet(x: number, y: number): void {
   if (!petWindow || petWindow.isDestroyed()) return;
-  petWindow.setPosition(Math.round(x), Math.round(y));
+  const [width, height] = petWindow.getSize();
+  const area = areaFor({ x, y });
+  const bounded = clampRectToArea({ x: Math.round(x), y: Math.round(y), width, height }, area);
+  petWindow.setPosition(bounded.x, bounded.y);
+}
+
+/** 松手：吸附屏幕边缘 + 立即保存位置。 */
+export function dropPet(x: number, y: number): { x: number; y: number } | null {
+  if (!petWindow || petWindow.isDestroyed()) return null;
+  const [width, height] = petWindow.getSize();
+  const area = areaFor({ x, y });
+  const snapped = snapRectToEdges({ x: Math.round(x), y: Math.round(y), width, height }, area);
+  petWindow.setPosition(snapped.x, snapped.y);
+  persistPosition();
+  return { x: snapped.x, y: snapped.y };
+}
+
+/** 右键菜单里的「置顶」开关：立即生效并写回设置。 */
+export function setPetAlwaysOnTop(enabled: boolean): boolean {
+  const settings = loadSettings();
+  settings.general.petAlwaysOnTop = enabled;
+  saveSettings(settings);
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.setAlwaysOnTop(enabled, 'screen-saver');
+  }
+  return enabled;
 }

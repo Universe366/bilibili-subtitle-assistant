@@ -21,8 +21,8 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 84 个文件 / 394 个用例（主进程与 shared 26 文件 / 125 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器、启动/窗口策略、会话恢复、关闭流程、托盘、下载钩子，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
-| 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
+| 桌面单测 | 85 个文件 / 417 个用例（主进程与 shared 27 文件 / 148 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器、启动/窗口策略、会话恢复、关闭流程、托盘、下载钩子、桌宠几何/布局，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面冒烟 | `SMOKE OK ...` + `E2E OK 12/12`（含诊断/权限/更新/桥状态只读通道、桌宠窗口与布局） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
 | 插件 CI | `master`/PR 通过 |
@@ -71,6 +71,14 @@
 - `.gitignore` 补充 `desktop/release`、`desktop/out`、`desktop/resources/extension`、`artifacts/`。
 - 工作区构建产物统一放到 `artifacts/`；`desktop/release`（3.1GB）与 `out` 已删除，需要时用 `npm run pack` 重建。
 
+### 未发布（2026-10-25，桌宠）
+
+- **桌宠窗口按内容伸缩**：`petGeometry.ts` 定义 compact/bubble/widget/menu 四种布局，窗口只在需要时放大，关掉气泡后缩回桌宠大小，透明区域不再挡住桌面点击。
+- **拖动/位置更可靠**：rAF 节流 + 松手吸附边缘 + 实时夹取工作区；拔副屏/改分辨率后自动拉回可见区域；位置只在松手/系统拖动结束时落盘。
+- **右键菜单与快捷键**：打开主窗口、总结当前页面、暂停/继续播放（新增 `media:toggle`）、切换置顶（`pet:set-always-on-top`）、重置位置、隐藏；Esc 逐层关闭，悬停唤醒。
+- **气泡体验**：生成中可停止、回答可复制、流式文本自动滚动；挂件支持删除待办并记住开关。
+- 新增 `petGeometry` 16 条单测、桌宠组件 7 条测试，冒烟新增「桌宠窗口与布局」E2E（140×158 ↔ 284×420）。
+
 ### 未发布（2026-10-24，本机）
 
 - **修插件更新检查**：`update.js` 原来请求已删除的 `Universe366/shizi-extension`（匿名恒 404，等于永远检查不到更新）；改为合并发布仓库 `Universe366/shizi`，插件版本从资产名 `shizi-extension-v<版本>.zip` 解析（桌面 tag `v0.38.x` 不能当插件版本，否则会算成比 2.18.6 更旧），旧仓库 `v2.x` tag 保留兼容；缓存 key 升到 `v2`。`verify/update-test.mjs` 43 项覆盖。
@@ -101,7 +109,7 @@
 | 风险 | 说明 |
 |---|---|
 | 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.30k / `LibraryPanel.tsx` 1.41k / `index.ts` 346 行（托盘/会话/下载/日志/开发探针/窗口策略/关闭流程已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts、windowPolicy.ts、sessionRestore.ts、windowLifecycle.ts） |
-| 桌面 E2E 覆盖窄 | 11 条主流程 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）；渲染层 58 文件 / 269 用例组件测试；启动/托盘/会话恢复/下载钩子已有 32 条单测回归，但 `createWindow()` 的窗口装配本身仍无测试 |
+| 桌面 E2E 覆盖窄 | 12 条主流程 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道/桌宠窗口）；渲染层组件测试 58 文件 / 269 用例，启动/托盘/会话/下载/桌宠几何已有 44 条单测；`createWindow()` 的窗口装配本身仍无测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
 | `PageInfo` B 站中心 | 新内容源仍要改多处 |

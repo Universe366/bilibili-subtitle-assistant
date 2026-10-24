@@ -109,8 +109,16 @@ const api: BsubApi = {
   resetPetPosition: () => ipcRenderer.invoke('pet:reset-position') as Promise<void>,
   movePet: (x: number, y: number) =>
     ipcRenderer.invoke('pet:move', x, y) as Promise<void>,
+  dropPet: (x: number, y: number) =>
+    ipcRenderer.invoke('pet:drop', x, y) as Promise<{ x: number; y: number } | null>,
+  setPetLayout: (mode: 'compact' | 'bubble' | 'widget' | 'menu') =>
+    ipcRenderer.invoke('pet:set-layout', mode) as Promise<void>,
+  setPetAlwaysOnTop: (enabled: boolean) =>
+    ipcRenderer.invoke('pet:set-always-on-top', enabled) as Promise<boolean>,
   isMediaPlaying: () =>
     ipcRenderer.invoke('media:playing') as Promise<{ ok: true; data: boolean }>,
+  toggleMedia: () =>
+    ipcRenderer.invoke('media:toggle') as Promise<{ ok: true; data: { playing: boolean } }>,
   setPetEnabled: (enabled: boolean) =>
     ipcRenderer.invoke('pet:set-enabled', enabled) as Promise<void>,
   setPlaybackRate: (rate: number) =>
