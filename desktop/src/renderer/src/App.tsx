@@ -10,7 +10,11 @@ import { GlobalSearch } from './components/GlobalSearch';
 import { BrowserHub, type HubSection } from './components/BrowserHub';
 import { ReaderMode } from './components/ReaderMode';
 import { StartPage } from './components/StartPage';
-import { SettingsPage } from './SettingsPage';
+import { lazy, Suspense } from 'react';
+
+const SettingsPage = lazy(() =>
+  import('./SettingsPage').then((module) => ({ default: module.SettingsPage }))
+);
 import { nextTabId, tabIdByNumber } from './lib/tabs';
 import { useDropImport } from './lib/dropImport';
 import { CommandPalette, type CommandItem } from './components/CommandPalette';
@@ -499,7 +503,9 @@ export default function App() {
       {(startOpen || settingsOpen || tabs.length === 0) && (
         <div className="page-host">
           {settingsOpen ? (
-            <SettingsPage onClose={() => setSettingsOpen(false)} />
+            <Suspense fallback={null}>
+              <SettingsPage onClose={() => setSettingsOpen(false)} />
+            </Suspense>
           ) : (
             <StartPage
               onNavigate={(input) => {

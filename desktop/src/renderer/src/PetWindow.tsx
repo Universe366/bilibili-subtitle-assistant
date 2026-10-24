@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PageInfo } from '../../shared/types';
+import happyFish from './assets/pet/push.png';
+import idleFish from './assets/pet/keai.png';
+import thinkingFish from './assets/pet/go_to_agi.png';
 
 function fallbackInfo(): PageInfo {
   return {
@@ -28,6 +31,16 @@ const QUICK_ACTIONS = [
   { id: 'explain', label: '解释选中内容', prompt: '解释我当前选中的内容，用通俗的话。' },
   { id: 'translate', label: '翻译选中内容', prompt: '把当前选中的内容翻译成中文（若已是中文则译成英文）。' }
 ];
+
+const FISH_IMAGE: Record<Emotion, string> = {
+  idle: idleFish,
+  thinking: thinkingFish,
+  speaking: idleFish,
+  happy: happyFish,
+  sleeping: idleFish
+};
+
+const CLICK_PHRASES = ['摸摸头～', 'DeepSeek 大肥鱼在此！', '需要我总结点什么吗？', '别戳啦，会变瘦的'];
 
 const GREETINGS = [
   '要不要把正在看的视频存进库里？',
@@ -225,13 +238,18 @@ export function PetWindow() {
         title="点击聊天，双击打开主窗口"
         onClick={() => {
           lastActive.current = Date.now();
+          setEmotion('happy');
+          if (happyTimer.current) window.clearTimeout(happyTimer.current);
+          happyTimer.current = window.setTimeout(() => setEmotion('idle'), 1200);
+          if (!open && Math.random() < 0.4) {
+            setHint(CLICK_PHRASES[Math.floor(Math.random() * CLICK_PHRASES.length)]);
+            window.setTimeout(() => setHint(''), 2600);
+          }
           setOpen((value) => !value);
         }}
         onDoubleClick={() => void window.bsub.focusMain()}
       >
-        <span className="pet-eye left" />
-        <span className="pet-eye right" />
-        <span className="pet-mouth" />
+        <img className="pet-fish" src={FISH_IMAGE[emotion]} alt="DeepSeek 大肥鱼" draggable={false} />
         {emotion === 'sleeping' && <span className="pet-zzz">z z</span>}
       </button>
     </div>
