@@ -73,6 +73,6 @@ npm run pack                     # build + 同步插件 + NSIS，不发布
 - `src/main/index.ts`（341 行装配入口；开发探针在 `devHooks.ts`）
 - `src/renderer/.../SettingsPanel.tsx`（~1.25k，15 个 section 已在 `components/settings/`）
 - `src/renderer/.../LibraryPanel.tsx`（~1.32k，15 个 section 已拆）
-- `src/renderer/.../SubtitlesPanel.tsx`（~1.59k，翻译/校对/质检/视频头/字幕行已拆）
+- `src/renderer/.../SubtitlesPanel.tsx`（~1.57k，翻译/校对/质检/视频头/字幕行/轨道选择已拆）
 
 不要在这些文件尾部继续加功能；优先新建模块。拆分顺序见 `docs/QUALITY.md`。

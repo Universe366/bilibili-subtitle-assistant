@@ -22,6 +22,7 @@ import { SubtitleVideoHeader } from './SubtitleVideoHeader';
 import { SubtitleOptimizeProgress, SubtitleTranslateBar } from './SubtitleTranslateBar';
 import { SubtitleOptimizePanel, SubtitleQualityCard } from './SubtitleOptimizePanel';
 import { SubtitleLineRow } from './SubtitleLineRow';
+import { SubtitleTrackPicker } from './SubtitleTrackPicker';
 import { formatDuration } from '../lib/format';
 
 function minCoverageOf(duration: number): number {
@@ -949,11 +950,6 @@ export function SubtitlesPanel({
     return { chars, speech, coverage };
   }, [lines, info]);
 
-  const checkByUrl = useMemo(
-    () => new Map(trackChecks.map((item) => [item.url, item])),
-    [trackChecks]
-  );
-
   const effectiveTarget = targetLang === '__custom' ? customTarget.trim() : targetLang;
 
   const currentIndex = useMemo(() => {
@@ -1482,33 +1478,16 @@ export function SubtitlesPanel({
       )}
 
       {bundle && bundle.tracks.length > 0 && (
-        <div className="track-list">
-          {bundle.tracks.map((item) => {
-            const check = checkByUrl.get(item.url);
-            const invalid = check ? !check.ok : false;
-            return (
-              <button
-                key={`${item.lan}-${item.url}`}
-                className={`track-chip${track?.url === item.url ? ' is-active' : ''}${
-                  invalid ? ' is-invalid' : ''
-                }`}
-                title={`${item.source || '未知来源'} · ${item.lan}${
-                  check ? ` · ${check.reason}` : ''
-                }`}
-                disabled={invalid}
-                onClick={() => {
-                  failedTrackUrlsRef.current.clear();
-                  setError(null);
-                  setTrack(item);
-                }}
-              >
-                {item.lanDoc || item.lan || '未知语言'}
-                {item.isAi && <span className="ai-badge">AI</span>}
-                {invalid && <span className="ai-badge">不可用</span>}
-              </button>
-            );
-          })}
-        </div>
+        <SubtitleTrackPicker
+          tracks={bundle.tracks}
+          activeUrl={track?.url || ''}
+          checks={trackChecks}
+          onPick={(item) => {
+            failedTrackUrlsRef.current.clear();
+            setError(null);
+            setTrack(item);
+          }}
+        />
       )}
 
       {loadingLines && (
