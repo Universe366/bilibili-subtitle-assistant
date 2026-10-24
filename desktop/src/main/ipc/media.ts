@@ -458,7 +458,12 @@ export function registerMediaIpc(ctx: IpcContext): void {
 
   ipcMain.handle(
     'chat:send',
-    async (_event, payload: ChatRequest): Promise<Result<{ requestId: string }>> => {
+    async (event, payload: ChatRequest): Promise<Result<{ requestId: string }>> => {
+      // 事件必须回到发起请求的窗口：桌宠/未来多窗口不能只往主窗口发。
+      const sender = event.sender;
+      const sendToSender = (channel: string, data: unknown) => {
+        if (!sender.isDestroyed()) sender.send(channel, data);
+      };
       if (!payload || !payload.info) {
         return { ok: false, error: '没有可用的页面信息' };
       }
@@ -484,11 +489,11 @@ export function registerMediaIpc(ctx: IpcContext): void {
             page,
             signal: controller.signal,
             onDelta: (delta) =>
-              ctx.send('chat:delta', { requestId, delta } satisfies ChatDeltaEvent),
+              sendToSender('chat:delta', { requestId, delta } satisfies ChatDeltaEvent),
             onReasoning: (reasoning) =>
-              ctx.send('chat:delta', { requestId, delta: '', reasoning } satisfies ChatDeltaEvent)
+              sendToSender('chat:delta', { requestId, delta: '', reasoning } satisfies ChatDeltaEvent)
           });
-          ctx.send('chat:done', {
+          sendToSender('chat:done', {
             requestId,
             text: result.text,
             model: result.model,
@@ -499,7 +504,7 @@ export function registerMediaIpc(ctx: IpcContext): void {
             ? '已取消'
             : (error as Error)?.message || String(error);
           console.warn('[chat] failed:', message);
-          ctx.send('chat:error', { requestId, error: message } satisfies ChatErrorEvent);
+          sendToSender('chat:error', { requestId, error: message } satisfies ChatErrorEvent);
         } finally {
           chatControllers.delete(requestId);
         }

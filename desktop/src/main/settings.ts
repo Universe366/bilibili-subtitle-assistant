@@ -99,6 +99,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     assistantEnabled: false,
     petX: 0,
     petY: 0,
+    petSize: 96,
+    petOpacity: 1,
+    petSound: true,
+    petIdleTalk: true,
+    petAlwaysOnTop: true,
     searchEngine: 'bilibili',
     searchEngineCustom: ''
   },
@@ -283,6 +288,17 @@ function normalize(input: unknown): AppSettings {
       base.general.petEnabled = raw.general.petEnabled === true;
       base.general.assistantEnabled = raw.general.assistantEnabled === true;
       base.general.petX = Number(raw.general.petX) || 0;
+      const petSize = Number(raw.general.petSize);
+      base.general.petSize = Number.isFinite(petSize)
+        ? Math.min(180, Math.max(64, Math.round(petSize)))
+        : 96;
+      const petOpacity = Number(raw.general.petOpacity);
+      base.general.petOpacity = Number.isFinite(petOpacity)
+        ? Math.min(1, Math.max(0.4, Math.round(petOpacity * 100) / 100))
+        : 1;
+      base.general.petSound = raw.general.petSound !== false;
+      base.general.petIdleTalk = raw.general.petIdleTalk !== false;
+      base.general.petAlwaysOnTop = raw.general.petAlwaysOnTop !== false;
       base.general.petY = Number(raw.general.petY) || 0;
       const engine = raw.general.searchEngine;
       base.general.searchEngine = ['bilibili', 'bing', 'google', 'custom'].includes(engine as string)

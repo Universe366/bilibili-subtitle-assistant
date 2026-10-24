@@ -91,6 +91,7 @@ export interface BsubApi {
   openUrl(url: string, start?: number): Promise<{ id: string; reused: boolean; ready: boolean }>;
   moveTab(id: string, index: number): void;
   petPosition(): Promise<{ x: number; y: number } | null>;
+  resetPetPosition(): Promise<void>;
   movePet(x: number, y: number): Promise<void>;
   isMediaPlaying(): Promise<{ ok: true; data: boolean }>;
   setPetEnabled(enabled: boolean): Promise<void>;

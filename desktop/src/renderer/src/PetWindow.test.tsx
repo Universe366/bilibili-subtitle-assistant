@@ -10,6 +10,17 @@ function installBsub() {
     error?: (event: unknown) => void;
   } = {};
   const api = {
+    getSettings: vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        settings: {
+          general: { petSize: 96, petOpacity: 1, petSound: true, petIdleTalk: true },
+          ai: { preProofread: false },
+          search: { verify: true }
+        },
+        version: '0.38.8'
+      }
+    })),
     getPageInfo: vi.fn(async () => ({
       ok: true as const,
       data: { title: '测试页', url: 'https://example.com', kind: 'video' }

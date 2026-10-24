@@ -30,6 +30,11 @@ describe('设置的持久化字段', () => {
     settings.general.assistantEnabled = true;
     settings.general.petX = 120;
     settings.general.petY = 80;
+    settings.general.petSize = 140;
+    settings.general.petOpacity = 0.7;
+    settings.general.petSound = false;
+    settings.general.petIdleTalk = false;
+    settings.general.petAlwaysOnTop = false;
     settings.general.searchEngine = 'bing';
     settings.general.searchEngineCustom = 'https://s.example/?q={q}';
     saveSettings(settings);
@@ -39,6 +44,11 @@ describe('设置的持久化字段', () => {
     expect(reloaded.general.assistantEnabled).toBe(true);
     expect(reloaded.general.petX).toBe(120);
     expect(reloaded.general.petY).toBe(80);
+    expect(reloaded.general.petSize).toBe(140);
+    expect(reloaded.general.petOpacity).toBe(0.7);
+    expect(reloaded.general.petSound).toBe(false);
+    expect(reloaded.general.petIdleTalk).toBe(false);
+    expect(reloaded.general.petAlwaysOnTop).toBe(false);
     expect(reloaded.general.searchEngine).toBe('bing');
     expect(reloaded.general.searchEngineCustom).toBe('https://s.example/?q={q}');
   });

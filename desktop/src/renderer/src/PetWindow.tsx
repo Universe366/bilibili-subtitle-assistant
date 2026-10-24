@@ -97,6 +97,20 @@ export function PetWindow() {
     null
   );
   const dragStarted = useRef(false);
+  const [petSize, setPetSize] = useState(96);
+  const [soundOn, setSoundOn] = useState(true);
+  const [idleTalkOn, setIdleTalkOn] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    void window.bsub.getSettings().then((response) => {
+      if (!response.ok) return;
+      const general = response.data.settings.general;
+      setPetSize(Math.min(180, Math.max(64, general.petSize || 96)));
+      setSoundOn(general.petSound !== false);
+      setIdleTalkOn(general.petIdleTalk !== false);
+    });
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
@@ -170,13 +184,13 @@ export function PetWindow() {
         setEmotion('sleeping');
         return;
       }
-      if (idleMs > 60_000) {
+      if (idleTalkOn && idleMs > 60_000) {
         setHint(SELF_TALK[Math.floor(Math.random() * SELF_TALK.length)]);
         window.setTimeout(() => setHint(''), 5000);
       }
     }, 45_000);
     return () => window.clearInterval(timer);
-  }, [busy]);
+  }, [busy, idleTalkOn]);
 
   const toggleSpeak = () => {
     const next = !speak;
@@ -279,7 +293,40 @@ export function PetWindow() {
   return (
     <div
       className={`pet-root emotion-${emotion}${open ? ' is-open' : ''}${playing ? ' is-playing' : ''}`}
+      style={{ ['--pet-size' as string]: `${petSize}px` }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        setMenuOpen(true);
+      }}
     >
+      {menuOpen && (
+        <div className="pet-menu" onMouseLeave={() => setMenuOpen(false)}>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void window.bsub.focusMain();
+            }}
+          >
+            打开主窗口
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void window.bsub.setPetEnabled(false);
+            }}
+          >
+            隐藏桌宠
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void window.bsub.resetPetPosition();
+            }}
+          >
+            重置位置
+          </button>
+        </div>
+      )}
       <div className="pet-grip" title="拖动移动桌宠" onMouseDown={startDrag} />
 
       {hint && !open && <div className="pet-hint">{hint}</div>}
@@ -361,7 +408,18 @@ export function PetWindow() {
               </div>
             ))}
             {busy && <div className="pet-line is-assistant pet-stream">{answer || '思考中…'}</div>}
-            {error && <div className="pet-line is-error">{error}</div>}
+            {error && (
+              <div className="pet-line is-error">
+                {error}
+                <button
+                  className="mini-btn"
+                  style={{ marginLeft: 6 }}
+                  onClick={() => void window.bsub.focusMain()}
+                >
+                  去主窗口设置 AI
+                </button>
+              </div>
+            )}
             {!history.length && !busy && !error && (
               <div className="pet-line is-assistant">点下面的快捷动作，或直接问我。</div>
             )}
@@ -413,7 +471,7 @@ export function PetWindow() {
             dragStarted.current = false;
             return;
           }
-          beep();
+          if (soundOn) beep();
           toggleOpen();
         }}
         onDoubleClick={() => void window.bsub.focusMain()}

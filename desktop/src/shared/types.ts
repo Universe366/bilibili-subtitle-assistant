@@ -726,6 +726,16 @@ export interface AppSettings {
     assistantEnabled: boolean;
     /** 宠物窗口位置（0 表示自动放在右下角） */
     petX: number;
+    /** 桌宠大小（px） */
+    petSize: number;
+    /** 桌宠不透明度 0.4–1 */
+    petOpacity: number;
+    /** 点击音效 */
+    petSound: boolean;
+    /** 空闲自言自语 */
+    petIdleTalk: boolean;
+    /** 窗口置顶 */
+    petAlwaysOnTop: boolean;
     petY: number;
     /** 地址栏输入非网址时用哪个搜索引擎 */
     searchEngine: 'bilibili' | 'bing' | 'google' | 'custom';

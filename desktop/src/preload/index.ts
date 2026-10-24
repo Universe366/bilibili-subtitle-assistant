@@ -106,6 +106,7 @@ const api: BsubApi = {
   focusMain: () => ipcRenderer.invoke('app:focus-main') as Promise<void>,
   petPosition: () =>
     ipcRenderer.invoke('pet:get-position') as Promise<{ x: number; y: number } | null>,
+  resetPetPosition: () => ipcRenderer.invoke('pet:reset-position') as Promise<void>,
   movePet: (x: number, y: number) =>
     ipcRenderer.invoke('pet:move', x, y) as Promise<void>,
   isMediaPlaying: () =>

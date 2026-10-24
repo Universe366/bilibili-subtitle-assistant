@@ -39,7 +39,7 @@ export function openPetWindow(): void {
       nodeIntegration: false
     }
   });
-  petWindow.setAlwaysOnTop(true, 'screen-saver');
+  applyWindowStyle();
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   if (rendererUrl) {
     void petWindow.loadURL(`${rendererUrl}?window=pet`);
@@ -85,10 +85,31 @@ export function initPetWindow(): void {
   }
 }
 
+function applyWindowStyle(): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const settings = loadSettings();
+  const size = Math.min(180, Math.max(64, Math.round(settings.general.petSize || 96)));
+  petWindow.setOpacity(Math.min(1, Math.max(0.4, settings.general.petOpacity ?? 1)));
+  petWindow.setAlwaysOnTop(settings.general.petAlwaysOnTop !== false, 'screen-saver');
+  const [x, y] = petWindow.getPosition();
+  petWindow.setBounds({ x, y, width: size + 156, height: size + 220 });
+}
+
+/** 保存设置后同步窗口尺寸、透明度与置顶。 */
+export function applyPetSettings(): void {
+  applyWindowStyle();
+}
+
 export function petPosition(): { x: number; y: number } | null {
   if (!petWindow || petWindow.isDestroyed()) return null;
   const [x, y] = petWindow.getPosition();
   return { x, y };
+}
+
+export function resetPetPosition(): void {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const area = screen.getPrimaryDisplay().workArea;
+  petWindow.setPosition(area.x + area.width - 300, area.y + area.height - 340);
 }
 
 export function movePet(x: number, y: number): void {

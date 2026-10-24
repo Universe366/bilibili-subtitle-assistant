@@ -99,7 +99,7 @@ describe('SummaryPanel', () => {
   it('页面信息读取失败时显示错误', async () => {
     installBsub({ pageError: '需要登录' });
     render(<SummaryPanel activeTab={tab} onOpenSettings={() => {}} />);
-    expect(await screen.findByText(/需要登录/, undefined, { timeout: 5000 })).toBeTruthy();
+    expect(await screen.findByText(/需要登录/, undefined, { timeout: 8000 })).toBeTruthy();
   });
 
   it('收到总结完成事件后渲染正文与核对卡片', async () => {

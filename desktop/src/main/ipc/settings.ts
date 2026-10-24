@@ -38,11 +38,12 @@ import { probePlatformModels, testPlatformConnection } from '../platform';
 
 import { listLibrary } from '../library';
 import { failure, type IpcContext } from './shared';
-import { movePet, petPosition, setPetEnabled } from '../petWindow';
+import { applyPetSettings, movePet, petPosition, resetPetPosition, setPetEnabled } from '../petWindow';
 
 /** 设置 / 更新 / 桥 / 权限 / 数据目录 / 诊断 相关 IPC。 */
 export function registerSettingsIpc(ctx: IpcContext): void {
   ipcMain.handle('pet:get-position', () => petPosition());
+  ipcMain.handle('pet:reset-position', () => resetPetPosition());
   ipcMain.handle('pet:move', (_event, x: number, y: number) => {
     movePet(Number(x), Number(y));
   });
@@ -71,6 +72,7 @@ export function registerSettingsIpc(ctx: IpcContext): void {
         nativeTheme.themeSource = saved.general.theme;
         ctx.tabs.setSuspendMinutes(saved.general.suspendMinutes);
         setPetEnabled(saved.general.petEnabled === true);
+        applyPetSettings();
         await restartBridge(ctx.win);
         const snapshot = settingsSnapshot();
         ctx.send('settings:changed', snapshot);

@@ -5869,3 +5869,53 @@ button:disabled {
   color: var(--faint);
   font-size: 10.5px;
 }
+
+
+/* 桌宠尺寸变量与右键菜单 */
+.pet-body {
+  width: var(--pet-size, 96px);
+  height: var(--pet-size, 96px);
+}
+
+.pet-body .pet-eye {
+  width: calc(var(--pet-size, 96px) * 0.09);
+  height: calc(var(--pet-size, 96px) * 0.13);
+}
+
+.pet-body .pet-mouth {
+  width: calc(var(--pet-size, 96px) * 0.21);
+  height: calc(var(--pet-size, 96px) * 0.1);
+  margin-left: calc(var(--pet-size, 96px) * -0.105);
+}
+
+.pet-menu {
+  position: absolute;
+  top: 18px;
+  left: 8px;
+  z-index: 10;
+  min-width: 120px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  -webkit-app-region: no-drag;
+}
+
+.pet-menu button {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pet-menu button:hover {
+  background: var(--surface-2);
+}

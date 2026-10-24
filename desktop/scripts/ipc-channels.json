@@ -109,6 +109,7 @@
   "permissions:revoke",
   "pet:get-position",
   "pet:move",
+  "pet:reset-position",
   "pet:set-enabled",
   "platform:models",
   "platform:test",
