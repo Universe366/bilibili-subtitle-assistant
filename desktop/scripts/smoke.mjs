@@ -336,6 +336,40 @@ try {
     return `history=${result.history} exports=${result.exports}`;
   });
 
+  // 10. 诊断 / 权限 / 更新 / 桥状态（启动路径的只读 IPC）
+  await step('启动路径只读通道', async () => {
+    const result = await run(
+      ws,
+      `
+      const diagnostics = await window.bsub.getDiagnostics();
+      if (!diagnostics.ok) throw new Error('diagnostics:get ' + diagnostics.error);
+      if (!diagnostics.data.version) throw new Error('诊断缺少版本');
+      if (diagnostics.data.version !== ${JSON.stringify(pkg.version)}) {
+        throw new Error('诊断版本不一致: ' + diagnostics.data.version);
+      }
+      const permissions = await window.bsub.listSitePermissions();
+      if (!permissions.ok || !Array.isArray(permissions.data)) {
+        throw new Error('permissions:list 异常');
+      }
+      const update = await window.bsub.getUpdateStatus();
+      if (!update.ok || !update.data || typeof update.data.state !== 'string') {
+        throw new Error('update:status 异常');
+      }
+      const bridge = await window.bsub.getBridgeStatus();
+      if (!bridge.ok || typeof bridge.data.running !== 'boolean') {
+        throw new Error('bridge:status 异常');
+      }
+      return JSON.stringify({
+        version: diagnostics.data.version,
+        permissions: permissions.data.length,
+        update: update.data.state,
+        bridge: bridge.data.running ? 'running' : 'stopped'
+      });
+      `
+    );
+    return `diag=${result.version} perms=${result.permissions} update=${result.update} bridge=${result.bridge}`;
+  });
+
   ws.close();
   console.log(`SMOKE OK title=拾字 version=${pkg.version} tabs=${state.tabCount}`);
   console.log(`E2E OK ${passed.length}/${passed.length} ${passed.join(' / ')}`);

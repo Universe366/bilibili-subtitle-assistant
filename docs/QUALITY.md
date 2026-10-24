@@ -12,7 +12,7 @@
 | 桌面单测 | 50 个文件 / 205 个用例 |
 | 插件测试 | 520 项 |
 | ESLint | **0 error / 0 warning** |
-| 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，9 条 E2E） |
+| 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，10 条 E2E） |
 | CI | 桌面（master/PR）+ 插件（master/PR）+ tag 发布 |
 
 本次已经做掉的：
@@ -40,7 +40,7 @@
 | `src/renderer/.../LibraryPanel.tsx` | ~1.44k | 13 个 section/弹窗已拆；剩详情容器骨架 |
 
 为什么现在没动：`library.ts` 与两个 React 组件没有组件级测试兜底，直接拆容易“编译通过、交互坏掉”。
-`ipc` 域现在有 9 条 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出）兜底，可以照着同样的节奏来；
+`ipc` 域现在有 10 条 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）兜底，可以照着同样的节奏来；
 `library.ts` 建议先拆出 schema 与 search（有单测覆盖），再动数据写入部分。
 
 ### P1：收敛 JSON 边界的 `any`
