@@ -21,6 +21,7 @@ import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
 import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LibraryBulkBar } from './LibraryBulkBar';
+import { LibraryBulkCollectionDialog } from './LibraryBulkCollectionDialog';
 import { LibraryCollectionRow } from './LibraryCollectionRow';
 import { LibraryImportDialog } from './LibraryImportDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
@@ -1315,58 +1316,15 @@ export function LibraryPanel() {
         </div>
       )}
 
-      {bulkCollectionOpen && (
-        <div
-          className="confirm-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setBulkCollectionOpen(false);
-          }}
-        >
-          <div className="confirm-card" role="dialog" aria-label="加入合集">
-            <div className="confirm-title">把选中的 {selectedIds.size} 个视频加入合集</div>
-            <div className="collection-pick-list">
-              {allCollections.map((item) => (
-                <button
-                  key={item.id}
-                  className="mini-btn"
-                  onClick={() => void addSelectedToCollection(item.name)}
-                >
-                  {item.name}（{item.count}）
-                </button>
-              ))}
-              {!allCollections.length && (
-                <div className="panel-hint">还没有合集，直接在下面新建一个。</div>
-              )}
-            </div>
-            <div className="collection-pick-new">
-              <input
-                className="tag-input collection-name-input"
-                value={bulkCollectionName}
-                placeholder="新建合集名称"
-                onChange={(event) => setBulkCollectionName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void addSelectedToCollection(bulkCollectionName);
-                  }
-                }}
-              />
-              <button
-                className="mini-btn primary"
-                disabled={!bulkCollectionName.trim()}
-                onClick={() => void addSelectedToCollection(bulkCollectionName)}
-              >
-                新建并加入
-              </button>
-            </div>
-            <div className="confirm-actions">
-              <button className="mini-btn" onClick={() => setBulkCollectionOpen(false)}>
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LibraryBulkCollectionDialog
+        open={bulkCollectionOpen}
+        count={selectedIds.size}
+        collections={allCollections}
+        name={bulkCollectionName}
+        onName={setBulkCollectionName}
+        onPick={(name) => void addSelectedToCollection(name)}
+        onClose={() => setBulkCollectionOpen(false)}
+      />
 
       {manageOpen && (
         <div
