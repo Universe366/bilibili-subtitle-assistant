@@ -2,7 +2,7 @@
 
 > 更新时间：2026-10-25  
 > 适用版本：桌面 **0.38.11** / 插件 **2.18.7**  
-> 当前发布基线：tag `v0.38.11`（本提交）  
+> 当前发布基线：tag `v0.38.11`（`bc0dcc2`）  
 > 最新 Release：`v0.38.11`  
 > 验收清单：[验收清单.md](验收清单.md)（0.37.7 那一轮的记录，仅作历史参考）  
 > 工作区：clean
@@ -26,9 +26,9 @@
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
 | 插件 CI | `master`/PR 通过 |
-| 发布 CI | `v0.38.11`（本次） |
+| 发布 CI | `v0.38.11` 通过 |
 | 安装包 | 未签名；SmartScreen 会提示 |
-| 自动更新 | `latest.yml` 指向 0.38.11（发布后确认） |
+| 自动更新 | `latest.yml` 指向 0.38.11，`/releases/latest` 已确认 |
 
 仓库体积：约 36MB（FFmpeg.wasm 31MB）；本地工作区约 1.7GB（含 `node_modules`、`release/win-unpacked`）。
 
