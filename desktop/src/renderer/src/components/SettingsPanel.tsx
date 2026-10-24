@@ -4,6 +4,7 @@ import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
 import { DataBackupSection } from './settings/DataBackupSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
+import { PromptSection } from './settings/PromptSection';
 import { GeneralSection } from './settings/GeneralSection';
 import { McpSection } from './settings/McpSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
@@ -1585,86 +1586,14 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="提示词模板" defaultOpen={false}>
-        <div className="settings-inline">
-          <select
-            className="settings-input"
-            value={draft.prompt.activeId}
-            onChange={(event) => setDraft({ ...draft, prompt: { ...draft.prompt, activeId: event.target.value } })}
-          >
-            {draft.prompt.templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
-          <button className="mini-btn" title="新增模板" onClick={addTemplate}>
-            <Plus size={12} />
-          </button>
-          <button
-            className="mini-btn"
-            title="删除当前模板"
-            disabled={draft.prompt.templates.length <= 1}
-            onClick={removeTemplate}
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
+      <PromptSection
+        value={draft.prompt}
+        onPatch={(patch) => setDraft({ ...draft, prompt: { ...draft.prompt, ...patch } })}
+        onAddTemplate={addTemplate}
+        onRemoveTemplate={removeTemplate}
+        onUpdateTemplate={(patch) => updateTemplate(patch)}
+      />
 
-        <div className="settings-label">模板名称</div>
-        <input
-          className="settings-input"
-          value={activeTemplate.name}
-          onChange={(event) => updateTemplate({ name: event.target.value })}
-        />
-
-        <textarea
-          className="settings-textarea"
-          rows={9}
-          value={activeTemplate.text}
-          onChange={(event) => updateTemplate({ text: event.target.value })}
-        />
-
-        <div className="settings-label">对话提示词</div>
-        <textarea
-          className="settings-textarea"
-          rows={5}
-          value={draft.prompt.chat}
-          onChange={(event) =>
-            setDraft({ ...draft, prompt: { ...draft.prompt, chat: event.target.value } })
-          }
-        />
-
-        <div className="settings-label">翻译提示词</div>
-        <textarea
-          className="settings-textarea"
-          rows={6}
-          value={draft.prompt.translate}
-          onChange={(event) =>
-            setDraft({ ...draft, prompt: { ...draft.prompt, translate: event.target.value } })
-          }
-        />
-
-        <div className="settings-label">AI 优化提示词</div>
-        <textarea
-          className="settings-textarea"
-          rows={6}
-          value={draft.prompt.optimize}
-          onChange={(event) =>
-            setDraft({ ...draft, prompt: { ...draft.prompt, optimize: event.target.value } })
-          }
-        />
-
-        <div className="settings-label">章节提示词</div>
-        <textarea
-          className="settings-textarea"
-          rows={5}
-          value={draft.prompt.chapters}
-          onChange={(event) =>
-            setDraft({ ...draft, prompt: { ...draft.prompt, chapters: event.target.value } })
-          }
-        />
-      </SettingsSection>
 
       <SettingsSection title="联网检索" defaultOpen={false}>
         <label className="settings-check">
