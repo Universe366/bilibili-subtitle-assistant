@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 19 个文件 / 74 个用例（含 IPC channel 契约 3 条、JSON 读取器 4 条） |
+| 桌面单测 | 21 个文件 / 81 个用例（含 IPC channel 契约、JSON 读取器、LibraryPanel 组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 9/9` |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -49,7 +49,7 @@
 - 修复对话 `sendOnEnter`/`expandReasoning`、总结 `search.verify` 未生效。
 
 ### 0.37.2 之后的本机复验（2026-10-24，未发版）
-- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/0 warning、19 文件 74 用例、`SMOKE OK version=0.37.2`；
+- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/0 warning、21 文件 81 用例、`SMOKE OK version=0.37.2`；
 - 插件 `npm test` 22 个套件全绿，`panel-test.js` 520 项 0 失败；
 - 修正过期版本号：`docs/REPO-MAP.md`、`docs/MAINTAINERS.md` 里的 0.37.1 → 0.37.2；
 - 修正 `desktop/scripts/release.mjs`：安装说明的数据目录 `bsub-desktop` → `shizi`（旧版自动迁移），发行 tag 从 `v${插件版本}` 改为 `v${桌面版本}`（否则脚本会提示 `v2.18.6`，与 semver Latest 规则冲突）；
@@ -107,7 +107,7 @@
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
-1. UI 层：`SettingsPanel` / `LibraryPanel` 需要先补组件级测试再拆（引入 jsdom/@testing-library 属新依赖，需确认）；
+1. UI 层：已装 jsdom + @testing-library，`LibraryPanel` 有了组件测试与 `lib/libraryView.ts`；下一步继续拆 `LibraryPanel` 的列表/详情/合集 section，再按同样方式处理 `SettingsPanel`；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. 最后才动 `SettingsPanel.tsx` / `LibraryPanel.tsx` / `index.ts`。
 
