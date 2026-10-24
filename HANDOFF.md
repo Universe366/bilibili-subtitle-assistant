@@ -21,7 +21,7 @@
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
 | 桌面单测 | 54 个文件 / 221 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings 组件测试） |
-| 桌面冒烟 | `SMOKE OK ...` + `E2E OK 10/10`（新增诊断/权限/更新/桥状态只读通道） |
+| 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
 | 插件 CI | `master`/PR 通过 |
@@ -56,7 +56,7 @@
 - 删除本机残留的 `desktop/spike/`（早已 gitignore，仓库内本就没有）。
 
 ### Phase 0（2026-10-24，可维护性）
-- `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **10 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复、任务中心、AI 参数校验、历史与导出记录、诊断/权限/更新/桥状态只读通道；
+- `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **11 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复、任务中心、AI 参数校验、历史与导出记录、诊断/权限/更新/桥状态只读通道、启动落盘（library.db/settings.json）；
 - 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（155 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
 - `ipc.ts` 按域拆分：**library / browser / page / settings / media / jobs / tools / records** 八个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam`/`abortControllers` 在 `shared.ts`；`ipc.ts` 2.8k → **43 行**，只剩注册入口；
 - 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终 155 条；

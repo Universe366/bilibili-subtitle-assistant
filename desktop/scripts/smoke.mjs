@@ -379,6 +379,14 @@ try {
     return `diag=${result.version} perms=${result.permissions} update=${result.update} bridge=${result.bridge}`;
   });
 
+  // 11. 启动落盘：临时 userData 下应生成 libraries / settings
+  await step('启动落盘', async () => {
+    const files = ['library.db', 'settings.json'];
+    const missing = files.filter((name) => !fs.existsSync(path.join(userData, name)));
+    if (missing.length) throw new Error(`缺少 ${missing.join(', ')}`);
+    return files.join(' + ');
+  });
+
   ws.close();
   console.log(`SMOKE OK title=拾字 version=${pkg.version} tabs=${state.tabCount}`);
   console.log(`E2E OK ${passed.length}/${passed.length} ${passed.join(' / ')}`);
