@@ -38,9 +38,14 @@ import { probePlatformModels, testPlatformConnection } from '../platform';
 
 import { listLibrary } from '../library';
 import { failure, type IpcContext } from './shared';
+import { openSettingsWindow } from '../settingsWindow';
 
 /** 设置 / 更新 / 桥 / 权限 / 数据目录 / 诊断 相关 IPC。 */
 export function registerSettingsIpc(ctx: IpcContext): void {
+  ipcMain.handle('app:open-settings', () => {
+    openSettingsWindow();
+  });
+
   ipcMain.handle('settings:get', (): Result<ReturnType<typeof settingsSnapshot>> => {
     try {
       return { ok: true, data: settingsSnapshot() };

@@ -4996,3 +4996,20 @@ button:disabled {
   color: var(--text);
   font-size: 13px;
 }
+
+/* ---------- 独立设置窗口 ---------- */
+.settings-window {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  padding: 16px 20px 0;
+  box-sizing: border-box;
+}
+
+.settings-window .settings-panel {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+}

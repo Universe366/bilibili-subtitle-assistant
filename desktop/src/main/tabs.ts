@@ -7,6 +7,7 @@ import type { FindResult, LayoutRect, TabInfo } from '../shared/types';
 import { normalizeUrl } from './url';
 import { SELECTION_TOOLBAR_SCRIPT } from './selectionToolbar';
 import { loadSettings } from './settings';
+import { openSettingsWindow } from './settingsWindow';
 
 // 后台标签闲置多久后释放渲染进程。环境变量用于测试覆盖。
 const ENV_SUSPEND_MS = Number(process.env.BSUB_SUSPEND_MS) || 0;
@@ -267,6 +268,11 @@ export class TabManager {
       if (input.key === 'F11') {
         event.preventDefault();
         win?.setFullScreen(!win.isFullScreen());
+        return;
+      }
+      if (input.control && input.key === ',') {
+        event.preventDefault();
+        openSettingsWindow();
         return;
       }
       if (input.control && (input.key === '=' || input.key === '+')) {

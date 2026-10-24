@@ -1,6 +1,7 @@
 [
   "ai:cancel",
   "ai:summarize",
+  "app:open-settings",
   "asr:cancel",
   "asr:transcribe",
   "batch:cancel",
