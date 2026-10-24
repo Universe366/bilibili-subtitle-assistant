@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ExternalLink, Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Loader2, RefreshCw, Search, Trash2 } from 'lucide-react';
 import type {
   CollectionResolveResult,
   CollectionSummary,
@@ -17,12 +17,12 @@ import type {
   SummaryVersionMeta,
   TrashItem
 } from '../../../shared/types';
-import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
+import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
 import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryFilters } from './LibraryFilters';
 import { LibraryVideoRow } from './LibraryVideoRow';
-import { ExportMenu } from './ExportMenu';
 import { Markdown } from './Markdown';
 import { PodcastImport } from './PodcastImport';
 import { diffLines, type DiffOp } from '../lib/diff';
@@ -883,83 +883,18 @@ export function LibraryPanel() {
   if (selectedId != null) {
     return (
       <div className="panel">
-        <div className="panel-toolbar">
-          <button className="icon-btn" title="返回库" onClick={backToList}>
-            <ChevronLeft size={15} />
-          </button>
-          <div className="panel-title lib-detail-title" title={activeVideo?.title || ''}>
-            {activeVideo?.title || '库条目'}
-          </div>
-          <div className="toolbar-actions">
-            {detail?.bundle && (
-              <ExportMenu
-                info={detail.bundle.info}
-                track={detail.bundle.track}
-                lines={detail.bundle.lines}
-                summary={detail.summary?.content}
-              />
-            )}
-            <button
-              className="icon-btn"
-              title={
-                activeVideo && /^file:\/\//i.test(activeVideo.url)
-                  ? '用默认播放器打开'
-                  : activeVideo?.kind === 'page'
-                    ? '打开原网页'
-                    : '在网页打开'
-              }
-              disabled={!activeVideo?.url}
-              onClick={() => activeVideo && openInBrowser(activeVideo)}
-            >
-              <ExternalLink size={13} />
-            </button>
-            <button
-              className="icon-btn"
-              title="从库中删除"
-              onClick={() => activeVideo && setPendingDelete(activeVideo)}
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        </div>
-
-        {activeVideo && (
-          <div className="lib-detail-meta">
-            {metaLine(activeVideo)}
-            {detail?.summary ? ` · 总结于 ${formatDate(detail.summary.updatedAt)}` : ' · 未总结'}
-          </div>
-        )}
-
-        {detail && (
-          <div className="tag-row">
-            {detail.video.tags.map((tag) => (
-              <span key={tag} className="tag-chip">
-                {tag}
-                <button title="移除标签" onClick={() => removeTag(tag)}>
-                  ×
-                </button>
-              </span>
-            ))}
-            <input
-              className="tag-input"
-              value={tagDraft}
-              list="lib-tag-options"
-              placeholder={detail.video.tags.length ? '添加标签' : '添加标签…'}
-              onChange={(event) => setTagDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  addTag();
-                }
-              }}
-            />
-            <datalist id="lib-tag-options">
-              {allTags.map((tag) => (
-                <option key={tag.name} value={tag.name} />
-              ))}
-            </datalist>
-          </div>
-        )}
+        <LibraryDetailHeader
+          video={activeVideo}
+          detail={detail}
+          tags={allTags}
+          tagDraft={tagDraft}
+          onTagDraft={setTagDraft}
+          onAddTag={addTag}
+          onRemoveTag={removeTag}
+          onBack={backToList}
+          onOpen={openInBrowser}
+          onDelete={setPendingDelete}
+        />
 
         {detail && (
           <div className="tag-row collection-row">
