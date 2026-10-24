@@ -1,0 +1,2056 @@
+import { fetchAudioRange, getAudioCandidates, getPageInfo, getSubtitles, getTrackBody } from './page';
+import { loadSettings, saveSettings, settingsSnapshot } from './settings';
+import { chat } from './chat';
+import { verifySummary } from './verify';
+import { summarize } from './ai';
+import { batchUrls } from './urlbatch';
+import { rankReferences, searchWeb } from './search';
+import { callMcpTool, listMcpTools } from './mcp';
+import { skillPrompt } from './skills';
+import { checkSubtitles } from './quality';
+import { generateChapters } from './chapters';
+import { ingestVideo, listLibrary } from './library/videos';
+import { batchSummarize } from './batch';
+import { listHistory } from './library/history';
+import { buildExport } from './exporters';
+import { optimizeLines } from './optimize';
+import { translateLines } from './translate';
+import { transcribe, transcribeFile } from './asr';
+import { writeLog } from './log';
+import { probePlatformModels, testPlatformConnection } from './platform';
+import { applyCorrectionToText } from './correction';
+import { backupData, restoreData } from './backup';
+import { getSummaryFor, saveSummary } from './library/summaries';
+import { searchLibrary } from './library/search';
+import { app, BrowserWindow } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { TabManager } from './tabs';
+import type { SubtitleLine } from '../shared/types';
+
+/**
+ * 开发期探针：由 BSUB_*_TEST 环境变量触发，正常启动不会执行任何一条。
+ * 从 index.ts 的 did-finish-load 里整块搬出，避免把窗口装配撑大。
+ */
+export function runDevHooks(window: BrowserWindow, tabs: TabManager): void {
+if (process.env.BSUB_AUDIO_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const wc = tabs?.activeWebContents();
+      if (!wc) return;
+      const info = await getPageInfo(wc);
+      const candidates = await getAudioCandidates(wc, info);
+      console.log(
+        '[audio-test] candidates',
+        candidates.length,
+        candidates[0].source,
+        candidates[0].url.slice(0, 80)
+      );
+      const part = await fetchAudioRange(wc, candidates[0].url, 0, 1023);
+      console.log('[audio-test] range', part.bytes.length, part.contentRange, part.contentType);
+    } catch (error) {
+      console.warn('[audio-test] failed', (error as Error).message);
+    }
+  }, 12000);
+}
+
+if (process.env.BSUB_MCP_CHAT_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_AI_TOOLS || 'http://127.0.0.1:8894/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      settings.mcp.enabled = true;
+      settings.mcp.servers = [
+        {
+          id: 'mock',
+          name: 'Mock MCP',
+          url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
+          token: '',
+          headers: {},
+          enabled: true,
+          transport: 'http' as 'http' | 'sse'
+        }
+      ];
+      saveSettings(settings);
+      const result = await chat({
+        info: {
+          kind: 'video',
+          bvid: 'BV1',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '测试视频',
+          owner: '测试UP',
+          desc: '',
+          duration: 10,
+          url: '',
+          signature: 'test'
+        },
+        lines: [{ start: 0, end: 2, text: '测试字幕' }],
+        messages: [{ role: 'user', content: '调用工具' }]
+      });
+      console.log('[mcp-chat-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[mcp-chat-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_ANTHROPIC_TOOL_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'anthropic-mock',
+          name: 'Anthropic Mock',
+          baseUrl: process.env.BSUB_MOCK_ANTHROPIC || 'http://127.0.0.1:8891/v1',
+          apiKey: 'mock',
+          model: 'claude-mock',
+          kind: 'anthropic'
+        }
+      ];
+      settings.ai.activeId = 'anthropic-mock';
+      settings.mcp.enabled = true;
+      settings.mcp.servers = [
+        {
+          id: 'mock',
+          name: 'Mock MCP',
+          url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
+          token: '',
+          headers: {},
+          enabled: true,
+          transport: 'http'
+        }
+      ];
+      saveSettings(settings);
+      const result = await chat({
+        info: {
+          kind: 'video',
+          bvid: 'BV1',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '测试视频',
+          owner: '测试UP',
+          desc: '',
+          duration: 10,
+          url: '',
+          signature: 'test'
+        },
+        lines: [{ start: 0, end: 2, text: '测试字幕' }],
+        messages: [{ role: 'user', content: '调用工具' }]
+      });
+      console.log('[anthropic-tool-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[anthropic-tool-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_SETTINGS_MIGRATE_TEST === '1') {
+  setTimeout(() => {
+    try {
+      const saved = saveSettings(loadSettings());
+      console.log(
+        '[settings-migrate-test]',
+        JSON.stringify({
+          presetVersion: saved.ai.presetVersion,
+          platforms: saved.ai.platforms.length,
+          hasAnthropic: saved.ai.platforms.some((item) => item.id === 'anthropic'),
+          asr: {
+            chunkSeconds: saved.asr.chunkSeconds,
+            concurrency: saved.asr.concurrency,
+            maxFileMb: saved.asr.maxFileMb,
+            timeoutSeconds: saved.asr.timeoutSeconds
+          },
+          cacheDays: saved.general.subtitleCacheDays,
+          skills: {
+            version: saved.skills.builtinVersion,
+            ids: saved.skills.items.map((item) => item.id)
+          }
+        })
+      );
+    } catch (error) {
+      console.warn('[settings-migrate-test] failed', (error as Error).message);
+    }
+  }, 3000);
+}
+
+if (process.env.BSUB_CHAT_NOSUB_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      settings.mcp.enabled = false;
+      settings.search.enabled = false;
+      saveSettings(settings);
+      const result = await chat({
+        info: {
+          kind: 'video',
+          bvid: 'BV1',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '测试视频',
+          owner: '测试UP',
+          desc: '这是视频简介。',
+          duration: 10,
+          url: '',
+          signature: 'test'
+        },
+        lines: [],
+        messages: [{ role: 'user', content: '这个视频讲了什么？' }]
+      });
+      console.log('[chat-nosub-test]', JSON.stringify({ ok: true, len: result.text.length }));
+    } catch (error) {
+      console.warn('[chat-nosub-test] failed', (error as Error).message);
+    }
+  }, 4000);
+}
+
+if (process.env.BSUB_VERIFY_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'verify-mock',
+          name: 'Verify Mock',
+          baseUrl: process.env.BSUB_MOCK_VERIFY_AI || 'http://127.0.0.1:8888/v1',
+          apiKey: 'mock',
+          model: 'mock-verify'
+        }
+      ];
+      settings.ai.activeId = 'verify-mock';
+      settings.search.enabled = true;
+      settings.search.activeId = 'verify-search';
+      settings.search.platforms = [
+        {
+          id: 'verify-search',
+          name: 'Verify Search',
+          kind: 'custom',
+          baseUrl: process.env.BSUB_MOCK_VERIFY_SEARCH || 'http://127.0.0.1:8892/search',
+          apiKey: ''
+        }
+      ];
+      settings.search.verifySummary = true;
+      settings.search.verifyItemCount = 4;
+      settings.search.aiQueryGeneration = true;
+      settings.search.extraVerifyQueries = '额外查询 测试';
+      settings.search.keylessFallback = false;
+      settings.search.includeContent = false;
+      settings.search.maxResults = 3;
+      saveSettings(settings);
+
+      const info = {
+        kind: 'video' as const,
+        bvid: 'BV1',
+        aid: 1,
+        cid: 1,
+        epId: null,
+        seasonId: null,
+        page: 1,
+        partTitle: '',
+        parts: [],
+        title: '测试视频 2026 发布',
+        owner: '测试UP',
+        desc: '',
+        duration: 60,
+        url: '',
+        signature: 'test'
+      };
+      const lines = [
+        { start: 0, end: 5, text: '测试视频在 2026 年发布。' },
+        { start: 5, end: 10, text: 'DeepSeek V4 参数量达到 6710 亿。' },
+        { start: 10, end: 15, text: '这是第三句普通字幕。' },
+        { start: 15, end: 20, text: '这是第四句普通字幕。' }
+      ];
+      const result = await verifySummary(
+        settings,
+        info,
+        lines,
+        undefined,
+        (done, total, label) => console.log('[verify-test] progress', done, total, label)
+      );
+      console.log(
+        '[verify-test]',
+        JSON.stringify({
+          attempted: result.attempted,
+          queries: result.items.map((item) => item.label || item.query),
+          itemRefs: result.items.map((item) => item.references.length),
+          references: result.references.length,
+          judged: result.judged,
+          dropped: result.dropped,
+          supplements: result.supplements
+        })
+      );
+    } catch (error) {
+      console.warn('[verify-test] failed', (error as Error).message);
+    }
+  }, 4000);
+}
+
+if (process.env.BSUB_WIZARD_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!window) return;
+      const result = await window.webContents.executeJavaScript(
+        'window.bsub.finishWizard().then((r) => r)'
+      );
+      console.log(
+        '[wizard-test]',
+        JSON.stringify({
+          ok: result?.ok,
+          done: result?.data?.settings?.general?.wizardDone
+        })
+      );
+    } catch (error) {
+      console.warn('[wizard-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_UI_STATE_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!window) return;
+      const measure = () =>
+        window!.webContents.executeJavaScript(`(() => {
+          const pick = (selector) => {
+            const el = document.querySelector(selector);
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            const x = rect.left + Math.min(20, rect.width / 2);
+            const y = rect.top + Math.min(20, rect.height / 2);
+            const hit = document.elementFromPoint(x, y);
+            return {
+              rect: rect.toJSON(),
+              hit: hit ? (hit.className || hit.tagName) : null
+            };
+          };
+          return {
+            viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
+            sidebar: pick('.sidebar'),
+            toolbar: pick('.panel-toolbar'),
+            tabstrip: pick('.tab-strip'),
+            address: pick('.address-bar'),
+            overlay: Boolean(document.querySelector('.wizard-overlay')),
+            wizard: document.body.innerText.includes('欢迎使用')
+          };
+        })()`);
+
+      const log = async (label: string) => {
+        const dom = await measure();
+        console.log(
+          label,
+          JSON.stringify({
+            dom,
+            view: tabs?.getActiveViewState(),
+            window: window?.getBounds(),
+            content: window?.getContentBounds()
+          })
+        );
+      };
+
+      await log('[ui-state-startup]');
+
+      await window.webContents.executeJavaScript(
+        'window.bsub.setWizardVisible(true).then((r) => r.ok)'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await log('[ui-state-wizard]');
+
+      await window.webContents.executeJavaScript(
+        'window.bsub.finishWizard().then((r) => r.ok)'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await log('[ui-state-normal]');
+    } catch (error) {
+      console.warn('[ui-state] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_SUMMARY_LONG_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      settings.ai.preProofread = false;
+      settings.search.enabled = false;
+      settings.ai.stream = true;
+      saveSettings(settings);
+
+      const lines = Array.from({ length: 5000 }, (_, index) => ({
+        start: index * 2,
+        end: index * 2 + 2,
+        text: `这是第 ${index + 1} 句用于验证长视频分段总结的字幕内容。`
+      }));
+      const statuses: string[] = [];
+      let deltas = 0;
+      const result = await summarize({
+        info: {
+          kind: 'video',
+          bvid: 'BV1',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '长视频测试',
+          owner: '测试UP',
+          desc: '',
+          duration: 10000,
+          url: '',
+          signature: 'test'
+        },
+        lines,
+        onStatus: (status) => statuses.push(status),
+        onDelta: () => {
+          deltas += 1;
+        }
+      });
+      console.log(
+        '[summary-long-test]',
+        JSON.stringify({
+          chars: result.text.length,
+          deltas,
+          chunkStatus: statuses.filter((item) => item.includes('长视频分段总结')).length,
+          mergeStatus: statuses.filter((item) => item.includes('正在合并')).length,
+          last: statuses[statuses.length - 1]
+        })
+      );
+    } catch (error) {
+      console.warn('[summary-long-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_PANEL_PERSIST_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!window) return;
+      const result = await window.webContents.executeJavaScript(`(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const clickNav = (label) => {
+          const el = [...document.querySelectorAll('.side-nav-item')].find((item) =>
+            String(item.textContent || '').includes(label)
+          );
+          if (el) el.click();
+          return Boolean(el);
+        };
+        const snapshot = () => [...document.querySelectorAll('.side-panel')].map((panel) => ({
+          active: panel.classList.contains('is-active'),
+          children: panel.children.length
+        }));
+        clickNav('字幕');
+        await wait(400);
+        const active = document.querySelector('.side-panel.is-active > .panel');
+        if (active) active.setAttribute('data-marker', 'keep');
+        const before = snapshot();
+        clickNav('设置');
+        await wait(600);
+        const during = snapshot();
+        const markerKept = Boolean(document.querySelector('[data-marker="keep"]'));
+        clickNav('字幕');
+        await wait(400);
+        return {
+          before,
+          during,
+          markerKept,
+          afterActive: document.querySelectorAll('.side-panel.is-active').length
+        };
+      })()`);
+      console.log('[panel-persist-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[panel-persist-test] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_SUMMARY_FORMAT_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      settings.ai.preProofread = false;
+      settings.search.enabled = false;
+      saveSettings(settings);
+      const result = await summarize({
+        info: {
+          kind: 'video',
+          bvid: 'BV1',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '格式测试',
+          owner: '测试UP',
+          desc: '',
+          duration: 20,
+          url: '',
+          signature: 'test'
+        },
+        lines: [
+          { start: 0, end: 4, text: '这是第一句字幕。' },
+          { start: 4, end: 8, text: '这是第二句字幕。' }
+        ]
+      });
+      console.log('[summary-format-test]', JSON.stringify({ chars: result.text.length }));
+    } catch (error) {
+      console.warn('[summary-format-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_URLBATCH_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!tabs) return;
+      const url =
+        process.env.BSUB_URLBATCH_URL || 'https://www.bilibili.com/video/BV1xrnz6gEVD';
+      const result = await batchUrls(
+        tabs,
+        [url],
+        false,
+        (index, total, currentUrl, title, stage, percent) =>
+          console.log('[urlbatch-test]', index + 1, total, stage, Math.round(percent), title)
+      );
+      console.log('[urlbatch-test] done', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[urlbatch-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_RANK_TEST === '1') {
+  setTimeout(() => {
+    const ranked = rankReferences('OpenAI GPT-5', [
+      { title: '今日天气', url: 'https://a', snippet: '晴朗' },
+      { title: 'OpenAI 发布 GPT-5', url: 'https://b', snippet: '新模型发布' },
+      { title: 'GPT-5 评测', url: 'https://c', snippet: 'OpenAI 新模型实测' }
+    ]);
+    console.log('[rank-test]', JSON.stringify(ranked.map((item) => item.title)));
+  }, 3000);
+}
+
+if (process.env.BSUB_MCP_SSE_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const server = {
+        id: 'mock-sse',
+        name: 'Mock SSE',
+        url: process.env.BSUB_MOCK_MCP_SSE || 'http://127.0.0.1:8893/sse',
+        token: '',
+        headers: {},
+        enabled: true,
+        transport: 'sse' as 'http' | 'sse'
+      };
+      const tools = await listMcpTools(server);
+      const result = await callMcpTool(server, 'echo', { text: 'hello-sse' });
+      console.log(
+        '[mcp-sse-test]',
+        JSON.stringify({ tools: tools.map((tool) => tool.name), result })
+      );
+    } catch (error) {
+      console.warn('[mcp-sse-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_MCP_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const server = {
+        id: 'mock',
+        name: 'Mock MCP',
+        url: process.env.BSUB_MOCK_MCP || 'http://127.0.0.1:8895/mcp',
+        token: '',
+        headers: {},
+        enabled: true,
+        transport: 'http' as 'http' | 'sse'
+      };
+      const tools = await listMcpTools(server);
+      const result = await callMcpTool(server, 'echo', { text: 'hello' });
+      const settings = loadSettings();
+      const prompt = skillPrompt(settings);
+      console.log(
+        '[mcp-test]',
+        JSON.stringify({
+          tools: tools.map((tool) => tool.name),
+          result,
+          skillsInjected: prompt.includes('深度总结'),
+          promptLength: prompt.length
+        })
+      );
+    } catch (error) {
+      console.warn('[mcp-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_QUALITY_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const info = {
+        kind: 'video',
+        bvid: 'BV1QA',
+        aid: 1,
+        cid: 1,
+        epId: null,
+        seasonId: null,
+        page: 1,
+        partTitle: '',
+        parts: [],
+        title: '质检测试',
+        owner: '测试UP',
+        desc: '',
+        duration: 100,
+        url: '',
+        signature: 'qa'
+      };
+      const report = checkSubtitles(info, [
+        { start: 0, end: 2, text: '第一句' },
+        { start: 1, end: 3, text: '第一句' },
+        { start: 50, end: 40, text: '坏时间' }
+      ]);
+      console.log(
+        '[quality-test]',
+        JSON.stringify({ stats: report.stats, codes: report.issues.map((item) => item.code) })
+      );
+
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_CHAPTERS || 'http://127.0.0.1:8896/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      saveSettings(settings);
+      const chapters = await generateChapters(info, [
+        { start: 0, end: 3, text: '开场内容' },
+        { start: 3, end: 6, text: '测试内容' }
+      ]);
+      console.log('[chapters-test]', JSON.stringify(chapters));
+    } catch (error) {
+      console.warn('[quality-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_BATCH_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      saveSettings(settings);
+      ingestVideo({
+        info: {
+          kind: 'video',
+          bvid: 'BV1BATCH',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '批量测试视频',
+          owner: '测试UP',
+          desc: '',
+          duration: 10,
+          url: 'https://www.bilibili.com/video/BV1BATCH',
+          signature: 'batch'
+        },
+        track: {
+          lan: 'zh',
+          lanDoc: '中文',
+          url: 'asr://batch',
+          isAi: false,
+          aiStatus: null,
+          source: 'asr'
+        },
+        lines: [
+          { start: 0, end: 2, text: '第一句测试字幕' },
+          { start: 2, end: 4, text: '第二句测试字幕' }
+        ]
+      });
+      const list = listLibrary();
+      const id = list.videos[0]?.id;
+      if (!id) throw new Error('库内没有视频');
+      const result = await batchSummarize([id], (percent, message) =>
+        console.log('[batch-test]', Math.round(percent), message)
+      );
+      const history = listHistory();
+      console.log(
+        '[batch-test] done',
+        JSON.stringify({
+          succeeded: result.succeeded,
+          failed: result.failed.length,
+          history: history.length,
+          first: history[0]?.title
+        })
+      );
+    } catch (error) {
+      console.warn('[batch-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_EXPORT_TEST === '1') {
+  setTimeout(() => {
+    try {
+      const info = {
+        kind: 'video',
+        bvid: 'BV1TEST',
+        aid: 1,
+        cid: 1,
+        epId: null,
+        seasonId: null,
+        page: 1,
+        partTitle: '',
+        parts: [],
+        title: '测试视频',
+        owner: '测试UP',
+        desc: '',
+        duration: 10,
+        url: 'https://www.bilibili.com/video/BV1TEST',
+        signature: 'test'
+      };
+      const lines = [
+        { start: 0, end: 2, text: '第一句字幕' },
+        { start: 2, end: 4, text: '第二句字幕' }
+      ];
+      const translatedLines = [
+        { start: 0, end: 2, text: 'First subtitle' },
+        { start: 2, end: 4, text: 'Second subtitle' }
+      ];
+      const vtt = buildExport({
+        format: 'vtt',
+        info,
+        track: null,
+        lines,
+        translatedLines,
+        translationLanguage: 'English'
+      });
+      const ass = buildExport({
+        format: 'ass',
+        info,
+        track: null,
+        lines,
+        assFontSize: 32
+      });
+      const notes = buildExport({
+        format: 'md',
+        info,
+        track: null,
+        lines,
+        summary: '测试总结',
+        template: 'notes'
+      });
+      console.log('[export-test] vtt', vtt.content.split(/\n/).slice(0, 6).join(' | '));
+      console.log(
+        '[export-test] assStyle',
+        ass.content.split(/\n/).find((line) => line.startsWith('Style:'))
+      );
+      console.log(
+        '[export-test] assDialogue',
+        ass.content.split(/\n/).find((line) => line.startsWith('Dialogue:'))
+      );
+      console.log('[export-test] notes', notes.content.slice(0, 120).replace(/\n/g, ' | '));
+    } catch (error) {
+      console.warn('[export-test] failed', (error as Error).message);
+    }
+  }, 3000);
+}
+
+if (process.env.BSUB_OPTIMIZE_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_OPTIMIZE || 'http://127.0.0.1:8897/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      saveSettings(settings);
+      const suggestions = await optimizeLines(
+        [
+          { start: 0, end: 1, text: '这是错别字' },
+          { start: 1, end: 2, text: '第二句' }
+        ],
+        (percent, message) => console.log('[optimize-test]', Math.round(percent), message),
+        undefined,
+        settings
+      );
+      console.log('[optimize-test] done', JSON.stringify(suggestions));
+    } catch (error) {
+      console.warn('[optimize-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_TRANSLATE_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_TRANSLATE || 'http://127.0.0.1:8898/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      saveSettings(settings);
+      const result = await translateLines(
+        [
+          { start: 0, end: 1, text: '你好世界' },
+          { start: 1, end: 2, text: '这是第二句' }
+        ],
+        'English',
+        (percent, message) => console.log('[translate-test]', Math.round(percent), message),
+        undefined,
+        settings
+      );
+      console.log('[translate-test] done', JSON.stringify(result.lines));
+    } catch (error) {
+      console.warn('[translate-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_ASR_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'asr-test-'));
+      const input = path.join(dir, 'test.wav');
+      const rate = 16000;
+      const samples = rate * 5;
+      const pcm = Buffer.alloc(samples * 2);
+      for (let index = 0; index < samples; index += 1) {
+        const value = Math.sin((2 * Math.PI * 440 * index) / rate) * 0.2;
+        pcm.writeInt16LE(Math.round(value * 32767), index * 2);
+      }
+      const header = Buffer.alloc(44);
+      header.write('RIFF', 0);
+      header.writeUInt32LE(36 + pcm.length, 4);
+      header.write('WAVE', 8);
+      header.write('fmt ', 12);
+      header.writeUInt32LE(16, 16);
+      header.writeUInt16LE(1, 20);
+      header.writeUInt16LE(1, 22);
+      header.writeUInt32LE(rate, 24);
+      header.writeUInt32LE(rate * 2, 28);
+      header.writeUInt16LE(2, 32);
+      header.writeUInt16LE(16, 34);
+      header.write('data', 36);
+      header.writeUInt32LE(pcm.length, 40);
+      fs.writeFileSync(input, Buffer.concat([header, pcm]));
+
+      const settings = loadSettings();
+      settings.asr.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_ASR || 'http://127.0.0.1:8899/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.asr.activeId = 'mock';
+      settings.asr.chunkSeconds = 2;
+      settings.asr.audioFormat = process.env.BSUB_ASR_FORMAT === 'm4a' ? 'm4a' : 'wav';
+      settings.asr.concurrency = 1;
+      saveSettings(settings);
+
+      const result = await transcribeFile(
+        input,
+        {
+          kind: 'video',
+          bvid: 'BV1',
+          aid: 1,
+          cid: 1,
+          epId: null,
+          seasonId: null,
+          page: 1,
+          partTitle: '',
+          parts: [],
+          title: '测试视频',
+          owner: '测试UP',
+          desc: '',
+          duration: 5,
+          url: '',
+          signature: 'test'
+        },
+        (stage, percent, message) =>
+          console.log('[asr-test]', stage, Math.round(percent), message),
+        undefined,
+        settings
+      );
+      console.log(
+        '[asr-test] done',
+        result.lines.length,
+        JSON.stringify(result.lines.slice(0, 4))
+      );
+      writeLog('asr-test.log', `done lines=${result.lines.length}`);
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      console.warn('[asr-test] failed', (error as Error).message);
+      writeLog('asr-test.log', `failed: ${(error as Error).message}`);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_CHAT_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!window) return;
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'mock',
+          name: 'Mock',
+          baseUrl: process.env.BSUB_MOCK_AI || 'http://127.0.0.1:8787/v1',
+          apiKey: 'mock',
+          model: 'mock'
+        }
+      ];
+      settings.ai.activeId = 'mock';
+      saveSettings(settings);
+
+      const result = await window.webContents
+        .executeJavaScript(`new Promise(async (resolve) => {
+        const info = { title: '测试视频', owner: '测试UP', duration: 60, bvid: 'BV1', cid: 1, url: '' };
+        const lines = [
+          { start: 0, end: 5, text: '这是第一句字幕。' },
+          { start: 5, end: 10, text: '这是第二句字幕。' }
+        ];
+        let text = '';
+        const offD = window.bsub.onChatDelta((e) => { text += e.delta; });
+        const offDone = window.bsub.onChatDone((e) => {
+          offD(); offDone(); offErr();
+          resolve({ ok: true, len: e.text.length, text: e.text.slice(0, 40) });
+        });
+        const offErr = window.bsub.onChatError((e) => {
+          offD(); offDone(); offErr();
+          resolve({ ok: false, error: e.error });
+        });
+        const started = await window.bsub.chat({
+          requestId: 'chat-test',
+          info,
+          lines,
+          messages: [{ role: 'user', content: '这个视频讲了什么？' }]
+        });
+        if (!started.ok) {
+          offD(); offDone(); offErr();
+          resolve({ ok: false, error: started.error });
+        }
+      })`);
+      console.log('[chat-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[chat-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_ANTHROPIC_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      settings.ai.platforms = [
+        {
+          id: 'anthropic-mock',
+          name: 'Anthropic Mock',
+          baseUrl: process.env.BSUB_MOCK_ANTHROPIC || 'http://127.0.0.1:8891/v1',
+          apiKey: 'mock',
+          model: 'claude-mock',
+          kind: 'anthropic'
+        }
+      ];
+      settings.ai.activeId = 'anthropic-mock';
+      settings.ai.preProofread = false;
+      settings.ai.stream = true;
+      settings.search.enabled = false;
+      saveSettings(settings);
+
+      const info = {
+        title: '测试视频',
+        owner: '测试UP',
+        duration: 60,
+        bvid: 'BV1',
+        cid: 1,
+        url: '',
+        kind: 'video' as const,
+        aid: 1,
+        epId: null,
+        seasonId: null,
+        page: 1,
+        partTitle: '',
+        parts: [],
+        desc: '',
+        signature: 'test'
+      };
+      const lines = [
+        { start: 0, end: 5, text: '这是第一句字幕。' },
+        { start: 5, end: 10, text: '这是第二句字幕。' }
+      ];
+      let streamed = '';
+      const summary = await summarize({
+        info,
+        lines,
+        onDelta: (delta) => {
+          streamed += delta;
+        }
+      });
+      const translated = await translateLines(lines, 'English', () => undefined);
+
+      const models = await probePlatformModels('ai', settings.ai.platforms[0]);
+      const connection = await testPlatformConnection('ai', settings.ai.platforms[0]);
+
+      // 非流式路径（chatOnce）也要走同一套协议。
+      settings.ai.stream = false;
+      saveSettings(settings);
+      const quick = await summarize({ info, lines });
+
+      console.log(
+        '[anthropic-test]',
+        JSON.stringify({
+          ok: true,
+          summary: summary.text.slice(0, 40),
+          streamed: streamed.length,
+          quick: quick.text.slice(0, 40),
+          translated: translated.lines.map((line) => line.text),
+          models: models.models,
+          connection: connection.sample
+        })
+      );
+    } catch (error) {
+      console.log('[anthropic-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_CORRECTION_TEST === '1') {
+  setTimeout(() => {
+    const settings = loadSettings();
+    settings.correction.groups = [
+      {
+        id: 'g',
+        name: '测试',
+        enabled: true,
+        rules: [
+          {
+            id: 'r1',
+            pattern: 'AI',
+            replacement: '人工智能',
+            regex: false,
+            caseSensitive: true
+          }
+        ]
+      }
+    ];
+    settings.correction.glossary.terms = [{ id: 't', from: 'UP主', to: 'UP 主', note: '' }];
+    console.log(
+      '[correction-test]',
+      applyCorrectionToText('AI 和 UP主 的视频，AI 很好', settings)
+    );
+  }, 4000);
+}
+
+if (process.env.BSUB_LIVE_URLBATCH_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!tabs) throw new Error('标签管理器未就绪');
+      const raw = String(process.env.BSUB_LIVE_URLBATCH_URLS || '').trim();
+      const urls = raw
+        ? raw
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [
+            'https://www.bilibili.com/video/BV1GJ411x7h7',
+            'https://www.bilibili.com/video/BV1xrnz6gEVD'
+          ];
+      const result = await batchUrls(
+        tabs,
+        urls,
+        false,
+        (index, total, url, title, stage, percent) =>
+          console.log('[live-urlbatch]', index + 1, total, stage, Math.round(percent), title)
+      );
+      const library = listLibrary().videos;
+      console.log(
+        '[live-urlbatch] done',
+        JSON.stringify({
+          urls: urls.length,
+          result,
+          library: library.map((item) => ({ title: item.title, lines: item.lineCount }))
+        })
+      );
+    } catch (error) {
+      console.warn('[live-urlbatch] failed', (error as Error).message);
+    }
+  }, 8000);
+}
+
+if (process.env.BSUB_LIVE_MCP_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const server = {
+        id: 'exa-live',
+        name: 'Exa MCP',
+        url: process.env.BSUB_LIVE_MCP_URL || 'https://mcp.exa.ai/mcp',
+        token: '',
+        headers: {},
+        enabled: true,
+        transport: 'http' as const
+      };
+      const tools = await listMcpTools(server);
+      console.log(
+        '[live-mcp] tools',
+        tools.map((tool) => tool.name)
+      );
+      const result = await callMcpTool(
+        server,
+        'web_search_exa',
+        { query: 'OpenAI GPT-5', numResults: 2 },
+        45000
+      );
+      console.log('[live-mcp] result', result.slice(0, 500));
+    } catch (error) {
+      console.warn('[live-mcp] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_LIVE_URLBATCH_404_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!tabs) throw new Error('标签管理器未就绪');
+      const started = Date.now();
+      const result = await batchUrls(
+        tabs,
+        ['https://www.bilibili.com/video/BV0000000000'],
+        false,
+        (index, total, url, title, stage, percent) =>
+          console.log(
+            '[live-urlbatch-404]',
+            index + 1,
+            total,
+            stage,
+            Math.round(percent),
+            title
+          )
+      );
+      console.log(
+        '[live-urlbatch-404] done',
+        JSON.stringify({
+          seconds: Math.round((Date.now() - started) / 1000),
+          result,
+          tabs: tabs.list().length
+        })
+      );
+    } catch (error) {
+      console.warn('[live-urlbatch-404] failed', (error as Error).message);
+    }
+  }, 7000);
+}
+
+if (process.env.BSUB_LIVE_URLBATCH_FAIL_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      if (!tabs) throw new Error('标签管理器未就绪');
+      const valid = 'https://www.bilibili.com/video/BV1GJ411x7h7';
+      const urls = [valid, 'https://example.com/not-a-video', valid];
+      const result = await batchUrls(
+        tabs,
+        urls,
+        false,
+        (index, total, url, title, stage, percent) =>
+          console.log(
+            '[live-urlbatch-fail]',
+            index + 1,
+            total,
+            stage,
+            Math.round(percent),
+            title
+          )
+      );
+      const library = listLibrary().videos;
+      console.log(
+        '[live-urlbatch-fail] done',
+        JSON.stringify({
+          result,
+          libraryCount: library.length,
+          items: library.map((item) => ({ title: item.title, lines: item.lineCount }))
+        })
+      );
+    } catch (error) {
+      console.warn('[live-urlbatch-fail] failed', (error as Error).message);
+    }
+  }, 7000);
+}
+
+if (process.env.BSUB_LIVE_AI_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const wc = tabs?.activeWebContents();
+      if (!wc) throw new Error('没有活动标签');
+      const info = await getPageInfo(wc);
+      const bundle = await getSubtitles(wc);
+      console.log(
+        '[live-ai] info',
+        info.title,
+        'tracks',
+        bundle.tracks.length,
+        'needLogin',
+        bundle.needLogin
+      );
+      if (!bundle.tracks.length) throw new Error('没有字幕轨');
+      let track = bundle.tracks[0];
+      let lines: SubtitleLine[] = [];
+      for (const candidate of bundle.tracks.slice(0, 6)) {
+        try {
+          const body = await getTrackBody(candidate.url);
+          if (body.lines.length > lines.length) {
+            track = candidate;
+            lines = body.lines;
+          }
+        } catch {
+          // 单轨失败不影响其他候选
+        }
+      }
+      if (!lines.length) throw new Error('字幕正文为空');
+      console.log('[live-ai] lines', lines.length, 'track', track.lanDoc || track.lan);
+
+      const summary = await summarize({
+        info,
+        lines,
+        signal: undefined,
+        onStatus: (status) => console.log('[live-ai] status', status)
+      });
+      console.log(
+        '[live-ai] summary',
+        summary.model,
+        summary.text.length,
+        JSON.stringify(summary.text.slice(0, 220))
+      );
+
+      const answer = await chat({
+        info,
+        lines,
+        messages: [{ role: 'user', content: '用三句话概括这个视频。' }]
+      });
+      console.log(
+        '[live-ai] chat',
+        answer.model,
+        answer.text.length,
+        JSON.stringify(answer.text.slice(0, 180))
+      );
+
+      const translated = await translateLines(
+        lines.slice(0, 20),
+        'English',
+        (percent, message) => console.log('[live-ai] translate', Math.round(percent), message),
+        undefined,
+        loadSettings()
+      );
+      console.log(
+        '[live-ai] translate',
+        translated.lines.length,
+        JSON.stringify(translated.lines[0]?.text?.slice(0, 120))
+      );
+
+      const suggestions = await optimizeLines(
+        lines.slice(0, 30),
+        () => undefined,
+        undefined,
+        loadSettings()
+      );
+      console.log(
+        '[live-ai] optimize',
+        suggestions.length,
+        JSON.stringify(suggestions.slice(0, 2))
+      );
+
+      const chapters = await generateChapters(info, lines);
+      console.log('[live-ai] chapters', chapters.length, JSON.stringify(chapters.slice(0, 2)));
+      console.log('[live-ai] done');
+    } catch (error) {
+      console.warn('[live-ai] failed', (error as Error).message);
+    }
+  }, 9000);
+}
+
+if (process.env.BSUB_LIVE_ASR_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const wc = tabs?.activeWebContents();
+      if (!wc) throw new Error('没有活动标签');
+      const info = await getPageInfo(wc);
+      console.log('[live-asr] info', info.title, 'duration', info.duration);
+      const started = Date.now();
+      const result = await transcribe(wc, info, (stage, percent, message) =>
+        console.log('[live-asr]', stage, Math.round(percent), message)
+      );
+      console.log(
+        '[live-asr] done',
+        result.model,
+        result.lines.length,
+        Math.round((Date.now() - started) / 1000) + 's',
+        JSON.stringify(result.lines.slice(0, 3))
+      );
+    } catch (error) {
+      console.warn('[live-asr] failed', (error as Error).message);
+    }
+  }, 9000);
+}
+
+if (process.env.BSUB_RESTORE_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const result = await restoreData();
+      console.log('[restore-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[restore-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_BACKUP_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const result = await backupData();
+      console.log('[backup-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[backup-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_RESIZE_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      const dom = await win.webContents.executeJavaScript(`
+        (async () => {
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const resizer = document.querySelector('.sidebar-resizer');
+          if (!resizer) return { error: 'no resizer' };
+          const rect = resizer.getBoundingClientRect();
+          resizer.dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true, clientX: rect.left + 2, clientY: rect.top + 30
+          }));
+          await wait(450);
+          const snapshotDuring = Boolean(document.querySelector('.stage-snapshot'));
+          window.dispatchEvent(new MouseEvent('mousemove', {
+            bubbles: true, clientX: rect.left + 112, clientY: rect.top + 30
+          }));
+          await wait(120);
+          window.dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: true, clientX: rect.left + 112, clientY: rect.top + 30
+          }));
+          await wait(700);
+          const sidebar = document.querySelector('.sidebar')?.getBoundingClientRect();
+          const stage = document.querySelector('.browser-stage')?.getBoundingClientRect();
+          return {
+            sidebar: sidebar ? Math.round(sidebar.width) : 0,
+            stage: stage ? { x: Math.round(stage.left), w: Math.round(stage.width) } : null,
+            snapshotDuring,
+            snapshotAfter: Boolean(document.querySelector('.stage-snapshot'))
+          };
+        })()
+      `);
+      console.log(
+        '[resize-test]',
+        JSON.stringify({ dom, view: tabs?.getActiveViewState() })
+      );
+    } catch (error) {
+      console.warn('[resize-test] failed', (error as Error).message);
+    }
+  }, 5500);
+}
+
+if (process.env.BSUB_DOCK_ONLY_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      const dom = await win.webContents.executeJavaScript(`
+        (async () => {
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const brand = document.querySelector('.brand');
+          if (!brand) return { error: 'no brand' };
+          const rect = brand.getBoundingClientRect();
+          brand.dispatchEvent(new MouseEvent('mousedown', {
+            bubbles: true, clientX: 80, clientY: rect.top + 12
+          }));
+          await wait(450);
+          window.dispatchEvent(new MouseEvent('mousemove', {
+            bubbles: true, clientX: window.innerWidth - 50, clientY: rect.top + 12
+          }));
+          window.dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: true, clientX: window.innerWidth - 50, clientY: rect.top + 12
+          }));
+          await wait(900);
+          const stage = document.querySelector('.browser-stage')?.getBoundingClientRect();
+          return {
+            body: document.querySelector('.app-body')?.className,
+            stage: stage ? { x: Math.round(stage.left), w: Math.round(stage.width) } : null
+          };
+        })()
+      `);
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      console.log(
+        '[dock-only]',
+        JSON.stringify({ dom, view: tabs?.getActiveViewState() })
+      );
+    } catch (error) {
+      console.warn('[dock-only] failed', (error as Error).message);
+    }
+  }, 5500);
+}
+
+if (process.env.BSUB_DOCK_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      const result = await win.webContents.executeJavaScript(`
+        (async () => {
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const drag = async (element, startX, endX) => {
+            const rect = element.getBoundingClientRect();
+            element.dispatchEvent(new MouseEvent('mousedown', {
+              bubbles: true, clientX: startX, clientY: rect.top + 12
+            }));
+            await wait(450);
+            const snapshot = Boolean(document.querySelector('.drag-snapshot'));
+            window.dispatchEvent(new MouseEvent('mousemove', {
+              bubbles: true, clientX: endX, clientY: rect.top + 12
+            }));
+            await wait(80);
+            window.dispatchEvent(new MouseEvent('mouseup', {
+              bubbles: true, clientX: endX, clientY: rect.top + 12
+            }));
+            await wait(700);
+            return { snapshot, snapshotAfter: Boolean(document.querySelector('.drag-snapshot')) };
+          };
+          const collapseIcon = () =>
+            document.querySelector('.sidebar-collapse svg')?.getAttribute('class') || '';
+          const brand = document.querySelector('.brand');
+          if (!brand) return { error: 'no brand' };
+          const before = {
+            body: document.querySelector('.app-body')?.className,
+            title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
+            icon: collapseIcon()
+          };
+          const dockDrag = await drag(brand, 80, window.innerWidth - 50);
+          const afterDock = {
+            body: document.querySelector('.app-body')?.className,
+            width: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width || 0),
+            title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
+            icon: collapseIcon(),
+            ...dockDrag
+          };
+          const resizer = document.querySelector('.sidebar-resizer');
+          const collapseDrag = resizer ? await drag(resizer, 900, 1180) : {};
+          const afterCollapse = {
+            body: document.querySelector('.app-body')?.className,
+            width: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().width || 0),
+            title: document.querySelector('.sidebar-collapse')?.getAttribute('title'),
+            icon: collapseIcon(),
+            ...collapseDrag
+          };
+          return { before, afterDock, afterCollapse };
+        })()
+      `);
+      console.log('[dock-test]', JSON.stringify(result));
+      console.log('[dock-test-view]', JSON.stringify(tabs?.getActiveViewState()));
+    } catch (error) {
+      console.warn('[dock-test] failed', (error as Error).message);
+    }
+  }, 5500);
+}
+
+if (process.env.BSUB_FULLSCREEN_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const win = window;
+      if (!win) return;
+      win.setFullScreen(true);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const wc = tabs?.activeWebContents();
+      wc?.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      const afterView = win.isFullScreen();
+      if (afterView) win.setFullScreen(false);
+      win.setFullScreen(true);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      console.log(
+        '[fullscreen-test]',
+        JSON.stringify({
+          afterViewEscape: afterView,
+          afterWindowEscape: win.isFullScreen()
+        })
+      );
+      win.setFullScreen(false);
+    } catch (error) {
+      console.warn('[fullscreen-test] failed', (error as Error).message);
+    }
+  }, 6500);
+}
+
+if (process.env.BSUB_SAVE_AUDIT === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      const result = await win.webContents.executeJavaScript(`
+        (async () => {
+          const nav = [...document.querySelectorAll('button')].find((item) =>
+            (item.textContent || '').trim() === '设置'
+          );
+          nav?.click();
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const sticky = document.querySelector('.settings-sticky');
+          const bar = document.querySelector('.settings-sticky .panel-toolbar');
+          const actions = document.querySelector('.settings-sticky .toolbar-actions');
+          const button = [...document.querySelectorAll('.settings-sticky button')].find((item) =>
+            (item.textContent || '').includes('保存')
+          );
+          const r = (el) => {
+            if (!el) return null;
+            const b = el.getBoundingClientRect();
+            const cs = getComputedStyle(el);
+            return {
+              x: Math.round(b.x), y: Math.round(b.y),
+              w: Math.round(b.width), h: Math.round(b.height),
+              right: Math.round(b.right), bottom: Math.round(b.bottom),
+              scrollW: el.scrollWidth, clientW: el.clientWidth,
+              overflow: cs.overflow, display: cs.display,
+              fontSize: cs.fontSize, lineHeight: cs.lineHeight,
+              padding: cs.padding, text: (el.textContent || '').trim(),
+              disabled: el.disabled === true
+            };
+          };
+          return {
+            viewport: window.innerWidth,
+            sticky: r(sticky), bar: r(bar), actions: r(actions), button: r(button),
+            saveButtons: [...document.querySelectorAll('.settings-sticky button')]
+              .map((item) => (item.textContent || '').trim())
+          };
+        })()
+      `);
+      console.log('[save-audit]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[save-audit] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_TOOLBAR_AUDIT === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      const rows = await win.webContents.executeJavaScript(`
+        (async () => {
+          const labels = ['字幕', '对话', '总结', '库', '批量', '历史', '设置'];
+          const out = [];
+          for (const label of labels) {
+            const button = [...document.querySelectorAll('button')].find((item) =>
+              (item.textContent || '').trim() === label
+            );
+            if (!button) continue;
+            button.click();
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            const bar = document.querySelector('.panel-toolbar');
+            if (!bar) continue;
+            const title = bar.querySelector('.panel-title');
+            const actions = bar.querySelector('.toolbar-actions');
+            const rect = (el) => (el ? el.getBoundingClientRect() : null);
+            const t = rect(title);
+            const a = rect(actions);
+            out.push({
+              label,
+              barWidth: Math.round(bar.getBoundingClientRect().width),
+              barScroll: bar.scrollWidth,
+              titleWidth: t ? Math.round(t.width) : 0,
+              actionsWidth: a ? Math.round(a.width) : 0,
+              actionsScroll: actions ? actions.scrollWidth : 0,
+              actionsLeft: a ? Math.round(a.left) : 0,
+              titleRight: t ? Math.round(t.right) : 0,
+              overlap: Boolean(t && a && t.right > a.left - 2),
+              buttons: actions ? actions.querySelectorAll('button').length : 0
+            });
+          }
+          return out;
+        })()
+      `);
+      console.log('[toolbar-audit]', JSON.stringify(rows));
+    } catch (error) {
+      console.warn('[toolbar-audit] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_SUMMARY_UI_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      await win.webContents.executeJavaScript(`
+        (() => {
+          const nav = [...document.querySelectorAll('.side-nav-item')].find((item) =>
+            (item.textContent || '').includes('总结')
+          );
+          nav?.click();
+          return !!nav;
+        })()
+      `);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const clicked = await win.webContents.executeJavaScript(`
+        (() => {
+          const button = [...document.querySelectorAll('.side-content button')].find((item) =>
+            ['生成', '重生成'].includes((item.textContent || '').trim())
+          );
+          button?.click();
+          return !!button;
+        })()
+      `);
+      await new Promise((resolve) => setTimeout(resolve, 90000));
+      const metrics = await win.webContents.executeJavaScript(`
+        (() => {
+          const content = document.querySelector('.summary-content');
+          const live = document.querySelector('.summary-live');
+          const progress = document.querySelector('.summary-progress');
+          const chapters = document.querySelector('.chapters-card');
+          const verify = document.querySelector('.verify-card');
+          const hint = document.querySelector('.summary-verify-hint');
+          return {
+            clicked: ${clicked},
+            contentHeight: content ? content.getBoundingClientRect().height : 0,
+            contentText: content ? (content.textContent || '').slice(0, 120) : '',
+            liveHeight: live ? live.getBoundingClientRect().height : 0,
+            progress: !!progress,
+            chapters: chapters
+              ? { open: chapters.open, height: chapters.getBoundingClientRect().height }
+              : null,
+            verify: verify
+              ? { text: (verify.textContent || '').slice(0, 120), height: verify.getBoundingClientRect().height }
+              : null,
+            hint: hint ? hint.textContent : ''
+          };
+        })()
+      `);
+      console.log('[summary-ui-metrics]', JSON.stringify(metrics));
+      const image = await win.webContents.capturePage();
+      fs.writeFileSync(path.join(app.getPath('temp'), 'bsub-summary-shot.png'), image.toPNG());
+    } catch (error) {
+      console.warn('[summary-ui-test] failed', (error as Error).message);
+    }
+  }, 8000);
+}
+
+if (process.env.BSUB_SETTINGS_SHOT === '1') {
+  setTimeout(async () => {
+    try {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (!win) return;
+      const clicked = await win.webContents.executeJavaScript(`
+        (() => {
+          const button = [...document.querySelectorAll('button')].find((item) =>
+            (item.textContent || '').trim().includes('设置')
+          );
+          if (!button) return false;
+          button.click();
+          return true;
+        })()
+      `);
+      await new Promise((resolve) => setTimeout(resolve, 1600));
+      const metrics = await win.webContents.executeJavaScript(`
+        (() => {
+          const panel = document.querySelector('.settings-panel');
+          const sidebar = document.querySelector('.sidebar');
+          const sticky = document.querySelector('.settings-sticky');
+          const sections = [...document.querySelectorAll('.settings-section')];
+          const overflow = [...document.querySelectorAll('.settings-panel *')]
+            .filter((el) => el.scrollWidth > el.clientWidth + 2)
+            .slice(0, 12)
+            .map((el) => ({
+              tag: el.tagName,
+              cls: String(el.className || '').slice(0, 40),
+              sw: el.scrollWidth,
+              cw: el.clientWidth
+            }));
+          return {
+            sidebar: sidebar ? sidebar.getBoundingClientRect().width : 0,
+            panel: panel ? panel.getBoundingClientRect().width : 0,
+            panelScroll: panel ? panel.scrollWidth : 0,
+            sticky: sticky ? sticky.getBoundingClientRect().height : 0,
+            nav: document.querySelector('.side-nav')?.getBoundingClientRect().height || 0,
+            content:
+              document.querySelector('.side-content')?.getBoundingClientRect().height || 0,
+            sections: sections.length,
+            open: sections.filter((item) => item.open).length,
+            overflow
+          };
+        })()
+      `);
+      console.log('[settings-metrics]', JSON.stringify(metrics));
+      const image = await win.webContents.capturePage();
+      const file = path.join(app.getPath('temp'), 'bsub-settings-shot.png');
+      fs.writeFileSync(file, image.toPNG());
+      console.log('[settings-shot]', clicked, file);
+    } catch (error) {
+      console.warn('[settings-shot] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_PLATFORM_CONN_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      const platform = settings.search.platforms.find(
+        (item) => item.id === settings.search.activeId
+      );
+      if (!platform) throw new Error('没有活动检索平台');
+      const result = await testPlatformConnection('search', platform);
+      console.log('[platform-conn-test]', JSON.stringify(result));
+    } catch (error) {
+      console.warn('[platform-conn-test] failed', (error as Error).message);
+    }
+  }, 6000);
+}
+
+if (process.env.BSUB_PLATFORM_TEST === '1') {
+  setTimeout(() => {
+    const settings = loadSettings();
+    const search = settings.search.platforms.find(
+      (platform) => platform.id === settings.search.activeId
+    );
+    const ai = settings.ai.platforms.find((platform) => platform.id === settings.ai.activeId);
+    console.log(
+      '[platform-test]',
+      JSON.stringify({
+        ai: settings.ai.platforms.length,
+        aiActive: ai?.name,
+        aiModels: ai?.models?.length || 0,
+        search: settings.search.platforms.length,
+        searchActive: search?.name,
+        searchKind: search?.kind,
+        searchReuse: search?.reuseAiKey || '',
+        asr: settings.asr.platforms.length,
+        asrActive: settings.asr.platforms.find(
+          (platform) => platform.id === settings.asr.activeId
+        )?.name,
+        aiPresetVersion: settings.ai.presetVersion
+      })
+    );
+  }, 3000);
+}
+
+if (process.env.BSUB_SEARCH_TEST === '1') {
+  setTimeout(async () => {
+    try {
+      const settings = loadSettings();
+      const refs = await searchWeb(
+        { ...settings, search: { ...settings.search, enabled: true, activeId: 'exa' } },
+        'B站 视频 总结'
+      );
+      console.log(
+        '[search-test]',
+        refs.length,
+        JSON.stringify(refs.map((ref) => ({ title: ref.title.slice(0, 40), url: ref.url })))
+      );
+    } catch (error) {
+      console.warn('[search-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_SETTINGS_TEST === '1') {
+  setTimeout(async () => {
+    if (!window) return;
+    try {
+      const result = await window.webContents.executeJavaScript(`(async () => {
+        const r = await window.bsub.getSettings();
+        const s = r.data.settings;
+        s.general.theme = 'dark';
+        s.general.suspendMinutes = 7;
+        s.ai.platforms = s.ai.platforms.filter((p) => p.id !== 'openai');
+        s.ai.activeId = 'deepseek';
+        s.ai.temperature = 0.7;
+        s.prompt.templates.push({ id: 'test-tpl', name: '测试模板', text: '只输出一句话' });
+        s.prompt.activeId = 'test-tpl';
+        s.export.filenamePattern = '{title}-{bvid}';
+        return await window.bsub.saveSettings(s);
+      })()`);
+      console.log('[settings-test]', JSON.stringify(result).slice(0, 600));
+    } catch (error) {
+      console.warn('[settings-test] failed', (error as Error).message);
+    }
+  }, 5000);
+}
+
+if (process.env.BSUB_UI_TEST === '1') {
+  setTimeout(() => {
+    const wc = tabs?.activeWebContents();
+    if (!wc) return;
+    tabs?.zoomIn();
+    console.log('[ui-test] zoom', wc.getZoomFactor());
+    tabs?.zoomReset();
+    console.log('[ui-test] zoom reset', wc.getZoomFactor());
+    tabs?.findInPage('视频');
+    setTimeout(() => tabs?.findInPage('视频', { findNext: true }), 1200);
+  }, 7000);
+}
+
+if (process.env.BSUB_TAB_TEST === '1') {
+  setTimeout(async () => {
+    if (!tabs) return;
+    await tabs.create('https://www.bilibili.com/');
+    await tabs.create('https://www.bilibili.com/video/BV1xrnz6gEVD');
+    setTimeout(() => {
+      const list = tabs?.list() || [];
+      const total = app
+        .getAppMetrics()
+        .reduce(
+          (sum, metric) =>
+            sum + Math.round(((metric.memory && metric.memory.workingSetSize) || 0) / 1024),
+          0
+        );
+      console.log(
+        '[tabs-test]',
+        JSON.stringify(
+          list.map((tab) => ({
+            title: tab.title,
+            suspended: tab.suspended,
+            active: tab.active
+          }))
+        ),
+        `memMB=${total}`
+      );
+
+      const target = list.find((tab) => tab.suspended);
+      if (target && tabs) {
+        void tabs.activate(target.id).then(() => {
+          setTimeout(() => {
+            const after = tabs?.list() || [];
+            console.log(
+              '[tabs-test] resumed',
+              JSON.stringify(
+                after.map((tab) => ({
+                  title: tab.title,
+                  suspended: tab.suspended,
+                  active: tab.active
+                }))
+              )
+            );
+          }, 4000);
+        });
+      }
+    }, 10000);
+  }, 4000);
+}
+
+if (process.env.BSUB_M4_TEST === '1') {
+  setTimeout(async () => {
+    const wc = tabs?.activeWebContents();
+    if (!wc) return;
+    try {
+      const info = await getPageInfo(wc);
+      const bundle = await getSubtitles(wc);
+      const track =
+        bundle.tracks.find((item) => info.cid && item.url.includes(String(info.cid))) ||
+        bundle.tracks[0];
+      if (!track) {
+        console.log('[m4-test] no track');
+        return;
+      }
+      const body = await getTrackBody(track.url);
+
+      const platform = {
+        id: 'mock',
+        name: 'Mock',
+        baseUrl: 'http://127.0.0.1:8787/v1',
+        apiKey: 'test',
+        model: 'mock-summary'
+      };
+      let streamed = '';
+      const result = await summarize({
+        info,
+        lines: body.lines,
+        platform,
+        prompt: '请总结以下字幕。',
+        onDelta: (delta) => {
+          streamed += delta;
+        }
+      });
+      console.log(
+        '[m4-test] ai',
+        `chars=${result.text.length}`,
+        `streamed=${streamed.length}`,
+        result.text.slice(0, 40)
+      );
+
+      const saved = saveSummary(info, result.text, result.model);
+      console.log('[m4-test] saved', JSON.stringify(saved));
+      const stored = getSummaryFor({ bvid: info.bvid, cid: info.cid, epId: info.epId });
+      console.log(
+        '[m4-test] stored',
+        stored ? `${stored.content.length} chars / ${stored.model}` : 'null'
+      );
+
+      const markdown = buildExport({
+        format: 'md',
+        info,
+        track,
+        lines: body.lines,
+        summary: result.text
+      });
+      const srt = buildExport({ format: 'srt', info, track, lines: body.lines });
+      const outDir = path.join(app.getAppPath(), 'out');
+      fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(path.join(outDir, 'test-export.md'), markdown.content, 'utf8');
+      fs.writeFileSync(path.join(outDir, 'test-export.srt'), srt.content, 'utf8');
+      console.log(
+        '[m4-test] export',
+        `md=${markdown.content.length}`,
+        `srt=${srt.content.length}`,
+        `${markdown.filename}.${markdown.ext}`
+      );
+
+      const snapshot = settingsSnapshot();
+      console.log(
+        '[m4-test] settings',
+        `platforms=${snapshot.settings.ai.platforms.length}`,
+        `dataDir=${snapshot.dataDir}`
+      );
+
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('library:changed');
+        await window.webContents.executeJavaScript(
+          `document.querySelectorAll('.side-nav-item')[1] && document.querySelectorAll('.side-nav-item')[1].click()`
+        );
+      }
+    } catch (error) {
+      console.warn('[m4-test] failed', (error as Error).message);
+    }
+  }, 12000);
+}
+
+if (process.env.BSUB_M3_TEST === '1') {
+  setTimeout(async () => {
+    const wc = tabs?.activeWebContents();
+    if (!wc) return;
+    try {
+      const info = await getPageInfo(wc);
+      const bundle = await getSubtitles(wc);
+      const track =
+        bundle.tracks.find((item) => info.cid && item.url.includes(String(info.cid))) ||
+        bundle.tracks[0];
+      if (!track) {
+        console.log('[m3-test] no track');
+        return;
+      }
+      const body = await getTrackBody(track.url);
+      const result = ingestVideo({ info, track, lines: body.lines });
+      console.log('[m3-test] ingest', JSON.stringify(result));
+      console.log('[m3-test] stats', JSON.stringify(listLibrary().stats));
+      const two = searchLibrary('折叠');
+      const three = searchLibrary('折叠屏');
+      console.log('[m3-test] search2', two.mode, two.total, two.matches[0]?.text);
+      console.log('[m3-test] search3', three.mode, three.total, three.matches[0]?.text);
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('library:changed');
+        await window.webContents.executeJavaScript(
+          `document.querySelectorAll('.side-nav-item')[2] && document.querySelectorAll('.side-nav-item')[2].click()`
+        );
+      }
+    } catch (error) {
+      console.warn('[m3-test] failed', (error as Error).message);
+    }
+  }, 12000);
+}
+}
