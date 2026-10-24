@@ -19,7 +19,7 @@
 | 项目 | 状态 |
 |---|---|
 | 桌面 `typecheck` | 通过 |
-| 桌面 `lint` | 0 error / 88 warning（上限 90） |
+| 桌面 `lint` | 0 error / 43 warning（上限 90） |
 | 桌面单测 | 18 个文件 / 70 个用例（含 IPC channel 契约 3 条） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 9/9` |
 | 插件 `panel-test` | 520 项，0 失败 |
@@ -49,7 +49,7 @@
 - 修复对话 `sendOnEnter`/`expandReasoning`、总结 `search.verify` 未生效。
 
 ### 0.37.2 之后的本机复验（2026-10-24，未发版）
-- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/88 warning、18 文件 70 用例、`SMOKE OK version=0.37.2`；
+- 桌面 `npm run verify` 全绿：typecheck 通过、lint 0 error/43 warning、18 文件 70 用例、`SMOKE OK version=0.37.2`；
 - 插件 `npm test` 22 个套件全绿，`panel-test.js` 520 项 0 失败；
 - 修正过期版本号：`docs/REPO-MAP.md`、`docs/MAINTAINERS.md` 里的 0.37.1 → 0.37.2；
 - 修正 `desktop/scripts/release.mjs`：安装说明的数据目录 `bsub-desktop` → `shizi`（旧版自动迁移），发行 tag 从 `v${插件版本}` 改为 `v${桌面版本}`（否则脚本会提示 `v2.18.6`，与 semver Latest 规则冲突）；
@@ -60,7 +60,8 @@
 - 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（155 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
 - `ipc.ts` 按域拆分：**library / browser / page / settings / media / jobs / tools / records** 八个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam`/`abortControllers` 在 `shared.ts`；`ipc.ts` 2.8k → **43 行**，只剩注册入口；
 - 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终 155 条；
-- `library.ts` 按模块拆到 `library/`：db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 仍是兼容桶文件，2683 → 631 行。
+- `library.ts` 按模块拆到 `library/`：db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 仍是兼容桶文件，2683 → 631 行；
+- 收敛 JSON 边界的 `any`：`aiClient.ts`、`page.ts`、`settings.ts` 改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、设置旧字段），lint 88 → **43 warning**。
 
 ### 0.37.0 / 0.37.1
 - 插件界面品牌统一为「拾字」；
@@ -78,7 +79,7 @@
 |---|---|
 | 巨型文件 | `ipc.ts` 43 行（入口）/ `library.ts` 0.6k（其余在 `library/`）/ `SettingsPanel.tsx` 3.1k / `LibraryPanel.tsx` 2.3k / `index.ts` 2.4k |
 | 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
-| `any` | 88 条 warning，集中在外部 API 边界 |
+| `any` | 43 条 warning，剩在 search/platform/mcp/asr 等外部 API 边界 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
 | `PageInfo` B 站中心 | 新内容源仍要改多处 |
 | 单窗口假设 | `registerIpc(win, tabs)` 与 `mainWindow` 是单例 |
@@ -107,7 +108,7 @@
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
 1. 继续拆 `library.ts` 剩余部分（schema/初始化、入库、列表、详情）；
-2. 收敛 88 条 `any`（先 `JsonValue` / `JsonObject`，再逐文件收窄）；
+2. 收敛剩余 43 条 `any`（aiClient/page/settings 已完成，按同样方式处理 search/platform/mcp/asr）；
 3. 最后才动 `SettingsPanel.tsx` / `LibraryPanel.tsx` / `index.ts`。
 
 不要一次拆多个域，不要先动 `index.ts`，不要先拆 `SettingsPanel`。

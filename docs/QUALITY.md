@@ -11,7 +11,7 @@
 | 当前树体积 | 约 36 MB（FFmpeg.wasm 占 31 MB） |
 | 桌面单测 | 18 个文件 / 70 个用例 |
 | 插件测试 | 520 项 |
-| ESLint | 0 error / 88 warning（全部是 API JSON 的 `any`） |
+| ESLint | 0 error / 43 warning（API JSON 边界） |
 | 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，9 条 E2E） |
 | CI | 桌面（master/PR）+ 插件（master/PR）+ tag 发布 |
 
@@ -45,7 +45,7 @@
 
 ### P1：收敛 JSON 边界的 `any`
 
-88 条 warning 集中在 `aiClient.ts`、`page.ts`、`settings.ts`、`search.ts` 等
+43 条 warning 集中在 `search.ts`、`platform.ts`、`mcp.ts`、`asr.ts` 等（aiClient/page/settings 已收口）
 外部 API 响应。建议：
 
 1. 定义 `JsonValue` / `JsonObject`；
