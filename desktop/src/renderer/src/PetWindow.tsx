@@ -56,8 +56,8 @@ const CLICK_PHRASES = ['摸摸头～', '我在呢！', '有要查的吗？', '�
 
 /** 与主进程 petGeometry.petLayoutForState 保持一致：气泡 > 菜单 > 挂件 > 紧凑。 */
 function layoutForState(open: boolean, widgetOpen: boolean, menuOpen: boolean): PetLayout {
-  if (open) return 'bubble';
   if (menuOpen) return 'menu';
+  if (open) return 'bubble';
   if (widgetOpen) return 'widget';
   return 'compact';
 }
@@ -289,6 +289,7 @@ export function PetWindow() {
     setEmotion('happy');
     if (happyTimer.current) window.clearTimeout(happyTimer.current);
     happyTimer.current = window.setTimeout(() => setEmotion('idle'), 1200);
+    if (!open) setWidgetOpen(false);
     if (!open && Math.random() < 0.4) {
       flash(CLICK_PHRASES[Math.floor(Math.random() * CLICK_PHRASES.length)]);
     }
@@ -523,7 +524,7 @@ export function PetWindow() {
               void takeRegionShot();
             }}
           >
-            截图（框选）
+            <span className="pet-menu-icon">▢</span><span className="pet-menu-label">截图（框选）</span>
           </button>
           <button
             onClick={() => {
@@ -531,7 +532,7 @@ export function PetWindow() {
               void takePageShot();
             }}
           >
-            整页截图
+            <span className="pet-menu-icon">▤</span><span className="pet-menu-label">整页截图</span>
           </button>
           <button
             onClick={() => {
@@ -539,15 +540,16 @@ export function PetWindow() {
               void askSelection(SELECTION_ACTIONS[0].prompt);
             }}
           >
-            问选中的内容
+            <span className="pet-menu-icon">◉</span><span className="pet-menu-label">问选中的内容</span>
           </button>
+          <span className="pet-menu-sep" />
           <button
             onClick={() => {
               setMenuOpen(false);
               void window.bsub.focusMain();
             }}
           >
-            打开主窗口
+            <span className="pet-menu-icon">◧</span><span className="pet-menu-label">打开主窗口</span>
           </button>
           <button
             onClick={() => {
@@ -555,7 +557,8 @@ export function PetWindow() {
               void togglePlay();
             }}
           >
-            {playing ? '暂停播放' : '继续播放'}
+            <span className="pet-menu-icon">{playing ? 'Ⅱ' : '▶'}</span>
+            <span className="pet-menu-label">{playing ? '暂停播放' : '继续播放'}</span>
           </button>
           <button
             onClick={() => {
@@ -563,7 +566,8 @@ export function PetWindow() {
               void toggleAlwaysOnTop();
             }}
           >
-            {alwaysOnTop ? '取消置顶' : '窗口置顶'}
+            <span className="pet-menu-icon">⇧</span>
+            <span className="pet-menu-label">{alwaysOnTop ? '取消置顶' : '窗口置顶'}</span>
           </button>
           <button
             onClick={() => {
@@ -571,15 +575,17 @@ export function PetWindow() {
               void window.bsub.resetPetPosition();
             }}
           >
-            重置位置
+            <span className="pet-menu-icon">↺</span><span className="pet-menu-label">重置位置</span>
           </button>
+          <span className="pet-menu-sep" />
           <button
+            className="is-danger"
             onClick={() => {
               setMenuOpen(false);
               void window.bsub.setPetEnabled(false);
             }}
           >
-            隐藏桌宠
+            <span className="pet-menu-icon">×</span><span className="pet-menu-label">隐藏桌宠</span>
           </button>
         </div>
       )}
@@ -587,7 +593,7 @@ export function PetWindow() {
 
       {hint && <div className="pet-hint">{hint}</div>}
 
-      {widgetOpen && (
+      {widgetOpen && !menuOpen && (
         <div className="pet-widget">
           <div className="pet-widget-clock">
             {now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
@@ -635,10 +641,13 @@ export function PetWindow() {
         </div>
       )}
 
-      {open && (
+      {open && !menuOpen && (
         <div className="pet-bubble">
           <div className="pet-bubble-head">
-            <span>即时助手</span>
+            <span className="pet-bubble-title">
+              <span className={`pet-dot${busy ? ' is-busy' : ''}`} />
+              即时助手
+            </span>
             <div className="pet-bubble-tools">
               <button
                 className={`mini-btn${webOn ? ' is-active' : ''}`}
@@ -657,16 +666,20 @@ export function PetWindow() {
               <button
                 className={`mini-btn${widgetOpen ? ' is-active' : ''}`}
                 title="桌面小挂件（时钟 / 待办）"
-                onClick={() => setWidgetOpen((value) => !value)}
+                onClick={() => {
+                  setOpen(false);
+                  setWidgetOpen((value) => !value);
+                }}
               >
                 挂件
               </button>
               <button
-                className="mini-btn"
+                className="pet-close"
                 title="隐藏桌宠（可在设置里重新打开）"
+                aria-label="隐藏桌宠"
                 onClick={() => void window.bsub.setPetEnabled(false)}
               >
-                隐藏
+                ×
               </button>
             </div>
           </div>
@@ -698,8 +711,16 @@ export function PetWindow() {
               </div>
             )}
             {!history.length && !busy && !error && (
-              <div className="pet-line is-assistant">
-                点「截图」框选一块屏幕区域（可识别图片 / 对话 / 提取文字），或在网页里选中文字点「解释选中」。
+              <div className="pet-empty">
+                <span>
+                  <b>截图</b> 框选屏幕，识别图片 / 提取文字
+                </span>
+                <span>
+                  <b>选中即问</b> 选中网页文字，一键解释或翻译
+                </span>
+                <span>
+                  <b>联网</b> 打开后回答会带参考链接
+                </span>
               </div>
             )}
           </div>
@@ -788,9 +809,13 @@ export function PetWindow() {
         }}
         onDoubleClick={() => void window.bsub.focusMain()}
       >
+        <span className="pet-glow" />
         <span className="pet-eye left" />
         <span className="pet-eye right" />
+        <span className="pet-cheek left" />
+        <span className="pet-cheek right" />
         <span className="pet-mouth" />
+        {busy && <span className="pet-status" title="正在处理" />}
         {playing && <span className="pet-music">♪</span>}
         {emotion === 'sleeping' && <span className="pet-zzz">z z</span>}
       </button>

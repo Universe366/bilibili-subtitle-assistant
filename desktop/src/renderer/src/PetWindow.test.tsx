@@ -112,7 +112,8 @@ describe('PetWindow', () => {
     const first = render(<PetWindow />);
     openBubble();
     fireEvent.click(screen.getByTitle(/桌面小挂件/));
-    expect(api.setPetLayout).toHaveBeenLastCalledWith('bubble');
+    // 气泡与挂件互斥：打开挂件会收起气泡
+    expect(api.setPetLayout).toHaveBeenLastCalledWith('widget');
     expect(localStorage.getItem('pet-widget')).toBe('1');
     first.unmount();
 

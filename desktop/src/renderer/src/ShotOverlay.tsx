@@ -39,11 +39,18 @@ export function ShotOverlay() {
       if (event.key === 'Escape') {
         event.preventDefault();
         cancel();
+        return;
       }
+      if (!selection) return;
+      const action =
+        event.key === '1' ? 'image' : event.key === '2' ? 'chat' : event.key === '3' ? 'ocr' : null;
+      if (!action) return;
+      event.preventDefault();
+      void window.bsub.shotDone({ selection, action });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancel]);
+  }, [cancel, selection]);
 
   const bounds = useMemo(
     () => ({ width: image?.width || window.innerWidth, height: image?.height || window.innerHeight }),
@@ -59,7 +66,7 @@ export function ShotOverlay() {
     void window.bsub.shotDone({ selection, action });
   };
 
-  const toolbarSize = { width: 248, height: 40 };
+  const toolbarSize = { width: 276, height: 46 };
   const toolbar = selection
     ? toolbarPosition(selection, { width: bounds.width, height: bounds.height }, toolbarSize)
     : null;
@@ -112,7 +119,7 @@ export function ShotOverlay() {
 
       {!selection && (
         <div className="shot-hint">
-          {error || '拖动鼠标框选区域 · Esc 或右键取消'}
+          {error || '拖动鼠标框选区域　·　Esc 或右键取消'}
         </div>
       )}
 
@@ -122,16 +129,16 @@ export function ShotOverlay() {
           style={{ left: toolbar.x, top: toolbar.y, width: toolbarSize.width }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <button type="button" onClick={() => finish('image')}>
+          <button type="button" title="识别图片（1）" onClick={() => finish('image')}>
             识别图片
           </button>
-          <button type="button" onClick={() => finish('chat')}>
+          <button type="button" title="对话（2）" onClick={() => finish('chat')}>
             对话
           </button>
-          <button type="button" onClick={() => finish('ocr')}>
+          <button type="button" title="提取文字（3）" onClick={() => finish('ocr')}>
             提取文字
           </button>
-          <button type="button" className="shot-toolbar-cancel" onClick={cancel}>
+          <button type="button" className="shot-toolbar-cancel" title="取消（Esc）" onClick={cancel}>
             取消
           </button>
         </div>

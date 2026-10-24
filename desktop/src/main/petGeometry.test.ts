@@ -27,7 +27,7 @@ describe('normalizePetSize', () => {
 
 describe('petLayoutSize', () => {
   it('compact 只包住桌宠本体', () => {
-    expect(petLayoutSize('compact', 96)).toEqual({ width: 116, height: 134 });
+    expect(petLayoutSize('compact', 96)).toEqual({ width: 108, height: 130 });
   });
 
   it('气泡/挂件/菜单都比 compact 大', () => {
@@ -37,7 +37,7 @@ describe('petLayoutSize', () => {
       expect(size.width).toBeGreaterThan(compact.width);
       expect(size.height).toBeGreaterThan(compact.height);
     }
-    expect(petLayoutSize('bubble', 96).width).toBe(284);
+    expect(petLayoutSize('bubble', 96).width).toBe(264);
   });
 
   it('尺寸随桌宠大小线性变化', () => {

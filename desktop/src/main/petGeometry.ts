@@ -30,14 +30,14 @@ export function petLayoutSize(mode: PetLayoutMode, petSize: number): { width: nu
   const size = normalizePetSize(petSize);
   switch (mode) {
     case 'bubble':
-      return { width: 284, height: size + 300 };
+      return { width: 264, height: size + 330 };
     case 'widget':
-      return { width: 252, height: size + 250 };
+      return { width: 232, height: size + 252 };
     case 'menu':
-      return { width: 224, height: size + 214 };
+      return { width: 236, height: size + 330 };
     case 'compact':
     default:
-      return { width: size + 20, height: size + 38 };
+      return { width: size + 12, height: size + 34 };
   }
 }
 

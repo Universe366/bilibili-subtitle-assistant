@@ -453,8 +453,8 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     if (!compact) throw new Error('桌宠页面未就绪');
-    // 120px 桌宠：compact = 140x158（Windows DPI 取整可能差 1–2px）
-    if (Math.abs(compact.w - 140) > 2 || Math.abs(compact.h - 158) > 2) {
+    // 120px 桌宠：compact = 132x154（Windows DPI 取整可能差 1–2px）
+    if (Math.abs(compact.w - 132) > 2 || Math.abs(compact.h - 154) > 2) {
       throw new Error(`compact 尺寸异常：${compact.w}x${compact.h}`);
     }
 
@@ -466,7 +466,7 @@ try {
     await evaluate(pet, 'window.bsub.setPetLayout("bubble").then(() => null)');
     await new Promise((resolve) => setTimeout(resolve, 400));
     const bubble = await read();
-    if (Math.abs(bubble.w - 284) > 2 || Math.abs(bubble.h - 420) > 2) {
+    if (Math.abs(bubble.w - 264) > 2 || Math.abs(bubble.h - 450) > 2) {
       throw new Error(`bubble 尺寸异常：${bubble.w}x${bubble.h}`);
     }
 
