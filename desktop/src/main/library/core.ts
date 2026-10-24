@@ -1,6 +1,6 @@
-import type { DatabaseSync } from 'node:sqlite';
 import type { PageInfo, LibraryVideo } from '../../shared/types';
 import { toNumber } from './db';
+import type { DatabaseSync } from 'node:sqlite';
 
 /** 视频身份 / 来源 / 行映射等跨模块共用的小工具。 */
 export function uidOf(info: PageInfo): string {
@@ -109,3 +109,53 @@ export const VIDEO_COLUMNS = `
          (SELECT COALESCE(SUM(length(sg.text)), 0) FROM segments sg
             JOIN tracks t2 ON t2.id = sg.track_id WHERE t2.video_id = v.id) AS char_count
   FROM videos v`;
+
+export function ensureVideo(
+  database: DatabaseSync,
+  info: PageInfo,
+  now: number
+): { videoId: number; created: boolean } {
+  const uid = uidOf(info);
+  const existing = database.prepare('SELECT id FROM videos WHERE uid = ?').get(uid) as
+    { id: number } | undefined;
+
+  database
+    .prepare(
+      `INSERT INTO videos (uid, bvid, cid, ep_id, title, owner, duration, cover, pubdate, url, signature, kind, source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(uid) DO UPDATE SET
+         bvid = excluded.bvid,
+         cid = excluded.cid,
+         ep_id = excluded.ep_id,
+         title = excluded.title,
+         owner = excluded.owner,
+         duration = excluded.duration,
+         cover = excluded.cover,
+         pubdate = excluded.pubdate,
+         url = excluded.url,
+         signature = excluded.signature,
+         kind = excluded.kind,
+         source = excluded.source,
+         updated_at = excluded.updated_at`
+    )
+    .run(
+      uid,
+      info.bvid ?? null,
+      info.cid ?? null,
+      info.epId ?? null,
+      info.title || '',
+      info.owner || '',
+      toNumber(info.duration),
+      info.cover ?? null,
+      info.pubdate ?? null,
+      info.url || '',
+      info.signature || '',
+      kindOf(info),
+      sourceOf(info),
+      now,
+      now
+    );
+
+  const row = database.prepare('SELECT id FROM videos WHERE uid = ?').get(uid) as { id: number };
+  return { videoId: Number(row.id), created: !existing };
+}
