@@ -21,7 +21,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 79 个文件 / 350 个用例（主进程与 shared 21 文件 / 81 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 83 个文件 / 382 个用例（主进程与 shared 25 文件 / 113 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器、启动/窗口策略、会话恢复、托盘、下载钩子，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -71,6 +71,12 @@
 - `.gitignore` 补充 `desktop/release`、`desktop/out`、`desktop/resources/extension`、`artifacts/`。
 - 工作区构建产物统一放到 `artifacts/`；`desktop/release`（3.1GB）与 `out` 已删除，需要时用 `npm run pack` 重建。
 
+### 未发布（2026-10-24，本机）
+
+- **修插件更新检查**：`update.js` 原来请求已删除的 `Universe366/shizi-extension`（匿名恒 404，等于永远检查不到更新）；改为合并发布仓库 `Universe366/shizi`，插件版本从资产名 `shizi-extension-v<版本>.zip` 解析（桌面 tag `v0.38.9` 不能当插件版本，否则会算成比 2.18.6 更旧），旧仓库 `v2.x` tag 保留兼容；缓存 key 升到 `v2`。`verify/update-test.mjs` 43 项覆盖。
+- `verify/tools/release.mjs` 不再本地建 Release（会打出 `v2.x` tag 顶掉 Latest），`--create` 直接报错指向 CI。
+- **补启动回归测试**：`windowPolicy.ts`（窗口尺寸/安全设置、快捷键、关闭到托盘、起始页、UA）与 `sessionRestore.ts`（逐条容错、激活回退、起始页兜底）从 `index.ts` 抽出；`index.ts` 403 → 371 行。新增 32 条测试，覆盖启动参数、关闭策略、会话恢复、托盘菜单、下载钩子（落盘/节流/状态映射）。
+
 ### 0.37.2 之后的界面调整（未发版）
 - 地址栏：输入历史建议（↑/↓ 选择）、搜索引擎可配（B 站/必应/Google/自定义模板）。
 - 新增 Ctrl+Shift+P 命令面板（跳转面板、打开历史/标签页、阅读模式、新建/恢复标签、折叠与左右切换侧栏）。
@@ -94,8 +100,8 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.30k / `LibraryPanel.tsx` 1.41k / `index.ts` 403 行（托盘/会话/下载/日志/开发探针已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts） |
-| 桌面 E2E 覆盖窄 | 11 条主流程 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）；渲染层已有 58 文件 / 269 用例组件测试，但 `index.ts` 的启动/托盘/会话恢复/下载钩子仍无专门回归测试 |
+| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.30k / `LibraryPanel.tsx` 1.41k / `index.ts` 371 行（托盘/会话/下载/日志/开发探针/窗口策略已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts、windowPolicy.ts、sessionRestore.ts） |
+| 桌面 E2E 覆盖窄 | 11 条主流程 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）；渲染层 58 文件 / 269 用例组件测试；启动/托盘/会话恢复/下载钩子已有 32 条单测回归，但 `createWindow()` 的窗口装配本身仍无测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
 | `PageInfo` B 站中心 | 新内容源仍要改多处 |
@@ -128,7 +134,7 @@
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
 4. `SettingsPanel` memo 评估：15 个 section 都接收整份 `draft`，只加 `React.memo` 不会减少重渲染；要收益必须先按 section 切分 `draft`（改动面大、风险中），暂缓。
-5. `index.ts` 评估结论：`createWindow()` 约 2.3k 行、直接操作模块级 `mainWindow`，在补出「启动 / 托盘 / 会话恢复 / 下载」回归测试前不建议拆；下一步顺序建议 tray → 会话持久化 → 下载钩子 → 窗口装配。
+5. `index.ts` 进展：托盘（`shell.ts`）、下载钩子（`downloadsHook.ts`）、会话保存/恢复（`shell.ts` + `sessionRestore.ts`）、窗口策略（`windowPolicy.ts`）已抽出，入口 403 → 371 行；这四块现有 32 条单测兜底。**下一步只剩 `createWindow()` 本体**（约 165 行：创建 BrowserWindow、TabManager、IPC、关闭对话框），拆它之前建议先给窗口装配补一个可注入的工厂测试，再按「创建 → 事件接线 → 关闭」三段搬。
 
 不要一次拆多个域；`index.ts` 先补启动回归测试再动。
 

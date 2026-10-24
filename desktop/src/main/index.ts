@@ -28,10 +28,19 @@ import { loadSession } from './session';
 import { createSessionPersister, createTray as createTrayShell } from './shell';
 import { APP_NAME } from '../shared/brand';
 import { installDownloadHook } from './downloadsHook';
+import {
+  buildUserAgent,
+  closeAction,
+  closeChoiceFromDialog,
+  resolveStartUrl,
+  shortcutAction,
+  shouldRestoreSession,
+  windowFrameOptions
+} from './windowPolicy';
+import { restoreSession } from './sessionRestore';
 
-const CHROME = process.versions.chrome;
-const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
-const START_URL = process.env.BSUB_START_URL || 'https://www.bilibili.com/';
+const UA = buildUserAgent(process.versions.chrome);
+const START_URL = resolveStartUrl();
 
 // 自定义数据目录必须早于任何 userData 读写；环境变量仅用于开发期覆盖。
 let migrationFallback: string | null = null;
@@ -126,27 +135,19 @@ function createTray(): void {
 function createWindow(): void {
   const dark = nativeTheme.shouldUseDarkColors;
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 920,
-    minWidth: 1024,
-    minHeight: 640,
-    show: false,
-    title: APP_NAME,
-    backgroundColor: dark ? '#141416' : '#f6f6f3',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false
-    }
+    ...windowFrameOptions({
+      dark,
+      preloadPath: path.join(__dirname, '../preload/index.js')
+    }),
+    title: APP_NAME
   });
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return;
-    if (input.key === 'Escape' || input.key === 'Esc') {
+    const action = shortcutAction(input);
+    if (!action) return;
+    if (action === 'exit-fullscreen') {
       if (!mainWindow?.isFullScreen()) return;
       event.preventDefault();
       void tabManager
@@ -158,30 +159,12 @@ function createWindow(): void {
       mainWindow.setFullScreen(false);
       return;
     }
-    if (input.control && (input.key === '=' || input.key === '+')) {
-      event.preventDefault();
-      tabManager?.zoomIn();
-      return;
-    }
-    if (input.control && (input.key === '-' || input.key === '_')) {
-      event.preventDefault();
-      tabManager?.zoomOut();
-      return;
-    }
-    if (input.control && input.key === '0') {
-      event.preventDefault();
-      tabManager?.zoomReset();
-      return;
-    }
-    if (input.key === 'F11') {
-      event.preventDefault();
-      mainWindow?.setFullScreen(!mainWindow.isFullScreen());
-      return;
-    }
-    if (input.control && input.shift && input.key.toLowerCase() === 'q') {
-      event.preventDefault();
-      app.quit();
-    }
+    event.preventDefault();
+    if (action === 'zoom-in') tabManager?.zoomIn();
+    else if (action === 'zoom-out') tabManager?.zoomOut();
+    else if (action === 'zoom-reset') tabManager?.zoomReset();
+    else if (action === 'toggle-fullscreen') mainWindow?.setFullScreen(!mainWindow.isFullScreen());
+    else if (action === 'quit') app.quit();
   });
 
   tabManager = new TabManager(
@@ -224,29 +207,12 @@ function createWindow(): void {
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[m0] userData', app.getPath('userData'));
     console.log('[m0] start', START_URL);
-    const saved = loadSettings().general.restoreSession !== false ? loadSession() : null;
-    if (saved && tabManager) {
+    const saved = shouldRestoreSession(loadSettings()) ? loadSession() : null;
+    if (tabManager) {
       const manager = tabManager;
-      void (async () => {
-        const created: Array<{ id: string; url: string }> = [];
-        for (const item of saved.tabs) {
-          try {
-            const id = await manager.create(item.url, { activate: false });
-            created.push({ id, url: item.url });
-          } catch (error) {
-            console.warn('[session] 恢复标签失败', item.url, (error as Error).message);
-          }
-        }
-        const target = created.find((item) => item.url === saved.activeUrl) || created.at(-1);
-        if (target) {
-          await manager.activate(target.id);
-          console.log('[session] restored', created.length, 'tabs');
-        } else {
-          await manager.create(START_URL);
-        }
-      })();
-    } else {
-      void tabManager?.create(START_URL);
+      void restoreSession({ manager, saved, startUrl: START_URL }).then((result) => {
+        if (!result.usedStartUrl) console.log('[session] restored', result.restored, 'tabs');
+      });
     }
 
     // 开发探针不进生产包：按需动态加载，只有未打包或显式开启时才拉取。
@@ -291,10 +257,12 @@ function createWindow(): void {
   }
 
   mainWindow.on('close', (event) => {
-    if (isQuitting) return;
-    // 设置里关掉「关闭到托盘」后，点关闭直接退出。
-    if (loadSettings().general.closeToTray === false) return;
-    if (closingChoicePending) return;
+    const action = closeAction({
+      isQuitting,
+      closeToTray: loadSettings().general.closeToTray,
+      choicePending: closingChoicePending
+    });
+    if (action === 'allow') return;
     event.preventDefault();
 
     closingChoicePending = true;
@@ -313,14 +281,14 @@ function createWindow(): void {
       })
       .then((result) => {
         closingChoicePending = false;
-        if (result.response === 2) return;
-        const toTray = result.response === 0;
+        const choice = closeChoiceFromDialog(result);
+        if (choice === 'cancel') return;
         if (result.checkboxChecked) {
           const settings = loadSettings();
-          settings.general.closeToTray = toTray;
+          settings.general.closeToTray = choice === 'tray';
           saveSettings(settings);
         }
-        if (toTray) {
+        if (choice === 'tray') {
           mainWindow?.hide();
         } else {
           isQuitting = true;

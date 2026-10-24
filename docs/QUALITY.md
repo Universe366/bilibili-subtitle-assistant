@@ -7,9 +7,9 @@
 
 | 指标 | 数值 |
 |---|---|
-| Git 跟踪文件 | 433 |
+| Git 跟踪文件 | 440 |
 | 当前树体积 | 约 36 MB（FFmpeg.wasm 占 31 MB） |
-| 桌面单测 | 79 个文件 / 350 个用例（主进程与 shared 21 文件 / 81 用例，渲染层 58 文件 / 269 用例） |
+| 桌面单测 | 83 个文件 / 382 个用例（主进程与 shared 25 文件 / 113 用例，渲染层 58 文件 / 269 用例） |
 | 插件测试 | 520 项 |
 | ESLint | **0 error / 0 warning** |
 | 桌面冒烟 | `npm run smoke`（真实 Electron + CDP，11 条 E2E） |
@@ -36,10 +36,11 @@
 | 文件 | 行数 | 建议 |
 |---|---:|---|
 | `src/main/library.ts` | 102 行 | 纯桶文件；14 个域模块在 `library/*.ts` |
+| `src/main/index.ts` | 371 行 | 托盘/下载/会话/窗口策略已抽出；只剩 `createWindow()` 装配（约 165 行）可拆 |
 | `src/renderer/.../SettingsPanel.tsx` | ~1.30k | 15 个 section 已完成拆出，主文件只剩状态与组装 |
 | `src/renderer/.../LibraryPanel.tsx` | ~1.41k | 15 个 section/弹窗已拆，主文件只剩状态与组装 |
 
-为什么现在没动：`library.ts` 是纯桶文件（102 行），拆分收益已经收口；两个 React 组件虽然有 58 文件 / 269 用例的组件测试，但主进程装配（`index.ts` 的启动/托盘/会话/下载）仍没有回归测试兜底，直接搬容易“编译通过、交互坏掉”。
+为什么现在没动：`library.ts` 是纯桶文件（102 行），拆分收益已经收口；`index.ts` 的启动/托盘/会话恢复/下载钩子已补 32 条单测（`windowPolicy` / `sessionRestore` / `shell` / `downloadsHook`），但 `createWindow()` 本体的窗口装配仍没有测试，拆它之前要先给工厂补注入点。
 `ipc` 域现在有 11 条 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）兜底，可以照着同样的节奏来；
 `library.ts` 后续如需再动，建议先补 schema 与 search 的单测，再碰数据写入部分。
 
