@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticsInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { ModelChips, SettingsSection } from './settings/SettingsSection';
+import { SitePermissionsSection } from './settings/SitePermissionsSection';
 import {
   Download,
   FolderOpen,
@@ -65,19 +66,6 @@ const EXPORT_LABELS: Record<ExportFormat, string> = {
   ass: 'ASS 字幕',
   txt: '纯文本',
   json: 'JSON'
-};
-
-const PERMISSION_LABELS: Record<string, string> = {
-  media: '摄像头 / 麦克风',
-  notifications: '系统通知',
-  'clipboard-read': '读取剪贴板',
-  geolocation: '位置',
-  'display-capture': '屏幕共享',
-  midi: 'MIDI',
-  midiSysex: 'MIDI',
-  openExternal: '打开外部应用',
-  'speaker-selection': '扬声器',
-  'window-management': '窗口管理'
 };
 
 export function SettingsPanel() {
@@ -2909,38 +2897,13 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="站点权限" defaultOpen={false}>
-        <div className="settings-hint">
-          网站首次申请摄像头、麦克风、通知等权限时会弹窗；这里可以查看并撤销已记住的选择。
-        </div>
-        {sitePermissions.length === 0 && <div className="settings-hint">还没有记住任何站点权限。</div>}
-        {sitePermissions.map((item) => (
-          <div className="settings-row" key={`${item.origin}:${item.permission}`}>
-            <span>
-              {item.origin} · {PERMISSION_LABELS[item.permission] || item.permission}
-            </span>
-            <span className="settings-hint">{item.decision === 'allow' ? '允许' : '拒绝'}</span>
-            <button
-              className="mini-btn"
-              onClick={() => void revokePermission(item.origin, item.permission)}
-            >
-              撤销
-            </button>
-          </div>
-        ))}
-        <div className="settings-inline">
-          <button className="mini-btn" onClick={() => void refreshSitePermissions()}>
-            刷新
-          </button>
-          <button
-            className="mini-btn danger"
-            disabled={!sitePermissions.length}
-            onClick={() => void clearPermissions()}
-          >
-            清除全部
-          </button>
-        </div>
-      </SettingsSection>
+      <SitePermissionsSection
+        items={sitePermissions}
+        onRevoke={(origin, permission) => void revokePermission(origin, permission)}
+        onRefresh={() => void refreshSitePermissions()}
+        onClear={() => void clearPermissions()}
+      />
+
 
       <SettingsSection title="数据与备份" defaultOpen={false}>
         <div className="settings-row">
