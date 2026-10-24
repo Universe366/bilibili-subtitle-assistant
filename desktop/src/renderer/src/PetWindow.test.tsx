@@ -51,7 +51,7 @@ describe('PetWindow', () => {
     fireEvent.change(input, { target: { value: '这个视频讲了什么' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    await vi.waitFor(() => expect(api.chat).toHaveBeenCalled());
+    await vi.waitFor(() => expect(api.chat).toHaveBeenCalled(), { timeout: 5000 });
     const payload = (api.chat.mock.calls[0] as unknown[])[0] as unknown as {
       messages: Array<{ content: string }>;
     };

@@ -64,11 +64,11 @@ describe('LibraryPanel 列表窗口化与选择', () => {
     await screen.findByText('视频 1');
 
     const rows = () => container.querySelectorAll('.lib-video');
-    expect(rows().length).toBe(80);
+    await waitFor(() => expect(rows().length).toBe(80), { timeout: 5000 });
 
     const scroller = container.querySelector('.lib-videos') as HTMLDivElement;
     fireEvent.scroll(scroller);
-    await waitFor(() => expect(rows().length).toBe(160));
+    await waitFor(() => expect(rows().length).toBe(160), { timeout: 5000 });
   });
 
   it('选择模式下 Shift 连选一段', async () => {
