@@ -4,6 +4,7 @@ import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
 import { DataBackupSection } from './settings/DataBackupSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
+import { McpSection } from './settings/McpSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
 import { SkillsSection } from './settings/SkillsSection';
@@ -2380,144 +2381,21 @@ export function SettingsPanel() {
       />
 
 
-      <SettingsSection title="MCP 服务" defaultOpen={false}>
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.mcp.enabled}
-            onChange={(event) => updateMcp({ enabled: event.target.checked })}
-          />
-          启用 MCP
-        </label>
-        <div className="settings-inline">
-          <span className="settings-label" style={{ flex: 1 }}>
-            服务列表
-          </span>
-          <button className="mini-btn" onClick={addMcpServer}>
-            <Plus size={12} /> 服务
-          </button>
-        </div>
+      <McpSection
+        value={draft.mcp}
+        testing={mcpTesting}
+        tools={mcpTools}
+        args={mcpArgs}
+        result={mcpResult}
+        onChange={(next) => updateMcp(next)}
+        onArgs={setMcpArgs}
+        onAddServer={addMcpServer}
+        onUpdateServer={(id, patch) => updateMcpServer(id, patch)}
+        onRemoveServer={removeMcpServer}
+        onTest={(server) => void testMcp(server)}
+        onCall={(server, tool) => void callMcp(server, tool)}
+      />
 
-        {draft.mcp.servers.map((server) => (
-          <div key={server.id} className="mcp-card">
-            <div className="settings-inline">
-              <input
-                className="settings-input"
-                value={server.name}
-                onChange={(event) => updateMcpServer(server.id, { name: event.target.value })}
-              />
-              <label className="settings-check">
-                <input
-                  type="checkbox"
-                  checked={server.enabled}
-                  onChange={(event) =>
-                    updateMcpServer(server.id, { enabled: event.target.checked })
-                  }
-                />
-                启用
-              </label>
-              <button className="mini-btn" onClick={() => removeMcpServer(server.id)}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-            <input
-              className="settings-input"
-              placeholder="https://example.com/mcp"
-              value={server.url}
-              spellCheck={false}
-              onChange={(event) => updateMcpServer(server.id, { url: event.target.value })}
-            />
-            <select
-              className="settings-input"
-              value={server.transport}
-              onChange={(event) =>
-                updateMcpServer(server.id, {
-                  transport: event.target.value as McpServer['transport']
-                })
-              }
-            >
-              <option value="http">HTTP JSON-RPC</option>
-              <option value="sse">SSE 传输</option>
-            </select>
-            <input
-              className="settings-input"
-              type="password"
-              placeholder="Token（可选）"
-              value={server.token}
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(event) => updateMcpServer(server.id, { token: event.target.value })}
-            />
-            <button
-              className="mini-btn"
-              disabled={mcpTesting === server.id}
-              onClick={() => void testMcp(server)}
-            >
-              {mcpTesting === server.id ? (
-                <Loader2 size={12} className="spin" />
-              ) : (
-                '连接 / 列出工具'
-              )}
-            </button>
-            {mcpTools[server.id]?.length ? (
-              <div className="mcp-tools">
-                {mcpTools[server.id].map((tool) => (
-                  <button
-                    key={tool.name}
-                    className="mcp-tool"
-                    title={tool.description}
-                    onClick={() => void callMcp(server, tool)}
-                  >
-                    {tool.name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ))}
-
-        <div className="settings-inline">
-          <div className="settings-field">
-            <div className="settings-label">单次工具调用超时（秒）</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={5}
-              max={300}
-              value={Math.round((draft.mcp.callTimeoutMs || 60000) / 1000)}
-              onChange={(event) =>
-                updateMcp({ callTimeoutMs: (Number(event.target.value) || 60) * 1000 })
-              }
-            />
-          </div>
-          <div className="settings-field">
-            <div className="settings-label">最多工具轮数</div>
-            <input
-              className="settings-input"
-              type="number"
-              min={1}
-              max={12}
-              value={draft.mcp.maxToolRounds || 6}
-              onChange={(event) =>
-                updateMcp({ maxToolRounds: Number(event.target.value) || 6 })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="settings-label">调用参数（JSON）</div>
-        <textarea
-          className="settings-textarea"
-          rows={3}
-          value={mcpArgs}
-          spellCheck={false}
-          onChange={(event) => setMcpArgs(event.target.value)}
-        />
-        {mcpResult && <pre className="correction-preview">{mcpResult}</pre>}
-        <div className="settings-hint">
-          点击工具名用上方参数手动调用；对话时会自动把已启用的 MCP 工具接进工具循环。
-        </div>
-      </SettingsSection>
 
       <SkillsSection
         value={draft.skills}
