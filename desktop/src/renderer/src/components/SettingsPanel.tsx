@@ -3,6 +3,7 @@ import type { DiagnosticsInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
+import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
 import {
   Download,
@@ -23,7 +24,6 @@ import type {
   BridgeStatus,
   CorrectionRule,
   CorrectionRuleGroup,
-  ExportFormat,
   GlossaryTerm,
   McpServer,
   McpTool,
@@ -59,15 +59,6 @@ function updateText(status: UpdateStatus | null): string {
       return '';
   }
 }
-
-const EXPORT_LABELS: Record<ExportFormat, string> = {
-  md: 'Markdown',
-  srt: 'SRT 字幕',
-  vtt: 'WebVTT',
-  ass: 'ASS 字幕',
-  txt: '纯文本',
-  json: 'JSON'
-};
 
 export function SettingsPanel() {
   const [draft, setDraft] = useState<AppSettings | null>(null);
@@ -2419,100 +2410,11 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="导出默认值" defaultOpen={false}>
-        <div className="settings-label">默认格式</div>
-        <select
-          className="settings-input"
-          value={draft.export.format}
-          onChange={(event) =>
-            setDraft({
-              ...draft,
-              export: { ...draft.export, format: event.target.value as ExportFormat }
-            })
-          }
-        >
-          {(Object.keys(EXPORT_LABELS) as ExportFormat[]).map((format) => (
-            <option key={format} value={format}>
-              {EXPORT_LABELS[format]}
-            </option>
-          ))}
-        </select>
+      <ExportDefaultsSection
+        value={draft.export}
+        onChange={(next) => setDraft({ ...draft, export: next })}
+      />
 
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.export.includeTimestamps !== false}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                export: { ...draft.export, includeTimestamps: event.target.checked }
-              })
-            }
-          />
-          Markdown / TXT 保留时间戳
-        </label>
-
-        <div className="settings-label">Markdown 模板</div>
-        <select
-          className="settings-input"
-          value={draft.export.template}
-          onChange={(event) =>
-            setDraft({
-              ...draft,
-              export: { ...draft.export, template: event.target.value as AppSettings['export']['template'] }
-            })
-          }
-        >
-          <option value="timestamped">带时间戳</option>
-          <option value="plain">纯内容</option>
-          <option value="notes">学习笔记</option>
-          <option value="meeting">会议纪要</option>
-        </select>
-
-        <div className="settings-label">ASS 字号</div>
-        <input
-          className="settings-input"
-          type="number"
-          min={12}
-          max={96}
-          value={draft.export.assFontSize}
-          onChange={(event) =>
-            setDraft({
-              ...draft,
-              export: { ...draft.export, assFontSize: Number(event.target.value) || 28 }
-            })
-          }
-        />
-
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.export.estimateTimestamps !== false}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                export: { ...draft.export, estimateTimestamps: event.target.checked }
-              })
-            }
-          />
-          缺少时间戳时自动估算
-        </label>
-
-        <div className="settings-label">文件名模板</div>
-        <input
-          className="settings-input"
-          value={draft.export.filenamePattern}
-          spellCheck={false}
-          placeholder="{title}-{bvid}"
-          onChange={(event) =>
-            setDraft({
-              ...draft,
-              export: { ...draft.export, filenamePattern: event.target.value }
-            })
-          }
-        />
-        <div className="settings-hint">可用变量：{'{title}'}、{'{bvid}'}、{'{lang}'}、{'{date}'}。</div>
-      </SettingsSection>
 
       <SettingsSection title="版本更新" defaultOpen={false}>
         <div className="settings-row">
