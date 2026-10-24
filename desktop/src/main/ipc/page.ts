@@ -46,6 +46,51 @@ export function registerPageIpc(ctx: IpcContext): void {
     }
   });
 
+  // 桌宠的即时场景：只取选中文字，不抽整页正文（大页面抽正文又慢又没必要）。
+  ipcMain.handle('page:selection', async () => {
+    const wc = ctx.tabs.activeWebContents();
+    if (!wc) return { ok: false as const, error: '没有打开的页面' };
+    try {
+      const raw = await wc.executeJavaScript(
+        `(() => ({
+          title: document.title || '',
+          url: location.href,
+          selection: String(window.getSelection()?.toString() || '').trim().slice(0, 4000)
+        }))()`
+      );
+      return {
+        ok: true as const,
+        data: {
+          title: String(raw?.title || ''),
+          url: String(raw?.url || ''),
+          selection: String(raw?.selection || '').slice(0, 4000)
+        }
+      };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
+  // 桌宠「看屏幕」：截当前标签页（只截视图区域，不含应用外壳）。
+  ipcMain.handle('page:capture', async () => {
+    try {
+      const dataUrl = await ctx.tabs.captureActiveView();
+      if (!dataUrl) {
+        // 起始页 / 设置页打开时网页视图是隐藏的，Chromium 截不到画面，直接说清楚怎么处理。
+        const visible = ctx.tabs.getActiveViewState().visible;
+        return {
+          ok: false as const,
+          error: visible
+            ? '页面还没渲染出画面，稍等一下再试'
+            : '主窗口当前没有显示网页（在起始页或设置里），先打开一个网页再截图'
+        };
+      }
+      return { ok: true as const, data: { dataUrl } };
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
   ipcMain.handle('page:info', async (): Promise<Result<PageInfo>> => {
     const wc = ctx.tabs.activeWebContents();
     if (!wc) return { ok: false, error: '没有打开的页面' };

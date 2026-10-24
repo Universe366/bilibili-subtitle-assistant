@@ -24,22 +24,34 @@ function fallbackInfo(): PageInfo {
 type Emotion = 'idle' | 'thinking' | 'speaking' | 'happy' | 'sleeping';
 type PetLayout = 'compact' | 'bubble' | 'widget' | 'menu';
 
-const QUICK_ACTIONS = [
-  { id: 'summary', label: '总结这个页面', prompt: '用 5 条要点总结当前页面，先给结论。' },
-  { id: 'explain', label: '解释选中内容', prompt: '解释我当前选中的内容，用通俗的话。' },
-  { id: 'translate', label: '翻译选中内容', prompt: '把当前选中的内容翻译成中文（若已是中文则译成英文）。' }
+/**
+ * 桌宠只做「即时」的事：看屏幕、问选中、查资料。
+ * 视频总结 / 入库属于主窗口，不在这里重复。
+ */
+const SELECTION_ACTIONS = [
+  {
+    id: 'explain',
+    label: '解释选中',
+    prompt: '解释我选中的这段内容，用通俗的话说清楚，必要时举一个例子。'
+  },
+  {
+    id: 'translate',
+    label: '翻译选中',
+    prompt: '把我选中的这段内容翻译成中文（若已是中文则译成英文），保留专有名词。'
+  }
 ];
+
+const SHOT_PROMPT = '这张截图里是什么？用 3 条说清楚重点；如果有文字、数字或报错，原样摘出来。';
 
 const SELF_TALK = [
-  '要不要把正在看的视频存进库里？',
+  '看视频遇到不懂的，右键「看屏幕」就行。',
+  '选中网页文字，点「解释选中」就能问。',
+  '要查资料就把「联网」打开。',
   '看久了记得起来活动一下。',
-  '选中网页文字就能问我。',
-  '按 Ctrl+, 可以打开设置。',
-  '我在这儿，需要就叫我。',
-  '今天也要好好做笔记呀。'
+  '我在这儿，需要就叫我。'
 ];
 
-const CLICK_PHRASES = ['摸摸头～', '我在呢！', '需要我总结点什么吗？', '别戳啦，会变瘦的'];
+const CLICK_PHRASES = ['摸摸头～', '我在呢！', '有要查的吗？', '别戳啦，会变瘦的'];
 
 /** 与主进程 petGeometry.petLayoutForState 保持一致：气泡 > 菜单 > 挂件 > 紧凑。 */
 function layoutForState(open: boolean, widgetOpen: boolean, menuOpen: boolean): PetLayout {
@@ -87,7 +99,15 @@ function beep(): void {
   }
 }
 
-/** 桌宠窗口：情绪、拖动、气泡对话、快捷动作、朗读、桌面小挂件。 */
+/** 模型不支持图片时，把底层报错翻译成可照做的提示。 */
+function visionHint(raw: string): string {
+  const looksLikeImageError =
+    /image|vision|multimodal|content type|不支持.{0,6}图片|无效的.{0,4}内容/i.test(raw);
+  if (!looksLikeImageError) return raw;
+  return '当前 AI 模型可能不支持图片。去「设置 → AI」换一个支持视觉的模型（如 GPT-4o / Claude / Gemini / Qwen-VL）后再试一次。';
+}
+
+/** 桌宠窗口：情绪、拖动、气泡对话、截图识图、问选中、联网检索。 */
 export function PetWindow() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -96,6 +116,7 @@ export function PetWindow() {
   const [error, setError] = useState('');
   const [emotion, setEmotion] = useState<Emotion>('idle');
   const [speak, setSpeak] = useState(() => localStorage.getItem('pet-speak') === '1');
+  const [webOn, setWebOn] = useState(() => localStorage.getItem('pet-web') === '1');
   const [hint, setHint] = useState('');
   const [history, setHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([]);
   const [playing, setPlaying] = useState(false);
@@ -103,7 +124,11 @@ export function PetWindow() {
   const [now, setNow] = useState(() => new Date());
   const [todos, setTodos] = useState<PetTodo[]>(readTodos);
   const [copied, setCopied] = useState(false);
+  const [shot, setShot] = useState<string | null>(null);
+  const [shotBusy, setShotBusy] = useState(false);
+  const [selection, setSelection] = useState<{ text: string; title: string } | null>(null);
   const requestRef = useRef('');
+  const withImageRef = useRef(false);
   const happyTimer = useRef<number | null>(null);
   const lastActive = useRef(Date.now());
   const dragRef = useRef<{ sx: number; sy: number; wx: number; wy: number; moved: boolean } | null>(
@@ -118,6 +143,7 @@ export function PetWindow() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const bubbleBody = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     void window.bsub.getSettings().then((response) => {
@@ -138,6 +164,10 @@ export function PetWindow() {
   useEffect(() => {
     localStorage.setItem('pet-widget', widgetOpen ? '1' : '0');
   }, [widgetOpen]);
+
+  useEffect(() => {
+    localStorage.setItem('pet-web', webOn ? '1' : '0');
+  }, [webOn]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
@@ -210,7 +240,7 @@ export function PetWindow() {
       if (event.requestId !== requestRef.current) return;
       setBusy(false);
       setEmotion('idle');
-      setError(event.error);
+      setError(withImageRef.current ? visionHint(event.error) : event.error);
     });
     return () => {
       offDelta();
@@ -241,6 +271,11 @@ export function PetWindow() {
     if (emotion === 'sleeping') setEmotion('idle');
   };
 
+  const flash = (text: string) => {
+    setHint(text);
+    window.setTimeout(() => setHint(''), 2600);
+  };
+
   const toggleSpeak = () => {
     const next = !speak;
     setSpeak(next);
@@ -254,13 +289,16 @@ export function PetWindow() {
     if (happyTimer.current) window.clearTimeout(happyTimer.current);
     happyTimer.current = window.setTimeout(() => setEmotion('idle'), 1200);
     if (!open && Math.random() < 0.4) {
-      setHint(CLICK_PHRASES[Math.floor(Math.random() * CLICK_PHRASES.length)]);
-      window.setTimeout(() => setHint(''), 2600);
+      flash(CLICK_PHRASES[Math.floor(Math.random() * CLICK_PHRASES.length)]);
     }
     setOpen((value) => !value);
   };
 
-  const ask = async (text: string) => {
+  /**
+   * 即时问答：默认不抽整页正文（那是主窗口的总结流程），
+   * 只有明确附带的截图 / 选中文字才作为上下文。
+   */
+  const ask = async (text: string, context?: { selection?: string; image?: string }) => {
     const value = text.trim();
     if (!value || busy) return;
     wake();
@@ -269,27 +307,86 @@ export function PetWindow() {
     setAnswer('');
     setEmotion('thinking');
     setInput('');
-    setHistory((items) => [...items, { role: 'user', text: value }]);
+    const attachment = context?.image || shot;
+    withImageRef.current = Boolean(attachment);
+
+    const quoted = (context?.selection || selection?.text || '').trim().slice(0, 2000);
+    const content = quoted
+      ? `${value}\n\n我选中的内容：\n"""\n${quoted}\n"""`
+      : value;
+
+    setHistory((items) => [
+      ...items,
+      { role: 'user', text: quoted ? `${value}（含选中内容）` : value }
+    ]);
+    setSelection(null);
     const requestId = `pet-${Date.now()}`;
     requestRef.current = requestId;
     try {
       const page = await window.bsub.getPageInfo();
       const info = page.ok ? page.data : fallbackInfo();
-      const messages: ChatMessage[] = [{ role: 'user', content: value }];
+      const message: ChatMessage = {
+        role: 'user',
+        content,
+        ...(attachment ? { images: [attachment] } : {})
+      };
       const started = await window.bsub.chat({
         requestId,
         info,
         lines: [],
-        messages,
-        includePage: true,
-        web: false
+        messages: [message],
+        // 桌宠只处理即时问题：不把整页正文塞给模型。
+        includePage: false,
+        web: webOn
       });
       if (!started.ok) throw new Error(started.error);
     } catch (caught) {
       setBusy(false);
       setEmotion('idle');
-      setError((caught as Error).message);
+      const message = (caught as Error).message || '请求失败';
+      setError(withImageRef.current ? visionHint(message) : message);
+    } finally {
+      // 截图只在这一次提问里有效，避免追问时被重复带上。
+      if (attachment) setShot(null);
     }
+  };
+
+  const takeShot = async () => {
+    if (shotBusy || busy) return;
+    wake();
+    setShotBusy(true);
+    try {
+      const response = await window.bsub.capturePage();
+      if (!response.ok) {
+        flash(response.error || '截图失败');
+        return;
+      }
+      const dataUrl = response.data.dataUrl;
+      setShot(dataUrl);
+      setOpen(true);
+      // 截完直接问默认问题，少一次点击。
+      await ask(SHOT_PROMPT, { image: dataUrl });
+    } finally {
+      setShotBusy(false);
+    }
+  };
+
+  const askSelection = async (prompt: string) => {
+    if (busy) return;
+    wake();
+    const response = await window.bsub.readSelection();
+    if (!response.ok) {
+      flash(response.error || '读取选中内容失败');
+      return;
+    }
+    const text = response.data.selection.trim();
+    if (!text) {
+      flash('先在网页里选中一段文字');
+      return;
+    }
+    setSelection({ text, title: response.data.title });
+    setOpen(true);
+    await ask(prompt, { selection: text });
   };
 
   const stop = () => {
@@ -297,27 +394,14 @@ export function PetWindow() {
     void window.bsub.cancelChat(requestRef.current);
     setBusy(false);
     setEmotion('idle');
-    setHint('已停止');
-    window.setTimeout(() => setHint(''), 2000);
-  };
-
-  const glance = async () => {
-    const page = await window.bsub.getPageInfo();
-    if (!page.ok) {
-      setHint('现在没有可识别的页面');
-    } else {
-      const label = page.data.title || page.data.url || '当前页面';
-      setHint(`你在看：${label.slice(0, 40)}`);
-    }
-    window.setTimeout(() => setHint(''), 5000);
+    flash('已停止');
   };
 
   const togglePlay = async () => {
     const result = await window.bsub.toggleMedia();
     if (result.ok) {
       setPlaying(result.data.playing);
-      setHint(result.data.playing ? '继续播放' : '已暂停');
-      window.setTimeout(() => setHint(''), 2000);
+      flash(result.data.playing ? '继续播放' : '已暂停');
     }
   };
 
@@ -329,16 +413,14 @@ export function PetWindow() {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      setHint('复制失败');
-      window.setTimeout(() => setHint(''), 2000);
+      flash('复制失败');
     }
   };
 
   const toggleAlwaysOnTop = async () => {
     const next = await window.bsub.setPetAlwaysOnTop(!alwaysOnTop);
     setAlwaysOnTop(next !== false);
-    setHint(next !== false ? '已置顶' : '已取消置顶');
-    window.setTimeout(() => setHint(''), 2000);
+    flash(next !== false ? '已置顶' : '已取消置顶');
   };
 
   const startDrag = (event: React.MouseEvent) => {
@@ -411,18 +493,26 @@ export function PetWindow() {
           <button
             onClick={() => {
               setMenuOpen(false);
-              void window.bsub.focusMain();
+              void takeShot();
             }}
           >
-            打开主窗口
+            看屏幕（识图）
           </button>
           <button
             onClick={() => {
               setMenuOpen(false);
-              void ask(QUICK_ACTIONS[0].prompt);
+              void askSelection(SELECTION_ACTIONS[0].prompt);
             }}
           >
-            总结当前页面
+            问选中的内容
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              void window.bsub.focusMain();
+            }}
+          >
+            打开主窗口
           </button>
           <button
             onClick={() => {
@@ -460,7 +550,7 @@ export function PetWindow() {
       )}
       <div className="pet-grip" title="拖动移动桌宠" onMouseDown={startDrag} />
 
-      {hint && !open && <div className="pet-hint">{hint}</div>}
+      {hint && <div className="pet-hint">{hint}</div>}
 
       {widgetOpen && (
         <div className="pet-widget">
@@ -513,8 +603,15 @@ export function PetWindow() {
       {open && (
         <div className="pet-bubble">
           <div className="pet-bubble-head">
-            <span>拾字助手</span>
+            <span>即时助手</span>
             <div className="pet-bubble-tools">
+              <button
+                className={`mini-btn${webOn ? ' is-active' : ''}`}
+                title={webOn ? '关闭联网（本轮）' : '打开联网检索'}
+                onClick={() => setWebOn((value) => !value)}
+              >
+                联网
+              </button>
               <button
                 className={`mini-btn${speak ? ' is-active' : ''}`}
                 title={speak ? '关闭朗读' : '朗读回答'}
@@ -561,29 +658,60 @@ export function PetWindow() {
                   style={{ marginLeft: 6 }}
                   onClick={() => void window.bsub.focusMain()}
                 >
-                  去主窗口设置 AI
+                  打开设置
                 </button>
               </div>
             )}
             {!history.length && !busy && !error && (
-              <div className="pet-line is-assistant">点下面的快捷动作，或直接问我。</div>
+              <div className="pet-line is-assistant">
+                点「看屏幕」截图问我，或选中文字后点「解释选中」。要查资料先开「联网」。
+              </div>
             )}
           </div>
 
+          {(shot || selection) && (
+            <div className="pet-attach">
+              {shot && (
+                <div className="pet-shot">
+                  <img src={shot} alt="当前页面截图" />
+                  <button title="移除截图" onClick={() => setShot(null)}>
+                    ×
+                  </button>
+                </div>
+              )}
+              {selection && (
+                <div className="pet-selection" title={selection.text}>
+                  <span>
+                    选中：{selection.text.slice(0, 36)}
+                    {selection.text.length > 36 ? '…' : ''}
+                  </span>
+                  <button title="移除选中内容" onClick={() => setSelection(null)}>
+                    ×
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="pet-quick">
-            {QUICK_ACTIONS.map((action) => (
+            <button
+              className="mini-btn"
+              title="截取当前页面并提问（识图）"
+              disabled={busy || shotBusy}
+              onClick={() => void takeShot()}
+            >
+              {shotBusy ? '截图中…' : '看屏幕'}
+            </button>
+            {SELECTION_ACTIONS.map((action) => (
               <button
                 key={action.id}
                 className="mini-btn"
                 disabled={busy}
-                onClick={() => void ask(action.prompt)}
+                onClick={() => void askSelection(action.prompt)}
               >
                 {action.label}
               </button>
             ))}
-            <button className="mini-btn" onClick={() => void glance()}>
-              看看当前页面
-            </button>
             <button className="mini-btn" title="把回答复制到剪贴板" onClick={() => void copyAnswer()}>
               {copied ? '已复制' : '复制'}
             </button>
@@ -591,8 +719,9 @@ export function PetWindow() {
 
           <div className="pet-bubble-input">
             <input
+              ref={inputRef}
               value={input}
-              placeholder="输入问题，Enter 发送"
+              placeholder={webOn ? '问点什么（本轮会联网）' : '问点什么，Enter 发送'}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') void ask(input);

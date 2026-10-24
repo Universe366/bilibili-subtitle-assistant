@@ -141,6 +141,10 @@ export interface BsubApi {
   getPageDocument(): Promise<Result<PageDocument>>;
   resolveCollection(input: string): Promise<Result<CollectionResolveResult>>;
   getSubtitles(expectSignature?: string): Promise<Result<SubtitleBundle>>;
+  /** 当前页面选中的文字（桌宠「问选中」，不抽整页正文）。 */
+  readSelection(): Promise<Result<{ title: string; url: string; selection: string }>>;
+  /** 截当前标签页，返回 data URL（桌宠「看屏幕」/识图）。 */
+  capturePage(): Promise<Result<{ dataUrl: string }>>;
   triggerSubtitleMenu(): Promise<Result<boolean>>;
   getTrackBody(url: string): Promise<Result<TrackBody>>;
   getTime(): Promise<Result<{ currentTime: number; duration: number }>>;

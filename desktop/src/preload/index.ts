@@ -184,6 +184,12 @@ const api: BsubApi = {
     >,
   getSubtitles: (expectSignature?: string) =>
     ipcRenderer.invoke('page:subtitles', expectSignature) as Promise<Result<SubtitleBundle>>,
+  readSelection: () =>
+    ipcRenderer.invoke('page:selection') as Promise<
+      Result<{ title: string; url: string; selection: string }>
+    >,
+  capturePage: () =>
+    ipcRenderer.invoke('page:capture') as Promise<Result<{ dataUrl: string }>>,
   triggerSubtitleMenu: () =>
     ipcRenderer.invoke('page:trigger-subtitle') as Promise<Result<boolean>>,
   getTrackBody: (url: string) => ipcRenderer.invoke('page:track-body', url) as Promise<Result<TrackBody>>,

@@ -474,6 +474,29 @@ try {
     if (Math.abs(back.w - compact.w) > 2 || Math.abs(back.h - compact.h) > 2) {
       throw new Error(`收回尺寸异常：${back.w}x${back.h}`);
     }
+    // 即时问答依赖的两个通道：截图 + 选中文字
+    // 截图要求主窗口在前台（被完全遮挡时 Chromium 会返回空图）
+    await evaluate(ws, "window.bsub.focusMain().then(() => null)");
+    await evaluate(ws, "window.bsub.setActiveViewVisible(true).then(() => null)");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const shot = JSON.parse(
+      await evaluate(
+        pet,
+        '(async () => { const r = await window.bsub.capturePage(); return JSON.stringify({ ok: r.ok, prefix: r.ok ? String(r.data.dataUrl).slice(0, 24) : r.error }); })()'
+      )
+    );
+    if (!shot.ok || !shot.prefix.startsWith('data:image/png;base64,')) {
+      throw new Error(`截图通道异常：${shot.prefix}`);
+    }
+    const picked = JSON.parse(
+      await evaluate(
+        pet,
+        '(async () => { const r = await window.bsub.readSelection(); return JSON.stringify({ ok: r.ok, selection: r.ok ? r.data.selection : r.error }); })()'
+      )
+    );
+    if (!picked.ok || typeof picked.selection !== 'string') {
+      throw new Error(`选中通道异常：${picked.selection}`);
+    }
     pet.close();
 
     await run(
@@ -486,7 +509,7 @@ try {
       return JSON.stringify({ ok: true });
       `
     );
-    return `compact=${compact.w}x${compact.h} bubble=${bubble.w}x${bubble.h} pos=${position.x},${position.y}`;
+    return `compact=${compact.w}x${compact.h} bubble=${bubble.w}x${bubble.h} pos=${position.x},${position.y} shot=${shot.prefix.length}`;
   });
 
   ws.close();
