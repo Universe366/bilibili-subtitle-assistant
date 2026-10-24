@@ -103,6 +103,8 @@ const api: BsubApi = {
     }>,
   moveTab: (id: string, index: number) =>
     ipcRenderer.invoke('tab:move', id, index) as Promise<void>,
+  setPlaybackRate: (rate: number) =>
+    ipcRenderer.invoke('media:set-rate', rate) as Promise<{ ok: true; data: number }>,
   setActiveViewVisible: (visible: boolean) =>
     ipcRenderer.invoke('tab:set-visible', visible) as Promise<void>,
   pinTab: (id: string, pinned: boolean) =>

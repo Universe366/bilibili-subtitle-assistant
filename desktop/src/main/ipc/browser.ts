@@ -44,6 +44,9 @@ export function registerBrowserIpc(ctx: IpcContext): void {
     }
     return result;
   });
+  ipcMain.handle('media:set-rate', async (_event, rate: number) => {
+    return { ok: true as const, data: await ctx.tabs.setPlaybackRate(rate) };
+  });
   ipcMain.handle('tab:set-visible', (_event, visible: boolean) => {
     ctx.tabs.setActiveViewVisible(visible !== false);
   });

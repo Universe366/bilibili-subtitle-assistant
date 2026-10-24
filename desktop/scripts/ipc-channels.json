@@ -91,6 +91,7 @@
   "local:import",
   "mcp:call",
   "mcp:test",
+  "media:set-rate",
   "optimize:cancel",
   "optimize:start",
   "page:context",

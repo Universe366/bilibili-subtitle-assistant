@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Globe, Home, MoreHorizontal, RotateCw, Star, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Globe, Home, MoreHorizontal, RotateCw, Settings, Star, X } from 'lucide-react';
 import type { HistoryEntry, TabInfo } from '../../../shared/types';
 import type { HubSection } from './BrowserHub';
 
@@ -200,6 +200,10 @@ export function AddressBar({
         <Home size={15} />
       </button>
 
+      <button className="nav-btn" title="设置" onClick={onOpenSettings}>
+        <Settings size={15} />
+      </button>
+
       <div className="address-menu-wrap" ref={menuRef}>
         <button
           className={`nav-btn${menuOpen ? ' is-active' : ''}`}
@@ -220,7 +224,18 @@ export function AddressBar({
               重置缩放（{Math.round((tab?.zoom ?? 1) * 100)}%）
             </button>
             <button onClick={() => { setMenuOpen(false); onOpenStart(); }}>起始页</button>
-            <button onClick={() => { setMenuOpen(false); onOpenSettings(); }}>设置</button>
+            <div className="address-menu-sep" />
+            {[0.5, 1, 1.25, 1.5, 2, 3].map((rate) => (
+              <button
+                key={rate}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void window.bsub.setPlaybackRate(rate);
+                }}
+              >
+                倍速 {rate}×
+              </button>
+            ))}
           </div>
         )}
       </div>

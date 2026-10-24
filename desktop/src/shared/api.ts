@@ -90,6 +90,7 @@ export interface BsubApi {
   /** 打开链接：同一视频已打开时复用标签；start 为秒级播放位置。 */
   openUrl(url: string, start?: number): Promise<{ id: string; reused: boolean; ready: boolean }>;
   moveTab(id: string, index: number): void;
+  setPlaybackRate(rate: number): Promise<{ ok: true; data: number }>;
   setActiveViewVisible(visible: boolean): Promise<void>;
   pinTab(id: string, pinned: boolean): Promise<void>;
   closeTab(id: string): Promise<void>;

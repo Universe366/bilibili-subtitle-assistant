@@ -44,9 +44,6 @@ export function StartPage({
 
   return (
     <div className="start-page">
-      <button className="start-close" title="关闭" onClick={onClose}>
-        ×
-      </button>
       <div className="start-hero">
         <div className="start-clock">{now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>
         <div className="start-date">

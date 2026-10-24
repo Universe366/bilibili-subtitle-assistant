@@ -31,7 +31,8 @@ function installBsub() {
         { id: 2, url: 'https://example.com/post', title: '历史文章', visitedAt: 2 }
       ]
     })),
-    newTab: vi.fn()
+    newTab: vi.fn(),
+    setPlaybackRate: vi.fn(async () => ({ ok: true as const, data: 1.5 }))
   };
   Object.defineProperty(window, 'bsub', { configurable: true, value: api });
   return api;
@@ -104,9 +105,12 @@ describe('AddressBar', () => {
     fireEvent.click(screen.getByText(/阅读模式/));
     expect(p.onOpenReader).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTitle('菜单'));
-    fireEvent.click(screen.getByText('设置'));
+    fireEvent.click(screen.getByTitle('设置'));
     expect(p.onOpenSettings).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle('菜单'));
+    fireEvent.click(screen.getByText('倍速 1.5×'));
+    expect(window.bsub.setPlaybackRate).toHaveBeenCalledWith(1.5);
   });
 
   it('没有标签页时阅读模式与书签禁用', () => {

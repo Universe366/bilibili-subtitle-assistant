@@ -5308,3 +5308,27 @@ button:disabled {
 .app-shell.vertical-tabs .tab-strip {
   position: relative;
 }
+
+/* 垂直标签栏：宽度由内联样式控制，折叠时只留图标 */
+.app-shell.vertical-tabs .tab-strip {
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+.tab-strip.is-collapsed .tab-strip-list {
+  align-items: center;
+}
+
+.tab-strip.is-collapsed .tab {
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.tab-strip.is-collapsed .tab-close,
+.tab-strip.is-collapsed .tab-type {
+  display: none;
+}
+
+.tab-strip.is-collapsed .tab-vertical-head {
+  justify-content: center;
+}

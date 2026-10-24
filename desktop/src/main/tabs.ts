@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { FindResult, LayoutRect, TabInfo } from '../shared/types';
 import { normalizeUrl } from './url';
 import { SELECTION_TOOLBAR_SCRIPT } from './selectionToolbar';
+import { MEDIA_CONTROL_SCRIPT } from './mediaControl';
 import { loadSettings } from './settings';
 
 // 后台标签闲置多久后释放渲染进程。环境变量用于测试覆盖。
@@ -202,6 +203,9 @@ export class TabManager {
       await wc.debugger.sendCommand('Page.enable');
       await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
         source: bridgeSource()
+      });
+      await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+        source: MEDIA_CONTROL_SCRIPT
       });
       if (loadSettings().general.selectionToolbar !== false) {
         await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
@@ -721,6 +725,26 @@ export class TabManager {
   // 拖拽侧栏时暂时隐藏页面，避免鼠标进入 WebContentsView 后
   // 渲染层收不到 mousemove / mouseup。
   private activeViewVisible = true;
+  private playbackRate = 1;
+
+  /** 对当前页面应用播放倍速（页面里由注入脚本执行）。 */
+  async setPlaybackRate(rate: number): Promise<number> {
+    const clamped = Math.min(4, Math.max(0.25, Number(rate) || 1));
+    this.playbackRate = clamped;
+    const wc = this.activeRecord()?.view?.webContents;
+    if (wc) {
+      try {
+        await wc.executeJavaScript(`window.__shiziSetRate && window.__shiziSetRate(${clamped})`);
+      } catch {
+        // 页面还没加载好时忽略，加载完成后再应用
+      }
+    }
+    return clamped;
+  }
+
+  getPlaybackRate(): number {
+    return this.playbackRate;
+  }
 
   setActiveViewVisible(visible: boolean): void {
     this.activeViewVisible = visible;
