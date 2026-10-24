@@ -1,6 +1,6 @@
 # 仓库地图（给人看的）
 
-> 当前产品名：**拾字 / Shizi**。桌面端 0.37.2，插件 2.18.6。
+> 当前产品名：**拾字 / Shizi**。桌面端 0.38.9，插件 2.18.6。
 > 先看这一页，再决定去读哪份文档，不要从 5 万行历史记录开始。
 
 ## 顶层目录
@@ -75,4 +75,4 @@ shizi-extension/
 5. **改完跑**：`cd desktop && npm run typecheck && npm run lint && npm test && npm run smoke`；
    插件改完跑 `cd verify && node bundle.js && node panel-test.js`。
 6. **GitHub Releases 只保留 shizi 时代版本**；更早的 Release 已清理，tag 仍保留用于代码追溯。
-7. **发布 tag 用桌面版本 `v0.37.x`**，不要再用 `v2.x`；后者会让 GitHub 按 semver 把旧插件版本当成 Latest，自动更新会读错。发布后确认 `/releases/latest` 指向桌面版本。
+7. **发布 tag 用桌面版本 `v0.38.x`**，不要再用 `v2.x`；后者会让 GitHub 按 semver 把旧插件版本当成 Latest，自动更新会读错。发布后确认 `/releases/latest` 指向桌面版本。

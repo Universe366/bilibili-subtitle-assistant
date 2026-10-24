@@ -2,9 +2,9 @@
 
 > 更新时间：2026-10-24  
 > 适用版本：桌面 **0.38.9** / 插件 **2.18.6**  
-> 当前发布基线：`2d319cc`（0.38.9）  
+> 当前发布基线：`2d319cc`（0.38.9）；HEAD 为 `a109b8c`（其后的 2 个文档/清理提交）  
 > 最新 Release：`v0.38.9`  
-> 验收清单：[验收清单.md](验收清单.md)  
+> 验收清单：[验收清单.md](验收清单.md)（0.37.7 那一轮的记录，仅作历史参考）  
 > 工作区：clean
 
 这份文件回答三个问题：
@@ -21,7 +21,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 75 个文件 / 330 个用例（含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
+| 桌面单测 | 79 个文件 / 350 个用例（主进程与 shared 21 文件 / 81 用例，渲染层 58 文件 / 269 用例；含 IPC channel 契约、JSON 读取器，以及 Library/Settings/Summary/Chat/Subtitles/浏览器外壳的主要组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -60,7 +60,7 @@
 - `desktop/scripts/smoke.mjs` 从 3 项启动检查扩为 **11 条 E2E**：窗口/preload、标签页、设置读写持久化、字幕入库+列表+详情+检索、笔记、回收站删除/恢复、任务中心、AI 参数校验、历史与导出记录、诊断/权限/更新/桥状态只读通道、启动落盘（library.db/settings.json）；
 - 新增 **IPC channel 契约**：`scripts/ipc-channels.json`（157 条）+ `src/main/ipcChannels.test.ts`，校验主进程注册与清单一致、preload 的 invoke/send 都有处理、清单无重复；改 channel 后跑 `UPDATE_IPC_CHANNELS=1 npm test` 更新；
 - `ipc.ts` 按域拆分：**library / browser / page / settings / media / jobs / tools / records** 八个模块放进 `src/main/ipc/`，共享的 `failure`/`trackJob`/`IpcContext`/`withStartParam`/`abortControllers` 在 `shared.ts`；`ipc.ts` 2.8k → **43 行**，只剩注册入口；
-- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终与代码同步（现 157 条）；
+- 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终与代码同步（Phase 0 结束时 157 条，现 166 条）；
 - `library.ts` 按模块拆到 `library/`：schema / videos / db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 2683 → **102 行桶文件**；
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
@@ -94,8 +94,8 @@
 
 | 风险 | 说明 |
 |---|---|
-| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.25k / `LibraryPanel.tsx` 1.32k / `index.ts` 341 行（托盘/会话/下载/日志/开发探针已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts） |
-| 桌面 E2E 覆盖窄 | 6 条主流程 E2E（设置/库/笔记/回收站），React 组件仍无组件级测试 |
+| 巨型文件 | `ipc.ts` 43 行 / `library.ts` 102 行（入口/桶）/ `SettingsPanel.tsx` 1.30k / `LibraryPanel.tsx` 1.41k / `index.ts` 403 行（托盘/会话/下载/日志/开发探针已拆到 shell.ts、downloadsHook.ts、log.ts、devHooks.ts） |
+| 桌面 E2E 覆盖窄 | 11 条主流程 E2E（设置/库/笔记/回收站/任务/AI 校验/历史导出/启动通道）；渲染层已有 58 文件 / 269 用例组件测试，但 `index.ts` 的启动/托盘/会话恢复/下载钩子仍无专门回归测试 |
 | `any` | 已清零；外部响应统一用具体结构或 `shared/json.ts` 读取器 |
 | 双端重复 | 插件和桌面各有一套 AI/设置/导出实现 |
 | `PageInfo` B 站中心 | 新内容源仍要改多处 |
@@ -120,11 +120,11 @@
 
 ### 如果任务是“提升可维护性”
 
-`docs/QUALITY.md` 的 **Phase 0 已完成**：11 条桌面 E2E、157 条 IPC channel 清单与漂移测试、`ipc.ts` 全量按域拆分（入口 43 行）。
+`docs/QUALITY.md` 的 **Phase 0 已完成**：11 条桌面 E2E、166 条 IPC channel 清单与漂移测试、`ipc.ts` 全量按域拆分（入口 43 行）。
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
-1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 55 文件 / 226 用例；渲染层剩余工作已收口；
+1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，渲染层组件测试 58 文件 / 269 用例；渲染层剩余工作已收口；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
 4. `SettingsPanel` memo 评估：15 个 section 都接收整份 `draft`，只加 `React.memo` 不会减少重渲染；要收益必须先按 section 切分 `draft`（改动面大、风险中），暂缓。
@@ -145,7 +145,7 @@
 1. 更新桌面 `package.json` + `CHANGELOG.md` + README 产物名；
 2. 插件版本同步（如需）；
 3. `npm run release:notes` 检查两段说明；
-4. tag 用 **`v0.37.x`**，不要用 `v2.x`；
+4. tag 用 **`v0.38.x`**（桌面版本号），不要用 `v2.x`；
 5. push tag 后确认 `/releases/latest` 指向新版本；
 6. 不要在本地 `electron-builder --publish`。
 
@@ -188,9 +188,9 @@
 
 - [x] `git status` clean
 - [x] HEAD 与 `master` 一致
-- [x] 0.37.2 测试/冒烟通过
+- [x] 0.38.9 测试/冒烟通过
 - [x] 插件 520 项通过
-- [x] 最新 Release 指向 `v0.37.2`
+- [x] 最新 Release 指向 `v0.38.9`
 - [x] 工作区无遗留应用进程
 - [x] 临时测试目录已清理
 - [x] 文档索引/仓库地图已更新
