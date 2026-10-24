@@ -20,6 +20,7 @@ import type {
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
 import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
+import { LibraryCollectionRow } from './LibraryCollectionRow';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryFilters } from './LibraryFilters';
 import { LibraryNoteTab } from './LibraryNoteTab';
@@ -901,45 +902,14 @@ export function LibraryPanel() {
         />
 
         {detail && (
-          <div className="tag-row collection-row">
-            {detail.video.collections.map((name) => (
-              <span key={name} className="tag-chip collection-chip">
-                {name}
-                <button title="移出合集" onClick={() => void removeFromCollection(name)}>
-                  ×
-                </button>
-              </span>
-            ))}
-            <select
-              className="mini-select collection-add-select"
-              value=""
-              onChange={(event) => {
-                const name = event.target.value;
-                if (name) void addToCollection(name);
-              }}
-            >
-              <option value="">加入合集…</option>
-              {allCollections
-                .filter((item) => !detail.video.collections.includes(item.name))
-                .map((item) => (
-                  <option key={item.id} value={item.name}>
-                    {item.name}（{item.count}）
-                  </option>
-                ))}
-            </select>
-            <input
-              className="tag-input"
-              value={collectionDraft}
-              placeholder="新建合集"
-              onChange={(event) => setCollectionDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void addToCollection(collectionDraft);
-                }
-              }}
-            />
-          </div>
+          <LibraryCollectionRow
+            collections={detail.video.collections}
+            allCollections={allCollections}
+            draft={collectionDraft}
+            onDraft={setCollectionDraft}
+            onAdd={(name) => void addToCollection(name)}
+            onRemove={(name) => void removeFromCollection(name)}
+          />
         )}
 
         <LibraryTabBar detail={detail} active={detailTab} onChange={setDetailTab} />
