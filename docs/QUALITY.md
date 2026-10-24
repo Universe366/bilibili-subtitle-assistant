@@ -35,7 +35,7 @@
 
 | 文件 | 行数 | 建议 |
 |---|---:|---|
-| `src/main/library.ts` | ~2.3k | 拆 schema、videos、summaries、trash、search（db / jobs / downloads / exports 已拆） |
+| `src/main/library.ts` | ~0.6k | 只剩 schema/初始化/入库/列表/详情；其余 12 个域已在 `library/*.ts` |
 | `src/renderer/.../SettingsPanel.tsx` | ~3.0k | 拆 AI / ASR / 检索 / 数据 / 插件桥 section |
 | `src/renderer/.../LibraryPanel.tsx` | ~2.3k | 拆列表、详情、标签/合集、批量操作 |
 

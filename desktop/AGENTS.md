@@ -69,7 +69,7 @@ npm run pack                     # build + 同步插件 + NSIS，不发布
 ## 6. 当前大型文件（改前先想清楚）
 
 - `src/main/ipc/*.ts`（~2.9k，按域拆分；`ipc.ts` 只剩 43 行注册入口）
-- `src/main/library.ts`（~2.3k；db/jobs/downloads/exports 已在 `src/main/library/`，仍是兼容桶文件）
+- `src/main/library.ts`（~0.6k；其余域在 `src/main/library/`，仍是兼容桶文件）
 - `src/main/index.ts`（~2.4k）
 - `src/renderer/.../SettingsPanel.tsx`（~3.1k）
 - `src/renderer/.../LibraryPanel.tsx`（~2.3k）
