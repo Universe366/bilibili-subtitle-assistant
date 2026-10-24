@@ -163,9 +163,18 @@ try {
 
   // 1. 窗口 + preload
   await step('窗口与 preload', async () => {
-    const title = await evaluate(ws, 'document.title');
+    // 连续启动时 CDP 可能先抓到正在销毁的旧页面，等壳真正加载完再断言。
+    const deadline = Date.now() + 15000;
+    let title = '';
+    let api = '';
+    while (Date.now() < deadline) {
+      title = String(await evaluate(ws, 'document.title'));
+      api = String(await evaluate(ws, 'typeof window.bsub'));
+      const ready = String(await evaluate(ws, 'document.readyState'));
+      if (title === '拾字' && api === 'object' && ready === 'complete') break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
     if (title !== '拾字') throw new Error(`窗口标题异常：${title}`);
-    const api = await evaluate(ws, 'typeof window.bsub');
     if (api !== 'object') throw new Error('preload API 未注入');
     return `title=${title}`;
   });
