@@ -22,6 +22,8 @@ import { LINE_PAGE, metaLine, safeFilename } from '../lib/libraryView';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LibraryDetailHeader } from './LibraryDetailHeader';
 import { LibraryFilters } from './LibraryFilters';
+import { LibrarySubtitlesTab } from './LibrarySubtitlesTab';
+import { LibraryTabBar } from './LibraryTabBar';
 import { LibraryVideoRow } from './LibraryVideoRow';
 import { Markdown } from './Markdown';
 import { PodcastImport } from './PodcastImport';
@@ -938,27 +940,8 @@ export function LibraryPanel() {
           </div>
         )}
 
-        <div className="lib-tabs">
-          <button
-            className={`mini-btn${detailTab === 'subtitles' ? ' is-active' : ''}`}
-            onClick={() => setDetailTab('subtitles')}
-            disabled={!detail?.bundle}
-          >
-            字幕 {detail?.bundle ? detail.bundle.lines.length.toLocaleString('zh-CN') : ''}
-          </button>
-          <button
-            className={`mini-btn${detailTab === 'summary' ? ' is-active' : ''}`}
-            onClick={() => setDetailTab('summary')}
-          >
-            总结{detail?.summary ? '' : ' —'}
-          </button>
-          <button
-            className={`mini-btn${detailTab === 'note' ? ' is-active' : ''}`}
-            onClick={() => setDetailTab('note')}
-          >
-            笔记{detail?.note ? ' •' : ''}
-          </button>
-        </div>
+        <LibraryTabBar detail={detail} active={detailTab} onChange={setDetailTab} />
+
 
         {error && <div className="status-line error">{error}</div>}
 
@@ -969,37 +952,16 @@ export function LibraryPanel() {
           </div>
         )}
 
-        {detailTab === 'subtitles' && detail?.bundle && (
-          <div className="lib-lines">
-            {detail.bundle.lines.slice(0, lineLimit).map((line, index) => (
-              <button
-                key={`${line.start}-${index}`}
-                className="lib-line"
-                title={`在网页跳到 ${formatDuration(line.start)}`}
-                onClick={() => openInBrowser(detail.video, line.start)}
-              >
-                <span className="lib-line-time">{formatDuration(line.start)}</span>
-                <span className="lib-line-text">{line.text}</span>
-              </button>
-            ))}
-            {detail.bundle.lines.length > lineLimit && (
-              <button
-                className="mini-btn lib-more"
-                onClick={() => setLineLimit((value) => value + LINE_PAGE)}
-              >
-                加载更多（还有{' '}
-                {(detail.bundle.lines.length - lineLimit).toLocaleString('zh-CN')} 行）
-              </button>
-            )}
-          </div>
+        {detailTab === 'subtitles' && (
+          <LibrarySubtitlesTab
+            bundle={detail?.bundle ?? null}
+            hasDetail={Boolean(detail)}
+            lineLimit={lineLimit}
+            onLoadMore={() => setLineLimit((value) => value + LINE_PAGE)}
+            onSeek={(seconds) => detail && openInBrowser(detail.video, seconds)}
+          />
         )}
 
-        {detailTab === 'subtitles' && detail && !detail.bundle && (
-          <div className="panel-empty">
-            这条记录只有总结，没有入库字幕
-            <div className="panel-hint">打开视频后，在「字幕」面板点「入库」即可离线阅读。</div>
-          </div>
-        )}
 
         {detailTab === 'summary' && detail?.summary && (
           <div className="lib-summary">
