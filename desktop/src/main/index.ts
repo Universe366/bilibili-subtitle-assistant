@@ -42,6 +42,7 @@ import { backupData, restoreData } from './backup';
 import { buildExport } from './exporters';
 import { loadSettings, migrateSettingsSecrets, saveSettings, settingsSnapshot } from './settings';
 import { installLogger } from './logger';
+import { fatal, writeLog } from './log';
 import { installPermissionGate } from './permissions';
 import { installCsp } from './csp';
 import { startBridge, stopBridge } from './bridge';
@@ -57,22 +58,6 @@ const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
 const START_URL = process.env.BSUB_START_URL || 'https://www.bilibili.com/';
 
-function writeLog(file: string, message: string): void {
-  try {
-    const dir = app.getPath('userData');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, file), `${new Date().toISOString()} ${message}\n`, 'utf8');
-  } catch {
-    // ignore
-  }
-}
-
-function fatal(tag: string, error: unknown): void {
-  writeLog('fatal.log', `${tag}: ${(error as Error)?.stack || String(error)}`);
-}
-
-process.on('uncaughtException', (error) => fatal('uncaughtException', error));
-process.on('unhandledRejection', (reason) => fatal('unhandledRejection', reason));
 
 // 自定义数据目录必须早于任何 userData 读写；环境变量仅用于开发期覆盖。
 let migrationFallback: string | null = null;
