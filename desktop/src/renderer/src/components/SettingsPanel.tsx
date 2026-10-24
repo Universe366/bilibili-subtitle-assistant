@@ -3,6 +3,7 @@ import type { DiagnosticsInfo } from '../../../shared/types';
 import { ModelChips, SettingsSection } from './settings/SettingsSection';
 import { BridgeSection } from './settings/BridgeSection';
 import { DataBackupSection } from './settings/DataBackupSection';
+import { CorrectionSection } from './settings/CorrectionSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { PromptSection } from './settings/PromptSection';
 import { GeneralSection } from './settings/GeneralSection';
@@ -12,14 +13,12 @@ import { SitePermissionsSection } from './settings/SitePermissionsSection';
 import { SkillsSection } from './settings/SkillsSection';
 import { UpdateSection } from './settings/UpdateSection';
 import {
-  Download,
   Loader2,
   Plus,
   RefreshCw,
   Save,
   Search,
   Trash2,
-  Upload,
   Wifi
 } from 'lucide-react';
 import type {
@@ -1976,178 +1975,28 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="字幕校对与术语表" defaultOpen={false}>
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.correction.enabled}
-            onChange={(event) => updateCorrection({ enabled: event.target.checked })}
-          />
-          读取字幕 / 入库时应用规则
-        </label>
+      <CorrectionSection
+        value={draft.correction}
+        testText={correctionTest}
+        preview={correctionPreview}
+        testing={correctionTesting}
+        onToggle={(enabled) => updateCorrection({ enabled })}
+        onAddGroup={addGroup}
+        onImportGroups={() => void importRuleGroups()}
+        onUpdateGroup={(id, patch) => updateGroup(id, patch)}
+        onExportGroup={(group) => void exportRuleGroup(group)}
+        onRemoveGroup={removeGroup}
+        onAddRule={addRule}
+        onUpdateRule={(groupId, ruleId, patch) => updateRule(groupId, ruleId, patch)}
+        onRemoveRule={(groupId, ruleId) => removeRule(groupId, ruleId)}
+        onToggleGlossary={(enabled) => updateGlossary({ enabled })}
+        onAddTerm={addTerm}
+        onUpdateTerm={(id, patch) => updateTerm(id, patch)}
+        onRemoveTerm={removeTerm}
+        onTestText={setCorrectionTest}
+        onPreview={() => void previewCorrection()}
+      />
 
-        <div className="settings-inline">
-          <span className="settings-label" style={{ flex: 1 }}>
-            规则组
-          </span>
-          <button className="mini-btn" onClick={addGroup}>
-            <Plus size={12} /> 规则组
-          </button>
-          <button className="mini-btn" onClick={() => void importRuleGroups()}>
-            <Upload size={12} /> 导入
-          </button>
-        </div>
-
-        {draft.correction.groups.map((group) => (
-          <div key={group.id} className="correction-group">
-            <div className="settings-inline">
-              <input
-                className="settings-input"
-                value={group.name}
-                onChange={(event) => updateGroup(group.id, { name: event.target.value })}
-              />
-              <label className="settings-check">
-                <input
-                  type="checkbox"
-                  checked={group.enabled}
-                  onChange={(event) => updateGroup(group.id, { enabled: event.target.checked })}
-                />
-                启用
-              </label>
-              <button
-                className="mini-btn"
-                title="导出规则组"
-                onClick={() => void exportRuleGroup(group)}
-              >
-                <Download size={12} />
-              </button>
-              <button
-                className="mini-btn"
-                title="删除规则组"
-                onClick={() => removeGroup(group.id)}
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-
-            {group.rules.map((rule) => (
-              <div key={rule.id} className="correction-rule">
-                <input
-                  className="settings-input"
-                  placeholder="匹配内容"
-                  value={rule.pattern}
-                  spellCheck={false}
-                  onChange={(event) =>
-                    updateRule(group.id, rule.id, { pattern: event.target.value })
-                  }
-                />
-                <input
-                  className="settings-input"
-                  placeholder="替换为"
-                  value={rule.replacement}
-                  spellCheck={false}
-                  onChange={(event) =>
-                    updateRule(group.id, rule.id, { replacement: event.target.value })
-                  }
-                />
-                <div className="settings-inline">
-                  <label className="settings-check">
-                    <input
-                      type="checkbox"
-                      checked={rule.regex}
-                      onChange={(event) =>
-                        updateRule(group.id, rule.id, { regex: event.target.checked })
-                      }
-                    />
-                    正则
-                  </label>
-                  <label className="settings-check">
-                    <input
-                      type="checkbox"
-                      checked={rule.caseSensitive}
-                      onChange={(event) =>
-                        updateRule(group.id, rule.id, { caseSensitive: event.target.checked })
-                      }
-                    />
-                    区分大小写
-                  </label>
-                  <button
-                    className="mini-btn"
-                    title="删除规则"
-                    onClick={() => removeRule(group.id, rule.id)}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <button className="mini-btn" onClick={() => addRule(group.id)}>
-              <Plus size={12} /> 规则
-            </button>
-          </div>
-        ))}
-
-        <div className="settings-label">术语表</div>
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.correction.glossary.enabled}
-            onChange={(event) => updateGlossary({ enabled: event.target.checked })}
-          />
-          启用术语替换，并注入总结提示词
-        </label>
-
-        {draft.correction.glossary.terms.map((term) => (
-          <div key={term.id} className="correction-term">
-            <div className="settings-inline">
-              <input
-                className="settings-input"
-                placeholder="原词"
-                value={term.from}
-                spellCheck={false}
-                onChange={(event) => updateTerm(term.id, { from: event.target.value })}
-              />
-              <span className="settings-arrow">→</span>
-              <input
-                className="settings-input"
-                placeholder="统一写法"
-                value={term.to}
-                spellCheck={false}
-                onChange={(event) => updateTerm(term.id, { to: event.target.value })}
-              />
-              <button className="mini-btn" title="删除术语" onClick={() => removeTerm(term.id)}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-            <input
-              className="settings-input"
-              placeholder="备注（可选）"
-              value={term.note}
-              onChange={(event) => updateTerm(term.id, { note: event.target.value })}
-            />
-          </div>
-        ))}
-
-        <button className="mini-btn" onClick={addTerm}>
-          <Plus size={12} /> 术语
-        </button>
-
-        <div className="settings-label">预览</div>
-        <input
-          className="settings-input"
-          value={correctionTest}
-          spellCheck={false}
-          onChange={(event) => setCorrectionTest(event.target.value)}
-        />
-        <button className="mini-btn" disabled={correctionTesting} onClick={() => void previewCorrection()}>
-          {correctionTesting ? <Loader2 size={12} className="spin" /> : <Search size={12} />} 预览结果
-        </button>
-        {correctionPreview && <pre className="correction-preview">{correctionPreview}</pre>}
-        <div className="settings-hint">
-          规则按组顺序执行，术语替换在规则之后；非法正则自动跳过。
-        </div>
-      </SettingsSection>
 
       <BridgeSection
         value={draft.bridge}
