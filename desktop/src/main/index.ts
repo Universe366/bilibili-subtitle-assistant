@@ -26,7 +26,6 @@ import { loadSession } from './session';
 import { createSessionPersister, createTray as createTrayShell } from './shell';
 import { APP_NAME } from '../shared/brand';
 import { installDownloadHook } from './downloadsHook';
-import { runDevHooks } from './devHooks';
 
 const CHROME = process.versions.chrome;
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME} Safari/537.36 Edg/${CHROME}`;
@@ -227,7 +226,12 @@ function createWindow(): void {
       void tabManager?.create(START_URL);
     }
 
-    if (mainWindow && tabManager) runDevHooks(mainWindow, tabManager);
+    // 开发探针不进生产包：按需动态加载，只有未打包或显式开启时才拉取。
+    if (mainWindow && tabManager && (!app.isPackaged || process.env.BSUB_ENABLE_DEV_HOOKS === '1')) {
+      const devWindow = mainWindow;
+      const devTabs = tabManager;
+      void import('./devHooks').then(({ runDevHooks }) => runDevHooks(devWindow, devTabs));
+    }
   });
 
   if (!app.isPackaged) {

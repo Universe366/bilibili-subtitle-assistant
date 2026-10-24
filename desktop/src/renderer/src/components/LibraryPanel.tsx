@@ -88,6 +88,9 @@ export function LibraryPanel() {
   const [resolveNotice, setResolveNotice] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // 列表窗口化：库最多展示 500 条，一次全渲染会拖慢滚动，先渲染 80 条再按需追加。
+  const [renderCount, setRenderCount] = useState(80);
+  const listRef = useRef<HTMLDivElement>(null);
   const [bulkKind, setBulkKind] = useState<'tag' | 'collection'>('tag');
   const [bulkName, setBulkName] = useState('');
   const [bulkInputOpen, setBulkInputOpen] = useState(false);
@@ -877,6 +880,10 @@ export function LibraryPanel() {
     }
   };
 
+  useEffect(() => {
+    setRenderCount(80);
+  }, [list, query, tagFilter, collectionFilter, sort]);
+
   const stats = list?.stats;
   const activeVideo = detail?.video ?? list?.videos.find((video) => video.id === selectedId) ?? null;
   const visibleVideos = list
@@ -1097,8 +1104,18 @@ export function LibraryPanel() {
       )}
 
       {!result && list && (
-        <div className="lib-videos">
-          {visibleVideos.map((video) => (
+        <div
+          className="lib-videos"
+          ref={listRef}
+          onScroll={() => {
+            const node = listRef.current;
+            if (!node) return;
+            if (node.scrollTop + node.clientHeight >= node.scrollHeight - 160) {
+              setRenderCount((count) => Math.min(visibleVideos.length, count + 80));
+            }
+          }}
+        >
+          {visibleVideos.slice(0, renderCount).map((video) => (
             <LibraryVideoRow
               key={video.id}
               video={video}
@@ -1109,6 +1126,12 @@ export function LibraryPanel() {
               onDelete={(item) => setPendingDelete(item)}
             />
           ))}
+
+          {visibleVideos.length > renderCount && (
+            <div className="panel-hint">
+              已显示 {renderCount} / {visibleVideos.length} 条，滚动到底部继续加载
+            </div>
+          )}
 
           {!list.videos.length && (
             <LibraryEmptyState
