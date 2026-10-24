@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticsInfo } from '../../../shared/types';
 import { Markdown } from './Markdown';
 import { ModelChips, SettingsSection } from './settings/SettingsSection';
+import { BridgeSection } from './settings/BridgeSection';
 import { DiagnosticsSection } from './settings/DiagnosticsSection';
 import { ExportDefaultsSection } from './settings/ExportDefaultsSection';
 import { SitePermissionsSection } from './settings/SitePermissionsSection';
@@ -722,6 +723,23 @@ export function SettingsPanel() {
       setMessage(`已跳过 v${updateState.version}，下次自动检查不再提示`);
     } else {
       setError(response.error);
+    }
+  };
+
+  const installExtension = async () => {
+    setInstallingExtension(true);
+    setError('');
+    try {
+      const response = await window.bsub.installExtension();
+      if (response.ok) {
+        setMessage(
+          `插件目录：${response.data.path}${response.data.browser ? ` · ${response.data.browser}` : ''}`
+        );
+      } else {
+        setError(response.error);
+      }
+    } finally {
+      setInstallingExtension(false);
     }
   };
 
@@ -2332,83 +2350,14 @@ export function SettingsPanel() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="插件桥（外部浏览器推送）" defaultOpen={false}>
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={draft.bridge.enabled}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                bridge: { ...draft.bridge, enabled: event.target.checked }
-              })
-            }
-          />
-          启用本机接收
-        </label>
-        <div className="settings-inline">
-          <button
-            className="mini-btn primary"
-            disabled={installingExtension}
-            onClick={async () => {
-              setInstallingExtension(true);
-              setError('');
-              try {
-                const response = await window.bsub.installExtension();
-                if (response.ok) {
-                  setMessage(
-                    `插件目录：${response.data.path}${response.data.browser ? ` · ${response.data.browser}` : ''}`
-                  );
-                } else {
-                  setError(response.error);
-                }
-              } finally {
-                setInstallingExtension(false);
-              }
-            }}
-          >
-            {installingExtension ? <Loader2 size={12} className="spin" /> : '安装浏览器插件'}
-          </button>
-          <span className="settings-hint">准备扩展目录并打开浏览器扩展页</span>
-        </div>
-        <div className="settings-hint">
-          扩展会自动发现本机桌面端，正常情况下无需填写下面的端口和 Token。
-        </div>
+      <BridgeSection
+        value={draft.bridge}
+        status={bridge}
+        installing={installingExtension}
+        onChange={(next) => setDraft({ ...draft, bridge: next })}
+        onInstall={installExtension}
+      />
 
-        <div className="settings-label">端口</div>
-        <input
-          className="settings-input"
-          type="number"
-          value={draft.bridge.port}
-          onChange={(event) =>
-            setDraft({
-              ...draft,
-              bridge: { ...draft.bridge, port: Number(event.target.value) || 47821 }
-            })
-          }
-        />
-
-        <div className="settings-label">Token</div>
-        <div className="settings-token">
-          <code title={draft.bridge.token}>{draft.bridge.token || '保存后自动生成'}</code>
-          <button
-            className="mini-btn"
-            disabled={!draft.bridge.token}
-            onClick={() => void window.bsub.writeClipboard(draft.bridge.token)}
-          >
-            复制
-          </button>
-        </div>
-        <div className="settings-hint">
-          {bridge?.running
-            ? `运行中 · 127.0.0.1:${bridge.port}`
-            : bridge?.error
-              ? `未启动：${bridge.error}`
-              : '未启动'}
-          {' · '}
-          POST /v1/ingest
-        </div>
-      </SettingsSection>
 
       <ExportDefaultsSection
         value={draft.export}
