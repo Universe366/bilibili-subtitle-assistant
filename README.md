@@ -29,6 +29,18 @@
 
 ---
 
+## 仓库结构
+
+| 目录 | 内容 |
+|---|---|
+| `shizi-extension/` | Chrome / Edge MV3 插件：内容脚本、侧边栏、后台检索、转录 |
+| `desktop/` | Windows 桌面端（Electron + React + SQLite），含 TS 源码、脚本与文档 |
+| `verify/` | 插件测试套件（node + 真实浏览器），不属于扩展运行时 |
+| `docs/` | 维护文档：仓库地图、质量基线、发布与签名 |
+| `HANDOFF.md` / `AGENTS.md` | 当前状态与接手约束，**改代码前先读** |
+
+构建产物（`desktop/release`、`desktop/out`、`resources/extension`）不入库，用 `npm run pack` 重新生成。
+
 ## 界面预览
 
 <table>
@@ -159,9 +171,11 @@ npm run test:browser:smoke  # 10 项真实扩展冒烟（内嵌面板 / 评论�
 ```bash
 cd desktop
 npm install
-npm run typecheck
-npm run dev
-npm run dist
+unset ELECTRON_RUN_AS_NODE     # Windows 本机若设置过必须清掉
+npm run check                  # typecheck + lint + 单测
+npm run verify                 # check + 真实 Electron 冒烟（E2E）
+npm run dev                    # 开发模式
+npm run pack                   # 打包 NSIS 安装包（不发布）
 ```
 
 详见 [`desktop/README.md`](desktop/README.md)。
@@ -174,6 +188,7 @@ npm run dist
 | [`HANDOFF.md`](HANDOFF.md) | 当前状态、已知风险、接手任务菜单 |
 | [`docs/REPO-MAP.md`](docs/REPO-MAP.md) | **先看这个**：目录结构、文档选择、维护规则 |
 | [`docs/QUALITY.md`](docs/QUALITY.md) | 质量基线、技术债与重构顺序 |
+| [`验收清单.md`](验收清单.md) | 发版后按功能逐条验收的清单模板 |
 | [`shizi-extension/README.md`](shizi-extension/README.md) | 用户文档：安装、配置、功能、故障排查 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 怎么跑测试、怎么提 PR |
 | [`desktop/README.md`](desktop/README.md) | 桌面端安装、开发、打包、数据与卸载 |

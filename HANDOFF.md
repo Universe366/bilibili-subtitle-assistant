@@ -64,6 +64,13 @@
 - `library.ts` 按模块拆到 `library/`：schema / videos / db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 2683 → **102 行桶文件**；
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
 
+### 仓库清理（0.38.9 之后）
+
+- 删除已无引用的 `settings/GeneralSection.tsx`（设置改由 5 个分组组件直接渲染），对应测试改为 `SettingsGroups.test.tsx`。
+- 移除废弃样式：独立设置窗口、图片桌宠相关 CSS。
+- `.gitignore` 补充 `desktop/release`、`desktop/out`、`desktop/resources/extension`、`artifacts/`。
+- 工作区构建产物统一放到 `artifacts/`；`desktop/release`（3.1GB）与 `out` 已删除，需要时用 `npm run pack` 重建。
+
 ### 0.37.2 之后的界面调整（未发版）
 - 地址栏：输入历史建议（↑/↓ 选择）、搜索引擎可配（B 站/必应/Google/自定义模板）。
 - 新增 Ctrl+Shift+P 命令面板（跳转面板、打开历史/标签页、阅读模式、新建/恢复标签、折叠与左右切换侧栏）。

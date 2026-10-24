@@ -43,3 +43,9 @@ shizi-extension-v*.zip
 
 # Edge 商店提交包（可重新生成）
 edge-*.zip
+
+# 桌面端构建/打包产物
+/desktop/release/
+/desktop/out/
+/desktop/resources/extension/
+/artifacts/

@@ -4997,22 +4997,6 @@ button:disabled {
   font-size: 13px;
 }
 
-/* ---------- 独立设置窗口 ---------- */
-.settings-window {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  padding: 16px 20px 0;
-  box-sizing: border-box;
-}
-
-.settings-window .settings-panel {
-  width: min(920px, 100%);
-  margin: 0 auto;
-  flex: 1;
-  min-height: 0;
-}
 
 /* ---------- 起始页 / 设置页 ---------- */
 .start-page,
@@ -5716,61 +5700,6 @@ button:disabled {
   filter: saturate(0.7);
 }
 
-/* ---------- DeepSeek 大肥鱼形象 ---------- */
-.pet-body {
-  width: 150px;
-  height: 150px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-}
-
-.pet-body:hover {
-  transform: translateY(-2px) scale(1.02);
-}
-
-.pet-fish {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.24));
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.emotion-thinking .pet-fish {
-  animation: pet-fish-think 1.2s ease-in-out infinite;
-}
-
-@keyframes pet-fish-think {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50% { transform: translateY(-6px) rotate(2deg); }
-}
-
-.emotion-speaking .pet-fish {
-  animation: pet-fish-talk 0.4s ease-in-out infinite;
-}
-
-@keyframes pet-fish-talk {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.04); }
-}
-
-.emotion-happy .pet-fish {
-  animation: pet-fish-happy 0.5s ease-in-out 2;
-}
-
-@keyframes pet-fish-happy {
-  0%, 100% { transform: translateY(0) rotate(0); }
-  50% { transform: translateY(-10px) rotate(6deg); }
-}
-
-.emotion-sleeping .pet-fish {
-  filter: grayscale(0.6) brightness(0.9) drop-shadow(0 6px 14px rgba(0, 0, 0, 0.2));
-  transform: rotate(8deg) scale(0.95);
-}
 
 .pet-zzz {
   top: 8px;
@@ -5778,7 +5707,7 @@ button:disabled {
   font-size: 12px;
 }
 
-/* 恢复圆润桌宠本体（不再使用图片） */
+/* 圆润桌宠本体 */
 .pet-body {
   width: 104px;
   height: 96px;
@@ -5786,10 +5715,6 @@ button:disabled {
   border: 2px solid rgba(0, 0, 0, 0.08);
   background: linear-gradient(165deg, #ffd3e2, #ff9dc0);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-.pet-fish {
-  display: none;
 }
 
 .pet-music {
