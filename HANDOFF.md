@@ -20,7 +20,7 @@
 |---|---|
 | 桌面 `typecheck` | 通过 |
 | 桌面 `lint` | **0 error / 0 warning** |
-| 桌面单测 | 54 个文件 / 221 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings 组件测试） |
+| 桌面单测 | 55 个文件 / 226 个用例（含 IPC channel 契约、JSON 读取器、Library/Settings/VerifyCard 组件测试） |
 | 桌面冒烟 | `SMOKE OK ...` + `E2E OK 11/11`（新增诊断/权限/更新/桥状态只读通道） |
 | 插件 `panel-test` | 520 项，0 失败 |
 | 桌面 CI | `master`/PR 通过 |
@@ -62,6 +62,9 @@
 - 每个域单独提交，拆分前后都跑 `typecheck`、`lint`（88 warning 不变）、18 文件 70 用例、E2E，channel 清单始终 155 条；
 - `library.ts` 按模块拆到 `library/`：schema / videos / db / core / jobs / downloads / exports / history / search / tags / trash / collections / summaries / notes；`library.ts` 2683 → **102 行桶文件**；
 - 收敛 JSON 边界的 `any`：全部 88 处改为具体响应结构（OpenAI/Anthropic、B 站 view/字幕/音轨、搜索/MCP/ASR/评论/YouTube…）或 `shared/json.ts` 读取器，lint 88 → **0 warning**；`npm run lint` 阈值收紧为 `--max-warnings 0`。
+
+### 0.37.2 之后的界面调整（未发版）
+- 桌面端的「本次联网核对」改为**总是逐条展示证据**：语义判定不可用时不再整块隐藏，而是标注「未判定」并提示「证据只按词面与域名粗标」，与插件端行为一致（，补 5 条组件测试）。
 
 ### 0.37.0 / 0.37.1
 - 插件界面品牌统一为「拾字」；
@@ -107,7 +110,7 @@
 
 下一步（一次只做一个模块，每步跑 `npm run verify` + channel diff）：
 
-1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 54 文件 / 221 用例；渲染层剩余工作已收口；
+1. UI 层：`LibraryPanel` / `SettingsPanel` 的 section 已拆完，组件测试 55 文件 / 226 用例；渲染层剩余工作已收口；
 2. 保持 `any` 为零：新增外部接口时先写响应结构或复用 `shared/json.ts`；
 3. `SettingsPanel` / `LibraryPanel` 已完成 section 化（渲染层拆分收口）；
 4. `index.ts` 评估结论：`createWindow()` 约 2.3k 行、直接操作模块级 `mainWindow`，在补出「启动 / 托盘 / 会话恢复 / 下载」回归测试前不建议拆；下一步顺序建议 tray → 会话持久化 → 下载钩子 → 窗口装配。

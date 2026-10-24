@@ -9,6 +9,7 @@ import type {
   VerificationSummary
 } from '../../../shared/types';
 import { Markdown } from './Markdown';
+import { VerifyCard } from './VerifyCard';
 import { ExportMenu } from './ExportMenu';
 import { pickTrack, isVideoKey, videoKeyOf } from '../lib/video';
 import { getAsrResult } from '../lib/asrStore';
@@ -474,76 +475,7 @@ export function SummaryPanel({
         </div>
       )}
 
-      {!streaming && verification && (
-        <details className="verify-card">
-          <summary className="verify-head">
-            <span>本次联网核对</span>
-            <span className="verify-stats">
-              {verification.attempted} 项 · {verification.references.length} 条证据
-              {verification.judged ? ` · 丢弃 ${verification.dropped}` : ' · 未判定'}
-            </span>
-          </summary>
-          {verification.error && (
-            <div className="verify-error">核对失败：{verification.error}</div>
-          )}
-          {verification.supplements.length > 0 && (
-            <div className="verify-supplements">
-              {verification.supplements.map((item, index) => (
-                <div key={`${index}-${item.slice(0, 8)}`}>+ {item}</div>
-              ))}
-            </div>
-          )}
-          <div className="verify-list">
-            {!verification.judged ? (
-              <div className="verify-none">
-                语义判定未完成，已跳过逐条证据展示；总结只使用上面整理出的外部补充。
-              </div>
-            ) : (
-              <>
-                {verification.items.filter((item) => item.references.length > 0).length === 0 && (
-                  <div className="verify-none">本次没有取得可用证据</div>
-                )}
-                {verification.items
-                  .filter((item) => item.references.length > 0)
-                  .map((item, index) => (
-                  <div key={`${index}-${item.query}`} className="verify-item">
-                    <div className="verify-query">
-                      {item.label || item.query}
-                      <span className="verify-line">字幕：{item.line}</span>
-                    </div>
-                    {item.references.map((reference) => (
-                      <button
-                        key={reference.url}
-                        className="verify-ref"
-                        title={reference.url}
-                        onClick={() => void window.bsub.openExternal(reference.url)}
-                      >
-                        <span className={`verify-verdict ${reference.verdict || 'unknown'}`}>
-                          {reference.verdict === 'support'
-                            ? '支持'
-                            : reference.verdict === 'refute'
-                              ? '反驳'
-                              : '未判定'}
-                        </span>
-                        <span className="verify-title">{reference.title}</span>
-                        {reference.site && (
-                          <span className="verify-site">{reference.site}</span>
-                        )}
-                        {reference.consistency === 'multi' && (
-                          <span className="verify-tag">多源</span>
-                        )}
-                        {reference.consistency === 'conflict' && (
-                          <span className="verify-tag conflict">冲突</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </details>
-      )}
+      {!streaming && verification && <VerifyCard verification={verification} />}
 
       {!streaming && summary && (
         <div className="summary-content">

@@ -1445,6 +1445,19 @@ button:disabled {
   color: var(--faint);
 }
 
+.verify-note {
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(217, 154, 79, 0.12);
+  color: #a5732a;
+  font-size: 10px;
+}
+
+.verify-verdict.unknown {
+  color: var(--faint);
+}
+
 .summary-progress {
   flex-shrink: 0;
   height: 2px;
