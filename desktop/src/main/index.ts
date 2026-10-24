@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, nativeTheme, session } from 'electron';
+import { app, BrowserWindow, Tray, nativeTheme, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { TabManager } from './tabs';
@@ -50,7 +50,8 @@ import { startBridge, stopBridge } from './bridge';
 import { disposeUpdater, initUpdater } from './updater';
 import { applyDataDirOverride, scheduleOldDataCleanup } from './dataDir';
 import { migrateLegacyUserData } from './userDataMigration';
-import { loadSession, saveSession } from './session';
+import { loadSession } from './session';
+import { createSessionPersister, createTray as createTrayShell } from './shell';
 import { APP_NAME } from '../shared/brand';
 import { registerDownloadItem, unregisterDownloadItem } from './downloads';
 
@@ -150,53 +151,21 @@ function showWindow(): void {
   mainWindow.focus();
 }
 
-let sessionTimer: NodeJS.Timeout | null = null;
 
-function persistSession(): void {
-  try {
-    if (!tabManager) return;
-    const snapshot = tabManager.sessionSnapshot();
-    if (snapshot.tabs.length) saveSession(snapshot.tabs, snapshot.activeUrl);
-  } catch (error) {
-    console.warn('[session] 保存失败:', (error as Error).message);
-  }
-}
-
-function scheduleSessionSave(): void {
-  if (sessionTimer) clearTimeout(sessionTimer);
-  sessionTimer = setTimeout(persistSession, 1500);
-}
+const sessionPersister = createSessionPersister(() => tabManager);
 
 function createTray(): void {
   if (tray) return;
-  const iconPath = resolveResource('tray.png');
-  if (!iconPath) {
-    console.warn('[tray] 找不到 tray.png，跳过托盘');
-    return;
-  }
-  try {
-    const image = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
-    tray = new Tray(image);
-    tray.setToolTip(APP_NAME);
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: '显示主窗口', click: () => showWindow() },
-        { type: 'separator' },
-        {
-          label: '退出',
-          click: () => {
-            isQuitting = true;
-            app.quit();
-          }
-        }
-      ])
-    );
-    tray.on('double-click', () => showWindow());
-    console.log('[tray] ready');
-  } catch (error) {
-    console.warn('[tray] 创建失败:', (error as Error).message);
-  }
+  tray = createTrayShell({
+    iconPath: resolveResource('tray.png'),
+    tooltip: APP_NAME,
+    onShow: () => showWindow(),
+    onQuit: () => {
+      isQuitting = true;
+    }
+  });
 }
+
 
 function createWindow(): void {
   const dark = nativeTheme.shouldUseDarkColors;
@@ -250,7 +219,7 @@ function createWindow(): void {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('tabs:changed', tabs);
       }
-      scheduleSessionSave();
+      sessionPersister.schedule();
     },
     (result) => {
       if (!app.isPackaged) {
@@ -2483,7 +2452,7 @@ app
 app.on('before-quit', () => {
   writeLog('startup.log', 'before-quit');
   isQuitting = true;
-  persistSession();
+  sessionPersister.persist();
   disposeUpdater();
   stopBridge();
   closeLibrary();
