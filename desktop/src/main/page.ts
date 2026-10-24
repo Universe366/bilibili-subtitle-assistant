@@ -1,5 +1,11 @@
 import type { WebContents } from 'electron';
-import type { PageInfo, SubtitleBundle, SubtitleLine, SubtitleTrack, TrackBody } from '../shared/types';
+import type {
+  PageInfo,
+  SubtitleBundle,
+  SubtitleLine,
+  SubtitleTrack,
+  TrackBody
+} from '../shared/types';
 import { loadSettings } from './settings';
 import { isYouTubeUrl, parseJson3, parseTimedTextXml, readYouTubeData } from './youtube';
 
@@ -109,6 +115,67 @@ export function callPage<T>(
   return next;
 }
 
+interface BiliViewData {
+  pic?: string;
+  pubdate?: number;
+  stat?: { view?: number; danmaku?: number };
+}
+
+interface RawSubtitleTrack {
+  lan?: string;
+  lanDoc?: string;
+  url?: string;
+  isAi?: boolean;
+  aiStatus?: number | null;
+  source?: string;
+}
+
+interface RawSubtitleBundle {
+  tracks?: RawSubtitleTrack[];
+  sources?: string[] | undefined;
+  signatureChanged?: boolean;
+  identityMismatch?: boolean;
+  identityUnstable?: boolean;
+  foreignTracksDetail?: unknown[];
+  errors?: Array<{ source?: string; code?: string | number; message?: string }>;
+  groups?: unknown[];
+  sniffed?: unknown[];
+  foreignTracks?: unknown[];
+  sniffCount?: number;
+  staleSniffCount?: number;
+  needLogin?: boolean;
+  reason?: string;
+  identity?: { signature?: string };
+}
+
+interface RawTrackBody {
+  body?: Array<{ from?: number; to?: number; content?: string }>;
+}
+
+interface RawAudioCandidate {
+  url?: string;
+  bandwidth?: number;
+  mimeType?: string;
+  source?: string;
+  backupUrl?: unknown[];
+}
+
+interface RawAudioCandidates {
+  ok?: boolean;
+  reason?: string;
+  candidates?: RawAudioCandidate[];
+}
+
+interface RawAudioRange {
+  ok?: boolean;
+  reason?: string;
+  status?: number;
+  message?: string;
+  base64?: string;
+  contentType?: string;
+  contentRange?: string;
+}
+
 function normalizeImage(url?: string): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('//')) return `https:${url}`;
@@ -116,10 +183,10 @@ function normalizeImage(url?: string): string | undefined {
   return url;
 }
 
-const viewCache = new Map<string, any>();
+const viewCache = new Map<string, BiliViewData | null>();
 
-async function fetchView(bvid: string): Promise<any | null> {
-  if (viewCache.has(bvid)) return viewCache.get(bvid);
+async function fetchView(bvid: string): Promise<BiliViewData | null> {
+  if (viewCache.has(bvid)) return viewCache.get(bvid) ?? null;
   try {
     const res = await fetch(
       `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`,
@@ -128,8 +195,8 @@ async function fetchView(bvid: string): Promise<any | null> {
         signal: AbortSignal.timeout(12000)
       }
     );
-    const json: any = await res.json();
-    const data = json && json.code === 0 ? json.data : null;
+    const json = (await res.json()) as { code?: number; data?: BiliViewData };
+    const data: BiliViewData | null = json && json.code === 0 ? (json.data ?? null) : null;
     viewCache.set(bvid, data);
     if (viewCache.size > 100) {
       const first = viewCache.keys().next().value;
@@ -184,9 +251,7 @@ export async function getSubtitles(
       needLogin: false,
       tracks,
       sources: ['youtube'],
-      errors: tracks.length
-        ? []
-        : [{ source: 'youtube', message: '这个视频没有可用的字幕轨' }],
+      errors: tracks.length ? [] : [{ source: 'youtube', message: '这个视频没有可用的字幕轨' }],
       identity: youtube?.info.signature,
       diagnostics: {
         groups: [],
@@ -194,23 +259,27 @@ export async function getSubtitles(
         foreignTracks: [],
         sniffCount: 0,
         staleSniffCount: 0,
-        signatureChanged: Boolean(expectSignature && youtube && expectSignature !== youtube.info.signature),
-        identityMismatch: Boolean(expectSignature && youtube && expectSignature !== youtube.info.signature),
+        signatureChanged: Boolean(
+          expectSignature && youtube && expectSignature !== youtube.info.signature
+        ),
+        identityMismatch: Boolean(
+          expectSignature && youtube && expectSignature !== youtube.info.signature
+        ),
         identityUnstable: false,
         reason: tracks.length ? '' : 'youtube-no-captions'
       }
     };
   }
 
-  const raw = await callPage<any>(
+  const raw = await callPage<RawSubtitleBundle>(
     wc,
     'getSubtitleBundle',
     expectSignature ? { expectSignature } : {},
     35000
   );
   const tracks: SubtitleTrack[] = (raw && Array.isArray(raw.tracks) ? raw.tracks : [])
-    .filter((track: any) => track && track.url)
-    .map((track: any) => ({
+    .filter((track) => track && track.url)
+    .map((track) => ({
       lan: String(track.lan || ''),
       lanDoc: String(track.lanDoc || track.lan || ''),
       url: String(track.url),
@@ -222,13 +291,22 @@ export async function getSubtitles(
   return {
     needLogin: Boolean(raw && raw.needLogin),
     tracks,
-    sources: Array.isArray(raw && raw.sources) ? raw.sources : [],
-    errors: Array.isArray(raw && raw.errors) ? raw.errors : [],
-    identity: raw && raw.identity && raw.identity.signature ? String(raw.identity.signature) : undefined,
+    sources: Array.isArray(raw?.sources) ? raw.sources : [],
+    errors: Array.isArray(raw?.errors) ? raw.errors : [],
+    identity:
+      raw && raw.identity && raw.identity.signature ? String(raw.identity.signature) : undefined,
     diagnostics: {
       groups: Array.isArray(raw?.groups) ? raw.groups.map(String) : [],
       sniffed: Array.isArray(raw?.sniffed) ? raw.sniffed : [],
-      foreignTracks: Array.isArray(raw?.foreignTracks) ? raw.foreignTracks : [],
+      foreignTracks: Array.isArray(raw?.foreignTracks)
+        ? (raw.foreignTracks as Array<{
+            from?: string;
+            cid?: string;
+            lan?: string;
+            source?: string;
+            url?: string;
+          }>)
+        : [],
       sniffCount: Number(raw?.sniffCount) || 0,
       staleSniffCount: Number(raw?.staleSniffCount) || 0,
       signatureChanged: Boolean(raw?.signatureChanged),
@@ -263,7 +341,8 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     return { lines: cached.lines.map((line) => ({ ...line })) };
   }
 
-  const isYouTubeHost = /(^|\.)youtube\.com$/i.test(parsed.hostname) || /(^|\.)google\.com$/i.test(parsed.hostname);
+  const isYouTubeHost =
+    /(^|\.)youtube\.com$/i.test(parsed.hostname) || /(^|\.)google\.com$/i.test(parsed.hostname);
   const res = await fetch(url, {
     headers: {
       'user-agent': UA,
@@ -290,15 +369,15 @@ export async function getTrackBody(url: string): Promise<TrackBody> {
     return { lines };
   }
 
-  let json: any = null;
+  let json: RawTrackBody | null = null;
   try {
     json = JSON.parse(text);
   } catch {
     throw new Error('字幕正文不是合法 JSON');
   }
 
-  const body = Array.isArray(json && json.body) ? json.body : [];
-  const lines: SubtitleLine[] = body.slice(0, 20000).map((line: any) => ({
+  const body = Array.isArray(json?.body) ? json.body : [];
+  const lines: SubtitleLine[] = body.slice(0, 20000).map((line) => ({
     start: Number(line && line.from) || 0,
     end: Number(line && line.to) || 0,
     text: String((line && line.content) || '')
@@ -360,7 +439,7 @@ export async function getAudioCandidates(
   wc: WebContents,
   info: PageInfo
 ): Promise<AudioCandidate[]> {
-  const raw = await callPage<any>(
+  const raw = await callPage<RawAudioCandidates>(
     wc,
     'getAudioCandidates',
     {
@@ -375,14 +454,14 @@ export async function getAudioCandidates(
     throw new Error(raw?.reason || '没有可用的音轨');
   }
   const candidates: AudioCandidate[] = (Array.isArray(raw.candidates) ? raw.candidates : [])
-    .filter((item: any) => item && item.url)
-    .map((item: any) => ({
+    .filter((item) => item && item.url)
+    .map((item) => ({
       url: String(item.url),
       bandwidth: Number(item.bandwidth) || undefined,
       mimeType: item.mimeType ? String(item.mimeType) : undefined,
       source: item.source ? String(item.source) : undefined,
       backupUrl: Array.isArray(item.backupUrl)
-        ? item.backupUrl.filter((url: any) => typeof url === 'string' && url)
+        ? item.backupUrl.filter((url): url is string => typeof url === 'string' && Boolean(url))
         : undefined
     }));
   if (!candidates.length) throw new Error('没有可用的音轨候选');
@@ -395,7 +474,7 @@ export async function fetchAudioRange(
   start: number,
   end: number
 ): Promise<{ bytes: Buffer; contentType: string; contentRange: string }> {
-  const raw = await callPage<any>(wc, 'fetchAudioRange', { url, start, end }, 120000);
+  const raw = await callPage<RawAudioRange>(wc, 'fetchAudioRange', { url, start, end }, 120000);
   if (!raw || raw.ok === false) {
     const reason =
       raw?.reason === 'html'

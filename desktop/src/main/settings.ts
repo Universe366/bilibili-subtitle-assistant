@@ -11,12 +11,7 @@ import type {
   SettingsSnapshot,
   ThemeMode
 } from '../shared/types';
-import {
-  AI_PRESETS,
-  AI_PRESET_VERSION,
-  ASR_PRESETS,
-  SEARCH_PRESETS
-} from '../shared/presets';
+import { AI_PRESETS, AI_PRESET_VERSION, ASR_PRESETS, SEARCH_PRESETS } from '../shared/presets';
 import { testAiConnection } from './aiClient';
 import { isSealedSecret, openSecret, sealSecret, canEncrypt } from './secrets';
 
@@ -50,7 +45,8 @@ const DEFAULT_CHAPTERS_PROMPT = `你是视频章节编辑。根据字幕把视�
 - 只输出 JSON 数组：[{"start":0,"end":120,"title":"开场"}, ...]
 - start/end 使用秒数，不要输出 Markdown 代码块或解释。`;
 
-const DEFAULT_TEMPLATES: PromptTemplate[] = [  { id: 'default', name: '默认（视频整理）', text: DEFAULT_PROMPT },
+const DEFAULT_TEMPLATES: PromptTemplate[] = [
+  { id: 'default', name: '默认（视频整理）', text: DEFAULT_PROMPT },
   {
     id: 'brief',
     name: '精简',
@@ -246,7 +242,13 @@ function settingsFile(): string {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
-function normalize(raw: any): AppSettings {
+type SettingsWithLegacyFields = AppSettings & {
+  prompt: AppSettings['prompt'] & { summary?: string };
+  search: AppSettings['search'] & { provider?: string; apiKey?: string };
+};
+
+function normalize(input: unknown): AppSettings {
+  const raw = (input || {}) as SettingsWithLegacyFields;
   const base: AppSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   base.dataDir = app.getPath('userData');
 
@@ -317,9 +319,7 @@ function normalize(raw: any): AppSettings {
     if (presetVersion < AI_PRESET_VERSION) {
       for (const preset of AI_PRESETS) {
         const exists = base.ai.platforms.some(
-          (item) =>
-            item.id === preset.id ||
-            AI_PRESET_ALIASES[item.id] === preset.id
+          (item) => item.id === preset.id || AI_PRESET_ALIASES[item.id] === preset.id
         );
         if (!exists) {
           base.ai.platforms.push({
@@ -387,9 +387,11 @@ function normalize(raw: any): AppSettings {
       base.asr.activeId = base.asr.platforms.some((platform) => platform.id === asrActive)
         ? asrActive
         : base.asr.platforms[0].id;
-      if (typeof raw.asr.language === 'string') base.asr.language = raw.asr.language.trim() || 'auto';
+      if (typeof raw.asr.language === 'string')
+        base.asr.language = raw.asr.language.trim() || 'auto';
       const chunk = Number(raw.asr.chunkSeconds);
-      if (Number.isFinite(chunk)) base.asr.chunkSeconds = Math.min(600, Math.max(45, Math.round(chunk)));
+      if (Number.isFinite(chunk))
+        base.asr.chunkSeconds = Math.min(600, Math.max(45, Math.round(chunk)));
       const transports = ['auto', 'multipart', 'base64-json', 'chat-audio'];
       base.asr.transport = transports.includes(raw.asr.transport) ? raw.asr.transport : 'auto';
       const formats = ['auto', 'm4a', 'wav'];
@@ -434,10 +436,7 @@ function normalize(raw: any): AppSettings {
     }
     if (templates.length) {
       const defaultTemplate = templates.find((template) => template.id === 'default');
-      if (
-        defaultTemplate &&
-        /^你是一个严谨的中文视频笔记助手/.test(defaultTemplate.text.trim())
-      ) {
+      if (defaultTemplate && /^你是一个严谨的中文视频笔记助手/.test(defaultTemplate.text.trim())) {
         defaultTemplate.text = DEFAULT_PROMPT;
         defaultTemplate.name = '默认（视频整理）';
       }
@@ -493,8 +492,10 @@ function normalize(raw: any): AppSettings {
       }
       if (Array.isArray(raw.mcp.servers)) {
         base.mcp.servers = raw.mcp.servers
-          .filter((server: any) => server && typeof server === 'object' && String(server.id || '').trim())
-          .map((server: any) => ({
+          .filter(
+            (server) => server && typeof server === 'object' && String(server.id || '').trim()
+          )
+          .map((server) => ({
             id: String(server.id),
             name: String(server.name || 'MCP 服务'),
             url: String(server.url || ''),
@@ -517,8 +518,8 @@ function normalize(raw: any): AppSettings {
       base.skills.enabled = raw.skills.enabled !== false;
       if (Array.isArray(raw.skills.items)) {
         base.skills.items = raw.skills.items
-          .filter((item: any) => item && typeof item === 'object' && String(item.id || '').trim())
-          .map((item: any) => ({
+          .filter((item) => item && typeof item === 'object' && String(item.id || '').trim())
+          .map((item) => ({
             id: String(item.id),
             name: String(item.name || '未命名技能'),
             description: String(item.description || ''),
@@ -578,9 +579,7 @@ function normalize(raw: any): AppSettings {
       if (platforms.length) base.search.platforms = platforms;
 
       const activeId = String(raw.search.activeId || '');
-      base.search.activeId = base.search.platforms.some(
-        (platform) => platform.id === activeId
-      )
+      base.search.activeId = base.search.platforms.some((platform) => platform.id === activeId)
         ? activeId
         : base.search.platforms[0].id;
 
@@ -590,9 +589,7 @@ function normalize(raw: any): AppSettings {
       }
       base.search.includeContent = raw.search.includeContent !== false;
       const ranges = ['any', 'year', 'month', 'week'];
-      base.search.timeRange = ranges.includes(raw.search.timeRange)
-        ? raw.search.timeRange
-        : 'any';
+      base.search.timeRange = ranges.includes(raw.search.timeRange) ? raw.search.timeRange : 'any';
       base.search.verify = raw.search.verify === true;
       base.search.verifySummary = raw.search.verifySummary !== false;
       base.search.verifyItemCount = Math.max(
@@ -602,8 +599,12 @@ function normalize(raw: any): AppSettings {
       base.search.keylessFallback = raw.search.keylessFallback !== false;
       const keylessOrder = Array.isArray(raw.search.keylessOrder)
         ? raw.search.keylessOrder
-            .map((item: any) => String(item || '').trim().toLowerCase())
-            .filter((item: string) => ['exa', 'anysearch', 'searxng'].includes(item))
+            .map((item) =>
+              String(item || '')
+                .trim()
+                .toLowerCase()
+            )
+            .filter((item) => ['exa', 'anysearch', 'searxng'].includes(item))
         : [];
       base.search.keylessOrder = keylessOrder.length
         ? [...new Set<string>(keylessOrder)]
@@ -627,14 +628,14 @@ function normalize(raw: any): AppSettings {
       base.correction.enabled = raw.correction.enabled !== false;
       const groups = Array.isArray(raw.correction.groups) ? raw.correction.groups : [];
       base.correction.groups = groups
-        .filter((group: any) => group && typeof group === 'object' && String(group.id || '').trim())
-        .map((group: any) => ({
+        .filter((group) => group && typeof group === 'object' && String(group.id || '').trim())
+        .map((group) => ({
           id: String(group.id),
           name: String(group.name || '规则组'),
           enabled: group.enabled !== false,
           rules: (Array.isArray(group.rules) ? group.rules : [])
-            .filter((rule: any) => rule && typeof rule === 'object' && String(rule.id || '').trim())
-            .map((rule: any) => ({
+            .filter((rule) => rule && typeof rule === 'object' && String(rule.id || '').trim())
+            .map((rule) => ({
               id: String(rule.id),
               pattern: String(rule.pattern || ''),
               replacement: String(rule.replacement || ''),
@@ -660,7 +661,8 @@ function normalize(raw: any): AppSettings {
     if (raw.bridge && typeof raw.bridge === 'object') {
       base.bridge.enabled = raw.bridge.enabled !== false;
       const port = Number(raw.bridge.port);
-      if (Number.isFinite(port) && port >= 1024 && port <= 65535) base.bridge.port = Math.floor(port);
+      if (Number.isFinite(port) && port >= 1024 && port <= 65535)
+        base.bridge.port = Math.floor(port);
       base.bridge.token = typeof raw.bridge.token === 'string' ? raw.bridge.token : '';
     }
 
@@ -853,8 +855,7 @@ export function activePlatform(settings: AppSettings = loadSettings()): AiPlatfo
 export function activePrompt(settings: AppSettings = loadSettings()): PromptTemplate {
   return (
     settings.prompt.templates.find((template) => template.id === settings.prompt.activeId) ||
-    settings.prompt.templates[0] ||
-    { id: 'default', name: '默认', text: DEFAULT_PROMPT }
+    settings.prompt.templates[0] || { id: 'default', name: '默认', text: DEFAULT_PROMPT }
   );
 }
 
@@ -866,6 +867,8 @@ export function settingsSnapshot(): SettingsSnapshot {
   };
 }
 
-export async function testPlatform(platform: AiPlatform): Promise<{ latencyMs: number; message: string }> {
+export async function testPlatform(
+  platform: AiPlatform
+): Promise<{ latencyMs: number; message: string }> {
   return testAiConnection(platform);
 }

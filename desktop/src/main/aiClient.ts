@@ -59,9 +59,7 @@ export interface AiChatResult {
 
 export const DEFAULT_AI_TIMEOUT_MS = 300000;
 
-export function isAnthropicPlatform(
-  platform: Pick<AiPlatform, 'baseUrl' | 'kind'>
-): boolean {
+export function isAnthropicPlatform(platform: Pick<AiPlatform, 'baseUrl' | 'kind'>): boolean {
   return platform.kind === 'anthropic' || /anthropic\.com/i.test(platform.baseUrl || '');
 }
 
@@ -102,6 +100,54 @@ function textOf(content: string | AiPart[]): string {
     .join('\n');
 }
 
+interface OpenAiContentPart {
+  type?: string;
+  text?: string;
+  content?: string;
+  image_url?: { url?: string };
+}
+
+interface OpenAiMessagePayload {
+  role: string;
+  content: string | OpenAiContentPart[];
+}
+
+interface OpenAiChoicePayload {
+  message?: {
+    content?: string | OpenAiContentPart[];
+    reasoning_content?: string;
+    reasoning?: string;
+    tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+  };
+  delta?: { content?: string; reasoning_content?: string };
+  text?: string;
+}
+
+interface OpenAiResponsePayload {
+  choices?: OpenAiChoicePayload[];
+  data?: unknown[];
+  models?: unknown[];
+  result?: unknown[];
+}
+
+interface AnthropicBlock {
+  type?: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+}
+
+interface AnthropicResponsePayload {
+  type?: string;
+  content?: AnthropicBlock[];
+  delta?: { type?: string; text?: string; thinking?: string };
+  content_block?: AnthropicBlock;
+}
+
+type AiPayload = OpenAiResponsePayload & AnthropicResponsePayload;
+
 function splitDataUrl(url: string): { mime: string; data: string } | null {
   const match = /^data:([^;,]+);base64,(.*)$/s.exec(url);
   if (!match) return null;
@@ -114,12 +160,12 @@ function imagePart(src: string): AiImagePart | null {
   return null;
 }
 
-function toOpenAiMessages(messages: AiMessage[]): any[] {
+function toOpenAiMessages(messages: AiMessage[]): OpenAiMessagePayload[] {
   return messages.map((message) => {
     if (typeof message.content === 'string') {
       return { role: message.role, content: message.content };
     }
-    const content: any[] = [];
+    const content: OpenAiContentPart[] = [];
     for (const part of message.content) {
       if (part.type === 'text') {
         content.push({ type: 'text', text: part.text });
@@ -138,7 +184,7 @@ function toOpenAiMessages(messages: AiMessage[]): any[] {
 
 interface AnthropicMessage {
   role: 'user' | 'assistant';
-  content: any[];
+  content: Array<AnthropicBlock | Record<string, unknown>>;
 }
 
 function toAnthropicPayload(messages: AiMessage[]): {
@@ -153,7 +199,7 @@ function toAnthropicPayload(messages: AiMessage[]): {
       if (text) system.push(text);
       continue;
     }
-    const content: any[] = [];
+    const content: Array<AnthropicBlock | Record<string, unknown>> = [];
     if (typeof message.content === 'string') {
       if (message.content.trim()) content.push({ type: 'text', text: message.content });
     } else {
@@ -178,29 +224,34 @@ function toAnthropicPayload(messages: AiMessage[]): {
   return { system: system.join('\n\n'), messages: rows };
 }
 
-function toAnthropicTools(tools: AiToolDef[]): any[] {
+function toAnthropicTools(tools: AiToolDef[]): Array<{
+  name: string;
+  description: string;
+  input_schema: unknown;
+}> {
   return tools.map((tool) => ({
     name: tool.name,
     description: (tool.description || '').slice(0, 1024),
-    input_schema:
-      (tool.parameters as Record<string, unknown>) || {
-        type: 'object',
-        properties: {}
-      }
+    input_schema: (tool.parameters as Record<string, unknown>) || {
+      type: 'object',
+      properties: {}
+    }
   }));
 }
 
-function toOpenAiTools(tools: AiToolDef[]): any[] {
+function toOpenAiTools(tools: AiToolDef[]): Array<{
+  type: 'function';
+  function: { name: string; description: string; parameters: unknown };
+}> {
   return tools.map((tool) => ({
     type: 'function',
     function: {
       name: tool.name,
       description: (tool.description || '').slice(0, 1024),
-      parameters:
-        (tool.parameters as Record<string, unknown>) || {
-          type: 'object',
-          properties: {}
-        }
+      parameters: (tool.parameters as Record<string, unknown>) || {
+        type: 'object',
+        properties: {}
+      }
     }
   }));
 }
@@ -267,35 +318,33 @@ async function fetchWithTimeout(
   }
 }
 
-function parseOpenAiText(json: any): AiChatResult {
+function parseOpenAiText(json: OpenAiResponsePayload): AiChatResult {
   const message = json?.choices?.[0]?.message;
   const raw = message?.content;
   const text =
     typeof raw === 'string'
       ? raw
       : Array.isArray(raw)
-        ? raw
-            .map((part: any) => String(part?.text ?? part?.content ?? ''))
-            .join('')
+        ? raw.map((part) => String(part?.text ?? part?.content ?? '')).join('')
         : '';
   const reasoning = String(message?.reasoning_content ?? message?.reasoning ?? '');
   return { text, reasoning };
 }
 
-function parseAnthropicText(json: any): AiChatResult {
+function parseAnthropicText(json: AnthropicResponsePayload): AiChatResult {
   const blocks = Array.isArray(json?.content) ? json.content : [];
   const text = blocks
-    .filter((block: any) => block?.type === 'text')
-    .map((block: any) => String(block.text || ''))
+    .filter((block) => block?.type === 'text')
+    .map((block) => String(block.text || ''))
     .join('');
   const reasoning = blocks
-    .filter((block: any) => block?.type === 'thinking')
-    .map((block: any) => String(block.thinking || ''))
+    .filter((block) => block?.type === 'thinking')
+    .map((block) => String(block.thinking || ''))
     .join('');
   return { text, reasoning };
 }
 
-function parseChunk(platform: AiPlatform, data: any): { text: string; reasoning: string } {
+function parseChunk(platform: AiPlatform, data: AiPayload): { text: string; reasoning: string } {
   if (isAnthropicPlatform(platform)) {
     const type = String(data?.type || '');
     if (type === 'content_block_delta') {
@@ -346,7 +395,10 @@ async function postJson(
 
   // Anthropic 的 max_tokens 是硬上限：桌面端默认 64000，某些 Claude 型号
   // （如 3.5 Haiku）只接受 8192。这里按服务端报错回退一次，而不是让用户手改。
-  const probe = await response.clone().text().catch(() => '');
+  const probe = await response
+    .clone()
+    .text()
+    .catch(() => '');
   const maxTokens = Number(body.max_tokens) || 0;
   if (/max_tokens/i.test(probe) && maxTokens > 8192) {
     return send({ ...body, max_tokens: 8192 });
@@ -369,7 +421,7 @@ export async function chatOnce(
     const body = await response.text().catch(() => '');
     throw new Error(errorForStatus(response.status, body));
   }
-  const json: any = await response.json();
+  const json = (await response.json()) as AiPayload;
   return isAnthropicPlatform(platform) ? parseAnthropicText(json) : parseOpenAiText(json);
 }
 
@@ -394,10 +446,8 @@ export async function chatStream(
 
   const contentType = response.headers.get('content-type') || '';
   if (!response.body || !contentType.includes('text/event-stream')) {
-    const json: any = await response.json();
-    const result = isAnthropicPlatform(platform)
-      ? parseAnthropicText(json)
-      : parseOpenAiText(json);
+    const json = (await response.json()) as AiPayload;
+    const result = isAnthropicPlatform(platform) ? parseAnthropicText(json) : parseOpenAiText(json);
     if (result.text) options.onDelta?.(result.text);
     if (result.reasoning) options.onReasoning?.(result.reasoning);
     return result;
@@ -473,7 +523,7 @@ export async function chatToolLoop(
 ): Promise<AiChatResult> {
   const anthropic = isAnthropicPlatform(platform);
   const maxRounds = Math.max(1, options.maxRounds || 6);
-  const convo: any[] = anthropic
+  const convo: Array<OpenAiMessagePayload | AnthropicMessage | Record<string, unknown>> = anthropic
     ? toAnthropicPayload(messages).messages
     : toOpenAiMessages(messages);
   const system = anthropic ? toAnthropicPayload(messages).system : '';
@@ -505,18 +555,18 @@ export async function chatToolLoop(
       const text = await response.text().catch(() => '');
       throw new Error(errorForStatus(response.status, text));
     }
-    const json: any = await response.json();
+    const json = (await response.json()) as AiPayload;
 
     if (anthropic) {
       const blocks = Array.isArray(json?.content) ? json.content : [];
-      const toolUses = blocks.filter((block: any) => block?.type === 'tool_use');
+      const toolUses = blocks.filter((block) => block?.type === 'tool_use');
       if (!toolUses.length) {
         const result = parseAnthropicText(json);
         if (!result.text.trim()) throw new Error('AI 返回为空');
         return result;
       }
       convo.push({ role: 'assistant', content: blocks });
-      const results: any[] = [];
+      const results: Array<Record<string, unknown>> = [];
       for (const block of toolUses) {
         let content = '';
         try {
@@ -581,16 +631,12 @@ export async function listAiModels(
   const url = `${aiBaseUrl(platform)}/models`;
   const headers = aiHeaders(platform);
   delete headers['content-type'];
-  const response = await fetchWithTimeout(
-    url,
-    { method: 'GET', headers },
-    { timeoutMs: 30000 }
-  );
+  const response = await fetchWithTimeout(url, { method: 'GET', headers }, { timeoutMs: 30000 });
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`模型列表 HTTP ${response.status}：${text.slice(0, 160)}`);
   }
-  let json: any = null;
+  let json: OpenAiResponsePayload | null = null;
   try {
     json = JSON.parse(text);
   } catch {
@@ -604,7 +650,10 @@ export async function listAiModels(
         ? json.result
         : [];
   const models = rows
-    .map((item: any) => String(item?.id || item?.name || item))
+    .map((item) => {
+      const row = item as { id?: string; name?: string };
+      return String(row?.id || row?.name || item);
+    })
     .filter(Boolean);
   return { models, url };
 }
@@ -616,10 +665,10 @@ export async function testAiConnection(
   if (!platform.model.trim()) throw new Error('请填写模型名');
   if (needsApiKey(platform) && !platform.apiKey.trim()) throw new Error('请填写 API Key');
   const started = Date.now();
-  await chatOnce(
-    platform,
-    [{ role: 'user', content: 'ping' }],
-    { maxTokens: 4, temperature: 0, timeoutMs: 30000 }
-  );
+  await chatOnce(platform, [{ role: 'user', content: 'ping' }], {
+    maxTokens: 4,
+    temperature: 0,
+    timeoutMs: 30000
+  });
   return { latencyMs: Date.now() - started, message: '连接成功' };
 }
